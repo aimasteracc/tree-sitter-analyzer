@@ -15,6 +15,9 @@ from typing import Any, cast
 
 
 from ..constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
+from ..ignore_rules import IgnoreRules
+from ..ignore_rules import is_gitignored as _is_gitignored
+from ..ignore_rules import load_ignore_rules as _load_ignore_rules
 from ..index_candidate_walker import (
     CandidateDiscoveryBudgetExceeded,
     CandidateDiscoveryError,
@@ -129,21 +132,38 @@ _AST_CACHE_EXTRACTOR_VERSION = 39
 
 
 def _walk_source_files(project_root: str) -> Iterator[str]:
+    ignore_rules: dict[str, IgnoreRules] = {
+        "": _load_ignore_rules(project_root, "", [])
+    }
     for dirpath, dirnames, filenames in os.walk(project_root):
+        rel_dir = os.path.relpath(dirpath, project_root)
+        if rel_dir == os.curdir:
+            rel_dir = ""
+        inherited = ignore_rules[rel_dir]
         retained: list[str] = []
         for dirname in dirnames:
             if dirname in _EXCLUDE_DIRS or dirname.startswith("."):
                 continue
             candidate = os.path.join(dirpath, dirname)
+            child_rel = os.path.join(rel_dir, dirname) if rel_dir else dirname
             if os.path.islink(candidate):
-                if os.path.splitext(dirname)[1].lower() in _EXT_TO_LANG:
-                    yield candidate
+                if not _is_gitignored(child_rel, inherited, directory=False):
+                    if os.path.splitext(dirname)[1].lower() in _EXT_TO_LANG:
+                        yield candidate
                 continue
+            if _is_gitignored(child_rel, inherited, directory=True):
+                continue
+            ignore_rules[child_rel] = _load_ignore_rules(
+                project_root, child_rel, inherited
+            )
             retained.append(dirname)
         dirnames[:] = retained
         for fname in filenames:
             ext = os.path.splitext(fname)[1].lower()
             if ext in _EXT_TO_LANG:
+                file_rel = os.path.join(rel_dir, fname) if rel_dir else fname
+                if _is_gitignored(file_rel, inherited, directory=False):
+                    continue
                 yield os.path.join(dirpath, fname)
 
 

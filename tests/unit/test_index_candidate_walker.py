@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from tests.unit._ast_cache_helpers import _OsProxy
 from tree_sitter_analyzer.index_candidate_walker import (
     CandidateDiscoveryBudgetExceeded,
     CandidateDiscoveryError,
@@ -558,3 +559,87 @@ def test_posix_missing_root_at_final_reopen_is_discovery_error(monkeypatch, tmp_
 
     with pytest.raises(CandidateDiscoveryError, match="INDEX_CANDIDATE"):
         list(walk_candidate_entries(str(tmp_path), **_DEFAULTS))
+
+
+def _write_ignore_file(root, *lines):
+    (root / ".gitignore").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _relative_all(root, values):
+    return sorted(os.path.relpath(value, str(root)) for value in values)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="descriptor-bound walk is POSIX-only")
+def test_posix_gitignored_build_directory_is_pruned(tmp_path):
+    # GH-1449: pruning used only the EXCLUDE_DIRS name list plus hidden names, so
+    # a gitignored build directory such as tsc's lib/ was indexed as source.
+    _write_ignore_file(tmp_path, "lib/", "custom-out/", "dist/")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "index.ts").write_text("export const a = 1\n")
+    for name in ("lib", "custom-out", "dist"):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "index.js").write_text("var a = 1\n")
+
+    values = list(walk_candidate_entries(str(tmp_path), **_DEFAULTS))
+
+    assert _relative_all(tmp_path, values) == [
+        ".gitignore",
+        os.path.join("src", "index.ts"),
+    ]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="descriptor-bound walk is POSIX-only")
+def test_posix_unignored_lib_directory_is_still_walked(tmp_path):
+    # The walk follows ignore rules instead of hardcoding ecosystem names: Ruby
+    # and Python keep first-party sources under lib/.
+    _write_ignore_file(tmp_path, "build/")
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "lib" / "thing.rb").write_text("def thing; end\n")
+
+    values = list(walk_candidate_entries(str(tmp_path), **_DEFAULTS))
+
+    assert os.path.join("lib", "thing.rb") in _relative_all(tmp_path, values)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="descriptor-bound walk is POSIX-only")
+def test_posix_negated_file_is_retained(tmp_path):
+    _write_ignore_file(tmp_path, "*.log", "!keep.log")
+    (tmp_path / "drop.log").write_text("x\n")
+    (tmp_path / "keep.log").write_text("x\n")
+
+    values = _relative_all(tmp_path, walk_candidate_entries(str(tmp_path), **_DEFAULTS))
+
+    assert "drop.log" not in values
+    assert "keep.log" in values
+
+
+@pytest.mark.skipif(os.name != "posix", reason="descriptor-bound walk is POSIX-only")
+def test_posix_nested_gitignore_prunes_descendant(tmp_path):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    _write_ignore_file(package, "out/")
+    (package / "out").mkdir()
+    (package / "out" / "generated.js").write_text("var g = 1\n")
+    (package / "src.js").write_text("var s = 1\n")
+
+    values = _relative_all(tmp_path, walk_candidate_entries(str(tmp_path), **_DEFAULTS))
+
+    assert os.path.join("pkg", "src.js") in values
+    assert os.path.join("pkg", "out", "generated.js") not in values
+
+
+def test_path_fallback_gitignored_directory_is_pruned(tmp_path, monkeypatch):
+    import tree_sitter_analyzer.index_candidate_walker as walker
+
+    _write_ignore_file(tmp_path, "lib/")
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "lib" / "index.js").write_text("var a = 1\n")
+    (tmp_path / "src.js").write_text("var s = 1\n")
+    # Patch the walker's own ``os``: the process-global ``os.name`` also steers
+    # pathlib, which then cannot build a path while pytest reports a failure.
+    monkeypatch.setattr(walker, "os", _OsProxy(name="nt"))
+
+    values = _relative_all(tmp_path, walk_candidate_entries(str(tmp_path), **_DEFAULTS))
+
+    assert "src.js" in values
+    assert os.path.join("lib", "index.js") not in values

@@ -8,6 +8,10 @@ import time
 from collections.abc import Iterable
 from typing import Any
 
+from .ignore_rules import IgnoreRules
+from .ignore_rules import is_gitignored as _is_gitignored
+from .ignore_rules import load_ignore_rules as _load_ignore_rules
+
 
 class CandidateDiscoveryBudgetExceeded(RuntimeError):
     """Raised after the first filesystem entry beyond a discovery budget."""
@@ -33,6 +37,9 @@ def walk_candidate_entries(
     deadline = time.monotonic() + discovery_seconds
     entry_count = 0
     path_bytes = 0
+    ignore_rules: dict[str, IgnoreRules] = {
+        "": _load_ignore_rules(project_root, "", [])
+    }
     if os.name != "posix":  # pragma: no cover - exercised by Windows CI
         yield from _walk_path_entries(
             project_root,
@@ -98,9 +105,16 @@ def walk_candidate_entries(
             except OSError as exc:
                 raise CandidateDiscoveryError(_DISCOVERY_ERROR) from exc
             if not stat.S_ISDIR(entry_info.st_mode):
-                yield abs_path
+                if not _is_gitignored(
+                    rel_path, ignore_rules.get(parent_rel, []), directory=False
+                ):
+                    yield abs_path
                 continue
             if entry.name in excluded_dir_names or entry.name.startswith("."):
+                continue
+            if _is_gitignored(
+                rel_path, ignore_rules.get(parent_rel, []), directory=True
+            ):
                 continue
             child_fd: int | None = None
             try:
@@ -127,6 +141,9 @@ def walk_candidate_entries(
                 if child_fd is not None:
                     os.close(child_fd)
                 raise CandidateDiscoveryError(_DISCOVERY_ERROR) from exc
+            ignore_rules[rel_path] = _load_ignore_rules(
+                project_root, rel_path, ignore_rules.get(parent_rel, [])
+            )
             scanners.append((child_scanner, child_fd, rel_path))
         # Enumeration through the pinned descriptor is authoritative only while
         # the caller-visible pathname still names that exact directory.  A
@@ -176,22 +193,28 @@ def _walk_path_entries(
     """Non-POSIX fallback; secure snapshot capture is unsupported on this path."""
     entry_count = 0
     path_bytes = 0
-    scanners: list[Any] = []
+    scanners: list[tuple[Any, str]] = []
+    ignore_rules: dict[str, IgnoreRules] = {
+        "": _load_ignore_rules(project_root, "", [])
+    }
     try:
         try:
-            scanners.append(os.scandir(project_root))
+            scanners.append((os.scandir(project_root), ""))
         except OSError as exc:
             raise CandidateDiscoveryError(_DISCOVERY_ERROR) from exc
         while scanners:
-            scanner = scanners[-1]
+            scanner, parent_rel = scanners[-1]
             try:
                 entry = next(scanner)
             except StopIteration:
-                scanners.pop().close()
+                scanners.pop()[0].close()
                 continue
             except OSError as exc:
                 raise CandidateDiscoveryError(_DISCOVERY_ERROR) from exc
             entry_count += 1
+            rel_path = (
+                os.path.join(parent_rel, entry.name) if parent_rel else entry.name
+            )
             try:
                 path_bytes += len(
                     os.fspath(entry.path).encode("utf-8", errors="surrogatepass")
@@ -209,14 +232,25 @@ def _walk_path_entries(
             except OSError as exc:
                 raise CandidateDiscoveryError(_DISCOVERY_ERROR) from exc
             if not is_directory:
-                yield os.fspath(entry.path)
-            elif entry.name not in excluded_dir_names and not entry.name.startswith(
-                "."
+                if not _is_gitignored(
+                    rel_path, ignore_rules.get(parent_rel, []), directory=False
+                ):
+                    yield os.fspath(entry.path)
+            elif (
+                entry.name not in excluded_dir_names
+                and not entry.name.startswith(".")
+                and not _is_gitignored(
+                    rel_path, ignore_rules.get(parent_rel, []), directory=True
+                )
             ):
                 try:
-                    scanners.append(os.scandir(entry.path))
+                    child_scanner = os.scandir(entry.path)
                 except OSError as exc:
                     raise CandidateDiscoveryError(_DISCOVERY_ERROR) from exc
+                ignore_rules[rel_path] = _load_ignore_rules(
+                    project_root, rel_path, ignore_rules.get(parent_rel, [])
+                )
+                scanners.append((child_scanner, rel_path))
     finally:
-        for scanner in reversed(scanners):
+        for scanner, _rel in reversed(scanners):
             scanner.close()
