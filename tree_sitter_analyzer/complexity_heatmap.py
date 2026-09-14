@@ -25,6 +25,25 @@ from .utils import setup_logger
 
 logger = setup_logger(__name__)
 
+# Plugin discovery is a property of the installed environment, not of the file
+# being scored, so one manager serves the whole process. Building a fresh
+# `PluginManager()` per file re-ran `importlib.metadata.entry_points()` and the
+# languages-directory scan once per file: measured on this repository, 2,262
+# rescans and 350,350 distribution-metadata reads inside a single
+# `health action=project`, which was 17.6 s of a 48.8 s cold call.
+_plugin_manager: Any = None
+
+
+def _shared_plugin_manager() -> Any:
+    """Return the process-wide ``PluginManager``, building it on first use."""
+    global _plugin_manager
+    if _plugin_manager is None:
+        from .plugins.manager import PluginManager
+
+        _plugin_manager = PluginManager()
+    return _plugin_manager
+
+
 _COMPLEXITY_NODES: dict[str, set[str]] = {
     "python": {
         "if_statement",
@@ -335,9 +354,7 @@ def _extractor_complexity_by_line(
     node walk can look each function up.
     """
     try:
-        from .plugins.manager import PluginManager
-
-        plugin = PluginManager().get_plugin(language)
+        plugin = _shared_plugin_manager().get_plugin(language)
         if plugin is None:
             return {}
         elements = plugin.create_extractor().extract_functions(tree, source)
@@ -362,9 +379,7 @@ def _extract_functions_via_plugin(
     computes complexity_score for all 13 supported languages.
     """
     try:
-        from .plugins.manager import PluginManager
-
-        pm = PluginManager()
+        pm = _shared_plugin_manager()
         plugin = pm.get_plugin(language)
         if plugin is None:
             logger.debug(
