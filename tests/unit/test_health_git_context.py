@@ -107,9 +107,11 @@ def test_a_directory_outside_a_repository_keeps_the_per_file_fallback(
 
     assert len(scores) == 1
     assert scores[0].dimensions.get("git_hotspot") is None
-    # One resolution for the scan, then one per file from the fallback: the
-    # fallback is what makes a non-repository safe rather than merely slow.
-    assert len(calls) >= 2, (
-        "the per-file fallback did not run outside a repository; a non-repo "
-        "scan would then report a hotspot score it never computed"
+    # Exactly two: one scan-level resolution that finds no repository, then one
+    # from the per-file fallback. Pinned rather than bounded so that a fallback
+    # which stops running — and a score that is then reported as unavailable
+    # rather than computed — cannot pass.
+    assert len(calls) == 2, (
+        f"expected one scan-level resolution plus one per-file fallback, saw "
+        f"{len(calls)}; a non-repository scan must still attempt the query"
     )
