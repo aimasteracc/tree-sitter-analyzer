@@ -223,3 +223,54 @@ so invoking the guard is the tool's own responsibility.
 `tests/governance/test_tool_validation_contract.py` derives the unguarded set
 from `tree_sitter_analyzer/mcp/tools/*.py` and fails on any tool that reads a
 parameter its own `validate_arguments` guards without invoking it.
+
+## 2026-09 — Assert the surface, not the source
+
+### Context
+
+Auditing the expensive-route cost warning, I read
+`tree_sitter_analyzer/mcp/tools/project_health_tool.py` and found that the
+description already carried "SLOW: scans every source file. Budget ~30s on <200
+files, ~90s on <1k, ~4min on <3k", and that the response already carried
+`agent_summary.budget_seconds`. I drafted a correction to my own earlier
+statement, saying the requirement was already met and the issue was stale.
+
+It was not. The health **facade** replaces that inner tool in the tool
+definition, the inner tools are not separately registered, and the measured
+client-visible surface was:
+
+```
+health.get_tool_definition()["description"]   279 chars, 'SLOW' -> False
+health.full_description()  (action=help)     3347 chars, 'SLOW' -> False
+```
+
+A caller could not read the warning anywhere. The issue was right and the
+correction would have been wrong.
+
+The same session produced the same shape twice more: quoting `health
+action=project` at 49.1 s when that was the cold run, and filing #1475 against
+caller misattribution that four re-measurements disproved and a stale scratch
+index explained.
+
+### Lessons learned
+
+1. **Read the surface the caller reaches, not the file that looks relevant.**
+   For an MCP tool that is `get_tool_definition()`, what `tools/list` returns —
+   not the inner class the facade wraps, and not the module the feature lives
+   in. A capability that exists but is not on a reachable surface does not
+   exist for its user.
+2. **A document is not evidence about the system.** An issue body, a previous
+   note, and a docstring each describe the system at the time they were
+   written. Reproduce the claim from the running code before repeating it, and
+   before contradicting it.
+3. **A near-miss is worth recording.** The wrong correction was caught only
+   because the facade was checked last. Nothing failed; the record exists
+   because the cost of the same mistake landing is a public retraction.
+
+### Required guardrail
+
+`tests/unit/mcp/tools/test_facade_cost_surface.py` states its expectations
+against `get_tool_definition()` and `full_description()` — the two surfaces a
+client can actually read — rather than against the inner tools that produce the
+text. The Measurement And Claim Rules in `AGENTS.md` carry the measurement half:
+name the state, the machine, and the corpus before publishing a number.
