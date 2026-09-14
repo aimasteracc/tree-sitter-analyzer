@@ -1,6 +1,6 @@
 # Agent Instructions
 
-> **Discovery path**: read this file → skim [`CLAUDE.md`](CLAUDE.md) for the locked design decisions → load only the [`docs/CODEMAPS/`](docs/CODEMAPS/) map matching the area you're touching. Do **not** load the full source tree blindly — the codemaps exist to keep agent context lean.
+> **Discovery path**: read this file → skim [`CLAUDE.md`](CLAUDE.md) for the locked design decisions → check [`docs/AI_LESSONS.md`](docs/AI_LESSONS.md) for a failure that already happened in the area you are about to touch → load only the [`docs/CODEMAPS/`](docs/CODEMAPS/) map matching the area you're touching. Do **not** load the full source tree blindly — the codemaps exist to keep agent context lean.
 
 ## Codemap Index
 
@@ -111,6 +111,64 @@ watching `argument_parser_builder.py`, which holds zero `add_argument` calls —
 hook's own test fixture was a synthetic copy of the *old* shape. Both the gate and its
 fixture were rebuilt against the real surface; the contract is self-enforcing for as
 long as `--self-check` and the CI nets above stay green, and no longer than that.
+
+## Measurement And Claim Rules
+
+Publishing a number is a claim, and these are the ways one goes wrong here:
+
+- **Name the state the number was taken in.** Cold and warm differ by an order of
+  magnitude for indexed work (`health action=project`: ~49 s cold, ~4.5 s warm on
+  a mid-size repository), and they describe different user situations — a fresh
+  checkout, a CI run, and a new agent session all start cold. Report the pair, not
+  one number.
+- **Name the machine and the corpus.** A latency or size figure without them is
+  not reproducible and cannot be compared to a later one.
+- **Measure the term that dominates the cost.** When a claim compares two tools,
+  state the cost model first; a byte comparison and a turn comparison produce
+  different answers, and the wrong model has already withdrawn one published
+  ratio in this repository.
+- **Correct the record where it was published.** Fix the issue title, not only a
+  reply, because a stale title keeps misinforming readers who never open the
+  comments.
+
+## AI Lessons Mandate
+
+A failure a later agent could repeat MUST become an entry in
+[`docs/AI_LESSONS.md`](docs/AI_LESSONS.md) **in the same pull request that fixes
+it**. "Same pull request" is the whole point: a lesson written later is a lesson
+that competes with the next task for attention, and it loses.
+
+Write an entry when any of these is true:
+
+- A gate failed and the cause was not a typo — a wrong assumption, a missing
+  verification step, or a check that could not see the thing it watched.
+- A claim was published (issue, PR, README, comment) and then corrected.
+- A measurement was retaken because the first one did not describe what it
+  claimed to describe.
+- The same defect was found twice, or found by hand in one place and by a gate
+  in another.
+
+Each entry has three sections, in this order: `### Context` (what happened, with
+the measured numbers), `### Lessons learned` (numbered, reusable), and
+`### Required guardrail` (what prevents the repeat, naming the file or command
+that does it).
+
+Enforced by `tests/contracts/test_agent_docs_contract.py`:
+
+- `test_agents_md_routes_agents_to_the_lessons_file` — the discovery path above
+  must link the file, so an agent reads it without being told.
+- `test_every_lesson_entry_is_structured` — every `## YYYY-MM — Title` entry
+  carries the three sections in order, so an entry cannot be a bare anecdote.
+- `test_every_guardrail_names_a_live_artifact` — every repository path a
+  `### Required guardrail` section names must exist. This is the part that
+  rots: a guardrail citing a test file that was later renamed or deleted reads
+  as protection while protecting nothing.
+
+Why: the file already existed and was referenced from nowhere, so its one entry
+had no reader. The recurring failures were instead captured in an external
+memory service that the next agent has no reason to query, which is why the same
+class of mistake reappeared across sessions. A lesson that is not on the
+discovery path and not checked by a gate is a note to self, not a guardrail.
 
 ## GitFlow Branching Mandate
 

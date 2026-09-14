@@ -257,3 +257,121 @@ def test_cli_codemap_flag_count_matches_the_real_parser() -> None:
     )
 
     assert documented == actual
+
+
+# --- AI Lessons mandate ----------------------------------------------------
+#
+# AGENTS.md states the mandate; these tests are what make it more than prose:
+# the file must be on the discovery path, every entry must carry the three
+# sections, and every guardrail must name an artifact that still exists.
+
+_LESSONS_PATH = PROJECT_ROOT / "docs" / "AI_LESSONS.md"
+
+#: Entries measured 2026-09-13. Update deliberately when a lesson is added.
+_LESSON_ENTRY_COUNT = 7
+
+_LESSON_SECTIONS = ("### Context", "### Lessons learned", "### Required guardrail")
+_LESSON_TITLE = re.compile(r"^## \d{4}-\d{2} — \S")
+
+
+def _lesson_entries() -> dict[str, str]:
+    """Split AI_LESSONS.md into ``{heading: body}``, in file order."""
+    text = _LESSONS_PATH.read_text(encoding="utf-8")
+    entries: dict[str, str] = {}
+    for chunk in text.split("\n## ")[1:]:
+        heading, _, body = chunk.partition("\n")
+        entries[heading.strip()] = body
+    return entries
+
+
+def _referenced_paths(section: str) -> set[str]:
+    """Repository paths a section names in backticks.
+
+    Only tokens that address a file are kept: no whitespace, so a shell command
+    such as ``python scripts/foo.py`` is not mistaken for one path, and either a
+    separator or a file extension, so ``AGENTS.md`` counts while ``export`` does
+    not.
+    """
+    found: set[str] = set()
+    for token in re.findall(r"`([^`]+)`", section):
+        if any(character.isspace() for character in token):
+            continue
+        if token.startswith(("-", "http", "$")):
+            continue
+        if "/" not in token and "." not in token:
+            continue
+        found.add(token.split("::")[0].split(":")[0].strip())
+    return found
+
+
+def test_agents_md_routes_agents_to_the_lessons_file() -> None:
+    """The file existing is not the same as the file being read."""
+    agents = (PROJECT_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    assert "docs/AI_LESSONS.md" in agents, (
+        "AGENTS.md does not link docs/AI_LESSONS.md, so an agent following the "
+        "discovery path never learns the lessons were recorded"
+    )
+    assert "## AI Lessons Mandate" in agents, (
+        "AGENTS.md links the lessons file but states no mandate for writing one"
+    )
+
+
+def test_the_lesson_survey_is_not_vacuous() -> None:
+    """A parser that found nothing would make the checks below vacuous."""
+    entries = _lesson_entries()
+    assert len(entries) == _LESSON_ENTRY_COUNT, (
+        f"expected {_LESSON_ENTRY_COUNT} lesson entries, parsed {len(entries)}; "
+        "update this constant when a lesson is added, otherwise the entry parser "
+        "no longer matches the file"
+    )
+    for heading in entries:
+        assert _LESSON_TITLE.match(f"## {heading}"), (
+            f"lesson heading {heading!r} is not 'YYYY-MM — Title'"
+        )
+
+
+def test_every_lesson_entry_is_structured() -> None:
+    """Each entry states what happened, what it taught, and what prevents it."""
+    offenders: list[str] = []
+    for heading, body in _lesson_entries().items():
+        missing = [section for section in _LESSON_SECTIONS if section not in body]
+        if missing:
+            offenders.append(f"{heading}: missing {', '.join(missing)}")
+            continue
+        positions = [body.index(section) for section in _LESSON_SECTIONS]
+        if positions != sorted(positions):
+            offenders.append(f"{heading}: sections are out of order")
+    assert offenders == [], (
+        "these lessons are anecdote-shaped rather than reusable — a lesson "
+        "without a stated guardrail is the form that gets ignored:\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+def test_every_guardrail_names_a_live_artifact() -> None:
+    """A guardrail citing a path that no longer exists protects nothing."""
+    dead: list[str] = []
+    undocumented: list[str] = []
+    for heading, body in _lesson_entries().items():
+        guardrail = body.split("### Required guardrail", 1)[1]
+        paths = _referenced_paths(guardrail)
+        if not paths:
+            undocumented.append(heading)
+        for path in sorted(paths):
+            target = PROJECT_ROOT / path
+            # A glob is how a lesson names a whole surface; it still has to
+            # match something, or the guardrail reads as coverage of a set that
+            # no longer exists.
+            alive = (
+                bool(list(PROJECT_ROOT.glob(path))) if "*" in path else target.exists()
+            )
+            if not alive:
+                dead.append(f"{heading} -> {path}")
+    assert undocumented == [], (
+        "these lessons name no artifact as their guardrail, so nothing enforces "
+        "them:\n  " + "\n  ".join(undocumented)
+    )
+    assert dead == [], (
+        "these guardrails cite paths that do not exist; the lesson now reads as "
+        "protection while protecting nothing:\n  " + "\n  ".join(dead)
+    )
