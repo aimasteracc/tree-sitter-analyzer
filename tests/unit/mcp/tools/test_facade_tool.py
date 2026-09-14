@@ -615,3 +615,82 @@ def test_action_scoped_parameter_rejected_for_other_action() -> None:
     result = asyncio.run(facade.execute({"action": "symbol", "depth": 2}))
 
     assert result["error"] == "parameter 'depth' applies only to action(s): func"
+
+
+class _AliasProbe(BaseMCPTool):
+    """Inner that declares exactly one of the two canonical symbol names."""
+
+    def __init__(self, declared: str) -> None:
+        super().__init__()
+        self._declared = declared
+
+    def get_tool_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {self._declared: {"type": "string"}},
+            "required": [self._declared],
+            "additionalProperties": False,
+        }
+
+    def get_tool_definition(self) -> dict[str, Any]:
+        return {"name": "alias_probe", "inputSchema": self.get_tool_schema()}
+
+    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        if not arguments.get(self._declared):
+            raise ValueError(f"{self._declared} is required")
+        return True
+
+    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        self.validate_arguments(arguments)
+        return {
+            "success": True,
+            "verdict": "INFO",
+            "seen": arguments[self._declared],
+        }
+
+
+def _probe(declared: str) -> tuple[FacadeTool, _AliasProbe]:
+    inner = _AliasProbe(declared)
+    return FacadeTool(facade_name="t", action_map={"x": inner}), inner
+
+
+@pytest.mark.parametrize("declared", ["symbol", "function_name"])
+def test_symbol_alias_is_filled_in_both_directions(declared):
+    """Either canonical name satisfies an inner that declares the other.
+
+    Regression: only ``symbol`` -> ``function_name`` was filled. ``nav
+    action=lineage`` reads ``symbol``, so an agent that learned
+    ``function_name`` from ``nav action=callers`` — where the facade's own
+    schema advertises it as an alias — got ``KeyError: 'symbol'``.
+    """
+    facade, inner = _probe(declared)
+    other = "function_name" if declared == "symbol" else "symbol"
+
+    projected = facade._project_args(
+        inner, {"action": "x", other: "validate_arguments"}
+    )
+
+    assert projected == {declared: "validate_arguments"}
+
+
+@pytest.mark.parametrize("declared", ["symbol", "function_name"])
+def test_symbol_alias_does_not_overwrite_an_explicit_value(declared):
+    facade, inner = _probe(declared)
+    other = "function_name" if declared == "symbol" else "symbol"
+
+    projected = facade._project_args(
+        inner, {"action": "x", declared: "explicit", other: "alias"}
+    )
+
+    assert projected == {declared: "explicit"}
+
+
+@pytest.mark.asyncio
+async def test_alias_reaches_the_inner_through_the_facade():
+    facade, _inner = _probe("symbol")
+
+    result = await facade.execute(
+        {"action": "x", "function_name": "validate_arguments"}
+    )
+
+    assert result["seen"] == "validate_arguments"

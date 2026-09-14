@@ -263,7 +263,20 @@ class FacadeTool(BaseMCPTool):
         cleaned = {k: v for k, v in args.items() if k not in _FACADE_CONTROL_KEYS}
         inner_props = self._inner_property_names(inner)
 
-        # R3 normalize — before the whitelist filter.
+        # R3 normalize — before the whitelist filter.  Inners disagree about
+        # which canonical name they read, so fill whichever one this inner
+        # declares from whichever one the caller used.  Only the
+        # ``symbol`` -> ``function_name`` direction existed, so an agent that
+        # learned ``function_name`` from ``callers`` and passed it to
+        # ``lineage`` got a bare ``KeyError: 'symbol'`` out of the tool instead
+        # of the alias the facade declares in its own schema.
+        if (
+            "symbol" in inner_props
+            and not cleaned.get("symbol")
+            and cleaned.get("function_name")
+        ):
+            cleaned["symbol"] = cleaned["function_name"]
+
         if (
             "function_name" in inner_props
             and not cleaned.get("function_name")
@@ -300,6 +313,8 @@ class FacadeTool(BaseMCPTool):
         if not cleaned.get("function_name") and cleaned.get("symbol"):
             # Defensive R3 copy; harmless for bespoke handlers that ignore it.
             cleaned["function_name"] = cleaned["symbol"]
+        if not cleaned.get("symbol") and cleaned.get("function_name"):
+            cleaned["symbol"] = cleaned["function_name"]
         return cleaned
 
     # -- error envelope ----------------------------------------------------

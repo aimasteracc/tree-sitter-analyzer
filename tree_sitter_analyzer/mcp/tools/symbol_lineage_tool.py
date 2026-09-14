@@ -336,6 +336,7 @@ class SymbolLineageTool(BaseMCPTool):
         G6 truncation transparency, r37u top-level verdict mirror.
         """
         started = time.perf_counter()
+        self.validate_arguments(arguments)
         symbol = arguments["symbol"].strip()
         max_depth = int(arguments.get("max_depth", 3))
         output_format = arguments.get("output_format", "json")
