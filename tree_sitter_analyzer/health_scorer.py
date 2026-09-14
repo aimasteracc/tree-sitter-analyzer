@@ -26,7 +26,10 @@ from .languages.lang_extension_map import EXT_TO_LANG as _EXT_TO_LANG
 from .registry.health_scorer_helpers import (
     calculate_git_hotspot,
     calculate_weighted_total,
+    project_git_context,
     read_source_file,
+    reset_project_git_context,
+    resolve_git_history_context,
     round_available_scores,
 )
 
@@ -382,6 +385,12 @@ class HealthScorer:
         from .registry.health_score_cache import HealthScoreCache
 
         root = Path(project_root)
+        # Resolve the repository's root and history completeness once. Both are
+        # properties of the repository, but the per-file path asked git for them
+        # per file: on a 2,276-file scan that was 4,552 subprocess spawns for two
+        # constants, ~18 ms of the ~37 ms each file spent in git.
+        git_context = resolve_git_history_context(root)
+        git_token = project_git_context(git_context)
         self._coverage_cache = None
         self._coverage_casefold_cache = None
         self._windows_coverage_cache = None
@@ -413,7 +422,9 @@ class HealthScorer:
                 def defer_score(file_path: str) -> None:
                     nonlocal deferred
                     # 暖缓存失效也进入同一队列，不阻塞已就绪冷文件的评分。
-                    pending[pool.submit(score_git_hotspot, file_path)] = file_path
+                    pending[pool.submit(score_git_hotspot, file_path, git_context)] = (
+                        file_path
+                    )
                     deferred = True
 
                 score = self._score_file_with_cache(
@@ -429,7 +440,9 @@ class HealthScorer:
             with ThreadPoolExecutor(max_workers=4) as pool:
                 try:
                     pending = {
-                        pool.submit(score_git_hotspot, str(path)): str(path)
+                        pool.submit(score_git_hotspot, str(path), git_context): str(
+                            path
+                        )
                         for path in files
                         if str(path) in cold_paths
                     }
@@ -449,6 +462,7 @@ class HealthScorer:
                     # 也取消已入队但尚未登记的任务，并等待已启动查询退出。
                     pool.shutdown(wait=True, cancel_futures=True)
         finally:
+            reset_project_git_context(git_token)
             _PROJECT_HOTSPOT_SCORES.reset(hotspot_token)
             _PROJECT_DEPENDENCY_GRAPHS.reset(graph_token)
             if cache is not None:
@@ -952,8 +966,12 @@ def score_structure(file_path: str, source: str, language: str | None) -> float:
         return 50.0
 
 
-def score_git_hotspot(file_path: str) -> float | None:
-    """根据 Git 提交频率评分，项目调用可复用本次预取结果。"""
+def score_git_hotspot(file_path: str, context: Any = None) -> float | None:
+    """根据 Git 提交频率评分，项目调用可复用本次预取结果。
+
+    ``context`` carries the scan-scoped :class:`GitHistoryContext`; the pool
+    workers do not inherit the ``ContextVar``, so it is passed explicitly.
+    """
     prefetched = _PROJECT_HOTSPOT_SCORES.get()
     if prefetched is not None and file_path in prefetched:
         return prefetched[file_path]
@@ -962,6 +980,7 @@ def score_git_hotspot(file_path: str) -> float | None:
             file_path,
             HOTSPOT_COMMITS_LOW,
             HOTSPOT_COMMITS_HIGH,
+            context=context,
         )
     except Exception:
         return None
