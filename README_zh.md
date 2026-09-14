@@ -9,24 +9,11 @@
 TSA 使用 tree-sitter 索引代码库，向 AI 编程 agent 提供调用图、符号搜索与结构查询 — **8 个 MCP 工具** + CLI，完全本地运行，零遥测。
 
 **为什么不同：**
-* **跨语言正确性是护城河。** 语言族门控可阻止仅基于名称的跨语言绑定。
+* **跨语言绑定由语言族门控。** 仅凭名称匹配不会产生跨语言边；执行这一约束的是测试，而不是约定。
 * **为 agent 原生设计。** **8 个 MCP 工具**提供结构化 JSON 输出与 verdict 信封，也可通过 CLI 和精选工作流使用。
 * **广度与正确性兼备。** 13 种语言为 `pipeline_registered`（管线注册态，非 E2E）。这只是注册与接线证据，不代表已验证的跨文件调用解析。详见[自动生成的支持深度清单](#支持的语言)。
 
 > 从 v1.x 升级？见 [docs/MIGRATION.md](docs/MIGRATION.md)。
-
-### 神经系统边界 (Pulse / TQL / 语义查询)
-
-TQL 的时间选择器比较的是修改时间戳，而不是修改次数。
-`tql_schema` action 记录了裸 `:hot` 与 `:recently_modified` 共享的窗口期与默认值。深度查询保留精确的定义同一性，超出遍历上限时会明确失败。
-
-Pulse 请求返回的是快照绑定的上下文。用于身份信息、关系、反向 import 上下文以及可选的缓存 LSP 增强的 SQL 读取共享相同的 savepoint，且不会结束调用方持有的事务。这并不意味着存在 SQL 往返或延迟保证。
-
-Pulse 的 Python 反向 import 上下文使用现有的模块解析器；这并不代表跨语言模块解析已完全实现。评论上下文需要以启用评论提取的方式重建索引。旧索引以及不支持评论提取的语言会返回 `COMMENTS_NOT_INDEXED`，而不是返回空的成功结果；不需要评论上下文时，可通过文档化的 `max_comments` 设置显式省略。缺失的历史提交信息投影会变为 `pending` 以待惰性刷新；`disabled` 的激活状态会被保留。历史遗留的 NULL 激活状态同样会变为 pending，且不会清除旧消息或计数。已启用的缓存索引周期会继续进行有边界的激活刷新。Pulse 将不可用的激活状态暴露为 `null`，而时间性查询会拒绝不完整的激活证据。刷新通过有边界的批次读取真实的 Git 历史；消息读取失败时会保留为待处理，而不会声称已完成。
-
-语义查询要求使用已知的、已存储的嵌入模型，且维度必须一致。混用或未知的模型会报错，且没有 provider 回退。离线测试使用模型 double；它们不能证明真实 provider 的质量。
-
-Pulse 批处理会保留成功的条目，但只要目标中存在失败就会报告失败。TQL 将缺失或不可读的索引视为错误，这与"索引就绪但无匹配结果"是不同的情况。公开请求校验会在打开索引或调用嵌入 provider 之前，拒绝无效的类型和上限值。
 
 ---
 
@@ -372,27 +359,6 @@ Lua 已获索引准入，并具备 call dispatch 与 resolver slot，但 import 
 * **缓存位置**：`<project>/.ast-cache/`。可安全删除 — 会自动重建。
 * **可选**：`TREE_SITTER_OUTPUT_PATH` 用于大输出写入目标。
 
-### 快照证据的平台范围
-
-普通文件分析、索引创建/更新及既有索引查询，与认证快照访问相互独立。
-Windows 既有操作路径不依赖新增的私有 WAL 快照内核。这些操作可以创建或更新
-缓存；认证只读访问遵循独立的契约。
-
-当前快照实现新增的是**仅限 POSIX 的私有数据库/WAL 证据捕获**，要求描述符相对
-操作、`O_NOFOLLOW`、项目外的安全临时目录，以及 source、manifest、projection
-检查全部成功。它**不交付 Windows 只读快照 parity**，也不扩大显式
-`access_mode="read_existing"` 消费者已有的平台资格门。
-
-develop 基线上的 Windows 快照认证原本就不可用，原因码为
-`SECURE_FD_SNAPSHOT_UNSUPPORTED`；当前仍不可用，原因码改为
-`WAL_PRIVATE_SNAPSHOT_UNSUPPORTED`，返回 `completeness="unknown"` 且没有
-snapshot token。这不代表物理索引为空，也不代表普通查询被禁用。新增捕获路径
-尚未完成 Windows 原生资格验证，本地能力契约测试不能代替该验证。
-
-逐文件 `certified_at` 状态不能替代完整快照认证。`partial_at` 持久历史
-**尚未实现，也不在本 PR 交付范围内**。不完整或无法验证的 projection 不能
-授权认证消费者读取。
-
 ---
 
 ## 质量与测试
@@ -438,6 +404,54 @@ uv run pytest -q
 ```
 
 开发指南见 **[`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)**。
+
+---
+
+## 边界与已知限制
+
+这里汇集的是那些单独阅读时容易被当成宣传语的边界说明。把它们放在此处，以免打断上方的安装路径。
+
+### 响应体积与参数名
+
+`nav action=navigate` 会内联它匹配到的每个定义体，且不报告截断。当符号名被不同文件中的类共享时，整个引用集合会在同一响应中返回。请先用 `search action=symbol` 缩小范围，或改用会遵守 `limit` 并设置 `truncated` 的 `nav action=callers` / `action=callees`。
+
+`symbol` 与 `function_name` 在 `callers`、`callees`、`impact` 中都被接受。`navigate` 与 `lineage` 要求 `symbol`；向它们传 `function_name` 会抛异常，而不是返回 verdict 信封。
+
+### 快照证据的平台范围
+
+普通文件分析、索引创建/更新及既有索引查询，与认证快照访问相互独立。
+Windows 既有操作路径不依赖新增的私有 WAL 快照内核。这些操作可以创建或更新
+缓存；认证只读访问遵循独立的契约。
+
+当前快照实现新增的是**仅限 POSIX 的私有数据库/WAL 证据捕获**，要求描述符相对
+操作、`O_NOFOLLOW`、项目外的安全临时目录，以及 source、manifest、projection
+检查全部成功。它**不交付 Windows 只读快照 parity**，也不扩大显式
+`access_mode="read_existing"` 消费者已有的平台资格门。
+
+develop 基线上的 Windows 快照认证原本就不可用，原因码为
+`SECURE_FD_SNAPSHOT_UNSUPPORTED`；当前仍不可用，原因码改为
+`WAL_PRIVATE_SNAPSHOT_UNSUPPORTED`，返回 `completeness="unknown"` 且没有
+snapshot token。这不代表物理索引为空，也不代表普通查询被禁用。新增捕获路径
+尚未完成 Windows 原生资格验证，本地能力契约测试不能代替该验证。
+
+逐文件 `certified_at` 状态不能替代完整快照认证。`partial_at` 持久历史
+**尚未实现，也不在本 PR 交付范围内**。不完整或无法验证的 projection 不能
+授权认证消费者读取。
+
+### Pulse / TQL / 语义查询
+
+这些子系统支撑 `nav` 的若干 action 与内部 API，并不属于 agent 需要配置的工具面。它们的限制一律写明，不作暗示。
+
+TQL 的时间选择器比较的是修改时间戳，而不是修改次数。
+`tql_schema` action 记录了裸 `:hot` 与 `:recently_modified` 共享的窗口期与默认值。深度查询保留精确的定义同一性，超出遍历上限时会明确失败。
+
+Pulse 请求返回的是快照绑定的上下文。用于身份信息、关系、反向 import 上下文以及可选的缓存 LSP 增强的 SQL 读取共享相同的 savepoint，且不会结束调用方持有的事务。这并不意味着存在 SQL 往返或延迟保证。
+
+Pulse 的 Python 反向 import 上下文使用现有的模块解析器；这并不代表跨语言模块解析已完全实现。评论上下文需要以启用评论提取的方式重建索引。旧索引以及不支持评论提取的语言会返回 `COMMENTS_NOT_INDEXED`，而不是返回空的成功结果；不需要评论上下文时，可通过文档化的 `max_comments` 设置显式省略。缺失的历史提交信息投影会变为 `pending` 以待惰性刷新；`disabled` 的激活状态会被保留。历史遗留的 NULL 激活状态同样会变为 pending，且不会清除旧消息或计数。已启用的缓存索引周期会继续进行有边界的激活刷新。Pulse 将不可用的激活状态暴露为 `null`，而时间性查询会拒绝不完整的激活证据。刷新通过有边界的批次读取真实的 Git 历史；消息读取失败时会保留为待处理，而不会声称已完成。
+
+语义查询要求使用已知的、已存储的嵌入模型，且维度必须一致。混用或未知的模型会报错，且没有 provider 回退。离线测试使用模型 double；它们不能证明真实 provider 的质量。
+
+Pulse 批处理会保留成功的条目，但只要目标中存在失败就会报告失败。TQL 将缺失或不可读的索引视为错误，这与"索引就绪但无匹配结果"是不同的情况。公开请求校验会在打开索引或调用嵌入 provider 之前，拒绝无效的类型和上限值。
 
 ---
 
