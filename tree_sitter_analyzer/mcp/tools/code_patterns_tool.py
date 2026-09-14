@@ -123,6 +123,7 @@ class CodePatternsTool(BaseMCPTool):
         early-exit guards + detection scatter + envelope assembly.
         Pol2 / M3 / G4 / Pol1 / M10 contracts preserved exactly.
         """
+        self.validate_arguments(arguments)
         file_path = arguments["file_path"]
         categories = arguments.get("categories", ["all"])
         severity_threshold = arguments.get("severity_threshold", "info")
