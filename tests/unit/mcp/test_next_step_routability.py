@@ -113,14 +113,16 @@ def test_no_next_step_names_a_removed_tool() -> None:
 def test_the_harvest_is_not_vacuous() -> None:
     """Exact rather than lower bounds: RFC-0028 §3.2 requires set equality.
 
-    Measured 2026-09-12: 145 harvested constants, 17 route-name tokens. Update
+    Measured 2026-09-13: 148 harvested constants, 17 route-name tokens. The
+    count rose from 145 when the navigate truncation note was added; the
+    route-name token set is unchanged, which is the part that matters. Update
     these constants deliberately when the vocabulary legitimately changes — a
     `> 50` / `>= 5` bound would keep passing while the harvest shrank to a third
     of its real size, leaving the invariant below constraining almost nothing.
     """
     harvest = _next_step_strings()
-    assert len(harvest) == 145, (
-        f"expected 145 next_step string constants, harvested {len(harvest)}; "
+    assert len(harvest) == 148, (
+        f"expected 148 next_step string constants, harvested {len(harvest)}; "
         "update this constant if the phrasing changed, otherwise the AST walk is "
         "no longer matching how next_step is assigned"
     )

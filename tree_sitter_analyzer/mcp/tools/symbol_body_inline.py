@@ -42,6 +42,8 @@ MAX_NEIGHBOR_LINES = 40
 #: Max source lines per search-match body summary (search symbol).
 MAX_SUMMARY_LINES = 30
 
+#: Max definitions that get an inlined body before falling back to coordinates.
+MAX_DEFINITION_BODIES = 12
 #: Max neighbours that get an inlined body before falling back to coordinates.
 MAX_NEIGHBOR_BODIES = 12
 #: Max search matches that get an inlined body summary.
@@ -129,19 +131,37 @@ def _body_for_record(
 # ---------------------------------------------------------------------------
 
 
-def inline_symbol_body(
+def inline_symbol_bodies(
     project_root: str,
     cache: Any,
-    record: dict[str, Any],
-) -> dict[str, Any] | None:
-    """Inline a single definition body (full tier) for ``nav navigate``.
+    records: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Attach a body to the leading definitions (full tier) for ``nav navigate``.
 
-    Returns a body block ``{name,file,start_line,end_line,content,...}`` or
-    ``None`` when the body can't be read.  Long bodies are truncated and
-    flagged with ``full_at`` so the agent can Read the remainder on demand.
+    Each record is returned as a *new* dict (immutable — never mutates the
+    input) with a ``body`` key for the first ``MAX_DEFINITION_BODIES`` entries
+    that resolve.  Long bodies are truncated and flagged with ``full_at`` so the
+    agent can Read the remainder on demand.
+
+    The total-line budget is shared across the list, as it is for the neighbour
+    and summary tiers.  Inlining one record at a time would rebuild the budget
+    per record: a fifty-definition navigation then inlined fifty full bodies and
+    ``MAX_TOTAL_DEFINITION_LINES`` never applied to anything.
     """
     budget = [MAX_TOTAL_DEFINITION_LINES]
-    return _body_for_record(project_root, cache, record, MAX_DEFINITION_LINES, budget)
+    out: list[dict[str, Any]] = []
+    bodied = 0
+    for record in records:
+        new_record = dict(record)
+        if bodied < MAX_DEFINITION_BODIES and budget[0] > 0:
+            body = _body_for_record(
+                project_root, cache, record, MAX_DEFINITION_LINES, budget
+            )
+            if body is not None:
+                new_record["body"] = body
+                bodied += 1
+        out.append(new_record)
+    return out
 
 
 def inline_neighbor_bodies(

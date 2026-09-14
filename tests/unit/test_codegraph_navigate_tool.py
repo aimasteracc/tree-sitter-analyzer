@@ -345,3 +345,223 @@ class TestDefinitionBodyInlining:
         assert bodied, "definition must carry an inlined body"
         assert "FOUND_MARKER" in bodied[0]["body"]["content"]
         assert "no Read needed" in result["next_step"]
+
+
+def _definition_stub(count):
+    record = MagicMock()
+    record.to_dict.return_value = {"name": "f", "file": f"m{count}.py", "line": 1}
+    return record
+
+
+class TestLimitContract:
+    """``limit`` bounds both listings; counts stay complete."""
+
+    def test_schema_declares_limit(self, tool):
+        prop = tool.get_tool_schema()["properties"]["limit"]
+        assert prop["type"] == "integer"
+        assert prop["default"] == 50
+        assert prop["minimum"] == 1
+
+    @pytest.mark.asyncio
+    async def test_references_are_capped_and_reported(self, tool_with_root):
+        refs = [MagicMock() for _ in range(120)]
+        for i, r in enumerate(refs):
+            r.to_dict.return_value = {"file": f"m{i}.py", "line": i + 1}
+        ref_result = MagicMock()
+        ref_result.references = refs
+        ref_result.definitions = []
+
+        mock_resolver = MagicMock()
+        mock_resolver.find_references.return_value = ref_result
+
+        with (
+            patch.object(tool_with_root, "get_cache", return_value=MagicMock()),
+            patch.object(tool_with_root, "_inline_definition_bodies"),
+            patch(
+                "tree_sitter_analyzer.symbol_resolver.SymbolResolver",
+                return_value=mock_resolver,
+            ),
+        ):
+            result = await tool_with_root.execute(
+                {
+                    "symbol": "f",
+                    "mode": "references",
+                    "limit": 10,
+                    "output_format": "json",
+                }
+            )
+
+        references = result["references"]
+        assert len(references["references"]) == 10
+        assert references["reference_count"] == 120, "the count must stay complete"
+        assert references["references_truncated"] is True
+        assert references["listed_cap"] == 10
+        assert result["truncated"] is True
+
+    @pytest.mark.asyncio
+    async def test_definitions_are_capped_and_reported(self, tool_with_root):
+        resolve_result = MagicMock()
+        resolve_result.definitions = [_definition_stub(i) for i in range(80)]
+        resolve_result.resolved_via = "fts"
+
+        mock_resolver = MagicMock()
+        mock_resolver.resolve.return_value = resolve_result
+
+        with (
+            patch.object(tool_with_root, "get_cache", return_value=MagicMock()),
+            patch.object(tool_with_root, "_inline_definition_bodies"),
+            patch(
+                "tree_sitter_analyzer.symbol_resolver.SymbolResolver",
+                return_value=mock_resolver,
+            ),
+        ):
+            result = await tool_with_root.execute(
+                {
+                    "symbol": "f",
+                    "mode": "definition",
+                    "limit": 5,
+                    "output_format": "json",
+                }
+            )
+
+        definition = result["definition"]
+        assert len(definition["definitions"]) == 5
+        assert definition["count"] == 80, "the count must stay complete"
+        assert definition["definitions_truncated"] is True
+        assert result["truncated"] is True
+
+    @pytest.mark.asyncio
+    async def test_within_limit_is_not_reported_as_truncated(self, tool_with_root):
+        resolve_result = MagicMock()
+        resolve_result.definitions = [_definition_stub(i) for i in range(3)]
+        resolve_result.resolved_via = "fts"
+        mock_resolver = MagicMock()
+        mock_resolver.resolve.return_value = resolve_result
+
+        with (
+            patch.object(tool_with_root, "get_cache", return_value=MagicMock()),
+            patch.object(tool_with_root, "_inline_definition_bodies"),
+            patch(
+                "tree_sitter_analyzer.symbol_resolver.SymbolResolver",
+                return_value=mock_resolver,
+            ),
+        ):
+            result = await tool_with_root.execute(
+                {"symbol": "f", "mode": "definition", "output_format": "json"}
+            )
+
+        assert result["truncated"] is False
+        assert result["definition"]["definitions_truncated"] is False
+        assert "listing" not in result["agent_summary"]["summary_line"]
+
+    @pytest.mark.asyncio
+    async def test_truncated_summary_tells_the_agent_to_raise_limit(
+        self, tool_with_root
+    ):
+        refs = [MagicMock() for _ in range(60)]
+        for i, r in enumerate(refs):
+            r.to_dict.return_value = {"file": f"m{i}.py", "line": i + 1}
+        ref_result = MagicMock()
+        ref_result.references = refs
+        ref_result.definitions = []
+        mock_resolver = MagicMock()
+        mock_resolver.find_references.return_value = ref_result
+
+        with (
+            patch.object(tool_with_root, "get_cache", return_value=MagicMock()),
+            patch.object(tool_with_root, "_inline_definition_bodies"),
+            patch(
+                "tree_sitter_analyzer.symbol_resolver.SymbolResolver",
+                return_value=mock_resolver,
+            ),
+        ):
+            result = await tool_with_root.execute(
+                {
+                    "symbol": "f",
+                    "mode": "references",
+                    "limit": 25,
+                    "output_format": "json",
+                }
+            )
+
+        summary = result["agent_summary"]
+        assert "60 refs" in summary["summary_line"]
+        assert "25/60 refs" in summary["summary_line"]
+        assert "limit=25" in summary["next_step"]
+        assert "raise limit" in summary["next_step"]
+
+    @pytest.mark.asyncio
+    async def test_limit_below_one_is_clamped_rather_than_empty(self, tool_with_root):
+        resolve_result = MagicMock()
+        resolve_result.definitions = [_definition_stub(i) for i in range(3)]
+        resolve_result.resolved_via = "fts"
+        mock_resolver = MagicMock()
+        mock_resolver.resolve.return_value = resolve_result
+
+        with (
+            patch.object(tool_with_root, "get_cache", return_value=MagicMock()),
+            patch.object(tool_with_root, "_inline_definition_bodies"),
+            patch(
+                "tree_sitter_analyzer.symbol_resolver.SymbolResolver",
+                return_value=mock_resolver,
+            ),
+        ):
+            result = await tool_with_root.execute(
+                {
+                    "symbol": "f",
+                    "mode": "definition",
+                    "limit": 0,
+                    "output_format": "json",
+                }
+            )
+
+        assert len(result["definition"]["definitions"]) == 1
+        assert result["listed_cap"] == 1
+
+
+class TestBodyInliningDegrades:
+    """When no body resolves, the response stays coordinate-only."""
+
+    @pytest.fixture
+    def indexed(self, tmp_path):
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        (tmp_path / "svc.py").write_text(
+            "def present():\n    return 1\n", encoding="utf-8"
+        )
+        cache = ASTCache(str(tmp_path))
+        cache.index_project(max_files=100)
+        cache.close()
+        return str(tmp_path)
+
+    def test_unresolvable_body_leaves_coordinates_and_no_deterrent(self, indexed):
+        tool = CodeGraphNavigateTool(indexed)
+        record = {"name": "ghost", "file": "absent.py", "line": 1}
+        result = {"definition": {"found": True, "definitions": [record]}}
+
+        tool._inline_definition_bodies(result)
+
+        definition = result["definition"]
+        assert "body" not in definition["definitions"][0]
+        assert "bodied_count" not in definition
+        assert "body_cap" not in definition
+        assert "next_step" not in result, (
+            "the 'no Read needed' deterrent must only appear when content was given"
+        )
+
+    def test_bodied_count_and_cap_are_reported(self, indexed):
+        tool = CodeGraphNavigateTool(indexed)
+        result = {
+            "definition": {
+                "found": True,
+                "definitions": [
+                    {"name": "present", "file": "svc.py", "line": 1, "end_line": 2}
+                ],
+            }
+        }
+
+        tool._inline_definition_bodies(result)
+
+        definition = result["definition"]
+        assert definition["bodied_count"] == 1
+        assert definition["body_cap"] == 12

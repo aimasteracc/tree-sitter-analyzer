@@ -151,6 +151,17 @@ class CodeGraphNavigateTool(BaseMCPTool):
                     "default": 2,
                     "description": "Max transitive depth for hierarchy mode (1=direct, 2=2 hops)",
                 },
+                "limit": {
+                    "type": "integer",
+                    "description": (
+                        "Maximum definitions and references to list in the response "
+                        "(default 50). Counts stay complete, so raise this when the "
+                        "response reports truncation. Narrow with a qualified name "
+                        "(ClassName.method) instead when the name is ambiguous."
+                    ),
+                    "default": 50,
+                    "minimum": 1,
+                },
                 "output_format": {
                     "type": "string",
                     "enum": ["json"],
@@ -174,6 +185,7 @@ class CodeGraphNavigateTool(BaseMCPTool):
         mode = arguments.get("mode", "full")
         file_path = arguments.get("file_path")
         depth = min(arguments.get("depth", 2), 5)
+        listed_cap = max(int(arguments.get("limit", _MAX_LISTED)), 1)
         output_format = arguments.get("output_format", "json")
 
         result: dict[str, Any] = {
@@ -183,13 +195,15 @@ class CodeGraphNavigateTool(BaseMCPTool):
         }
 
         if mode in ("definition", "full"):
-            result["definition"] = self._resolve_definition(symbol)
+            result["definition"] = self._resolve_definition(symbol, listed_cap)
 
         if mode in ("references", "full"):
-            result["references"] = self._find_references(symbol)
+            result["references"] = self._find_references(symbol, listed_cap)
 
         if mode in ("hierarchy", "full"):
-            result["hierarchy"] = self._call_hierarchy(symbol, file_path, depth)
+            result["hierarchy"] = self._call_hierarchy(
+                symbol, file_path, depth, listed_cap
+            )
 
         # P2: inline verbatim definition bodies so the agent answers from
         # content, not coordinates — no follow-up Read per file:line.
@@ -206,6 +220,18 @@ class CodeGraphNavigateTool(BaseMCPTool):
         hi_found = bool(hi.get("callers")) or bool(hi.get("callees"))
         verdict = "INFO" if (def_found or ref_found or hi_found) else "NOT_FOUND"
         result["verdict"] = verdict
+
+        # R9: every list is capped by ``limit``, so say so in one place. Counts
+        # above stay complete, which is what an agent branches on; this flag is
+        # what tells it the listing is a head rather than the whole answer.
+        definition = result.get("definition") or {}
+        references = result.get("references") or {}
+        result["truncated"] = bool(
+            definition.get("definitions_truncated")
+            or references.get("references_truncated")
+            or (result.get("hierarchy") or {}).get("lists_truncated")
+        )
+        result["listed_cap"] = listed_cap
 
         if not result.get("definition") and not result.get("references"):
             if not hi_found:
@@ -243,10 +269,27 @@ class CodeGraphNavigateTool(BaseMCPTool):
             def_count = (result.get("definition") or {}).get("count", 0)
             ref_count = (result.get("references") or {}).get("reference_count", 0)
             summary_line = f"navigate: {symbol!r} defs={def_count} refs={ref_count}"
+            if result["truncated"]:
+                listed_defs = len(
+                    (result.get("definition") or {}).get("definitions") or []
+                )
+                listed_refs = len(
+                    (result.get("references") or {}).get("references") or []
+                )
+                summary_line += (
+                    f" (listing {listed_defs}/{def_count} defs, "
+                    f"{listed_refs}/{ref_count} refs)"
+                )
             next_step = (
                 "Use nav action=callers/callees for the call graph, "
                 "or nav action=impact for blast-radius analysis."
             )
+            if result["truncated"]:
+                next_step = (
+                    f"Listing is capped at limit={listed_cap}: raise limit for more, "
+                    f"or qualify with ClassName.method to narrow '{symbol}'. "
+                    f"{next_step}"
+                )
         result["agent_summary"] = {
             "summary_line": summary_line,
             "verdict": verdict,
@@ -273,24 +316,18 @@ class CodeGraphNavigateTool(BaseMCPTool):
             cache = self.get_cache()
             if cache is None or not self.project_root:
                 return
-            inlined = False
-            new_defs: list[dict[str, Any]] = []
-            for d in defs:
-                if not isinstance(d, dict):
-                    new_defs.append(d)
-                    continue
-                body = sbi.inline_symbol_body(self.project_root, cache, d)
-                if body is not None:
-                    d = {**d, "body": body}
-                    inlined = True
-                new_defs.append(d)
-            if inlined:
+            new_defs = sbi.inline_symbol_bodies(self.project_root, cache, defs)
+            if any(isinstance(d, dict) and "body" in d for d in new_defs):
                 definition["definitions"] = new_defs
+                definition["bodied_count"] = sum(
+                    1 for d in new_defs if isinstance(d, dict) and "body" in d
+                )
+                definition["body_cap"] = sbi.MAX_DEFINITION_BODIES
                 result.setdefault("next_step", sbi.NAVIGATE_DETERRENT)
         except Exception as exc:  # best-effort enrichment
             logger.debug(f"Definition body inlining failed: {exc}")
 
-    def _resolve_definition(self, symbol: str) -> dict[str, Any]:
+    def _resolve_definition(self, symbol: str, listed_cap: int) -> dict[str, Any]:
         cache = self.get_cache()
         if cache is None:
             return {"found": False, "reason": "AST cache not available"}
@@ -303,14 +340,16 @@ class CodeGraphNavigateTool(BaseMCPTool):
             return {
                 "found": len(definitions) > 0,
                 "count": len(definitions),
-                "definitions": definitions,
+                "definitions": definitions[:listed_cap],
+                "definitions_truncated": len(definitions) > listed_cap,
+                "listed_cap": listed_cap,
                 "resolved_via": resolve_result.resolved_via,
             }
         except Exception as exc:
             logger.debug(f"Definition lookup failed: {exc}")
             return {"found": False, "reason": str(exc)}
 
-    def _find_references(self, symbol: str) -> dict[str, Any]:
+    def _find_references(self, symbol: str, listed_cap: int) -> dict[str, Any]:
         cache = self.get_cache()
         if cache is None:
             return {"found": False, "reason": "AST cache not available"}
@@ -319,11 +358,14 @@ class CodeGraphNavigateTool(BaseMCPTool):
 
             resolver = SymbolResolver(cache)
             ref_result = resolver.find_references(symbol)
+            references = [r.to_dict() for r in ref_result.references]
             return {
-                "found": len(ref_result.references) > 0,
+                "found": len(references) > 0,
                 "definition_count": len(ref_result.definitions),
-                "reference_count": len(ref_result.references),
-                "references": [r.to_dict() for r in ref_result.references],
+                "reference_count": len(references),
+                "references": references[:listed_cap],
+                "references_truncated": len(references) > listed_cap,
+                "listed_cap": listed_cap,
             }
         except Exception as exc:
             logger.debug(f"Reference lookup failed: {exc}")
@@ -334,6 +376,7 @@ class CodeGraphNavigateTool(BaseMCPTool):
         symbol: str,
         file_path: str | None,
         max_depth: int,
+        listed_cap: int,
     ) -> dict[str, Any]:
         graph = self.get_call_graph()
         try:
@@ -366,13 +409,15 @@ class CodeGraphNavigateTool(BaseMCPTool):
         ]
 
         # Wave 1b (audit nav-08b): emit a capped head of each list; the counts
-        # stay accurate so the agent sees the true call hierarchy size.
-        truncated = len(callers) > _MAX_LISTED or len(callees) > _MAX_LISTED
+        # stay accurate so the agent sees the true call hierarchy size. The cap
+        # is the caller's ``limit``, so one parameter bounds every listing this
+        # action returns rather than only the definition and reference halves.
+        truncated = len(callers) > listed_cap or len(callees) > listed_cap
         result: dict[str, Any] = {
             "caller_count": len(callers),
             "callees_count": len(callees),
-            "callers": callers[:_MAX_LISTED],
-            "callees": callees[:_MAX_LISTED],
+            "callers": callers[:listed_cap],
+            "callees": callees[:listed_cap],
         }
 
         if max_depth > 1:
@@ -384,16 +429,16 @@ class CodeGraphNavigateTool(BaseMCPTool):
             )
             truncated = (
                 truncated
-                or len(transitive_callers) > _MAX_LISTED
-                or len(transitive_callees) > _MAX_LISTED
+                or len(transitive_callers) > listed_cap
+                or len(transitive_callees) > listed_cap
             )
             result["transitive_caller_count"] = len(transitive_callers)
             result["transitive_callee_count"] = len(transitive_callees)
-            result["transitive_callers"] = transitive_callers[:_MAX_LISTED]
-            result["transitive_callees"] = transitive_callees[:_MAX_LISTED]
+            result["transitive_callers"] = transitive_callers[:listed_cap]
+            result["transitive_callees"] = transitive_callees[:listed_cap]
 
         result["lists_truncated"] = truncated
-        result["listed_cap"] = _MAX_LISTED
+        result["listed_cap"] = listed_cap
         return result
 
 
