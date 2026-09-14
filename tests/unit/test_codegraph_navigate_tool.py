@@ -517,3 +517,51 @@ class TestLimitContract:
 
         assert len(result["definition"]["definitions"]) == 1
         assert result["listed_cap"] == 1
+
+
+class TestBodyInliningDegrades:
+    """When no body resolves, the response stays coordinate-only."""
+
+    @pytest.fixture
+    def indexed(self, tmp_path):
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        (tmp_path / "svc.py").write_text(
+            "def present():\n    return 1\n", encoding="utf-8"
+        )
+        cache = ASTCache(str(tmp_path))
+        cache.index_project(max_files=100)
+        cache.close()
+        return str(tmp_path)
+
+    def test_unresolvable_body_leaves_coordinates_and_no_deterrent(self, indexed):
+        tool = CodeGraphNavigateTool(indexed)
+        record = {"name": "ghost", "file": "absent.py", "line": 1}
+        result = {"definition": {"found": True, "definitions": [record]}}
+
+        tool._inline_definition_bodies(result)
+
+        definition = result["definition"]
+        assert "body" not in definition["definitions"][0]
+        assert "bodied_count" not in definition
+        assert "body_cap" not in definition
+        assert "next_step" not in result, (
+            "the 'no Read needed' deterrent must only appear when content was given"
+        )
+
+    def test_bodied_count_and_cap_are_reported(self, indexed):
+        tool = CodeGraphNavigateTool(indexed)
+        result = {
+            "definition": {
+                "found": True,
+                "definitions": [
+                    {"name": "present", "file": "svc.py", "line": 1, "end_line": 2}
+                ],
+            }
+        }
+
+        tool._inline_definition_bodies(result)
+
+        definition = result["definition"]
+        assert definition["bodied_count"] == 1
+        assert definition["body_cap"] == 12

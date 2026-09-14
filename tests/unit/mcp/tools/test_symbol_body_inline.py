@@ -266,3 +266,24 @@ def test_inline_search_summaries_uses_30_line_tier(tmp_path):
     body = enriched[0]["body"]
     assert body.get("truncated") is True
     assert len(body["content"].splitlines()) <= sbi.MAX_SUMMARY_LINES
+
+
+def test_unreadable_definition_keeps_coordinates(tmp_path):
+    """A record whose body cannot be read passes through unchanged."""
+    cache = _build_cache(tmp_path)
+    record = {"name": "ghost", "file": "absent.py", "line": 1}
+    enriched = sbi.inline_symbol_bodies(str(tmp_path), cache, [record])
+    assert "body" not in enriched[0]
+    assert enriched[0] == record
+
+
+def test_one_unreadable_record_does_not_stop_the_next(tmp_path):
+    """An unreadable record must not consume the list's body allowance."""
+    cache = _build_cache(tmp_path)
+    records = [
+        {"name": "ghost", "file": "absent.py", "line": 1},
+        {"name": "small", "file": "small.py", "line": 1, "end_line": 2},
+    ]
+    enriched = sbi.inline_symbol_bodies(str(tmp_path), cache, records)
+    assert "body" not in enriched[0]
+    assert "SMALL_MARKER" in enriched[1]["body"]["content"]
