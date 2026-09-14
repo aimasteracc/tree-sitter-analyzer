@@ -274,3 +274,48 @@ against `get_tool_definition()` and `full_description()` — the two surfaces a
 client can actually read — rather than against the inner tools that produce the
 text. The Measurement And Claim Rules in `AGENTS.md` carry the measurement half:
 name the state, the machine, and the corpus before publishing a number.
+
+## 2026-09 — A best-effort catch turns a contract break into silence
+
+### Context
+
+Hoisting the per-repo git probes out of the per-file path changed two
+signatures: `calculate_git_hotspot` gained a keyword-only `context`, and
+`score_git_hotspot` gained a second parameter. Eight tests in
+`tests/unit/test_health_scorer.py` double those functions, and the doubles kept
+the old signatures.
+
+Four failed loudly. One, `def query(*args)`, failed **silently**: it accepts no
+keyword arguments, so `calculate_git_hotspot(..., context=ctx)` raised
+`TypeError`, which `score_git_hotspot`'s `except Exception: return None` turned
+into a `None` hotspot score. The test still failed, but through an assertion
+about cancellation that never fired — I spent a long detour reading pool
+scheduling before tracing the call and finding that the double was never
+invoked at all.
+
+The catch is correct in production: a git failure must not fail a health scan.
+The problem is that it also covers the programming errors that look identical
+from inside it.
+
+### Lessons learned
+
+1. **"Best effort" and "cannot fail" are different claims.** A catch around an
+   external dependency is justified; a catch that also absorbs `TypeError` from
+   a caller's own signature is a defect detector that has been disabled.
+2. **When a test fails at a place that cannot explain the failure, check that
+   the subject was reached at all.** The assertion that failed was about
+   worker scheduling; the cause was that the function under test never ran.
+   Instrumenting the entry point — one print — settled in a minute what
+   reasoning about thread timing had not.
+3. **A silent `None` is worse than an exception here.** The scan reported a
+   `git_hotspot` dimension as unavailable rather than wrong, which reads as a
+   property of the repository rather than of the code.
+
+### Required guardrail
+
+Doubles for a helper that participates in a best-effort catch must accept the
+helper's real signature, including keyword-only arguments; `**kwargs` in a
+double hides the same class of drift the catch does. The tests that pin the
+hoist are `tests/unit/test_health_git_context.py`, and the equivalence check
+that the score is unchanged is its
+`test_the_scan_still_scores_git_hotspot_inside_a_repository`.
