@@ -153,7 +153,7 @@ jobs:
 
       - name: Upload claims report
         if: always()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7
         with:
           name: dogfood-claims-${{ github.run_id }}
           path: |
