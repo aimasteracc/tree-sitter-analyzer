@@ -40,7 +40,7 @@ Reading the tables:
 | `context` | `task`* (or `symbol`/`query` as alias), `max_nodes`, `max_code_blocks`, `include_graph`, `access_mode`, `snapshot_id`, `source_generation`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-context` |
 | `impact` | `mode`*, `depth`, `file_path`, `function_name` (`symbol` aliases `function_name`), `function_names`, `include_tests`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-impact` |
 | `lineage` | `symbol`*, `file_paths`, `max_depth`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--symbol-lineage` |
-| `navigate` | `symbol`*, `depth`, `file_path`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-navigate` |
+| `navigate` | `symbol`*, `depth`, `file_path`, `limit`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--codegraph-navigate` |
 | `pulse` | `file`*, `symbol`*, `format`, `max_callees`, `max_callers`, `max_comments`, `max_siblings`, `token_budget` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--pulse` |
 | `pulse_batch` | `targets`*, `format`, `max_symbols`, `token_budget_per_symbol` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--pulse-batch` |
 | `resolve` | `symbol`*, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--symbol-resolve` |
