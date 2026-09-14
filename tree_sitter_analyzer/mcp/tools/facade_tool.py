@@ -516,6 +516,33 @@ class FacadeTool(BaseMCPTool):
             "additionalProperties": True,
         }
 
+    def _expensive_route_details(self) -> str:
+        """The owning inner tool's prose for this facade's costly actions.
+
+        A facade replaces its inners, and the inner tools are not separately
+        registered, so prose that lives only on an inner tool is unreachable by
+        any caller. The budget table for ``health action=project`` sat in exactly
+        that position: "SLOW: ... ~4min on <3k" was written on
+        ``check_project_health``, which no client can read, while the call failed
+        at a default timeout.
+
+        ``action=help`` is on-demand, so carrying the detail here costs nothing
+        per request while making the always-sent description's pointer true.
+        """
+        from ...cache.query_cost import EXPENSIVE_ROUTES
+
+        blocks: list[str] = []
+        for (tool, action), _route in sorted(EXPENSIVE_ROUTES.items()):
+            if tool != self.facade_name:
+                continue
+            inner = self.action_map.get(action)
+            if inner is None:
+                continue
+            text = (inner.get_tool_definition().get("description") or "").strip()
+            if text:
+                blocks.append(f"## action={action} (declared expensive)\n{text}")
+        return "\n\n" + "\n\n".join(blocks) if blocks else ""
+
     def full_description(self) -> str:
         """The per-action prose, withheld from the tool definition (Wave E).
 
@@ -524,7 +551,37 @@ class FacadeTool(BaseMCPTool):
         this, and ``action=help`` serves it, so the drift guard keeps working
         while the always-sent surface stays one keyword-bearing sentence.
         """
-        return self._description or self._short_description()
+        base = self._description or self._short_description()
+        return base + self._expensive_route_details()
+
+    def _expensive_action_note(self) -> str:
+        """Name this facade's costly actions, derived from the cost registry.
+
+        The inner tool that owns a slow route carries the full budget prose, but
+        a facade replaces it: an MCP client reads the facade description and
+        never the inner one, so a cost stated only there cannot be read before
+        the call. ``health action=project`` measured 202 s on a 268-package
+        monorepo while its inner description said "SLOW: ... ~4min on <3k" —
+        text no caller could see, and the call failed at the client's default
+        timeout instead.
+
+        Derived rather than restated so the route set has one home in
+        ``EXPENSIVE_ROUTES``. The suffix is a pointer: the bucket table and the
+        ``budget_seconds`` field stay with the route that owns them.
+        """
+        from ...cache.query_cost import EXPENSIVE_ROUTES
+
+        parts: list[str] = []
+        for (tool, action), route in sorted(EXPENSIVE_ROUTES.items()):
+            if tool != self.facade_name:
+                continue
+            note = f"action={action} is slow"
+            if route.cheaper_alternative:
+                note += f" (prefer {route.cheaper_alternative})"
+            parts.append(note)
+        if not parts:
+            return ""
+        return " Cost: " + "; ".join(parts) + "."
 
     def _short_description(self) -> str:
         """The keyword-bearing first sentence, with the per-action prose behind ``help``.
@@ -558,6 +615,7 @@ class FacadeTool(BaseMCPTool):
         return (
             f"{first} Actions: {actions}. "
             "Pass action=help for per-action parameters and examples."
+            + self._expensive_action_note()
         )
 
     def get_tool_definition(self) -> dict[str, Any]:
