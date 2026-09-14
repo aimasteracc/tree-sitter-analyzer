@@ -51,39 +51,91 @@ def _build_cache(tmp_path: Path) -> MagicMock:
 
 
 # ---------------------------------------------------------------------------
-# inline_symbol_body — single definition, full 80-line tier
+# inline_symbol_bodies — definition list, full 80-line tier, shared caps
 # ---------------------------------------------------------------------------
 
 
-def test_inline_symbol_body_verbatim_with_end_line(tmp_path):
+def _only_body(records, cache, root):
+    enriched = sbi.inline_symbol_bodies(str(root), cache, records)
+    assert len(enriched) == len(records)
+    return enriched[0]
+
+
+def test_inline_symbol_bodies_verbatim_with_end_line(tmp_path):
     cache = _build_cache(tmp_path)
     record = {"name": "small", "file": "small.py", "line": 1, "end_line": 2}
-    block = sbi.inline_symbol_body(str(tmp_path), cache, record)
-    assert block is not None
+    enriched = _only_body([record], cache, tmp_path)
+    block = enriched["body"]
     assert "SMALL_MARKER" in block["content"]
     assert "def small" in block["content"]
     assert block.get("truncated") is not True
 
 
-def test_inline_symbol_body_truncates_over_cap(tmp_path):
+def test_inline_symbol_bodies_truncates_over_cap(tmp_path):
     cache = _build_cache(tmp_path)
     # 121-line body exceeds the 80-line definition tier.
     record = {"name": "big", "file": "big.py", "line": 1, "end_line": 121}
-    block = sbi.inline_symbol_body(str(tmp_path), cache, record)
-    assert block is not None
+    enriched = _only_body([record], cache, tmp_path)
+    block = enriched["body"]
     assert block.get("truncated") is True
     assert "full_at" in block
     assert block["full_at"] == "big.py:1"
     assert len(block["content"].splitlines()) <= sbi.MAX_DEFINITION_LINES
 
 
-def test_inline_symbol_body_resolves_missing_end_line(tmp_path):
+def test_inline_symbol_bodies_resolves_missing_end_line(tmp_path):
     cache = _build_cache(tmp_path)
     # No end_line on the record — helper must resolve span via def-index.
     record = {"name": "small", "file": "small.py", "line": 1}
-    block = sbi.inline_symbol_body(str(tmp_path), cache, record)
-    assert block is not None
-    assert "SMALL_MARKER" in block["content"]
+    enriched = _only_body([record], cache, tmp_path)
+    assert "SMALL_MARKER" in enriched["body"]["content"]
+
+
+def test_definition_bodies_share_one_total_budget(tmp_path):
+    """The total-line budget must bind across the whole definition list.
+
+    Regression: the navigate tier called the single-record helper once per
+    definition, so each call rebuilt ``MAX_TOTAL_DEFINITION_LINES`` and the cap
+    never applied to anything. A fifty-definition navigation inlined fifty full
+    bodies — measured at 186,958 chars for one common method name.
+    """
+    cache = _build_cache(tmp_path)
+    # Every record points at the same 121-line body, so each one that inlines
+    # consumes the full per-body allowance. A fresh budget per record would
+    # therefore yield one 80-line body per record.
+    records = [
+        {"name": "big", "file": "big.py", "line": 1, "end_line": 121}
+        for _ in range(sbi.MAX_DEFINITION_BODIES + 4)
+    ]
+    enriched = sbi.inline_symbol_bodies(str(tmp_path), cache, records)
+
+    bodies = [r for r in enriched if "body" in r]
+    total_lines = sum(len(r["body"]["content"].splitlines()) for r in bodies)
+    assert total_lines <= sbi.MAX_TOTAL_DEFINITION_LINES, (
+        f"shared budget did not bind: {total_lines} lines across "
+        f"{len(bodies)} bodies (cap {sbi.MAX_TOTAL_DEFINITION_LINES})"
+    )
+    assert len(bodies) <= sbi.MAX_DEFINITION_BODIES
+    # Records past the cap keep their coordinates; only the head is bodied.
+    assert all("body" not in r for r in enriched[len(bodies) :])
+    assert [r["name"] for r in enriched] == ["big"] * len(records)
+
+
+def test_definition_body_budget_is_per_call_not_per_process(tmp_path):
+    """The shared budget must not leak between responses."""
+    cache = _build_cache(tmp_path)
+    records = [{"name": "small", "file": "small.py", "line": 1, "end_line": 2}]
+    first = sbi.inline_symbol_bodies(str(tmp_path), cache, records)
+    second = sbi.inline_symbol_bodies(str(tmp_path), cache, records)
+    assert "body" in first[0]
+    assert "body" in second[0], "a prior call consumed this call's budget"
+
+
+def test_definition_bodies_do_not_mutate_the_input(tmp_path):
+    cache = _build_cache(tmp_path)
+    records = [{"name": "small", "file": "small.py", "line": 1, "end_line": 2}]
+    sbi.inline_symbol_bodies(str(tmp_path), cache, records)
+    assert records == [{"name": "small", "file": "small.py", "line": 1, "end_line": 2}]
 
 
 # ---------------------------------------------------------------------------
