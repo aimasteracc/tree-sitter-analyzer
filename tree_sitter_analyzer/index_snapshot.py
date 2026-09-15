@@ -10,6 +10,7 @@ import threading
 import time
 from collections.abc import Iterator
 from contextlib import ExitStack, closing, contextmanager
+from dataclasses import dataclass, field
 from typing import Any, cast
 from urllib.parse import quote
 
@@ -79,6 +80,9 @@ _TTL_SECONDS = 35.0
 # (import direction: index_snapshot.py → index_snapshot_registry.py avoids circular import)
 _SNAPSHOT_OVERHEAD_BYTES = _WAL_CONNECTION_OVERHEAD_BYTES
 _CAPTURE_DEADLINE_SECONDS = 10.0
+_SOURCE_FILE_BYTE_LIMIT = 64 * 1024 * 1024
+_SOURCE_TOTAL_BYTE_LIMIT = 128 * 1024 * 1024
+_SOURCE_FILE_COUNT_LIMIT = 1024
 _BACKUP_BYTE_BUDGET = _MAX_CHARGED_BYTES - _SNAPSHOT_OVERHEAD_BYTES
 _clock = time.monotonic
 
@@ -713,6 +717,126 @@ def acquire_index_snapshot(
     return REGISTRY.acquire(
         snapshot_id, project_root, source_generation, deadline=deadline
     )
+
+
+@dataclass(slots=True)
+class CertifiedIndexRead:
+    """同一索引能力中的查询连接与按需认证源码字节。"""
+
+    snapshot: IndexSnapshot
+    connection: sqlite3.Connection
+    deadline: float
+    _sources: dict[str, str] = field(default_factory=dict)
+    _source_input_bytes: int = 0
+    _source_output_bytes: int = 0
+    _source_paths: set[str] = field(default_factory=set)
+    _active: bool = True
+
+    def close(self) -> None:
+        """owner 作用域退出时使请求级源码字节失效。"""
+        self._active = False
+        self._sources.clear()
+        self._source_paths.clear()
+
+    def require_active(self) -> None:
+        """拒绝超出 owner 生命周期或共同 deadline 的任何读取。"""
+        if not self._active:
+            raise RuntimeError("INDEX_SNAPSHOT_CLOSED")
+        _require_capture_budget(self.deadline)
+
+    def query_cache(self) -> Any:
+        """返回唯一的同连接只读查询适配器。"""
+        from .index_snapshot_query import CertifiedSnapshotCache
+
+        self.require_active()
+        return CertifiedSnapshotCache(self)
+
+    def read_source(self, relative_path: str) -> str:
+        """读取一次命中文件，并用同一连接中的索引摘要认证返回文本。"""
+        from .indexing_snapshot import decode_index_source, index_source_content_hash
+        from .source_oracle import (
+            SourceOracleError,
+            normalize_repo_path,
+            safe_workspace_path,
+        )
+
+        path = normalize_repo_path(relative_path)
+        self.require_active()
+        if path in self._sources:
+            return self._sources[path]
+        if (
+            path not in self._source_paths
+            and len(self._source_paths) >= _SOURCE_FILE_COUNT_LIMIT
+        ):
+            raise RuntimeError("INDEX_BACKUP_BUDGET")
+        self._source_paths.add(path)
+        row = self.connection.execute(
+            "SELECT content_hash FROM ast_index "
+            "WHERE file_path = ? AND certified_at IS NOT NULL",
+            (path,),
+        ).fetchone()
+        if row is None:
+            raise ValueError("SOURCE_GENERATION_MISMATCH")
+        expected = str(row[0])
+        if len(expected) != 64 or any(ch not in "0123456789abcdef" for ch in expected):
+            raise ValueError("SOURCE_GENERATION_MISMATCH")
+        root = self.snapshot.canonical_root
+        if not root:
+            raise ValueError("INDEX_SNAPSHOT_UNKNOWN")
+        remaining_input = _SOURCE_TOTAL_BYTE_LIMIT - self._source_input_bytes
+        if remaining_input <= 0:
+            raise RuntimeError("INDEX_BACKUP_BUDGET")
+        try:
+            captured = safe_workspace_path(
+                root,
+                path,
+                deadline=self.deadline,
+                limit=min(_SOURCE_FILE_BYTE_LIMIT, remaining_input),
+            )
+        except SourceOracleError as exc:
+            if str(exc) == "DIFF_SNAPSHOT_CAPACITY":
+                raise RuntimeError("INDEX_BACKUP_BUDGET") from exc
+            raise
+        if captured.kind != "file" or captured.data is None:
+            raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
+        input_bytes = len(captured.data)
+        if self._source_input_bytes + input_bytes > _SOURCE_TOTAL_BYTE_LIMIT:
+            raise RuntimeError("INDEX_BACKUP_BUDGET")
+        text = decode_index_source(captured.data)
+        output_bytes = len(text.encode("utf-8"))
+        if self._source_output_bytes + output_bytes > _SOURCE_TOTAL_BYTE_LIMIT:
+            raise RuntimeError("INDEX_BACKUP_BUDGET")
+        if index_source_content_hash(text) != expected:
+            raise ValueError("SOURCE_GENERATION_MISMATCH")
+        self._source_input_bytes += input_bytes
+        self._source_output_bytes += output_bytes
+        self._sources[path] = text
+        return text
+
+
+@contextmanager
+def certified_index_read(project_root: str) -> Iterator[CertifiedIndexRead | None]:
+    """完整认证索引返回单一读能力；旧索引保持无正文的兼容查询。"""
+    deadline = _clock() + _CAPTURE_DEADLINE_SECONDS
+    with lease_existing_snapshot(project_root, deadline=deadline) as advertised:
+        if (
+            advertised.snapshot_id is None
+            or advertised.source_generation is None
+            or advertised.completeness != "complete"
+        ):
+            yield None
+            return
+        with read_existing_index_scope(
+            advertised.snapshot_id,
+            project_root,
+            advertised.source_generation,
+            deadline=deadline,
+        ) as (snapshot, connection):
+            owner = CertifiedIndexRead(snapshot, connection, deadline)
+            try:
+                yield owner
+            finally:
+                owner.close()
 
 
 def verify_snapshot_source_current(

@@ -55,8 +55,14 @@ def _build_cache(tmp_path: Path) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
+def _reader(root):
+    return lambda path: (Path(root) / path).read_text(encoding="utf-8")
+
+
 def _only_body(records, cache, root):
-    enriched = sbi.inline_symbol_bodies(str(root), cache, records)
+    enriched = sbi.inline_symbol_bodies(
+        str(root), cache, records, source_reader=_reader(root)
+    )
     assert len(enriched) == len(records)
     return enriched[0]
 
@@ -107,7 +113,9 @@ def test_definition_bodies_share_one_total_budget(tmp_path):
         {"name": "big", "file": "big.py", "line": 1, "end_line": 121}
         for _ in range(sbi.MAX_DEFINITION_BODIES + 4)
     ]
-    enriched = sbi.inline_symbol_bodies(str(tmp_path), cache, records)
+    enriched = sbi.inline_symbol_bodies(
+        str(tmp_path), cache, records, source_reader=_reader(tmp_path)
+    )
 
     bodies = [r for r in enriched if "body" in r]
     total_lines = sum(len(r["body"]["content"].splitlines()) for r in bodies)
@@ -125,8 +133,12 @@ def test_definition_body_budget_is_per_call_not_per_process(tmp_path):
     """The shared budget must not leak between responses."""
     cache = _build_cache(tmp_path)
     records = [{"name": "small", "file": "small.py", "line": 1, "end_line": 2}]
-    first = sbi.inline_symbol_bodies(str(tmp_path), cache, records)
-    second = sbi.inline_symbol_bodies(str(tmp_path), cache, records)
+    first = sbi.inline_symbol_bodies(
+        str(tmp_path), cache, records, source_reader=_reader(tmp_path)
+    )
+    second = sbi.inline_symbol_bodies(
+        str(tmp_path), cache, records, source_reader=_reader(tmp_path)
+    )
     assert "body" in first[0]
     assert "body" in second[0], "a prior call consumed this call's budget"
 
@@ -134,7 +146,9 @@ def test_definition_body_budget_is_per_call_not_per_process(tmp_path):
 def test_definition_bodies_do_not_mutate_the_input(tmp_path):
     cache = _build_cache(tmp_path)
     records = [{"name": "small", "file": "small.py", "line": 1, "end_line": 2}]
-    sbi.inline_symbol_bodies(str(tmp_path), cache, records)
+    sbi.inline_symbol_bodies(
+        str(tmp_path), cache, records, source_reader=_reader(tmp_path)
+    )
     assert records == [{"name": "small", "file": "small.py", "line": 1, "end_line": 2}]
 
 
@@ -149,7 +163,9 @@ def test_inline_neighbor_bodies_attaches_body_to_each(tmp_path):
         {"name": "small", "file": "small.py", "line": 1},
         {"name": "big", "file": "big.py", "line": 1},
     ]
-    enriched = sbi.inline_neighbor_bodies(str(tmp_path), cache, neighbors)
+    enriched = sbi.inline_neighbor_bodies(
+        str(tmp_path), cache, neighbors, source_reader=_reader(tmp_path)
+    )
     assert len(enriched) == 2
     small = next(n for n in enriched if n["name"] == "small")
     assert "body" in small
@@ -186,7 +202,9 @@ def test_inline_neighbor_body_does_not_cross_languages(tmp_path):
     neighbors = [
         {"name": "sorted", "file": "small.py", "line": 1, "language": "python"}
     ]
-    enriched = sbi.inline_neighbor_bodies(str(tmp_path), cache, neighbors)
+    enriched = sbi.inline_neighbor_bodies(
+        str(tmp_path), cache, neighbors, source_reader=_reader(tmp_path)
+    )
     assert "body" not in enriched[0], (
         f"cross-language body inlined: {enriched[0].get('body')}"
     )
@@ -219,7 +237,9 @@ def test_inline_neighbor_body_skipped_for_unknown_callee(tmp_path):
             "callee_resolved_file": "",
         },
     ]
-    enriched = sbi.inline_neighbor_bodies(str(tmp_path), cache, neighbors)
+    enriched = sbi.inline_neighbor_bodies(
+        str(tmp_path), cache, neighbors, source_reader=_reader(tmp_path)
+    )
     assert "body" in enriched[0]
     assert "body" not in enriched[1], (
         f"unknown callee should stay body-less: {enriched[1].get('body')}"
@@ -229,7 +249,9 @@ def test_inline_neighbor_body_skipped_for_unknown_callee(tmp_path):
 def test_inline_neighbor_bodies_caps_at_top_n(tmp_path):
     cache = _build_cache(tmp_path)
     neighbors = [{"name": "small", "file": "small.py", "line": 1} for _ in range(50)]
-    enriched = sbi.inline_neighbor_bodies(str(tmp_path), cache, neighbors)
+    enriched = sbi.inline_neighbor_bodies(
+        str(tmp_path), cache, neighbors, source_reader=_reader(tmp_path)
+    )
     bodied = [n for n in enriched if "body" in n]
     # Only the first MAX_NEIGHBOR_BODIES get a body; the rest stay coordinate-only.
     assert len(bodied) <= sbi.MAX_NEIGHBOR_BODIES
@@ -238,7 +260,9 @@ def test_inline_neighbor_bodies_caps_at_top_n(tmp_path):
 def test_inline_neighbor_body_uses_40_line_tier(tmp_path):
     cache = _build_cache(tmp_path)
     neighbors = [{"name": "big", "file": "big.py", "line": 1, "end_line": 121}]
-    enriched = sbi.inline_neighbor_bodies(str(tmp_path), cache, neighbors)
+    enriched = sbi.inline_neighbor_bodies(
+        str(tmp_path), cache, neighbors, source_reader=_reader(tmp_path)
+    )
     body = enriched[0]["body"]
     assert body.get("truncated") is True
     assert len(body["content"].splitlines()) <= sbi.MAX_NEIGHBOR_LINES
@@ -254,15 +278,37 @@ def test_inline_search_summaries_attaches_body(tmp_path):
     results = [
         {"name": "small", "file": "small.py", "line": 1, "end_line": 2},
     ]
-    enriched = sbi.inline_search_summaries(str(tmp_path), cache, results)
+    enriched = sbi.inline_search_summaries(
+        str(tmp_path), cache, results, source_reader=_reader(tmp_path)
+    )
     assert "body" in enriched[0]
     assert "SMALL_MARKER" in enriched[0]["body"]["content"]
+
+
+def test_certified_reader_without_text_never_falls_back_to_live_path(tmp_path):
+    cache = _build_cache(tmp_path)
+    records = [{"name": "small", "file": "small.py", "line": 1, "end_line": 2}]
+    enriched = sbi.inline_search_summaries(
+        str(tmp_path), cache, records, source_reader=lambda _path: None
+    )
+    assert "body" not in enriched[0]
+
+
+def test_missing_certified_reader_skips_span_and_cache_lookup(tmp_path):
+    """Coordinate-only 路径须在 def-index 查询前结束。"""
+    cache = MagicMock()
+    record = {"name": "small", "file": "small.py", "line": 1}
+    enriched = sbi.inline_neighbor_bodies(str(tmp_path), cache, [record])
+    assert enriched == [record]
+    cache.get_conn.assert_not_called()
 
 
 def test_inline_search_summaries_uses_30_line_tier(tmp_path):
     cache = _build_cache(tmp_path)
     results = [{"name": "big", "file": "big.py", "line": 1, "end_line": 121}]
-    enriched = sbi.inline_search_summaries(str(tmp_path), cache, results)
+    enriched = sbi.inline_search_summaries(
+        str(tmp_path), cache, results, source_reader=_reader(tmp_path)
+    )
     body = enriched[0]["body"]
     assert body.get("truncated") is True
     assert len(body["content"].splitlines()) <= sbi.MAX_SUMMARY_LINES
@@ -272,7 +318,9 @@ def test_unreadable_definition_keeps_coordinates(tmp_path):
     """A record whose body cannot be read passes through unchanged."""
     cache = _build_cache(tmp_path)
     record = {"name": "ghost", "file": "absent.py", "line": 1}
-    enriched = sbi.inline_symbol_bodies(str(tmp_path), cache, [record])
+    enriched = sbi.inline_symbol_bodies(
+        str(tmp_path), cache, [record], source_reader=_reader(tmp_path)
+    )
     assert "body" not in enriched[0]
     assert enriched[0] == record
 
@@ -284,6 +332,8 @@ def test_one_unreadable_record_does_not_stop_the_next(tmp_path):
         {"name": "ghost", "file": "absent.py", "line": 1},
         {"name": "small", "file": "small.py", "line": 1, "end_line": 2},
     ]
-    enriched = sbi.inline_symbol_bodies(str(tmp_path), cache, records)
+    enriched = sbi.inline_symbol_bodies(
+        str(tmp_path), cache, records, source_reader=_reader(tmp_path)
+    )
     assert "body" not in enriched[0]
     assert "SMALL_MARKER" in enriched[1]["body"]["content"]

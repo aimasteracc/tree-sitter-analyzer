@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import fnmatch
 import os
+import sqlite3
+from collections.abc import Callable
 from typing import Any
 
 from tree_sitter_analyzer.cache.query import _normalize_bm25 as _norm_bm25
@@ -44,6 +46,61 @@ SYMBOL_SEARCH_KINDS: tuple[str, ...] = (
     "constant",
     "any",
 )
+
+
+class _SnapshotSearchCache:
+    """让既有搜索算法只使用 owner 提供的同一个认证连接。"""
+
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._connection = connection
+        self.fts5_available = bool(
+            connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE name='ast_symbols_fts'"
+            ).fetchone()
+        )
+
+    def get_conn(self) -> sqlite3.Connection:
+        return self._connection
+
+    def search_symbols_cascade(self, query: str, **kwargs: Any) -> list[dict[str, Any]]:
+        from ...cache.search import search_symbols_cascade
+
+        return search_symbols_cascade(
+            self._connection,
+            query,
+            kwargs.get("language"),
+            int(kwargs.get("limit", 100)),
+            self.fts5_available,
+            suppress_sql_errors=False,
+        )
+
+    def fts_search(self, query: str, **kwargs: Any) -> list[dict[str, Any]]:
+        from ...cache.query import fts_search
+
+        return fts_search(
+            self._connection,
+            query,
+            kwargs.get("language"),
+            int(kwargs.get("limit", 100)),
+        )
+
+    def fts_search_ranked(self, query: str, **kwargs: Any) -> list[dict[str, Any]]:
+        from ...cache.query import fts_search_ranked
+
+        return fts_search_ranked(
+            self._connection,
+            query,
+            kwargs.get("language"),
+            int(kwargs.get("limit", 100)),
+            suppress_sql_errors=False,
+        )
+
+    def _search_symbols_linear(
+        self, query: str, language: str | None = None
+    ) -> list[dict[str, Any]]:
+        from ...cache.query import search_symbols_linear
+
+        return search_symbols_linear(self._connection, query, language)
 
 
 class CodeGraphSymbolSearchTool(BaseMCPTool):
@@ -135,6 +192,33 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
 
+        cache = self._get_cache()
+        if self.project_root is None:  # pragma: no cover - _get_cache 已拒绝
+            raise ValueError("Project root not set. Call set_project_path first.")
+        from ... import index_snapshot
+
+        result: dict[str, Any] | None = None
+        try:
+            with index_snapshot.certified_index_read(self.project_root) as certified:
+                if certified is not None:
+                    result = await self._execute_search(
+                        arguments,
+                        _SnapshotSearchCache(certified.connection),
+                        certified.read_source,
+                    )
+                    return result
+        except (OSError, ValueError, RuntimeError, sqlite3.DatabaseError):
+            if result is not None:
+                self._remove_unbound_source(result)
+                return result
+        return await self._execute_search(arguments, cache, None)
+
+    async def _execute_search(
+        self,
+        arguments: dict[str, Any],
+        cache: Any,
+        source_reader: Callable[[str], str] | None,
+    ) -> dict[str, Any]:
         query = arguments["query"]
         language = arguments.get("language")
         kind = arguments.get("kind", "any")
@@ -144,8 +228,6 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         # wider sweep.
         limit = arguments.get("limit", DEFAULT_SYMBOL_SEARCH_LIMIT)
         output_format = arguments.get("output_format", "json")
-        cache = self._get_cache()
-
         raw_results = self._search(cache, query, language, kind, limit)
         # #736: measure truncation BEFORE folding — folding can reduce duplicates
         # below limit and produce a false-positive; checking the raw DB row count
@@ -155,10 +237,24 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         results = self._apply_kind_filter(raw_results, kind)
         # Issue #443: fold duplicate imports and rank definitions first
         results = self._fold_and_rank_results(results)
-        self._add_source_context(results)
+        sources: dict[str, str] = {}
+        if source_reader is not None:
+            try:
+                sources = {
+                    path: source_reader(path)
+                    for path in dict.fromkeys(
+                        str(row.get("file", "")) for row in results if row.get("file")
+                    )
+                }
+            except (OSError, ValueError, RuntimeError):
+                sources = {}
+        bound_reader: Callable[[str], str] | None = (
+            (lambda path: sources[path]) if sources else None
+        )
+        self._add_source_context(results, bound_reader)
         # P2: inline a short verbatim body for the top matches so the agent
         # judges relevance from content, not coordinates — no Read per hit.
-        search_deterrent = self._inline_match_bodies(cache, results)
+        search_deterrent = self._inline_match_bodies(cache, results, bound_reader)
 
         by_file: dict[str, int] = {}
         for r in results:
@@ -212,6 +308,14 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         from ..utils.format_helper import apply_output_format_to_response
 
         return apply_output_format_to_response(result, output_format)
+
+    @staticmethod
+    def _remove_unbound_source(result: dict[str, Any]) -> None:
+        for row in result.get("results", []):
+            row.pop("code", None)
+            row.pop("body", None)
+        if "no Read needed" in str(result.get("next_step", "")):
+            result["next_step"] = "Use the returned coordinates to read the source."
 
     def _search(
         self,
@@ -461,6 +565,7 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         self,
         cache: Any,
         results: list[dict[str, Any]],
+        source_reader: Callable[[str], str] | None = None,
     ) -> str | None:
         """P2: attach a short body summary to the top matches (in place).
 
@@ -472,7 +577,9 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         try:
             from . import symbol_body_inline as sbi
 
-            enriched = sbi.inline_search_summaries(self.project_root, cache, results)
+            enriched = sbi.inline_search_summaries(
+                self.project_root, cache, results, source_reader=source_reader
+            )
             if not any("body" in r for r in enriched):
                 return None
             results[:] = enriched
@@ -481,12 +588,21 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
             logger.debug(f"Search body inlining failed: {exc}")
             return None
 
-    def _add_source_context(self, results: list[dict[str, Any]]) -> None:
+    def _add_source_context(
+        self,
+        results: list[dict[str, Any]],
+        source_reader: Callable[[str], str] | None = None,
+    ) -> None:
+        if source_reader is None:
+            return
         for r in results:
             line = int(r.get("line", 0) or 0)
             if line < 1:
                 continue
-            text = self._read_line(str(r.get("file", "")), line)
+            file_path = str(r.get("file", ""))
+            source = source_reader(file_path)
+            lines = source.splitlines()
+            text = lines[line - 1] if line <= len(lines) else ""
             if text:
                 r["code"] = text.strip()[:300]
 
