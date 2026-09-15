@@ -158,7 +158,6 @@ def targets_share_root_config(root: str, targets: list[str]) -> bool:
     """子项目配置或越界目标存在时，不用根配置覆盖它们自己的选择规则。"""
     checked: set[Path] = set()
     resolved_parents: dict[Path, Path] = {}
-    leaf_kinds: dict[Path, dict[str, tuple[bool, bool]]] = {}
     try:
         base = Path(root).resolve()
         for target in targets:
@@ -180,22 +179,8 @@ def targets_share_root_config(root: str, targets: list[str]) -> bool:
                     resolved_parents[lexical_parent] = parent
                 if not parent.is_relative_to(base):
                     return False
-                kinds = leaf_kinds.get(parent)
-                if kinds is None:
-                    try:
-                        with os.scandir(parent) as entries:
-                            kinds = {
-                                entry.name: (
-                                    entry.is_dir(follow_symlinks=True),
-                                    entry.is_symlink(),
-                                )
-                                for entry in entries
-                            }
-                    except FileNotFoundError:
-                        kinds = {}
-                    leaf_kinds[parent] = kinds
-                is_directory, is_symlink = kinds.get(candidate.name, (False, False))
-                if is_directory or is_symlink:
+                # 按文件系统自身的大小写规则查询目标，避免枚举并缓存无关兄弟项。
+                if candidate.is_dir() or candidate.is_symlink():
                     leaf = candidate.resolve()
                     if not leaf.is_relative_to(base):
                         return False

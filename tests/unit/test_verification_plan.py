@@ -3,6 +3,7 @@
 import base64
 import json
 import shlex
+import sys
 from dataclasses import replace
 
 import pytest
@@ -307,7 +308,7 @@ def test_marker_policy_changes_invalidate_replayed_plan(tmp_path, monkeypatch):
 
 
 def test_marker_policy_resolves_each_shared_parent_once(tmp_path, monkeypatch):
-    """大批同目录目标不能为每个文件重复解析同一父目录。"""
+    """2026-09-15 PR #1489：大批同目录目标只解析一次共享父目录。"""
     from pathlib import Path
 
     from tree_sitter_analyzer.mcp.tools.utils import verification_pytest_config
@@ -325,6 +326,39 @@ def test_marker_policy_resolves_each_shared_parent_once(tmp_path, monkeypatch):
     targets = [f"tests/unit/test_feature_{index:04d}.py" for index in range(1000)]
     assert verification_pytest_config.targets_share_root_config(str(root), targets)
     assert calls == 2
+
+
+def test_marker_policy_does_not_enumerate_unrequested_siblings(tmp_path, monkeypatch):
+    """2026-09-15 PR #1489：单个目标不能扫描并保存父目录全部兄弟项。"""
+    from tree_sitter_analyzer.mcp.tools.utils import verification_pytest_config
+
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "test_selected.py").write_text("", encoding="utf-8")
+
+    def unexpected_scandir(*args, **kwargs):
+        raise AssertionError("target classification must not enumerate siblings")
+
+    monkeypatch.setattr(verification_pytest_config.os, "scandir", unexpected_scandir)
+    assert verification_pytest_config.targets_share_root_config(
+        str(tmp_path.resolve()), ["tests/test_selected.py"]
+    )
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="tracked: PR #1489 Windows 文件系统原生大小写语义",
+)
+def test_marker_policy_uses_windows_case_semantics_for_directory_target(tmp_path):
+    """2026-09-15 PR #1489：大小写变体目录仍须发现其 pytest 配置。"""
+    from tree_sitter_analyzer.mcp.tools.utils import verification_pytest_config
+
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    assert not verification_pytest_config.targets_share_root_config(
+        str(tmp_path.resolve()), ["TESTS"]
+    )
 
 
 def test_marker_policy_checks_config_inside_directory_target(tmp_path, monkeypatch):
