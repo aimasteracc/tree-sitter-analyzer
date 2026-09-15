@@ -334,17 +334,66 @@ class TestDefinitionBodyInlining:
         return str(tmp_path)
 
     @pytest.mark.asyncio
-    async def test_definition_inlines_body(self, indexed):
+    async def test_uncertified_definition_stays_coordinate_only(self, indexed):
         tool = CodeGraphNavigateTool(indexed)
         result = await tool.execute(
             {"symbol": "_find", "mode": "definition", "output_format": "json"}
         )
         assert result["definition"]["found"] is True
         defs = result["definition"]["definitions"]
-        bodied = [d for d in defs if "body" in d]
-        assert bodied, "definition must carry an inlined body"
-        assert "FOUND_MARKER" in bodied[0]["body"]["content"]
-        assert "no Read needed" in result["next_step"]
+        assert all("body" not in definition for definition in defs)
+        assert "no Read needed" not in result.get("next_step", "")
+
+    @pytest.mark.asyncio
+    async def test_certified_definition_restores_indexed_body(self, tmp_path):
+        from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+            CodeGraphFullIndexTool,
+        )
+
+        (tmp_path / "svc.py").write_text(
+            "def target():\n    return 'CERTIFIED_NAV_BODY'\n", encoding="utf-8"
+        )
+        indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
+            {"mode": "full", "max_files": 10}
+        )
+        assert indexed["published"] is True
+        result = await CodeGraphNavigateTool(str(tmp_path)).execute(
+            {"symbol": "target", "mode": "definition", "output_format": "json"}
+        )
+        body = result["definition"]["definitions"][0]["body"]["content"]
+        assert "CERTIFIED_NAV_BODY" in body
+
+    @pytest.mark.asyncio
+    async def test_definition_move_after_bound_query_drops_body(
+        self, tmp_path, monkeypatch
+    ):
+        from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+            CodeGraphFullIndexTool,
+        )
+        from tree_sitter_analyzer.symbol_resolver import SymbolResolver
+
+        source = tmp_path / "svc.py"
+        source.write_text("def target():\n    return 'INDEXED_NAV'\n", encoding="utf-8")
+        assert (
+            await CodeGraphFullIndexTool(str(tmp_path)).execute(
+                {"mode": "full", "max_files": 10}
+            )
+        )["published"] is True
+        original = SymbolResolver.resolve
+
+        def resolve_then_move(self, symbol):
+            found = original(self, symbol)
+            source.write_text(
+                "\n\ndef target():\n    return 'MOVED_NAV'\n", encoding="utf-8"
+            )
+            return found
+
+        monkeypatch.setattr(SymbolResolver, "resolve", resolve_then_move)
+        result = await CodeGraphNavigateTool(str(tmp_path)).execute(
+            {"symbol": "target", "mode": "definition", "output_format": "json"}
+        )
+        assert all("body" not in row for row in result["definition"]["definitions"])
+        assert "no Read needed" not in result.get("next_step", "")
 
 
 def _definition_stub(count):
@@ -549,7 +598,7 @@ class TestBodyInliningDegrades:
             "the 'no Read needed' deterrent must only appear when content was given"
         )
 
-    def test_bodied_count_and_cap_are_reported(self, indexed):
+    def test_unbound_body_helper_does_not_report_bodied_count(self, indexed):
         tool = CodeGraphNavigateTool(indexed)
         result = {
             "definition": {
@@ -563,5 +612,5 @@ class TestBodyInliningDegrades:
         tool._inline_definition_bodies(result)
 
         definition = result["definition"]
-        assert definition["bodied_count"] == 1
-        assert definition["body_cap"] == 12
+        assert "bodied_count" not in definition
+        assert "body_cap" not in definition
