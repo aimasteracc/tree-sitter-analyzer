@@ -6,6 +6,42 @@
 - **North star:** Verified Change Success Rate (VCSR), not feature, language, tool, test, or edge count.
 - **Claim policy:** Public language is always bounded to named tools, versions, repositories, models, dates, and evidence levels. E0–E3 emit no quantitative competitive wording; E4 permits only the exact admitted bounded sentence, never an unqualified "No.1" claim.
 
+## 2026-09-15 交付状态：先关闭阻断，再接续历史证据
+
+本节以 GitHub 当前 `develop@7e1ed4f571c9180ebdf42d1ef6153bed4222587f`
+与公开 PR 状态为准；较早本地快照不覆盖这里的交付裁决。四个 PR 均未合入。
+已成功的 CI / Native 轴只支持其具名范围内的证据，不证明整个愿景已经完成，
+也不构成发版或 VCSR / E4 达标声明。
+
+| PR | 当前状态 | 完成门槛 |
+|---|---|---|
+| [#1489](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1489) CI 策略与路径约束 | 当前 CI 与 Native 成功；仍为 open、未合入 | 完成审查并按 GitFlow 合入；合入前不把成功检查写成已交付能力 |
+| [#1490](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1490) 订阅求值失败隔离 | 首次 Native 失败已定位到从 `files.pythonhosted.org` 下载时的 `ReadTimeoutError`，其后触发失败轴绑定。仅重跑失败任务的第二次尝试按 `github.run_attempt=2` 查找工件，但复用的成功 build 只上传了 attempt 1 的 `native-build` 工件；严格的同 attempt provenance 因此按预期拒绝。完整重跑尚未启动；须重新生成同轮 build 与安装资格证据。Windows 另有 14.69 秒超过 12.8 秒及 xdist 崩溃，本地尚未复现，根因未解决 | 重跑不能替代诊断；分别关闭下载、Windows 时限和 xdist 稳定性问题，并取得终态检查与审查通过 |
+| [#1491](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1491) 认证源码正文 | 前一 head `ceddf564` 的 Native 成功；新 head `b638cb61` 的 CI 与 Native 仍在运行，尚无终态资格。抽取后 CI 指导仍引用已失效的源码检查，公开 execute guidance 测试修复已于 2026-09-15 UTC 以 `b638cb61` 提交并推送，52 项焦点测试通过。Windows 正文缺失已定位为 `CertifiedIndexRead.read_source` 无条件调用仅支持 POSIX 的 `source_oracle.safe_workspace_path`，该路径按设计拒绝 Windows；有界 Windows `NativeFiles` 生产修复因涉及安全敏感的文件系统与句柄改动，被自动审批以“监控请求未明确授权”为由阻断，所有生产改动已回退，须等待知情授权，不能视为正在实现 | 修复指导与 Windows 读取缺口，重跑相关焦点测试、补丁覆盖和原生 CI；最终 head 经审查后方可合入 |
+| [#1492](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1492) 生命周期所有权 | draft；当前完整 CI 成功，但包含 #1490 依赖 | 先合入 #1490，再基于新的 `develop` rebase、缩小差异并重新完成当前最终树的焦点测试、补丁覆盖、完整 CI 与审查，之后才可转 ready |
+
+历史读取与 Python 声明 lineage ledger 在保留证据 `f4fd8f6e` 上曾取得
+429 项测试通过、0 失败、0 跳过、0 重跑的 **LOCAL_GO**。该证据只覆盖内部、
+明确请求的 HEAD Python 路径；不覆盖全项目、当前工作区、当前 generation、
+持久化、receipt、expiry、公开 selector 或原生平台。保留证据中仅找到较早 R0 / R1b 压缩包与本地 SHA 匹配，尚未恢复
+`f4fd8f6e` ledger 源码，因此不能
+把该提交称为可提交、可合入或可发布。
+
+下一轮按三个可独立审查的切片推进：
+
+1. 关闭 #1489–#1492 的现有阻断，保持依赖顺序，并为每个最终 head 保存独立资格证据。
+2. 从受信 Git 对象恢复并逐文件核对 `f4fd8f6e` 的内部历史读取与 ledger；
+   恢复后在当前 `develop` 上保留历史测试覆盖的全部语义范围，并对当前最终树
+   重新运行焦点测试、补丁覆盖和静态门禁，如实记录新的测试数量，再形成独立 PR。
+3. 在历史核心合入后，单独设计并实现严格的持久化 temporal schema 与
+   current-generation 绑定；普通非 temporal manifest 不得因可选 temporal
+   credential 缺失而失败。认证持久化读取、receipt / 时间 / expiry、订阅刷新
+   和公开 temporal selector 继续作为后续切片，不在本步扩张。
+
+完成上述切片仍不等于整体路线图完成。规模与延迟资格、全项目和原生平台覆盖、
+真实 Agent 任务 VCSR、外部采用及受限竞争性表述继续沿用既定门槛，未取得对应
+证据前保持未完成。
+
 ## 2026-09-08 第二轮合入：内容新鲜度与健康评分
 
 当前合入基线为 `develop@9233bb49a26283e57d7d9435f9a7251b344f2b74`。
