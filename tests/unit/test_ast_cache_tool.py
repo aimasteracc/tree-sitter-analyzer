@@ -1,5 +1,7 @@
 """Unit tests for mcp/tools/ast_cache_tool — MCP tool for AST cache operations."""
 
+import asyncio
+import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -46,6 +48,205 @@ class TestGetCache:
         cache1 = tool.get_cache()
         cache2 = tool.get_cache()
         assert cache1 is cache2
+
+
+@pytest.mark.asyncio
+async def test_watch_start_without_root_and_standalone_rollback(tmp_path, monkeypatch):
+    """standalone 路径拒绝空 root，构造失败清预约后仍可正常启动。"""
+    from tree_sitter_analyzer.mcp.tools import ast_cache_tool
+
+    with pytest.raises(ValueError, match="Project root not set"):
+        await ASTCacheTool().execute({"mode": "watch_start"})
+    tool = ASTCacheTool(str(tmp_path))
+    real_daemon = ast_cache_tool.FileWatcherDaemon
+    monkeypatch.setattr(
+        ast_cache_tool,
+        "FileWatcherDaemon",
+        MagicMock(side_effect=RuntimeError("constructor failed")),
+    )
+    with pytest.raises(RuntimeError, match="constructor failed"):
+        await tool.execute({"mode": "watch_start"})
+    monkeypatch.setattr(ast_cache_tool, "FileWatcherDaemon", real_daemon)
+    assert (await tool.execute({"mode": "watch_start"}))["status"] == "started"
+    await tool.execute({"mode": "watch_stop"})
+    tool.get_cache().close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("barrier", ["construct", "start"])
+async def test_standalone_rebind_retires_startup_without_orphan(
+    tmp_path, monkeypatch, barrier
+):
+    """无 manager 的 startup 跨 rebind 也由原 starter 清理确切 daemon。"""
+    from tree_sitter_analyzer.mcp.tools import ast_cache_tool
+
+    tool = ASTCacheTool(str(tmp_path))
+    entered, release = threading.Event(), threading.Event()
+    daemon_type, daemons = ast_cache_tool.FileWatcherDaemon, []
+
+    def build_daemon(*args, **kwargs):
+        daemon = daemon_type(*args, **kwargs)
+        daemons.append(daemon)
+        if barrier == "construct":
+            entered.set()
+            assert release.wait(3)
+        return daemon
+
+    start = daemon_type.start
+
+    def paused_start(watcher):
+        if barrier == "start":
+            entered.set()
+            assert release.wait(3)
+        start(watcher)
+
+    monkeypatch.setattr(ast_cache_tool, "FileWatcherDaemon", build_daemon)
+    monkeypatch.setattr(daemon_type, "start", paused_start)
+    task = asyncio.create_task(
+        asyncio.to_thread(asyncio.run, tool.execute({"mode": "watch_start"}))
+    )
+    assert await asyncio.to_thread(entered.wait, 3)
+    target = tmp_path / "next"
+    target.mkdir()
+    tool.set_project_path(str(target))
+    release.set()
+    with pytest.raises(TimeoutError, match="project.*changed"):
+        await task
+    assert len(daemons) == 1 and daemons[0].is_running() is False
+
+
+@pytest.mark.asyncio
+async def test_application_shutdown_reports_live_daemon_after_stop_returns(
+    tmp_path, monkeypatch
+):
+    """stop 返回但 daemon 仍活时 application shutdown 必须报告 pending。"""
+    tool = ASTCacheTool(str(tmp_path))
+    await tool.execute({"mode": "watch_start"})
+    watcher, stop = tool._watcher, tool._watcher.stop
+    monkeypatch.setattr(watcher, "stop", lambda: None)
+    try:
+        with pytest.raises(TimeoutError, match="shutdown is still pending"):
+            tool.shutdown_application_watcher()
+    finally:
+        monkeypatch.setattr(watcher, "stop", stop)
+        stop()
+        tool.get_cache().close()
+
+
+@pytest.mark.asyncio
+async def test_already_running_rejects_token_revoked_before_tool_rebind(tmp_path):
+    """manager rebind 先到时不能把旧 daemon 报告为 already_running。"""
+    from tree_sitter_analyzer.mcp.subscription_lifecycle import (
+        SubscriptionLifecycleManager,
+    )
+
+    root = str(tmp_path)
+    manager = SubscriptionLifecycleManager(root)
+    tool = ASTCacheTool(root, manager)
+    await tool.execute({"mode": "watch_start"})
+    manager.rebind_project(root)
+    with pytest.raises(TimeoutError, match="before rebind cleanup"):
+        await tool.execute({"mode": "watch_start"})
+    tool.set_project_path(root)
+    tool.get_cache().close()
+
+
+@pytest.mark.asyncio
+async def test_late_pending_checker_cannot_clear_replacement_watcher(
+    tmp_path, monkeypatch
+):
+    """两个 checker 交错时，迟到者不能清掉先到者之后启动的新 daemon。"""
+    tool = ASTCacheTool(str(tmp_path))
+    tool.get_cache()
+
+    class OldWatcher:
+        running = True
+
+        def is_running(self):
+            return self.running
+
+        def get_stats(self):
+            return {}
+
+        def stop(self):
+            return None
+
+    old = OldWatcher()
+    tool._watcher = old
+    with pytest.raises(TimeoutError, match="background work"):
+        await tool.execute({"mode": "watch_stop"})
+    old.running = False
+    entered, release, calls = threading.Event(), threading.Event(), 0
+
+    def paused_first_check():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            entered.set()
+            assert release.wait(3)
+        return False
+
+    monkeypatch.setattr(old, "is_running", paused_first_check)
+    late = asyncio.create_task(
+        asyncio.to_thread(asyncio.run, tool.execute({"mode": "stats"}))
+    )
+    assert await asyncio.to_thread(entered.wait, 3)
+    assert (await tool.execute({"mode": "stats"}))["success"] is True
+    assert (await tool.execute({"mode": "watch_start"}))["status"] == "started"
+    replacement = tool._watcher
+    release.set()
+    assert (await late)["success"] is True
+    assert tool._watcher is replacement and replacement.is_running() is True
+    await tool.execute({"mode": "watch_stop"})
+    tool.get_cache().close()
+
+
+@pytest.mark.asyncio
+async def test_standalone_competing_start_rejects_busy_reservation(
+    tmp_path, monkeypatch
+):
+    """standalone 的并发 loser 也必须服从 startup 预约，不能建立第二 daemon。"""
+    from tree_sitter_analyzer.mcp.tools import ast_cache_tool
+
+    tool = ASTCacheTool(str(tmp_path))
+    first_created, release_first = threading.Event(), threading.Event()
+    winner_building, release_winner, calls = threading.Event(), threading.Event(), 0
+    startup_type, daemon_type = (
+        ast_cache_tool._WatchStartup,
+        ast_cache_tool.FileWatcherDaemon,
+    )
+
+    def paused_first_startup(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        startup = startup_type(*args, **kwargs)
+        if calls == 1:
+            first_created.set()
+            assert release_first.wait(3)
+        return startup
+
+    def paused_daemon(*args, **kwargs):
+        winner_building.set()
+        assert release_winner.wait(3)
+        return daemon_type(*args, **kwargs)
+
+    monkeypatch.setattr(ast_cache_tool, "_WatchStartup", paused_first_startup)
+    monkeypatch.setattr(ast_cache_tool, "FileWatcherDaemon", paused_daemon)
+    loser = asyncio.create_task(
+        asyncio.to_thread(asyncio.run, tool.execute({"mode": "watch_start"}))
+    )
+    assert await asyncio.to_thread(first_created.wait, 3)
+    winner = asyncio.create_task(
+        asyncio.to_thread(asyncio.run, tool.execute({"mode": "watch_start"}))
+    )
+    assert await asyncio.to_thread(winner_building.wait, 3)
+    release_first.set()
+    with pytest.raises(TimeoutError, match="changed during startup"):
+        await loser
+    release_winner.set()
+    assert (await winner)["status"] == "started"
+    await tool.execute({"mode": "watch_stop"})
+    tool.get_cache().close()
 
 
 class TestGetToolDefinition:
@@ -391,7 +592,6 @@ class TestAstCacheSearchTruncated:
     @pytest.mark.asyncio
     async def test_search_truncated_measured_before_split_expansion(self, tmp_path):
         """#737: truncated is measured on raw_results BEFORE _apply_legacy_import_split.
-
         A single raw row whose name is 'a,b' expands to 2 after split.
         If truncated were measured after split, count==2 with limit==2 would
         falsely report truncated=True — but the DB only returned 1 row.

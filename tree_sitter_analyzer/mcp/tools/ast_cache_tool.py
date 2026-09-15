@@ -11,6 +11,8 @@ CodeGraph parity: equivalent to CodeGraph's pre-indexed code intelligence.
 
 import os
 import re
+import threading
+from dataclasses import dataclass
 from typing import Any
 
 from ...ast_cache import ASTCache
@@ -31,6 +33,21 @@ logger = setup_logger(__name__)
 # that would otherwise confuse FTS callers.
 _IMPORT_NAME_LIMIT = 100
 _BOUND_NAME_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+@dataclass
+class _WatchStartup:
+    """一次 watcher 启动的精确所有权预约。"""
+
+    raw_root: str | None
+    token: Any
+    cache: ASTCache | None = None
+    daemon: FileWatcherDaemon | None = None
+    starting: bool = True
+    retired: bool = False
+    authorized: bool = False
+
+
 _IMPORT_KEYWORDS = frozenset(
     {
         "from",
@@ -174,48 +191,136 @@ def _build_ast_cache_envelope(
 class ASTCacheTool(BaseMCPTool):
     """MCP Tool for pre-indexed AST cache operations."""
 
-    def __init__(self, project_root: str | None = None) -> None:
+    def __init__(
+        self, project_root: str | None = None, lifecycle_manager: Any = None
+    ) -> None:
         self._cache: ASTCache | None = None
         self._sync: IncrementalSync | None = None
         self._watcher: FileWatcherDaemon | None = None
         self._watcher_pending_stop = False
+        self._lifecycle_manager = lifecycle_manager
+        self._watch_token: Any = None
+        self._watch_state_lock = threading.Lock()
+        self._watch_startup: _WatchStartup | None = None
+        self._watcher_stopping = False
+        self._cache_raw_root: str | None = None
+        self._root_generation = 0
         super().__init__(project_root)
 
     def _on_project_root_changed(self, project_root: str | None) -> None:
-        self._cache = None
-        self._sync = None
-        # 旧项目后台任务退出前保留所有权，后续缓存访问必须等待交接完成。
-        if self._watcher is not None:
-            try:
-                if self._watcher.is_running():
-                    self._watcher.stop()
-            except Exception:  # pragma: no cover — defensive
-                logger.debug("watcher stop on project change failed", exc_info=True)
-        self._watcher_pending_stop = (
-            self._watcher is not None and self._watcher.is_running()
-        )
-        if not self._watcher_pending_stop:
-            self._watcher = None
+        with self._watch_state_lock:
+            self._root_generation += 1
+            startup = self._watch_startup
+            if startup is not None:
+                startup.retired = True
+            token = self._watch_token or (startup.token if startup else None)
+            self._cache = None
+            self._cache_raw_root = None
+            self._sync = None
+        # starter 尚未返回时由它清理自己的确切候选，避免丢失未启动实例。
+        if startup is not None and startup.starting:
+            if self._lifecycle_manager is not None:
+                self._lifecycle_manager.revoke_watch_token(token)
+            return
+        try:
+            self._retire_watcher(clear_stopped=True)
+        except Exception:  # pragma: no cover — defensive
+            logger.debug("watcher stop on project change failed", exc_info=True)
 
     def _check_watcher_shutdown(self) -> None:
         """旧项目后台任务未退出时，拒绝建立新项目运行状态。"""
-        if not self._watcher_pending_stop:
+        with self._watch_state_lock:
+            startup = self._watch_startup
+            watcher = self._watcher
+            pending = self._watcher_pending_stop
+            stopping = self._watcher_stopping
+        if startup is not None and startup.starting:
+            raise TimeoutError(
+                "Watcher startup from the previous project is still running"
+            )
+        if stopping:
+            raise TimeoutError(
+                "Watcher shutdown from the previous project is still running"
+            )
+        if not pending:
             return
-        if self._watcher is not None and self._watcher.is_running():
+        if watcher is not None and watcher.is_running():
             raise TimeoutError(
                 "Watcher from the previous project is still stopping. "
                 "Retry watch_stop before accessing the new project cache."
             )
-        self._watcher = None
-        self._watcher_pending_stop = False
+        with self._watch_state_lock:
+            if self._watcher is watcher:
+                self._watcher = None
+                self._watcher_pending_stop = False
+
+    def shutdown_application_watcher(self) -> None:
+        """应用退出时撤销回调并停止已构造的 watcher。"""
+        _, running = self._retire_watcher(clear_stopped=False)
+        if running:
+            raise TimeoutError("Application watcher shutdown is still pending")
+
+    def _retire_watcher(self, *, clear_stopped: bool) -> tuple[Any, bool]:
+        """按身份停止当前 watcher，并在整个 join 窗口保留所有权。"""
+        with self._watch_state_lock:
+            if self._watcher_stopping:
+                raise TimeoutError("Watcher shutdown is already in progress")
+            startup = self._watch_startup
+            if startup is not None and startup.starting:
+                startup.retired = True
+                token = self._watch_token or startup.token
+                watcher = None
+                startup_pending = True
+            else:
+                watcher = self._watcher
+                token = self._watch_token
+                startup_pending = False
+                self._watch_token = None
+                if watcher is not None:
+                    self._watcher_stopping = True
+        if self._lifecycle_manager is not None:
+            self._lifecycle_manager.revoke_watch_token(token)
+        if startup_pending:
+            raise TimeoutError("Watcher startup is still pending")
+        if watcher is None:
+            return None, False
+        try:
+            stats = watcher.get_stats() if watcher.is_running() else None
+            if watcher.is_running():
+                watcher.stop()
+        finally:
+            running = watcher.is_running()
+            with self._watch_state_lock:
+                self._watcher_pending_stop = running
+                self._watcher_stopping = False
+                if clear_stopped and not running:
+                    self._watcher = None
+        return stats, running
 
     def _get_cache(self) -> ASTCache:
         self._check_watcher_shutdown()
-        if self._cache is None:
-            if not self.project_root:
-                raise ValueError("Project root not set. Call set_project_path first.")
-            self._cache = ASTCache(self.project_root)
-        return self._cache
+        with self._watch_state_lock:
+            current = self._cache
+            raw_root = self._project_root
+            generation = self._root_generation
+        if current is not None:
+            return current
+        if not raw_root:
+            raise ValueError("Project root not set. Call set_project_path first.")
+        candidate = ASTCache(raw_root)
+        with self._watch_state_lock:
+            valid = (
+                generation == self._root_generation
+                and raw_root == self._project_root
+                and self._cache is None
+            )
+            if valid:
+                self._cache = candidate
+                self._cache_raw_root = raw_root
+        if valid:
+            return candidate
+        candidate.close()
+        raise TimeoutError("Project changed during cache construction")
 
     def get_cache(self) -> ASTCache:
         """Public alias for _get_cache() — use this instead of accessing _cache directly."""
@@ -693,45 +798,106 @@ class ASTCacheTool(BaseMCPTool):
         """
         self._check_watcher_shutdown()
         # 已运行时沿用当前项目监听器。
-        if self._watcher is not None and self._watcher.is_running():
-            poll_interval = float(self._watcher.poll_interval)
-            backend = str(self._watcher.backend)
-            summary_line = (
-                f"ast_cache watch_start status=already_running "
-                f"backend={backend} poll_interval={poll_interval}"
+        with self._watch_state_lock:
+            current_watcher = self._watcher
+            current_token = self._watch_token
+            current_running = (
+                current_watcher is not None and current_watcher.is_running()
             )
-            payload: dict[str, Any] = {
-                "status": "already_running",
-                "poll_interval": poll_interval,
-                "backend": backend,
-            }
-            return _build_ast_cache_envelope(
-                "watch_start",
-                payload,
-                summary_line,
-                "ast_cache mode=watch_status to check progress",
+        if current_running and current_watcher is not None:
+            if not self._watch_token_is_current(current_token):
+                raise TimeoutError("Watcher project changed before rebind cleanup")
+            return self._already_running_response(current_watcher)
+
+        raw_root = self._project_root
+        if not raw_root:
+            raise ValueError("Project root not set. Call set_project_path first.")
+        token = None
+        if self._lifecycle_manager is not None:
+            token = self._lifecycle_manager.issue_watch_token(raw_root)
+        startup = _WatchStartup(raw_root, token)
+        with self._watch_state_lock:
+            token_current = self._watch_token_is_current(token)
+            winner = self._watcher
+            winner_token = self._watch_token
+            winner_running = winner is not None and winner.is_running()
+            busy = (
+                self._watch_startup is not None
+                or self._watcher_stopping
+                or self._watcher_pending_stop
+            )
+            if winner_running or busy or not token_current:
+                startup.retired = True
+            else:
+                self._watch_startup = startup
+        if startup.retired:
+            if self._lifecycle_manager is not None:
+                self._lifecycle_manager.revoke_watch_token(token)
+            if winner_running and self._watch_token_is_current(winner_token):
+                return self._already_running_response(winner)
+            raise TimeoutError("Watcher project changed during startup")
+
+        daemon = None
+        try:
+            cache = self._cache_for_watch_startup(startup)
+            poll_interval = float(arguments.get("poll_interval", 5.0))
+            backend = str(arguments.get("backend", "poll"))
+            from ..watch_push_bridge import make_on_sync_callback
+        except Exception:
+            self._rollback_watch_startup(startup, daemon)
+            raise
+
+        on_sync = None
+        if self._lifecycle_manager is not None:
+            on_sync = make_on_sync_callback(
+                startup.raw_root, self._lifecycle_manager, startup.token
             )
 
-        # Lazily build the cache + daemon. Tests always pass project_root,
-        # so _get_cache() won't raise; if it does, the ValueError surfaces
-        # to the caller as a typical input error.
-        cache = self._get_cache()
-        poll_interval = float(arguments.get("poll_interval", 5.0))
-        backend = str(arguments.get("backend", "poll"))
-        from ..watch_push_bridge import make_on_sync_callback
+        try:
+            daemon = FileWatcherDaemon(
+                cache,
+                poll_interval=poll_interval,
+                backend=backend,
+                on_sync=on_sync,
+            )
+            with self._watch_state_lock:
+                startup.daemon = daemon
+                if startup.retired or not self._watch_token_is_current(startup.token):
+                    raise TimeoutError("Watcher project changed during startup")
+                self._watcher = daemon
+                self._watch_token = startup.token
+                startup.authorized = True
+            daemon.start()
+        except Exception:
+            self._rollback_watch_startup(startup, daemon)
+            raise
 
-        self._watcher = FileWatcherDaemon(
-            cache,
-            poll_interval=poll_interval,
-            backend=backend,
-            on_sync=make_on_sync_callback(self._project_root),
-        )
-        self._watcher.start()
+        with self._watch_state_lock:
+            retired = startup.retired or not self._watch_token_is_current(startup.token)
+            if not retired:
+                startup.starting = False
+            if not retired and self._watch_startup is startup:
+                self._watch_startup = None
+        if retired:
+            if self._lifecycle_manager is not None:
+                self._lifecycle_manager.revoke_watch_token(startup.token)
+            try:
+                daemon.stop()
+            finally:
+                with self._watch_state_lock:
+                    running = daemon.is_running()
+                    startup.starting = False
+                    self._watcher_pending_stop = running
+                    if not running:
+                        self._watcher = None
+                    self._watch_token = None
+                    self._watch_startup = None
+            raise TimeoutError("Watcher project changed during startup")
 
         # Read back the actual values the daemon enforced (poll_interval
         # has a min of 1.0 inside the daemon, so echo what was applied).
-        applied_poll = float(self._watcher.poll_interval)
-        applied_backend = str(self._watcher.backend)
+        applied_poll = float(daemon.poll_interval)
+        applied_backend = str(daemon.backend)
         summary_line = (
             f"ast_cache watch_start status=started "
             f"backend={applied_backend} poll_interval={applied_poll}"
@@ -748,6 +914,80 @@ class ASTCacheTool(BaseMCPTool):
             "ast_cache mode=watch_status to inspect the daemon",
         )
 
+    def _watch_token_is_current(self, token: Any) -> bool:
+        """核验预约 token；无 manager 的兼容路径只依赖本地 retirement。"""
+        if self._lifecycle_manager is None:
+            return True
+        return bool(self._lifecycle_manager.is_watch_token_current(token))
+
+    def _already_running_response(self, watcher: FileWatcherDaemon) -> dict[str, Any]:
+        """构造不改变现有 daemon 所有权的幂等启动响应。"""
+        poll_interval = float(watcher.poll_interval)
+        backend = str(watcher.backend)
+        summary_line = (
+            f"ast_cache watch_start status=already_running "
+            f"backend={backend} poll_interval={poll_interval}"
+        )
+        return _build_ast_cache_envelope(
+            "watch_start",
+            {
+                "status": "already_running",
+                "poll_interval": poll_interval,
+                "backend": backend,
+            },
+            summary_line,
+            "ast_cache mode=watch_status to check progress",
+        )
+
+    def _rollback_watch_startup(
+        self, startup: _WatchStartup, daemon: FileWatcherDaemon | None
+    ) -> None:
+        """失败时撤销预约；仅活跃的部分 daemon 继续占有 slot。"""
+        if self._lifecycle_manager is not None:
+            self._lifecycle_manager.revoke_watch_token(startup.token)
+        running = bool(daemon is not None and daemon.is_running())
+        with self._watch_state_lock:
+            self._watch_token = None
+            startup.starting = False
+            self._watcher_pending_stop = running
+            if running:
+                self._watcher = daemon
+            elif self._watcher is daemon:
+                self._watcher = None
+            self._watch_startup = None
+
+    def _cache_for_watch_startup(self, startup: _WatchStartup) -> ASTCache:
+        """为预约 root 构造 cache，并在发布前重验预约身份。"""
+        with self._watch_state_lock:
+            valid = (
+                self._watch_startup is startup
+                and not startup.retired
+                and self._watch_token_is_current(startup.token)
+            )
+            current = (
+                self._cache
+                if valid and self._cache_raw_root == startup.raw_root
+                else None
+            )
+        if current is not None:
+            startup.cache = current
+            return current
+        candidate = ASTCache(startup.raw_root)
+        with self._watch_state_lock:
+            valid = (
+                self._watch_startup is startup
+                and not startup.retired
+                and self._watch_token_is_current(startup.token)
+            )
+            if valid:
+                self._cache = candidate
+                self._cache_raw_root = startup.raw_root
+                startup.cache = candidate
+        if valid:
+            return candidate
+        candidate.close()
+        raise TimeoutError("Watcher project changed during cache construction")
+
     def _handle_watch_stop(self) -> dict[str, Any]:
         """``mode=watch_stop``: stop the running watcher and return stats.
 
@@ -756,7 +996,8 @@ class ASTCacheTool(BaseMCPTool):
         still carries ``success=True`` so callers can treat stop as
         idempotent.
         """
-        if self._watcher is None or not self._watcher.is_running():
+        final_stats, running = self._retire_watcher(clear_stopped=False)
+        if final_stats is None:
             summary_line = "ast_cache watch_stop status=not_running"
             return _build_ast_cache_envelope(
                 "watch_stop",
@@ -765,11 +1006,7 @@ class ASTCacheTool(BaseMCPTool):
                 "ast_cache mode=watch_start to begin watching",
             )
 
-        # Snapshot stats BEFORE stopping so uptime_seconds is non-zero
-        # even when the daemon stops mid-poll-tick.
-        final_stats = self._watcher.get_stats()
-        self._watcher.stop()
-        if self._watcher.is_running():
+        if running:
             raise TimeoutError(
                 "Watcher shutdown timed out; background work is still running. "
                 "Retry watch_stop before closing or replacing the cache."

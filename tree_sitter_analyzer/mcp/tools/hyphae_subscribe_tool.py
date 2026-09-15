@@ -5,10 +5,9 @@ alters the selector's result the server pushes a resource-updated
 notification so the agent can re-read without polling.
 
 Session capture: the subscribe handler grabs ``request_context.session``
-and ``asyncio.get_running_loop()`` at call time (the only moment both are
-accessible). The captured refs are stored in ``SubscriptionRegistry`` and
-used by the watch→push bridge (RFC-0001 criterion 4) to schedule
-``send_resource_updated`` on the correct event loop.
+请求处理器在唯一可访问两者的调用期间捕获 ``ServerSession`` 与
+``asyncio.get_running_loop()``。每应用生命周期 manager 持有这些引用，以及
+watch→push bridge 使用的不可变发送 ticket。
 """
 
 from __future__ import annotations
@@ -16,8 +15,6 @@ from __future__ import annotations
 import asyncio
 import urllib.parse
 from typing import Any
-
-from tree_sitter_analyzer.registry.singleton_registry import get_subscription_registry
 
 from ..utils.format_helper import apply_output_format_to_response
 from ._response_builder import build_response
@@ -42,6 +39,12 @@ class HyphaeSubscribeTool(BaseMCPTool):
     Returns ``{ sub_id, resource_uri }`` on success so the agent knows which
     URI to read when notified and can unsubscribe later.
     """
+
+    def __init__(
+        self, project_root: str | None = None, lifecycle_manager: Any = None
+    ) -> None:
+        self._lifecycle_manager = lifecycle_manager
+        super().__init__(project_root)
 
     def get_tool_definition(self) -> dict[str, Any]:
         return {
@@ -85,19 +88,16 @@ class HyphaeSubscribeTool(BaseMCPTool):
         min_interval = float(arguments.get("min_interval", 2.0))
         output_format = arguments.get("output_format", "json")
 
-        # RFC-0001: capture session + loop at subscribe time (the only moment
-        # request_context is populated and the event loop is running).
-        session_id = _capture_session_id()
-        loop = asyncio.get_event_loop()
-
-        registry = get_subscription_registry()
-        registry.subscribe(session_id, selector)
-
-        # Store the loop, session object, and min_interval so the bridge can use them.
-        # Session is captured here because request_context is only valid during a handler.
-        _SESSION_LOOPS[session_id] = loop
-        _SESSION_MIN_INTERVALS[session_id] = min_interval
-        _SESSION_SESSIONS[session_id] = _capture_session_obj()
+        # RFC-0001：请求期间只捕获一次真实连接，并绑定其运行循环。
+        session, owner = _capture_request_ownership()
+        if session is None or self._lifecycle_manager is None:
+            raise ValueError("MCP request context is required to subscribe")
+        loop = asyncio.get_running_loop()
+        owner = self._lifecycle_manager.require_owner(owner)
+        ticket = self._lifecycle_manager.subscribe(
+            owner, session, loop, selector, min_interval
+        )
+        session_id = ticket.session_id
 
         resource_uri = _selector_to_uri(selector)
         response = build_response(
@@ -115,6 +115,12 @@ class HyphaeSubscribeTool(BaseMCPTool):
 
 class HyphaeUnsubscribeTool(BaseMCPTool):
     """``search action=unsubscribe``: cancel a Hyphae subscription."""
+
+    def __init__(
+        self, project_root: str | None = None, lifecycle_manager: Any = None
+    ) -> None:
+        self._lifecycle_manager = lifecycle_manager
+        super().__init__(project_root)
 
     def get_tool_definition(self) -> dict[str, Any]:
         return {
@@ -144,18 +150,20 @@ class HyphaeUnsubscribeTool(BaseMCPTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
         output_format = arguments.get("output_format", "json")
-        session_id = arguments.get("sub_id") or _capture_session_id()
+        session, owner = _capture_request_ownership()
+        if session is None or self._lifecycle_manager is None:
+            raise ValueError("MCP request context is required to unsubscribe")
+        owner = self._lifecycle_manager.require_owner(owner)
+        caller_session_id = _capture_session_id(session)
+        requested_session_id = arguments.get("sub_id")
+        if requested_session_id and requested_session_id != caller_session_id:
+            raise ValueError("sub_id does not belong to the current MCP connection")
+        session_id = caller_session_id
         selector = arguments.get("selector")
 
-        registry = get_subscription_registry()
-        if selector:
-            registry.unsubscribe(session_id, selector)
-        else:
-            registry.remove_session(session_id)
-
-        _SESSION_LOOPS.pop(session_id, None)
-        _SESSION_MIN_INTERVALS.pop(session_id, None)
-        _SESSION_SESSIONS.pop(session_id, None)
+        self._lifecycle_manager.unsubscribe(
+            owner, session, sub_id=requested_session_id, selector=selector
+        )
 
         response = build_response(
             verdict="INFO",
@@ -178,38 +186,31 @@ _SESSION_MIN_INTERVALS: dict[str, float] = {}
 _SESSION_SESSIONS: dict[str, Any] = {}
 
 
-def _capture_session_id() -> str:
-    """Return a stable session identifier for the current MCP request.
-
-    Uses the asyncio task identity as a stable proxy when no explicit session
-    object is available — each MCP connection runs in a dedicated task so this
-    is effectively per-connection.
-    """
-    try:
-        task = asyncio.current_task()
-        if task is not None:
-            return f"task-{id(task)}"
-    except RuntimeError:
-        pass
-    return "session-default"
+def _capture_session_id(session: Any) -> str:
+    """从已捕获的 ServerSession 生成连接级不透明句柄。"""
+    return f"session-{id(session)}"
 
 
 def _capture_session_obj() -> Any:
-    """Capture the MCP ServerSession from the current request context.
-
-    Must be called inside a tool handler (where request_context is populated).
-    Returns None if unavailable — the bridge degrades gracefully.
-    """
+    """从当前请求上下文捕获 MCP ServerSession；上下文缺失时返回 None。"""
     try:
-        # The current request context lives in a module-level contextvar in the
-        # MCP low-level server; accessing ``Server.request_context`` on the class
-        # returns the property descriptor, not the live context. Read the
-        # contextvar directly (populated for the duration of a tool-call handler).
+        # 低层 server 在工具处理期间填充此 contextvar。
         from mcp.server.lowlevel.server import request_ctx
 
         return request_ctx.get().session
     except Exception:
         return None
+
+
+def _capture_request_ownership() -> tuple[Any, Any]:
+    """一次读取 SDK 请求上下文中的 session 与 lifespan owner。"""
+    try:
+        from mcp.server.lowlevel.server import request_ctx
+
+        context = request_ctx.get()
+        return context.session, context.lifespan_context
+    except Exception:
+        return None, None
 
 
 def get_session_loop(session_id: str) -> asyncio.AbstractEventLoop | None:
