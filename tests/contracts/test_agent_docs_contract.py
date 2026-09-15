@@ -267,8 +267,8 @@ def test_cli_codemap_flag_count_matches_the_real_parser() -> None:
 
 _LESSONS_PATH = PROJECT_ROOT / "docs" / "AI_LESSONS.md"
 
-#: 基线 9 条加本批 C1/C1b 认证读取教训 2 条。
-_LESSON_ENTRY_COUNT = 11
+#: 基线 9 条加本批认证读取教训 3 条。
+_LESSON_ENTRY_COUNT = 12
 
 _LESSON_SECTIONS = ("### Context", "### Lessons learned", "### Required guardrail")
 _LESSON_TITLE = re.compile(r"^## \d{4}-\d{2} — \S")

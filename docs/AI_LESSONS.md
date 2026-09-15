@@ -369,3 +369,29 @@ LIKE、fuzzy 或 FTS 异常传播分支，在旧实现上也可能通过。
 拒绝查询，并对照普通缓存和 `tree_sitter_analyzer/index_snapshot_query.py` 的认证适配器行为；
 `tests/unit/test_certified_symbol_search_errors.py` 通过真实 search facade 固定公共适配器的严格参数、
 坐标降级与 FTS 特殊字符兼容边界。
+
+## 2026-09 — 源码扫描不能证明公共边界行为
+
+### Context
+
+PR #1491 将 symbol search 的实现拆到 `_execute_search` 后，一个测试仍用
+`inspect.getsource(execute)` 查找提示字符串，四个 CI 轴都失败。与此同时，三个 Windows
+正文恢复测试暴露了另一条平台边界：认证读取无条件调用只支持 POSIX `dir_fd` 与
+`O_NOFOLLOW` 的 reader，因此 Windows 健康索引也只能返回坐标。
+
+### Lessons learned
+
+1. **实现文本不是行为契约。** 重构可移动字符串而不改变输出；测试必须调用用户实际调用的
+   `execute` 边界并精确断言响应。
+2. **分支前提必须由 fixture 固定。** next step 测试要强制“有结果、未截断、无正文”，否则
+   空结果或正文 deterrent 会绕过目标分支形成假绿。
+3. **平台能力必须逐层闭合。** Windows 能捕获索引数据库并不代表它能认证工作区源码；恢复
+   正文还需要同样防重解析点、固定身份、限额和 deadline 的原生读取能力。
+
+### Required guardrail
+
+本次已由 `tests/unit/mcp/test_runtime_guidance_facade_names.py` 通过公开 `execute` 固定精确
+facade 提示。Windows 正文恢复仍未实现：未来的原生 reader 必须在
+`tests/unit/test_index_snapshot_windows.py` 中证明身份、路径、预算、deadline 与清理契约；现有
+`tests/unit/test_codegraph_navigate_tool.py`、`tests/unit/test_callers_callees_tools.py` 和
+`tests/unit/mcp/tools/test_call_path_enrich.py` 的正文恢复回归测试继续作为平台资格门槛。
