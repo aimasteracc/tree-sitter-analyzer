@@ -71,9 +71,7 @@ async def test_public_search_sql_failure_falls_back_without_source(
         )
         assert result["success"] is True
         assert legacy_calls == 1
-        assert all(
-            "code" not in row and "body" not in row for row in result["results"]
-        )
+        assert all("code" not in row and "body" not in row for row in result["results"])
         assert "no Read needed" not in result.get("next_step", "")
     finally:
         legacy_cache.close()
