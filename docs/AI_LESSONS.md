@@ -1,5 +1,35 @@
 # AI Lessons
 
+## 2026-09 — CI contracts must measure policy at the right granularity
+
+### Context
+
+A Dependabot pull request correctly moved `actions/upload-artifact` from major
+version 6 to 7, but a diagnostics behavior test required the incidental literal
+`v7.0.1` and rejected Dependabot's `v7` selector. A separate Windows CI run
+spent 8.76 seconds in a replay-policy test with an 8.0-second unit-test budget;
+the marker-policy check resolved the same parent directory once for every one
+of 1,000 sibling test targets.
+
+### Lessons learned
+
+1. A behavior test should assert the action identity and supported major
+   version it relies on; patch-selector policy belongs in a dedicated policy
+   contract when the repository actually requires it.
+2. Collection validation must cache work by the property being validated. The
+   pytest selection policy belongs to a target's parent directories, so sibling
+   files must share one resolution and configuration walk.
+3. Performance fixes must retain boundary checks. Caching the resolved parent
+   preserves traversal and symlink containment checks while removing duplicate
+   filesystem calls.
+
+### Required guardrail
+
+`tests/unit/test_classify_windows_pytest_failure.py` checks the diagnostics
+action at its compatibility boundary, and
+`tests/unit/test_verification_plan.py` requires 1,000 sibling targets to resolve
+their shared parent only once while retaining replay-policy invalidation.
+
 ## 2026-08 — Remove the legacy compact wire format
 
 ### Context

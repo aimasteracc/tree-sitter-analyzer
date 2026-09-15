@@ -213,7 +213,8 @@ def test_coverage_failure_retains_diagnostics(tmp_path: Path, profile: str) -> N
         step for step in steps if step.get("name") == "Upload failed test diagnostics"
     )
     assert artifact["if"] == "failure() && hashFiles('pytest-output.txt') != ''"
-    assert artifact["uses"] == "actions/upload-artifact@v7.0.1"
+    assert artifact["uses"].split("@", 1)[0] == "actions/upload-artifact"
+    assert artifact["uses"].split("@", 1)[1].split(".", 1)[0] == "v7"
     assert artifact["with"]["path"] == "pytest-output.txt"
     assert artifact["with"]["name"] == (
         "pytest-failure-${{ inputs.matrix-profile }}-${{ matrix.os }}"
