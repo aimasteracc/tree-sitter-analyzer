@@ -319,3 +319,28 @@ double hides the same class of drift the catch does. The tests that pin the
 hoist are `tests/unit/test_health_git_context.py`, and the equivalence check
 that the score is unchanged is its
 `test_the_scan_still_scores_git_hotspot_inside_a_repository`.
+
+## 2026-09 — 求值失败不是空结果
+
+### Context
+
+2026-09-14 核验已有 watcher、generation 路由和订阅是否构成可信反馈时，发现
+实际运行路径在 Hyphae 求值器外捕获所有 `Exception` 并返回 `[]`；随后 delta
+计算把临时缓存、解析或求值失败当作全部结果被删除，覆盖最后有效快照并更新时间。
+原实现上的针对性回归测试得到 7 个失败、4 个通过：直接收集路径抛出异常，而真实
+桥接路径的三类故障和缺少 `project_root` 都产生了伪删除推送。
+
+### Lessons learned
+
+1. **空集是业务结果，异常是运行状态。** 只有成功求值的空列表能证明真实删除；
+   把异常转换为空列表会同时伪造通知并破坏恢复时的比较基线。
+2. **“已有组件”不证明端到端语义。** watcher、版本路由和订阅各自存在，仍须从
+   保存回调的真实入口注入故障，观察实际快照、节流时间和推送行为。
+3. **故障隔离应放在单个工作单元边界。** 每个订阅对各自捕获普通异常，既保留其
+   最后有效状态，也允许同轮其他健康订阅继续求值；不能用整轮捕获掩盖注册表缺陷。
+
+### Required guardrail
+
+`tests/unit/mcp/test_watch_push_bridge.py` 从真实 `make_on_sync_callback` 路径注入
+缓存构造、选择器解析和 Evaluator 求值失败，并固定失败后相同结果不通知、
+新结果产生 delta、成功空集产生删除以及缺少项目根不改写状态的契约。
