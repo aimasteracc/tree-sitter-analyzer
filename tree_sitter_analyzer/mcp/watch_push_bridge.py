@@ -10,9 +10,8 @@ fires the bridge:
 4. Schedules ``send_resource_updated(uri)`` on the captured asyncio loop
    via ``asyncio.run_coroutine_threadsafe`` (thread → loop bridge).
 
-Delivery is **best-effort**: a dead session, a closed loop, or an
-evaluation error silently removes the subscription rather than blocking
-the watch loop.
+推送采用尽力而为语义：会话循环缺失或关闭时移除会话，发送失败只记录诊断，
+均不阻塞监听循环。求值失败保留最后有效快照，不能伪装成真实删除。
 """
 
 from __future__ import annotations
@@ -47,31 +46,29 @@ def _drive_subscriptions(
     sync_result: dict[str, Any],
 ) -> None:
     """Re-evaluate each subscription and push deltas.  Called on the watcher thread."""
+    if not project_root:
+        return
+
     from ..registry.singleton_registry import get_subscription_registry
 
     registry = get_subscription_registry()
 
     def _evaluate(session_id: str, selector: str) -> list[Any]:
-        if not project_root:
-            return []
-        try:
-            from ..ast_cache import ASTCache
-            from ..hyphae import Evaluator, parse
+        from ..ast_cache import ASTCache
+        from ..hyphae import Evaluator, parse
 
-            selector_ast = parse(selector)
-            cache = ASTCache(project_root)
-            evaluator = Evaluator(cache)
-            items = evaluator.eval(selector_ast)
-            return [
-                {
-                    "name": getattr(item, "name", str(item)),
-                    "file": getattr(item, "file", ""),
-                    "line": getattr(item, "line", 0),
-                }
-                for item in items
-            ]
-        except Exception:
-            return []
+        selector_ast = parse(selector)
+        cache = ASTCache(project_root)
+        evaluator = Evaluator(cache)
+        items = evaluator.eval(selector_ast)
+        return [
+            {
+                "name": getattr(item, "name", str(item)),
+                "file": getattr(item, "file", ""),
+                "line": getattr(item, "line", 0),
+            }
+            for item in items
+        ]
 
     def _push(session_id: str, selector: str) -> None:
         loop = get_session_loop(session_id)
@@ -112,7 +109,16 @@ def collect_changed_pairs(
     changed: list[tuple[str, str]] = []
     for session_id in registry.all_sessions():
         for selector in registry.subscriptions_for(session_id):
-            snapshot = evaluate(session_id, selector)
+            try:
+                snapshot = evaluate(session_id, selector)
+            except Exception:
+                logger.debug(
+                    "subscription evaluation failed for session %s selector %s",
+                    session_id,
+                    selector,
+                    exc_info=True,
+                )
+                continue
             added, removed = registry.compute_delta(session_id, selector, snapshot)
             if added or removed:
                 changed.append((session_id, selector))
