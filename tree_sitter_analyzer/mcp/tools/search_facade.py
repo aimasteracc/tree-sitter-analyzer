@@ -83,7 +83,9 @@ _SEARCH_DESCRIPTION = (
 )
 
 
-def build_search_facade(project_root: str | None = None) -> FacadeTool:
+def build_search_facade(
+    project_root: str | None = None, lifecycle_manager: Any | None = None
+) -> FacadeTool:
     """Construct the ``search`` facade wired to live inner tool instances.
 
     Imports are inlined to keep cold-start cost off the import path for callers
@@ -116,8 +118,8 @@ def build_search_facade(project_root: str | None = None) -> FacadeTool:
             # RFC-0001: reactive push — subscribe/unsubscribe to selector results.
             # Agent subscribes → receives send_resource_updated when results change
             # → re-reads tsa://hyphae/{selector} for the new set.
-            "subscribe": HyphaeSubscribeTool(project_root),
-            "unsubscribe": HyphaeUnsubscribeTool(project_root),
+            "subscribe": HyphaeSubscribeTool(project_root, lifecycle_manager),
+            "unsubscribe": HyphaeUnsubscribeTool(project_root, lifecycle_manager),
             # TQL — extended Hyphae DSL with temporal + depth-quantifier
             # pseudo-classes.
             "tql_schema": TqlSchemaTool(project_root),

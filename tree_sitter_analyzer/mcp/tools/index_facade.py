@@ -81,7 +81,9 @@ _INDEX_DESCRIPTION = (
 )
 
 
-def build_index_facade(project_root: str | None = None) -> FacadeTool:
+def build_index_facade(
+    project_root: str | None = None, lifecycle_manager: Any | None = None
+) -> FacadeTool:
     """Construct the ``index`` facade wired to live inner tool instances.
 
     Imports are inlined to keep cold-start cost off the import path for callers
@@ -102,7 +104,7 @@ def build_index_facade(project_root: str | None = None) -> FacadeTool:
         action_map={
             # -- read-only -------------------------------------------------
             "status": CodeGraphStatusTool(project_root, read_existing_default=True),
-            "cache": ASTCacheTool(project_root),
+            "cache": ASTCacheTool(project_root, lifecycle_manager),
             "schema": GetProjectSchemaTool(project_root),
             # -- writes on-disk index --------------------------------------
             "build": BuildProjectIndexTool(project_root),

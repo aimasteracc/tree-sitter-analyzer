@@ -319,3 +319,80 @@ double hides the same class of drift the catch does. The tests that pin the
 hoist are `tests/unit/test_health_git_context.py`, and the equivalence check
 that the score is unchanged is its
 `test_the_scan_still_scores_git_hotspot_inside_a_repository`.
+
+## 2026-09 — 求值失败不是空结果
+
+### Context
+
+2026-09-14 核验已有 watcher、generation 路由和订阅是否构成可信反馈时，发现
+实际运行路径在 Hyphae 求值器外捕获所有 `Exception` 并返回 `[]`；随后 delta
+计算把临时缓存、解析或求值失败当作全部结果被删除，覆盖最后有效快照并更新时间。
+原实现上的针对性回归测试得到 7 个失败、4 个通过：直接收集路径抛出异常，而真实
+桥接路径的三类故障和缺少 `project_root` 都产生了伪删除推送。
+
+### Lessons learned
+
+1. **空集是业务结果，异常是运行状态。** 只有成功求值的空列表能证明真实删除；
+   把异常转换为空列表会同时伪造通知并破坏恢复时的比较基线。
+2. **“已有组件”不证明端到端语义。** watcher、版本路由和订阅各自存在，仍须从
+   保存回调的真实入口注入故障，观察实际快照、节流时间和推送行为。
+3. **故障隔离应放在单个工作单元边界。** 每个订阅对各自捕获普通异常，既保留其
+   最后有效状态，也允许同轮其他健康订阅继续求值；不能用整轮捕获掩盖注册表缺陷。
+
+### Required guardrail
+
+`tests/unit/mcp/test_watch_push_bridge.py` 从真实 `make_on_sync_callback` 路径注入
+缓存构造、选择器解析和 Evaluator 求值失败，并固定失败后相同结果不通知、
+新结果产生 delta、成功空集产生删除以及缺少项目根不改写状态的契约。
+
+## 2026-09 — 请求任务不是连接身份
+
+### Context
+
+2026-09-14 检查 Hyphae 订阅所有权时，原实现使用当前 asyncio task 的地址生成
+`sub_id`，并在取不到 task 时回退到进程内共享字符串。同一真实 MCP 内存连接的
+连续工具请求由不同 task 处理，因而得到不同 ID；两个连接若调用恰在同一 task，
+又会得到相同 ID。原实现的针对性测试为 6 个失败、6 个通过，并复现了退订一个
+selector 就提前删除整个连接传输状态的行为。
+
+### Lessons learned
+
+1. **请求执行单元不等于连接所有者。** task、线程或默认字符串都不能代替 SDK
+   已提供的 `ServerSession`；所有权必须从真实请求上下文获得。
+2. **发布订阅有初始化边界。** watcher 能看到 registry 条目之前，session、loop
+   和间隔映射必须完整，否则同步观察者会把半初始化订阅当作死亡连接。
+3. **退订要先验证调用者，再按剩余 selector 清理。** 外来句柄必须在写入前拒绝；
+   只有最后一项或整会话退订才可移除连接级传输状态。
+
+### Required guardrail
+
+`tests/unit/mcp/test_hyphae_push_wiring.py` 使用 SDK `RequestContext` 和真实内存流，
+固定同连接跨请求 task 的稳定 ID、连接隔离、发布顺序、所有权拒绝、部分与最终
+清理及幂等行为；`tests/benchmarks/claims/test_reactive_push_e2e.py` 保证既有声明
+夹具也遵守请求上下文契约。
+
+## 2026-09 — 有连接身份不等于有运行所有权
+
+### Context
+
+2026-09-14 在 MCP SDK 1.17.0 的真实内存连接上扩展 reactive 生命周期测试时，
+R0/R1a 基线只固定了 session 身份，遗漏 application、run、project epoch 和 selector
+incarnation。两个相同 raw root 的应用会交叉求值，一个 run 关闭后仍留下订阅；旧结果
+或完成回调也可能推进 replacement。另一个测试把过期 ticket 送到入口，入口直接 no-op，
+却没有证明有效 owner 的真实 completion 路径执行过。
+
+### Lessons learned
+
+1. **资源相同不代表所有权相同。** application token、run owner、project epoch 和
+   selector incarnation 必须共同参与有效性判断；相同 root 不能合并应用边界。
+2. **启动状态仍携带清理责任。** watcher 已进入 starting 后不能按 stopped 处理；重绑
+   项目时必须保留启动所有权，直到原 daemon 和 callback 被确切撤销或完成清理。
+3. **入口拒绝只能证明失效路径。** 过期 ticket 在调度入口被丢弃不会执行 completion；
+   有效路径测试必须使用合法 owner、真实 SDK session 和 `Event` barrier 观察发送完成。
+
+### Required guardrail
+
+`rfcs/0035-trusted-reactive-feedback.md` 固定 R1b 的 ticket 与清理顺序；
+`tests/unit/mcp/test_hyphae_push_wiring.py` 固定 owner、epoch、incarnation 和有效发送路径，
+`tests/unit/mcp/test_mcp_server.py` 固定两应用、两 run、重绑及应用退出边界，
+`tests/unit/mcp/test_watch_push_bridge.py` 固定旧 callback 不污染 replacement。
