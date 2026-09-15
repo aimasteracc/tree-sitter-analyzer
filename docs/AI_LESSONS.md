@@ -9,7 +9,10 @@ version 6 to 7, but a diagnostics behavior test required the incidental literal
 `v7.0.1` and rejected Dependabot's `v7` selector. A separate Windows CI run
 spent 8.76 seconds in a replay-policy test with an 8.0-second unit-test budget;
 the marker-policy check resolved the same parent directory once for every one
-of 1,000 sibling test targets.
+of 1,000 sibling test targets. The first focused qualification for the cache
+fix omitted the existing verification-command contract; Windows CI then caught
+that its synthetic failure hook still targeted the leaf resolution removed by
+the optimization, rather than the parent resolution the new algorithm requires.
 
 ### Lessons learned
 
@@ -22,6 +25,9 @@ of 1,000 sibling test targets.
 3. Performance fixes must retain boundary checks. Caching the resolved parent
    preserves traversal and symlink containment checks while removing duplicate
    filesystem calls.
+4. A focused set derived only from changed-file suggestions can miss callers
+   whose contracts depend on an internal operation. Search the changed symbol's
+   direct tests and include their existing contract file in qualification.
 
 ### Required guardrail
 
@@ -29,6 +35,9 @@ of 1,000 sibling test targets.
 action at its compatibility boundary, and
 `tests/unit/test_verification_plan.py` requires 1,000 sibling targets to resolve
 their shared parent only once while retaining replay-policy invalidation.
+`tests/unit/mcp/test_verification_command.py` injects both supported resolution
+exceptions at the required parent-resolution boundary and verifies fail-closed
+command generation.
 
 ## 2026-08 — Remove the legacy compact wire format
 
