@@ -1,8 +1,13 @@
 """Tests for watch_start/watch_stop/watch_status modes in ASTCacheTool."""
 
+import asyncio
+import threading
+from unittest.mock import Mock
+
 import pytest
 
 from tree_sitter_analyzer.ast_cache import ASTCache
+from tree_sitter_analyzer.mcp.subscription_lifecycle import SubscriptionLifecycleManager
 from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
 
 
@@ -24,7 +29,8 @@ def cache(project):
 
 @pytest.fixture
 def tool(project):
-    t = ASTCacheTool(str(project))
+    manager = SubscriptionLifecycleManager(str(project))
+    t = ASTCacheTool(str(project), manager)
     yield t
     if t._watcher is not None and t._watcher.is_running():  # noqa: SLF001 — teardown cleanup
         t._watcher.stop()  # noqa: SLF001
@@ -152,7 +158,6 @@ async def test_watchdog_start_reconciles_existing_sources_without_event(
     tool, monkeypatch, stop_during_start
 ):
     # #1405：先启用原生观察器，再异步对齐；无需伪造文件事件。
-    import asyncio
     import sys
     from types import SimpleNamespace
 
@@ -188,8 +193,6 @@ async def test_watchdog_start_reconciles_existing_sources_without_event(
 @pytest.mark.asyncio
 async def test_watch_stop_does_not_claim_success_while_sync_is_alive(tool, monkeypatch):
     # #1405：真实后台任务未退出时不得返回 stopped，调用方仍可查询并重试。
-    import threading
-
     from tree_sitter_analyzer.file_watcher import FileWatcherDaemon
 
     watcher = FileWatcherDaemon(tool.get_cache(), debounce=0)
@@ -209,22 +212,294 @@ async def test_watch_stop_does_not_claim_success_while_sync_is_alive(tool, monke
         assert entered.wait(3)
         with pytest.raises(TimeoutError, match="background work is still running"):
             await tool.execute({"mode": "watch_stop"})
+        assert tool._watcher is watcher
+        assert tool._watcher_pending_stop is True
+        with pytest.raises(TimeoutError, match="previous.*still"):
+            await tool.execute({"mode": "watch_start"})
         status = await tool.execute({"mode": "watch_status"})
         assert status["running"] is True
         release.set()
         stop(timeout=3)
         result = await tool.execute({"mode": "watch_stop"})
         assert result["status"] == "not_running"
+        status = await tool.execute({"mode": "watch_status"})
+        assert status["watcher_created"] is True
+        assert status["running"] is False
     finally:
         release.set()
         stop(timeout=3)
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("application_shutdown", [False, True])
+async def test_stop_exception_retains_pending_daemon(
+    tool, monkeypatch, application_shutdown
+):
+    """stop 抛错且 daemon 仍活时必须保留所有权并拒绝 restart。"""
+    await tool.execute({"mode": "watch_start"})
+    watcher, stop = tool._watcher, tool._watcher.stop
+    failure = RuntimeError("stop failed")
+    monkeypatch.setattr(watcher, "stop", Mock(side_effect=failure))
+    try:
+        with pytest.raises(RuntimeError, match="stop failed") as caught:
+            if application_shutdown:
+                tool.shutdown_application_watcher()
+            else:
+                await tool.execute({"mode": "watch_stop"})
+        assert caught.value is failure
+        assert tool._watcher is watcher
+        assert tool._watcher_pending_stop is True
+        with pytest.raises(TimeoutError, match="previous.*still"):
+            await tool.execute({"mode": "watch_start"})
+    finally:
+        monkeypatch.setattr(watcher, "stop", stop)
+        stop()
+
+
+@pytest.mark.asyncio
+async def test_stop_join_window_rejects_replacement_start(tool, monkeypatch):
+    """旧 daemon stop/join 未返回前不能报告 already_running 或接管新启动。"""
+    await tool.execute({"mode": "watch_start"})
+    watcher, stop = tool._watcher, tool._watcher.stop
+    entered, release = threading.Event(), threading.Event()
+
+    def paused_stop():
+        entered.set()
+        assert release.wait(3)
+        stop()
+
+    monkeypatch.setattr(watcher, "stop", paused_stop)
+    task = asyncio.create_task(
+        asyncio.to_thread(asyncio.run, tool.execute({"mode": "watch_stop"}))
+    )
+    assert await asyncio.to_thread(entered.wait, 3)
+    with pytest.raises(TimeoutError, match="shutdown.*still"):
+        await tool.execute({"mode": "watch_start"})
+    with pytest.raises(TimeoutError, match="already in progress"):
+        tool.shutdown_application_watcher()
+    release.set()
+    assert (await task)["status"] == "stopped"
+    monkeypatch.setattr(watcher, "stop", stop)
+    assert (await tool.execute({"mode": "watch_start"}))["status"] == "started"
+    assert tool._watcher is not watcher
+
+
+@pytest.mark.asyncio
+async def test_watch_start_failure_revokes_token_and_retains_partial_daemon(
+    tool, monkeypatch
+):
+    """daemon 部分启动后失败时撤销 token，并保留实例等待显式清理。"""
+    from tree_sitter_analyzer.mcp.tools import ast_cache_tool
+
+    class PartialDaemon:
+        poll_interval = 1.0
+        backend = "poll"
+
+        def __init__(self, *_args, **_kwargs):
+            self.running = False
+
+        def start(self):
+            self.running = True
+            raise RuntimeError("start failed")
+
+        def is_running(self):
+            return self.running
+
+        def stop(self):
+            self.running = False
+
+    partial = PartialDaemon()
+    monkeypatch.setattr(ast_cache_tool, "FileWatcherDaemon", lambda *_a, **_kw: partial)
+    issued = []
+    issue = tool._lifecycle_manager.issue_watch_token
+
+    def capture_token(root):
+        token = issue(root)
+        issued.append(token)
+        return token
+
+    monkeypatch.setattr(tool._lifecycle_manager, "issue_watch_token", capture_token)
+    try:
+        manager = tool._lifecycle_manager
+        async with manager.lifespan(None) as owner:
+            manager.subscribe(
+                owner, object(), asyncio.get_running_loop(), "selector:A", 0
+            )
+            with pytest.raises(RuntimeError, match="start failed"):
+                await tool.execute({"mode": "watch_start"})
+            assert len(issued) == 1
+            assert manager.snapshot_for_watch(issued[0]) == []
+            assert tool._watch_token is None
+            assert tool._watcher is partial
+            assert tool._watcher_pending_stop is True
+            with pytest.raises(TimeoutError, match="previous.*still"):
+                await tool.execute({"mode": "watch_start"})
+    finally:
+        partial.stop()
+
+
+@pytest.mark.asyncio
+async def test_cache_construction_failure_does_not_poison_next_start(tool, monkeypatch):
+    """cache 构造失败必须释放预约与 token，使后续启动成功。"""
+    from tree_sitter_analyzer.mcp.tools import ast_cache_tool
+
+    real_cache = ast_cache_tool.ASTCache
+    monkeypatch.setattr(
+        ast_cache_tool, "ASTCache", Mock(side_effect=RuntimeError("cache failed"))
+    )
+    with pytest.raises(RuntimeError, match="cache failed"):
+        await tool.execute({"mode": "watch_start"})
+    assert tool._watch_startup is None
+    monkeypatch.setattr(ast_cache_tool, "ASTCache", real_cache)
+    assert (await tool.execute({"mode": "watch_start"}))["status"] == "started"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["watch_start", "stats"])
+async def test_cache_build_rebind_cannot_mix_root_identity(
+    tool, tmp_path, monkeypatch, mode
+):
+    """普通访问或启动构造的旧 root cache 都不能冒充新 root 来源。"""
+    from tree_sitter_analyzer.mcp.tools import ast_cache_tool
+
+    built, release = threading.Event(), threading.Event()
+    real_cache = ast_cache_tool.ASTCache
+
+    def paused_cache(root):
+        cache = real_cache(root)
+        built.set()
+        assert release.wait(3)
+        return cache
+
+    monkeypatch.setattr(ast_cache_tool, "ASTCache", paused_cache)
+    task = asyncio.create_task(
+        asyncio.to_thread(asyncio.run, tool.execute({"mode": mode}))
+    )
+    assert await asyncio.to_thread(built.wait, 3)
+    target = tmp_path / "new-root"
+    target.mkdir()
+    tool._lifecycle_manager.rebind_project(str(target))
+    tool.set_project_path(str(target))
+    release.set()
+    with pytest.raises(TimeoutError, match="[Pp]roject.*changed"):
+        await task
+    assert tool._cache is None
+    assert tool._watcher is None
+    if mode == "stats":
+        result = await tool.execute({"mode": "watch_start"})
+        assert result["status"] == "started"
+        assert tool.get_cache().project_root == str(target.resolve())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stop_remains_alive", [False, True])
+async def test_rebind_while_candidate_starting_cannot_orphan_daemon(
+    tool, tmp_path, monkeypatch, stop_remains_alive
+):
+    """候选 daemon 发布后 rebind 必须保留所有权并由 starter 收尾。"""
+    from tree_sitter_analyzer.file_watcher import FileWatcherDaemon
+
+    entered, release = threading.Event(), threading.Event()
+    real_start = FileWatcherDaemon.start
+    real_stop = FileWatcherDaemon.stop
+
+    def paused_start(watcher):
+        entered.set()
+        assert release.wait(3)
+        real_start(watcher)
+
+    monkeypatch.setattr(FileWatcherDaemon, "start", paused_start)
+    if stop_remains_alive:
+        monkeypatch.setattr(FileWatcherDaemon, "stop", lambda _watcher: None)
+    task = asyncio.create_task(
+        asyncio.to_thread(asyncio.run, tool.execute({"mode": "watch_start"}))
+    )
+    assert await asyncio.to_thread(entered.wait, 3)
+    candidate = tool._watcher
+    target = tmp_path / "new-root"
+    target.mkdir()
+    tool._lifecycle_manager.rebind_project(str(target))
+    tool.set_project_path(str(target))
+    assert tool._watcher is candidate
+    with pytest.raises(TimeoutError, match="startup is still pending"):
+        await tool.execute({"mode": "watch_stop"})
+    with pytest.raises(TimeoutError, match="startup.*still"):
+        await tool.execute({"mode": "watch_start"})
+    release.set()
+    with pytest.raises(TimeoutError, match="[Pp]roject.*changed"):
+        await task
+    assert candidate.is_running() is stop_remains_alive
+    assert tool._watcher is (candidate if stop_remains_alive else None)
+    assert tool._watcher_pending_stop is stop_remains_alive
+    if stop_remains_alive:
+        monkeypatch.setattr(FileWatcherDaemon, "stop", real_stop)
+        real_stop(candidate)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("winner_finishes", [True, False])
+async def test_competing_watch_starts_keep_only_winner_daemon(
+    tool, monkeypatch, winner_finishes
+):
+    """签 token 后落后的 starter 不能覆盖已成功启动的 winner。"""
+    from tree_sitter_analyzer.mcp.tools import ast_cache_tool
+
+    manager, issue = tool._lifecycle_manager, tool._lifecycle_manager.issue_watch_token
+    first_issued, release = threading.Event(), threading.Event()
+    winner_constructing, release_winner = threading.Event(), threading.Event()
+    issued, daemons = [], []
+
+    def paused_first_issue(root):
+        token = issue(root)
+        issued.append(token)
+        if len(issued) == 1:
+            first_issued.set()
+            assert release.wait(3)
+        return token
+
+    real_daemon = ast_cache_tool.FileWatcherDaemon
+
+    def record_daemon(*args, **kwargs):
+        if not winner_finishes:
+            winner_constructing.set()
+            assert release_winner.wait(3)
+        daemon = real_daemon(*args, **kwargs)
+        daemons.append(daemon)
+        return daemon
+
+    monkeypatch.setattr(manager, "issue_watch_token", paused_first_issue)
+    monkeypatch.setattr(ast_cache_tool, "FileWatcherDaemon", record_daemon)
+    loser = asyncio.create_task(
+        asyncio.to_thread(asyncio.run, tool.execute({"mode": "watch_start"}))
+    )
+    assert await asyncio.to_thread(first_issued.wait, 3)
+    winner_task = asyncio.create_task(
+        asyncio.to_thread(asyncio.run, tool.execute({"mode": "watch_start"}))
+    )
+    if winner_finishes:
+        winner_result = await winner_task
+    else:
+        assert await asyncio.to_thread(winner_constructing.wait, 3)
+    release.set()
+    if winner_finishes:
+        loser_result = await loser
+        assert loser_result["status"] == "already_running"
+    else:
+        with pytest.raises(TimeoutError, match="changed during startup"):
+            await loser
+        release_winner.set()
+        winner_result = await winner_task
+    winner, winner_token = tool._watcher, tool._watch_token
+    assert winner_result["status"] == "started"
+    assert tool._watcher is winner and tool._watch_token is winner_token
+    assert len(daemons) == 1 and daemons[0].is_running() is True
+    assert manager.is_watch_token_current(issued[0]) is False
+    assert manager.is_watch_token_current(issued[1]) is True
+
+
+@pytest.mark.asyncio
 async def test_project_rebind_retains_unfinished_watcher(tool, tmp_path, monkeypatch):
     # #1405：项目切换钩子不能遗失尚未退出的后台任务或提前建立新项目缓存。
-    import threading
-
     from tree_sitter_analyzer.file_watcher import FileWatcherDaemon
 
     old_cache = tool.get_cache()
@@ -261,3 +536,95 @@ async def test_project_rebind_retains_unfinished_watcher(tool, tmp_path, monkeyp
         release.set()
         stop(timeout=3)
         old_cache.close()
+
+
+@pytest.mark.asyncio
+async def test_2026_09_14_watch_restart_revokes_old_callback(tool, monkeypatch):
+    """同 root stop/restart 后，manager 只认可新 watcher token。"""
+    from tree_sitter_analyzer.mcp import watch_push_bridge
+
+    manager = tool._lifecycle_manager
+    session = object()
+    async with manager.lifespan(None) as owner:
+        manager.subscribe(owner, session, asyncio.get_running_loop(), "selector:A", 0)
+        await tool.execute({"mode": "watch_start"})
+        old_callback = tool._watcher._on_sync
+        await tool.execute({"mode": "watch_stop"})
+        await tool.execute({"mode": "watch_start"})
+        new_callback = tool._watcher._on_sync
+        calls: list[str | None] = []
+
+        def record_valid(root, _result, lifecycle, token):
+            if lifecycle.snapshot_for_watch(token):
+                calls.append(root)
+
+        monkeypatch.setattr(watch_push_bridge, "_drive_subscriptions", record_valid)
+        try:
+            old_callback({})
+            new_callback({})
+        finally:
+            await tool.execute({"mode": "watch_stop"})
+    assert calls == [str(tool.project_root)]
+
+
+@pytest.mark.asyncio
+async def test_dead_watcher_restart_revokes_old_callback(tool, monkeypatch):
+    """watcher 自行退出后，restart 必须先撤销旧 token。"""
+    from tree_sitter_analyzer.mcp import watch_push_bridge
+
+    manager = tool._lifecycle_manager
+    session = object()
+    async with manager.lifespan(None) as owner:
+        manager.subscribe(owner, session, asyncio.get_running_loop(), "selector:A", 0)
+        await tool.execute({"mode": "watch_start"})
+        old_callback = tool._watcher._on_sync
+        tool._watcher.stop()
+        await tool.execute({"mode": "watch_start"})
+        new_callback = tool._watcher._on_sync
+        calls: list[str | None] = []
+
+        def record_valid(root, _result, lifecycle, token):
+            if lifecycle.snapshot_for_watch(token):
+                calls.append(root)
+
+        monkeypatch.setattr(watch_push_bridge, "_drive_subscriptions", record_valid)
+        try:
+            old_callback({})
+            new_callback({})
+        finally:
+            await tool.execute({"mode": "watch_stop"})
+    assert calls == [str(tool.project_root)]
+
+
+@pytest.mark.asyncio
+async def test_2026_09_14_same_root_rebind_revokes_old_epoch_callback(
+    tool, monkeypatch
+):
+    """同 root rebind 也增加 epoch，使旧 callback 失效而新 callback 可工作。"""
+    from tree_sitter_analyzer.mcp import watch_push_bridge
+
+    manager = tool._lifecycle_manager
+    session = object()
+    async with manager.lifespan(None) as owner:
+        manager.subscribe(owner, session, asyncio.get_running_loop(), "selector:A", 0)
+        await tool.execute({"mode": "watch_start"})
+        old_callback = tool._watcher._on_sync
+        target = tool.project_root
+        manager.rebind_project(str(target))
+        tool.set_project_path(str(target))
+        manager.subscribe(owner, session, asyncio.get_running_loop(), "selector:B", 0)
+        await tool.execute({"mode": "watch_start"})
+        new_callback = tool._watcher._on_sync
+        calls: list[str | None] = []
+
+        def record_valid(root, _result, lifecycle, token):
+            if lifecycle.snapshot_for_watch(token):
+                calls.append(root)
+
+        monkeypatch.setattr(watch_push_bridge, "_drive_subscriptions", record_valid)
+        try:
+            old_callback({})
+            new_callback({})
+        finally:
+            await tool.execute({"mode": "watch_stop"})
+    assert calls == [str(target)]

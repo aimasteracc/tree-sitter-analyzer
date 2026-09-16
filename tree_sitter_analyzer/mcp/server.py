@@ -95,11 +95,12 @@ def _resolve_relative_path(base_root: str, file_path: str) -> str:
 
 def _create_tool_registry(
     project_root: str | None,
+    lifecycle_manager: Any | None = None,
 ) -> tuple[list[Any], dict[str, Any]]:
     """Delegates to the single-source registry in ``_tool_registry.py``."""
     from ._tool_registry import create_tool_registry
 
-    return create_tool_registry(project_root)
+    return create_tool_registry(project_root, lifecycle_manager)
 
 
 class TreeSitterAnalyzerMCPServer:
@@ -132,6 +133,9 @@ class TreeSitterAnalyzerMCPServer:
         self._registry_built = False
         self._tool_instances: list[Any] | None = None
         self._tools: dict[str, Any] | None = None
+        from .subscription_lifecycle import SubscriptionLifecycleManager
+
+        self.subscription_lifecycle = SubscriptionLifecycleManager(project_root)
 
         _log_safely(logger.info, "Starting MCP server initialization...")
 
@@ -185,7 +189,9 @@ class TreeSitterAnalyzerMCPServer:
         """
         if self._registry_built:
             return
-        self._tool_instances, self._tools = _create_tool_registry(self._project_root)
+        self._tool_instances, self._tools = _create_tool_registry(
+            self._project_root, self.subscription_lifecycle
+        )
         self._registry_built = True
 
     def is_initialized(self) -> bool:
@@ -273,7 +279,13 @@ class TreeSitterAnalyzerMCPServer:
         if not MCP_AVAILABLE:
             raise RuntimeError("MCP library not available. Please install mcp package.")
 
-        server: Server = adapt_server(Server(self.name, version=self.version))
+        server: Server = adapt_server(
+            Server(
+                self.name,
+                version=self.version,
+                lifespan=self.subscription_lifecycle.lifespan,
+            )
+        )
 
         # Register tools, resources, and prompts
         register_tools(server, self)
@@ -290,6 +302,7 @@ class TreeSitterAnalyzerMCPServer:
 
     def set_project_path(self, project_path: str) -> None:
         """Set the project path for all components."""
+        self.subscription_lifecycle.rebind_project(project_path)
         get_shared_cache().clear()
         # Keep the deferred-build root in sync so a not-yet-built registry is
         # constructed against the new path; already-built tools are rebound
@@ -421,24 +434,48 @@ class TreeSitterAnalyzerMCPServer:
 
     async def run(self) -> None:
         """Run the MCP server via stdio."""
-        if not MCP_AVAILABLE:
-            raise RuntimeError("MCP library not available. Please install mcp package.")
-        server = self.create_server()
-        options = build_initialization_options(
-            self.name,
-            self.version,
-            InitializationOptions,
-        )
-        _log_safely(logger.info, "Starting MCP server: %s v%s", self.name, self.version)
         _log_err = logger.error
         _log_inf = logger.info
+        primary_error: BaseException | None = None
+        shutdown_error: Exception | None = None
         try:
+            if not MCP_AVAILABLE:
+                raise RuntimeError(
+                    "MCP library not available. Please install mcp package."
+                )
+            server = self.create_server()
+            options = build_initialization_options(
+                self.name,
+                self.version,
+                InitializationOptions,
+            )
+            _log_safely(
+                logger.info, "Starting MCP server: %s v%s", self.name, self.version
+            )
             await self._run_server_loop(server, options)
-        except Exception as e:
+        except BaseException as e:
             _log_safely(_log_err, _MSG_SERVER_ERROR, e)
-            raise
+            primary_error = e
         finally:
+            try:
+                self._shutdown_application_watcher()
+            except Exception as e:
+                shutdown_error = e
+                _log_safely(_log_err, "MCP watcher shutdown failed: %s", e)
             _log_safely(_log_inf, _MSG_SHUTTING_DOWN)
+        if primary_error is not None:
+            raise primary_error
+        if shutdown_error is not None:
+            raise shutdown_error
+
+    def _shutdown_application_watcher(self) -> None:
+        """停止本应用已物化的 watcher，不触发延迟 registry 构造。"""
+        if not self._registry_built or self._tools is None:
+            return
+        index = self._tools.get("index")
+        cache = getattr(index, "action_map", {}).get("cache")
+        if cache is not None:
+            cache.shutdown_application_watcher()
 
 
 def parse_mcp_args(args: list[str] | None = None) -> argparse.Namespace:
