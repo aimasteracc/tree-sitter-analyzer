@@ -138,10 +138,11 @@ class TestBaseMCPToolContract:
 
 
 class TestUniversalOutputFormatParam:
-    """#651: output_format is a universal envelope param. enforce_strict_params
-    must accept it even when a tool's schema omits it (modification_guard and
-    batch_search rejected it with ValueError), so an agent can set it uniformly
-    across every call — while still rejecting genuinely-unknown keys."""
+    """#651：output_format 是通用信封参数。
+
+    即使工具模式没有声明它，enforce_strict_params 也必须接受该参数，让代理能在
+    所有调用中统一设置输出格式，同时继续拒绝真正未知的键。
+    """
 
     def test_output_format_accepted_when_schema_omits_it(self) -> None:
         from tree_sitter_analyzer.mcp.utils.schema_strictness import (

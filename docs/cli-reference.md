@@ -264,54 +264,15 @@ uv run tree-sitter-analyzer --filter-help
 
 > **⚠️ Note:** `--table` and `--query-key` are mutually exclusive. Use `--query-key` with `--filter` for filtering.
 
-## File System Operations
+## Search and Discovery
 
-### List Files (fd-based)
-
-```bash
-# List all files in current directory
-uv run list-files .
-
-# Filter by extension
-uv run list-files . --extensions java
-
-# Filter by pattern and type
-uv run list-files . --pattern "test_*" --extensions py --types f
-
-# Filter by size and modification time
-uv run list-files . --types f --size "+1k" --changed-within "1week"
-
-# Exclude directories
-uv run list-files . --exclude "node_modules" --exclude "__pycache__"
-```
-
-### Search Content (ripgrep-based)
+TSA no longer installs or wraps fd/ripgrep. Build the project index once, use symbol/graph/AST queries for candidate discovery, then use bounded source trace when current text evidence is required. For arbitrary unindexed text, use the host agent's search tool.
 
 ```bash
-# Basic content search
-uv run search-content --roots . --query "class.*extends" --include-globs "*.java"
-
-# Search with context
-uv run search-content --roots tests --query "TODO|FIXME" --context-before 2 --context-after 2
-
-# Case-insensitive search
-uv run search-content --files examples/BigService.java --query "public.*method" --case insensitive
-
-# Search multiple directories
-uv run search-content --roots src tests --query "import" --include-globs "*.py"
-```
-
-### Two-Stage Search (fd + ripgrep)
-
-```bash
-# Find files then search content
-uv run find-and-grep --roots . --query "@SpringBootApplication" --extensions java
-
-# With file and content limits
-uv run find-and-grep --roots examples --query "import.*SQLException" --extensions java --file-limit 10 --max-count 5
-
-# With JSON output
-uv run find-and-grep --roots . --query "public.*static.*void" --extensions java --types f --size "+1k" --output-format json
+uv run tree-sitter-analyzer --full-index --format json
+uv run tree-sitter-analyzer --symbol-search UserService --format json
+uv run tree-sitter-analyzer --codegraph-sitemap --codegraph-sitemap-mode flat --format json
+uv run tree-sitter-analyzer --trace-impact --trace-impact-symbol authenticate --format json
 ```
 
 ## Information Commands
@@ -366,8 +327,8 @@ uv run tree-sitter-analyzer --compare-sql-profiles windows-3.13 linux-3.10
 # Code analysis to JSON
 uv run tree-sitter-analyzer examples/sample.py --advanced --output-format json
 
-# Search results to JSON
-uv run find-and-grep --roots . --query "def " --extensions py --output-format json
+# Structured source query to JSON
+uv run tree-sitter-analyzer examples/sample.py --query-key functions --output-format json
 ```
 
 ### Text Output
@@ -459,19 +420,17 @@ uv run tree-sitter-analyzer examples/BigService.java --advanced
 ### Complete Workflow Example
 
 ```bash
-# 1. Check what files exist
-uv run list-files . --extensions java --types f
+# 1. Build the index and discover a symbol
+uv run tree-sitter-analyzer --full-index --format json
+uv run tree-sitter-analyzer --symbol-search UserService --format json
 
-# 2. Search for specific content
-uv run search-content --roots . --query "class.*Service" --include-globs "*.java"
-
-# 3. Analyze found file
+# 2. Analyze the selected file
 uv run tree-sitter-analyzer src/UserService.java --summary
 
-# 4. Get detailed structure
+# 3. Get detailed structure
 uv run tree-sitter-analyzer src/UserService.java --table full
 
-# 5. Extract specific method
+# 4. Extract specific method
 uv run tree-sitter-analyzer src/UserService.java --query-key methods --filter "name=authenticate"
 ```
 

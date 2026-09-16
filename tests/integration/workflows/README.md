@@ -111,7 +111,7 @@ These tests validate **all requirements** (1.1-7.5) and ensure:
 - ✅ All-extras installation flag usage
 - ✅ Quality check presence and consistency
 - ✅ Coverage configuration standardization
-- ✅ System dependencies installation (fd, ripgrep)
+- ✅ Git and locked Python environment verification
 - ✅ Test matrix consistency
 - ✅ Pytest marker consistency
 - ✅ Deployment dependency on tests

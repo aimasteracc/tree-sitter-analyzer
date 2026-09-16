@@ -186,14 +186,7 @@ tree-sitter-analyzer --safe-to-edit <file>        # 风险时拒绝
 tree-sitter-analyzer --uml class                  # Mermaid UML class 图
 ```
 
-该软件包还保留了独立的文件列表辅助工具：
-
-```bash
-list-files <dir>          # fd 风格的文件发现
-```
-
-`search-content` 和 `find-and-grep` 已在 develop 分支中移除。详见
-[迁移指南](docs/MIGRATION.md) 和 [`CLI codemap`](docs/CODEMAPS/cli.md)。
+TSA 在进程内完成索引检索和有界的实时源码核验，不需要安装 ripgrep 或 fd。已删除搜索包装器的迁移方式见[迁移指南](docs/MIGRATION.md)和[`CLI codemap`](docs/CODEMAPS/cli.md)。
 
 ---
 

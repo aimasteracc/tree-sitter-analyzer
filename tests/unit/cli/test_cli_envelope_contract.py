@@ -500,27 +500,17 @@ class TestR37afCLIEnvelopeContract:
         assert captured.get("common_queries") == ["functions", "classes", "imports"]
 
     def test_mcp_command_error_envelope_has_top_verdict(self):
-        """r37ah: MCP-bridged commands' error envelope must mirror verdict.
-
-        ``_build_validation_error_envelope`` (mcp_commands.py) used to
-        set ``agent_summary.verdict='ERROR'`` but leave top-level
-        ``verdict`` as ``None``. CLI envelope gate caught the drift
-        on ``--batch-search`` with no queries. The fix adds top-level
-        ``verdict='ERROR'``.
-
-        NOTE: this is the **error** path — the assertion shape differs
-        from happy-path. Top-level keys present + verdict mirrored.
-        """
+        """MCP 桥接命令的错误封包必须同步顶层 verdict。"""
         from tree_sitter_analyzer.cli.commands.mcp_commands import (
             _build_error_envelope,
         )
 
         envelope = _build_error_envelope(
-            "batch_search",
-            "Run 2-10 ripgrep searches in parallel",
+            "codegraph_autoindex",
+            "Invalid auto-index request",
             ValueError("missing required field"),
         )
-        # Required keys present
+        # 必需键必须完整保留。
         for key in (
             "success",
             "summary_line",

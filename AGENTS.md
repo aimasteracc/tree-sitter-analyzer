@@ -70,7 +70,7 @@ Any change touching one of these registries MUST update the corresponding `docs/
 | Surface | Codemap |
 |---|---|
 | `tree_sitter_analyzer/mcp/_tool_registry.py` — the registered tool-name set | `docs/CODEMAPS/mcp-tools.md` |
-| `tree_sitter_analyzer/cli/**/*.py` — the whole `add_argument` flag set, including the `find-and-grep` / `list-files` / `search-content` console scripts | `docs/CODEMAPS/cli.md` |
+| `tree_sitter_analyzer/cli/**/*.py` — the whole `add_argument` flag set plus installed console-script entry points | `docs/CODEMAPS/cli.md` |
 | `tree_sitter_analyzer/languages/<lang>_plugin/*` | `docs/CODEMAPS/languages.md` |
 | `tree_sitter_analyzer/formatters/*` | `docs/CODEMAPS/formatters.md` |
 

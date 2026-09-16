@@ -39,7 +39,7 @@ FAILED tests/test_module.py::test_function - AssertionError: ...
 1. Code changes introduced bugs
 2. Test environment differs from local environment
 3. Platform-specific issues (Windows/macOS/Linux)
-4. Missing system dependencies (fd, ripgrep)
+4. Missing Git or an incomplete locked Python environment
 5. Race conditions in async tests
 
 ### Resolution Steps
@@ -69,17 +69,11 @@ uv run pytest tests/ -v -m "not requires_unix"
 uv run pytest tests/ -v -m "not requires_linux"
 ```
 
-#### Step 3: Verify System Dependencies
+#### Step 3: Verify the Locked Environment
 
 ```bash
-# Check if fd is installed
-fd --version
-
-# Check if ripgrep is installed
-rg --version
-
-# Run tests that require these tools
-uv run pytest tests/ -v -m "requires_fd or requires_ripgrep"
+git --version
+uv sync --locked --all-extras --group dev
 ```
 
 #### Step 4: Check for Async Issues
@@ -221,91 +215,9 @@ git push
 
 ---
 
-## System Dependency Installation Failures
+## System Dependency Verification Failures
 
-### Symptom
-
-System dependencies (fd, ripgrep) fail to install during workflow execution.
-
-### Error Messages
-
-```
-E: Unable to locate package fd-find
-```
-
-```
-Error: The process '/usr/bin/apt-get' failed with exit code 100
-```
-
-```
-Error: brew install fd failed
-```
-
-### Root Causes
-
-1. Package manager unavailable or outdated
-2. Network connectivity issues
-3. Package name differences across platforms
-4. Insufficient permissions
-
-### Resolution Steps
-
-#### Step 1: Check Platform-Specific Installation
-
-**Linux (Ubuntu)**:
-```bash
-sudo apt-get update
-sudo apt-get install -y fd-find ripgrep
-sudo ln -sf /usr/bin/fdfind /usr/bin/fd
-```
-
-**macOS**:
-```bash
-brew install fd ripgrep
-```
-
-**Windows**:
-```powershell
-choco install fd ripgrep -y
-```
-
-#### Step 2: Verify Installation
-
-```bash
-# Check fd
-fd --version
-
-# Check ripgrep
-rg --version
-
-# Test functionality
-fd "*.py" .
-rg "import" .
-```
-
-#### Step 3: Update Workflow if Needed
-
-If package names or installation methods change, update `.github/actions/setup-system/action.yml`:
-
-```yaml
-- name: Install system dependencies (Linux)
-  if: runner.os == 'Linux'
-  run: |
-    sudo apt-get update
-    sudo apt-get install -y fd-find ripgrep
-    sudo ln -sf /usr/bin/fdfind /usr/bin/fd
-```
-
-#### Step 4: Retry Workflow
-
-Re-run the failed workflow after verifying the installation steps are correct.
-
-### Prevention
-
-- Pin package versions when possible
-- Add retry logic for network-dependent steps
-- Test installation steps on all platforms
-- Monitor package manager updates
+Core CI verifies Git and the locked Python environment. If setup fails, confirm `git --version`, rerun `uv sync --locked --all-extras --group dev`, and inspect network or permission errors from those exact steps. fd/ripgrep are not installed by core CI.
 
 ---
 
@@ -825,9 +737,8 @@ uv run pytest tests/ -v
 # 2. Run quality checks
 uv run pre-commit run --all-files
 
-# 3. Verify system dependencies
-fd --version
-rg --version
+# 3. Verify the required system dependency
+git --version
 
 # 4. Test build
 uv build

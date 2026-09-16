@@ -216,7 +216,7 @@ def test_codemap_sync_gate_watches_the_whole_cli_flag_surface() -> None:
     """Zero add_argument flags under cli/** may fall outside the watched filter.
 
     Before the gate repair, 82 of 405 add_argument calls were unwatched: the
-    find-and-grep / list-files / search-content console scripts, all documented
+    installed console scripts and main-parser flags, all documented
     entry points in docs/CODEMAPS/cli.md. Coverage, not count, is the invariant
     that would have caught that.
     """

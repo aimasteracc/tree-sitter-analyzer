@@ -172,10 +172,8 @@ if runtime_cli is not None:
             f"parser exposes flags the gate cannot see: {sorted(missing)}"
         )
 
-# 3. Coverage invariant: zero add_argument calls under tree_sitter_analyzer/cli/**
-#    may fall outside the watched path filter. This is the property that actually
-#    matters -- 82 of 405 calls (the find-and-grep / list-files / search-content
-#    console scripts, all documented entry points) were unwatched before.
+# 3. 覆盖不变量：tree_sitter_analyzer/cli/** 下的 add_argument 调用不能落在
+#    监视路径过滤器之外。此前独立控制台脚本的参数曾经漏出监视范围。
 tracked = subprocess.run(
     ["git", "ls-files", "-z", "--", "tree_sitter_analyzer/cli/"],
     capture_output=True, check=True,

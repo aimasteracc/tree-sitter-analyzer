@@ -123,9 +123,7 @@ contract violation.**
 | `miswire-audit` | `miswire_audit.py` | Run-on-your-repo cross-language correctness demo |
 | Python API (no console script) | `api/__init__.py` | Authoritative implementation of the existing `tree_sitter_analyzer.api` API; Pulse/serialization/semantic live in explicit submodules |
 
-The `search-content` and `find-and-grep` console scripts have been removed.
-The current facades still expose `search.batch` (ripgrep), `project.files` (fd),
-and `project.tools` (availability checks); their removal is not part of this surface.
+The external-search console scripts and facade actions have been removed. Search now combines indexed symbol/graph/AST retrieval with bounded native source verification; core installation requires neither ripgrep nor fd.
 See [CLI](cli.md) and [MCP tools](mcp-tools.md) for the complete action mapping.
 
 The former sibling `api.py` has been removed. Existing Python imports and public

@@ -186,14 +186,7 @@ tree-sitter-analyzer --safe-to-edit <file>        # リスク時に拒否
 tree-sitter-analyzer --uml class                  # Mermaid UML class 図
 ```
 
-このパッケージにはスタンドアロンのファイル一覧ヘルパーも同梱されています:
-
-```bash
-list-files <dir>          # fd 相当のファイル探索
-```
-
-`search-content` と `find-and-grep` は develop で削除されました。詳細は
-[migration guide](docs/MIGRATION.md) と [`CLI codemap`](docs/CODEMAPS/cli.md) を参照。
+TSA はインデックス検索と有界なライブソース検証をプロセス内で実行します。ripgrep や fd のインストールは不要です。削除された検索ラッパーからの移行は [migration guide](docs/MIGRATION.md) と [`CLI codemap`](docs/CODEMAPS/cli.md) を参照してください。
 
 ---
 

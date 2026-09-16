@@ -104,9 +104,8 @@ uv run pytest tests/ -v
 # 2. Run quality checks
 uv run pre-commit run --all-files
 
-# 3. Verify system dependencies
-fd --version
-rg --version
+# 3. Verify the required system dependency
+git --version
 
 # 4. Push
 git push
@@ -232,7 +231,7 @@ Configure in GitHub repository Settings → Branches → Branch protection rules
 
 - **Python versions**: 3.10, 3.11, 3.12, 3.13
 - **OS platforms**: ubuntu-latest, windows-latest, macos-latest
-- **System dependencies**: fd, ripgrep
+- **System dependencies**: Git; core tests and search do not require fd or ripgrep
 - **Quality checks**: mypy, black, ruff, isort, bandit, pydocstyle
 
 See [CI/CD Overview](ci-cd-overview.md) for details.

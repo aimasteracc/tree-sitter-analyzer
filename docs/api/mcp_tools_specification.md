@@ -433,442 +433,9 @@ Tree-sitter Analyzer MCPサーバーは、AI統合コード解析のための55�
 - Web開発ワークフローに最適化されたフォーマット
 - `HtmlFormatter`による専用フォーマッティング
 
-### 5. list_files
+### 5-7. Retired external-search interfaces
 
-**Purpose**: 高性能ファイル検索（fd統合）
-
-**Input Schema**:
-```json
-{
-  "type": "object",
-  "properties": {
-    "roots": {
-      "type": "array",
-      "items": {"type": "string"},
-      "description": "検索対象ディレクトリパス"
-    },
-    "pattern": {
-      "type": "string",
-      "description": "ファイル名パターン（glob使用時）"
-    },
-    "glob": {
-      "type": "boolean",
-      "default": false,
-      "description": "パターンをglobとして扱う"
-    },
-    "types": {
-      "type": "array",
-      "items": {"type": "string"},
-      "description": "ファイルタイプ（'f'=ファイル, 'd'=ディレクトリ, 'l'=シンボリックリンク）"
-    },
-    "extensions": {
-      "type": "array",
-      "items": {"type": "string"},
-      "description": "ファイル拡張子（ドットなし）"
-    },
-    "exclude": {
-      "type": "array",
-      "items": {"type": "string"},
-      "description": "除外パターン"
-    },
-    "depth": {
-      "type": "integer",
-      "description": "最大検索深度"
-    },
-    "follow_symlinks": {
-      "type": "boolean",
-      "default": false,
-      "description": "シンボリックリンクを追跡"
-    },
-    "hidden": {
-      "type": "boolean",
-      "default": false,
-      "description": "隠しファイルを含める"
-    },
-    "no_ignore": {
-      "type": "boolean",
-      "default": false,
-      "description": ".gitignoreを無視"
-    },
-    "size": {
-      "type": "array",
-      "items": {"type": "string"},
-      "description": "ファイルサイズフィルター（例: '+10M', '-1K'）"
-    },
-    "changed_within": {
-      "type": "string",
-      "description": "変更時間フィルター（例: '1d', '2h'）"
-    },
-    "changed_before": {
-      "type": "string",
-      "description": "変更前時間フィルター"
-    },
-    "full_path_match": {
-      "type": "boolean",
-      "default": false,
-      "description": "フルパスでマッチング"
-    },
-    "absolute": {
-      "type": "boolean",
-      "default": true,
-      "description": "絶対パスで返す"
-    },
-    "limit": {
-      "type": "integer",
-      "description": "最大結果数（デフォルト2000、最大10000）"
-    },
-    "count_only": {
-      "type": "boolean",
-      "default": false,
-      "description": "カウントのみ返す"
-    },
-    "output_file": {
-      "type": "string",
-      "description": "出力ファイル名（オプション）"
-    },
-    "suppress_output": {
-      "type": "boolean",
-      "description": "レスポンス出力を抑制",
-      "default": false
-    }
-  },
-  "required": ["roots"]
-}
-```
-
-**Performance**: < 3秒（10,000ファイル対応）  
-**Backend**: fd (fast directory traversal)
-
-### 6. search_content *(廃止済み)*
-
-> **廃止**: `search_content` (SearchContentTool) は削除されました。
-> テキストグレップには CC 組み込みの **Grep tool** を使用してください。
-
-**Purpose**: 高性能コンテンツ検索（ripgrep統合）
-
-**Input Schema**:
-```json
-{
-  "type": "object",
-  "properties": {
-    "roots": {
-      "type": "array",
-      "items": {"type": "string"},
-      "description": "検索対象ディレクトリパス"
-    },
-    "files": {
-      "type": "array",
-      "items": {"type": "string"},
-      "description": "検索対象ファイルパス"
-    },
-    "query": {
-      "type": "string",
-      "description": "検索クエリ（テキストまたは正規表現）"
-    },
-    "case": {
-      "type": "string",
-      "enum": ["smart", "insensitive", "sensitive"],
-      "default": "smart",
-      "description": "大文字小文字の扱い"
-    },
-    "fixed_strings": {
-      "type": "boolean",
-      "default": false,
-      "description": "リテラル文字列として扱う"
-    },
-    "word": {
-      "type": "boolean",
-      "default": false,
-      "description": "単語境界でマッチング"
-    },
-    "multiline": {
-      "type": "boolean",
-      "default": false,
-      "description": "複数行マッチングを許可"
-    },
-    "include_globs": {
-      "type": "array",
-      "items": {"type": "string"},
-      "description": "含めるファイルパターン"
-    },
-    "exclude_globs": {
-      "type": "array",
-      "items": {"type": "string"},
-      "description": "除外ファイルパターン"
-    },
-    "follow_symlinks": {
-      "type": "boolean",
-      "default": false,
-      "description": "シンボリックリンクを追跡"
-    },
-    "hidden": {
-      "type": "boolean",
-      "default": false,
-      "description": "隠しファイルを検索"
-    },
-    "no_ignore": {
-      "type": "boolean",
-      "default": false,
-      "description": ".gitignoreを無視"
-    },
-    "max_filesize": {
-      "type": "string",
-      "description": "最大ファイルサイズ（例: '10M'）"
-    },
-    "context_before": {
-      "type": "integer",
-      "description": "マッチ前のコンテキスト行数"
-    },
-    "context_after": {
-      "type": "integer",
-      "description": "マッチ後のコンテキスト行数"
-    },
-    "encoding": {
-      "type": "string",
-      "description": "ファイルエンコーディング"
-    },
-    "max_count": {
-      "type": "integer",
-      "description": "ファイルあたりの最大マッチ数"
-    },
-    "timeout_ms": {
-      "type": "integer",
-      "description": "タイムアウト（ミリ秒）"
-    },
-    "count_only_matches": {
-      "type": "boolean",
-      "default": false,
-      "description": "マッチ数のみ返す"
-    },
-    "summary_only": {
-      "type": "boolean",
-      "default": false,
-      "description": "サマリーのみ返す（トークン最適化）"
-    },
-    "optimize_paths": {
-      "type": "boolean",
-      "default": false,
-      "description": "パス最適化"
-    },
-    "group_by_file": {
-      "type": "boolean",
-      "default": false,
-      "description": "ファイル別グループ化（トークン最適化）"
-    },
-    "total_only": {
-      "type": "boolean",
-      "default": false,
-      "description": "総数のみ返す（最大トークン最適化）"
-    },
-    "output_file": {
-      "type": "string",
-      "description": "出力ファイル名（オプション）"
-    },
-    "suppress_output": {
-      "type": "boolean",
-      "description": "レスポンス出力を抑制",
-      "default": false
-    }
-  },
-  "required": ["query"],
-  "anyOf": [
-    {"required": ["roots"]},
-    {"required": ["files"]}
-  ]
-}
-```
-
-**Performance**: < 3秒  
-**Backend**: ripgrep (fastest text search)  
-**Token Optimization**: 5段階の最適化レベル
-
-### 7. find_and_grep *(廃止済み)*
-
-> **廃止**: `find_and_grep` (FindAndGrepTool) は削除されました。
-> ファイル絞り込み + テキスト検索には CC 組み込みの **Glob tool + Grep tool (2ステップ)** を使用してください。
-
-**Purpose**: 2段階統合検索（fd + ripgrep）
-
-**Input Schema**:
-```json
-{
-  "type": "object",
-  "properties": {
-    "roots": {
-      "type": "array",
-      "items": {"type": "string"},
-      "description": "検索対象ディレクトリパス"
-    },
-    "pattern": {
-      "type": "string",
-      "description": "[ファイル段階] ファイル名パターン"
-    },
-    "glob": {
-      "type": "boolean",
-      "default": false,
-      "description": "[ファイル段階] パターンをglobとして扱う"
-    },
-    "types": {
-      "type": "array",
-      "items": {"type": "string"},
-      "description": "[ファイル段階] ファイルタイプ"
-    },
-    "extensions": {
-      "type": "array",
-      "items": {"type": "string"},
-      "description": "[ファイル段階] ファイル拡張子"
-    },
-    "exclude": {
-      "type": "array",
-      "items": {"type": "string"},
-      "description": "[ファイル段階] 除外パターン"
-    },
-    "depth": {
-      "type": "integer",
-      "description": "[ファイル段階] 最大検索深度"
-    },
-    "follow_symlinks": {
-      "type": "boolean",
-      "default": false,
-      "description": "[ファイル段階] シンボリックリンクを追跡"
-    },
-    "hidden": {
-      "type": "boolean",
-      "default": false,
-      "description": "[ファイル段階] 隠しファイルを含める"
-    },
-    "no_ignore": {
-      "type": "boolean",
-      "default": false,
-      "description": "[ファイル段階] .gitignoreを無視"
-    },
-    "size": {
-      "type": "array",
-      "items": {"type": "string"},
-      "description": "[ファイル段階] ファイルサイズフィルター"
-    },
-    "changed_within": {
-      "type": "string",
-      "description": "[ファイル段階] 変更時間フィルター"
-    },
-    "changed_before": {
-      "type": "string",
-      "description": "[ファイル段階] 変更前時間フィルター"
-    },
-    "full_path_match": {
-      "type": "boolean",
-      "default": false,
-      "description": "[ファイル段階] フルパスでマッチング"
-    },
-    "file_limit": {
-      "type": "integer",
-      "description": "[ファイル段階] 最大ファイル数"
-    },
-    "sort": {
-      "type": "string",
-      "enum": ["path", "mtime", "size"],
-      "description": "[ファイル段階] ソート順"
-    },
-    "query": {
-      "type": "string",
-      "description": "[コンテンツ段階] 検索クエリ"
-    },
-    "case": {
-      "type": "string",
-      "enum": ["smart", "insensitive", "sensitive"],
-      "default": "smart",
-      "description": "[コンテンツ段階] 大文字小文字の扱い"
-    },
-    "fixed_strings": {
-      "type": "boolean",
-      "default": false,
-      "description": "[コンテンツ段階] リテラル文字列として扱う"
-    },
-    "word": {
-      "type": "boolean",
-      "default": false,
-      "description": "[コンテンツ段階] 単語境界でマッチング"
-    },
-    "multiline": {
-      "type": "boolean",
-      "default": false,
-      "description": "[コンテンツ段階] 複数行マッチングを許可"
-    },
-    "include_globs": {
-      "type": "array",
-      "items": {"type": "string"},
-      "description": "[コンテンツ段階] 含めるファイルパターン"
-    },
-    "exclude_globs": {
-      "type": "array",
-      "items": {"type": "string"},
-      "description": "[コンテンツ段階] 除外ファイルパターン"
-    },
-    "max_filesize": {
-      "type": "string",
-      "description": "[コンテンツ段階] 最大ファイルサイズ"
-    },
-    "context_before": {
-      "type": "integer",
-      "description": "[コンテンツ段階] マッチ前のコンテキスト行数"
-    },
-    "context_after": {
-      "type": "integer",
-      "description": "[コンテンツ段階] マッチ後のコンテキスト行数"
-    },
-    "encoding": {
-      "type": "string",
-      "description": "[コンテンツ段階] ファイルエンコーディング"
-    },
-    "max_count": {
-      "type": "integer",
-      "description": "[コンテンツ段階] ファイルあたりの最大マッチ数"
-    },
-    "timeout_ms": {
-      "type": "integer",
-      "description": "[コンテンツ段階] タイムアウト（ミリ秒）"
-    },
-    "count_only_matches": {
-      "type": "boolean",
-      "default": false,
-      "description": "マッチ数のみ返す"
-    },
-    "summary_only": {
-      "type": "boolean",
-      "default": false,
-      "description": "サマリーのみ返す（トークン最適化）"
-    },
-    "optimize_paths": {
-      "type": "boolean",
-      "default": false,
-      "description": "パス最適化"
-    },
-    "group_by_file": {
-      "type": "boolean",
-      "default": false,
-      "description": "ファイル別グループ化（トークン最適化）"
-    },
-    "total_only": {
-      "type": "boolean",
-      "default": false,
-      "description": "総数のみ返す（最大トークン最適化）"
-    },
-    "output_file": {
-      "type": "string",
-      "description": "出力ファイル名（オプション）"
-    },
-    "suppress_output": {
-      "type": "boolean",
-      "description": "レスポンス出力を抑制",
-      "default": false
-    }
-  },
-  "required": ["roots", "query"]
-}
-```
-
-**Performance**: < 10秒（複合ワークフロー）  
-**Algorithm**: 2段階最適化検索
+`list_files`, `search_content`, and `find_and_grep` are removed. Use indexed `search action=symbol` or `structure action=sitemap` for code-structure discovery, and `nav action=trace` for bounded current-source verification. An indexed sitemap is not a live arbitrary filesystem listing. For unindexed free-text search, use the host agent's text-search capability.
 
 ## Resources
 
@@ -1059,21 +626,22 @@ without `capture_diff_snapshot=true` remains supported on Windows.
 ### Large Project Search Workflow
 
 ```bash
-# Step 1: Find relevant files
+# Step 1: Map indexed source files and symbols
 {
-  "tool": "list_files",
+  "tool": "structure",
   "arguments": {
-    "roots": ["src/"],
-    "extensions": ["py", "java"],
-    "limit": 1000
+    "action": "sitemap",
+    "directory": "src/",
+    "mode": "summary",
+    "max_files": 1000
   }
 }
 
-# Step 2: Search content with CC Grep tool (search_content は廃止済み)
-# Use CC built-in Grep tool with pattern "class.*Service" scoped to *.py files
+# Step 2: Find indexed service symbols
+# Call search action=symbol with query "Service"
 
-# Step 3: Integrated search for precision (find_and_grep は廃止済み)
-# Use CC built-in Glob tool to list *.py files, then CC Grep tool with pattern "def process_"
+# Step 3: Verify a candidate against current source
+# Call nav action=trace with the selected symbol
 ```
 
 ### Token-Optimized Large File Analysis
@@ -1563,24 +1131,9 @@ Modes: `diff_files` (two file paths), `diff_strings` (two source strings), `diff
 
 **SMART Workflow**: Use during code review and PR analysis when text diff is too noisy — surfaces semantic-only changes.
 
-### 18. batch_search
+### 18. batch_search *(retired)*
 
-**Purpose**: Execute multiple ripgrep searches in parallel — significantly faster than running searches sequentially. Maximum 10 queries per batch. (`search_content` は廃止済み; テキスト検索は CC Grep tool を使用。)
-
-**Input**:
-```json
-{
-  "queries": [
-    {"query": "AnalyzeScaleTool", "include_globs": ["*.py"]},
-    {"query": "QueryTool", "include_globs": ["*.py"]},
-    {"query": "ListFilesTool", "include_globs": ["*.py"]}
-  ]
-}
-```
-
-Use when searching for 3+ patterns at once (cross-cutting refactor verification, multi-symbol usage scan). Do not use for single or paired searches — the parallel overhead is not worth it.
-
-**CLI Parity**: `uv run python -m tree_sitter_analyzer --batch-search --batch-search-file queries.json --format json`
+The ripgrep batch wrapper is removed. Use indexed symbol/query/chain operations, or the host agent's text search for arbitrary unindexed content.
 
 ### 19. build_project_index
 
@@ -1615,18 +1168,9 @@ Call when project structure changed significantly, `get_project_summary` returns
 
 **SMART Workflow**: Call in the **Trace (T)** step before approving architectural changes.
 
-### 21. check_tools
+### 21. check_tools *(retired)*
 
-**Purpose**: Verify that `fd` and `ripgrep` are installed, executable, and at the minimum required version. Returns per-tool `available`, `version`, `failure_mode` (`not_installed`/`timeout`/`permission_denied`/`wrong_version`/`unknown`), `recommended_fix`, and an `agent_summary.next_step` routed by `failure_mode`.
-
-**Input**:
-```json
-{}
-```
-
-Call when `list_files` returns unexpected empty results, when setting up in a new environment, or when diagnosing missing files. (`search_content` と `find_and_grep` は廃止済み) Verdict vocabulary: `SAFE` / `WARN` / `ERROR` / `NOT_FOUND`. The verdict is a hard environment-readiness gate — agents must surface `recommended_fix` instead of proceeding past a non-SAFE verdict.
-
-**CLI Parity**: `uv run python -m tree_sitter_analyzer --check-tools --format json`
+The fd/ripgrep availability gate is removed because core installation requires neither executable. Use `--doctor` for installation diagnostics and `index action=status` for index readiness.
 
 ### 22. code_patterns
 
@@ -2313,8 +1857,8 @@ All error responses now include actionable recovery guidance:
   "error": "File not found: /path/to/missing.py",
   "error_type": "FileNotFoundError",
   "error_category": "file_not_found",
-  "recovery_hint": "The file does not exist at the given path. Verify the path or use list_files to discover files.",
-  "suggested_tool": "list_files"
+  "recovery_hint": "The file does not exist at the given path. Verify the path or use structure action=sitemap to inspect indexed source paths.",
+  "suggested_tool": "structure"
 }
 ```
 
