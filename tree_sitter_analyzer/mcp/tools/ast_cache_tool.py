@@ -798,16 +798,22 @@ class ASTCacheTool(BaseMCPTool):
         """
         self._check_watcher_shutdown()
         # 已运行时沿用当前项目监听器。
+        stale_token = None
         with self._watch_state_lock:
             current_watcher = self._watcher
             current_token = self._watch_token
             current_running = (
                 current_watcher is not None and current_watcher.is_running()
             )
+            if current_watcher is not None and not current_running:
+                stale_token = current_token
+                self._watch_token = None
         if current_running and current_watcher is not None:
             if not self._watch_token_is_current(current_token):
                 raise TimeoutError("Watcher project changed before rebind cleanup")
             return self._already_running_response(current_watcher)
+        if self._lifecycle_manager is not None and stale_token is not None:
+            self._lifecycle_manager.revoke_watch_token(stale_token)
 
         raw_root = self._project_root
         if not raw_root:
@@ -979,10 +985,20 @@ class ASTCacheTool(BaseMCPTool):
                 and not startup.retired
                 and self._watch_token_is_current(startup.token)
             )
-            if valid:
+            published = (
+                self._cache
+                if valid and self._cache_raw_root == startup.raw_root
+                else None
+            )
+            if valid and published is None:
                 self._cache = candidate
                 self._cache_raw_root = startup.raw_root
                 startup.cache = candidate
+            elif valid:
+                startup.cache = published
+        if valid and published is not None:
+            candidate.close()
+            return published
         if valid:
             return candidate
         candidate.close()

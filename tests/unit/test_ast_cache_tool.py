@@ -49,6 +49,52 @@ class TestGetCache:
         cache2 = tool.get_cache()
         assert cache1 is cache2
 
+    @pytest.mark.asyncio
+    async def test_watch_startup_reuses_concurrently_published_cache(
+        self, tmp_path, monkeypatch
+    ):
+        """watch 构造期间普通请求发布的同 root cache 必须成为唯一实例。"""
+        from tree_sitter_analyzer.mcp.tools import ast_cache_tool
+
+        tool = ASTCacheTool(str(tmp_path))
+        ordinary_entered = threading.Event()
+        watch_entered = threading.Event()
+        release_ordinary = threading.Event()
+        release_watch = threading.Event()
+        winner = MagicMock(name="ordinary_winner")
+        candidate = MagicMock(name="watch_candidate")
+        calls = 0
+
+        def build_cache(_root):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                ordinary_entered.set()
+                assert release_ordinary.wait(3)
+                return winner
+            watch_entered.set()
+            assert release_watch.wait(3)
+            return candidate
+
+        monkeypatch.setattr(ast_cache_tool, "ASTCache", build_cache)
+        ordinary = asyncio.create_task(asyncio.to_thread(tool.get_cache))
+        assert await asyncio.to_thread(ordinary_entered.wait, 3)
+        startup = ast_cache_tool._WatchStartup(str(tmp_path), None)
+        tool._watch_startup = startup
+        watch = asyncio.create_task(
+            asyncio.to_thread(tool._cache_for_watch_startup, startup)
+        )
+        assert await asyncio.to_thread(watch_entered.wait, 3)
+
+        release_ordinary.set()
+        assert await ordinary is winner
+        release_watch.set()
+        assert await watch is winner
+        assert tool._cache is winner
+        assert startup.cache is winner
+        candidate.close.assert_called_once_with()
+        winner.close.assert_not_called()
+
 
 @pytest.mark.asyncio
 async def test_watch_start_without_root_and_standalone_rollback(tmp_path, monkeypatch):

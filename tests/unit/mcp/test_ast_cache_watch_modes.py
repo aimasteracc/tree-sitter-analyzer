@@ -568,6 +568,35 @@ async def test_2026_09_14_watch_restart_revokes_old_callback(tool, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_dead_watcher_restart_revokes_old_callback(tool, monkeypatch):
+    """watcher 自行退出后，restart 必须先撤销旧 token。"""
+    from tree_sitter_analyzer.mcp import watch_push_bridge
+
+    manager = tool._lifecycle_manager
+    session = object()
+    async with manager.lifespan(None) as owner:
+        manager.subscribe(owner, session, asyncio.get_running_loop(), "selector:A", 0)
+        await tool.execute({"mode": "watch_start"})
+        old_callback = tool._watcher._on_sync
+        tool._watcher.stop()
+        await tool.execute({"mode": "watch_start"})
+        new_callback = tool._watcher._on_sync
+        calls: list[str | None] = []
+
+        def record_valid(root, _result, lifecycle, token):
+            if lifecycle.snapshot_for_watch(token):
+                calls.append(root)
+
+        monkeypatch.setattr(watch_push_bridge, "_drive_subscriptions", record_valid)
+        try:
+            old_callback({})
+            new_callback({})
+        finally:
+            await tool.execute({"mode": "watch_stop"})
+    assert calls == [str(tool.project_root)]
+
+
+@pytest.mark.asyncio
 async def test_2026_09_14_same_root_rebind_revokes_old_epoch_callback(
     tool, monkeypatch
 ):

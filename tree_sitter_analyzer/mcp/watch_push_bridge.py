@@ -1,14 +1,9 @@
-"""RFC-0001 criterion 4: watch→push bridge.
+"""RFC-0001 标准 4：watch→push 桥接器。
 
-Wires the ``FileWatcherDaemon`` (background thread) to the owning
-application's subscription lifecycle manager. When a sync event
-fires the bridge:
-
-1. Gathers all active (session_id, selector) pairs from the registry.
-2. Re-evaluates each selector against the updated index.
-3. Computes the delta (added / removed items).
-4. Schedules ``send_resource_updated(uri)`` through the manager's revocable
-   thread-to-loop handoff.
+本模块把后台线程 ``FileWatcherDaemon`` 接入应用拥有的订阅生命周期管理器。
+同步事件到达后，桥接器收集所有活跃的会话与选择器，基于更新后的索引重新求值，
+计算新增与删除差异，并通过管理器可撤销的线程到事件循环交接来调度
+``send_resource_updated(uri)``。
 
 推送采用尽力而为语义：会话循环缺失或关闭时移除会话，发送失败只记录诊断，
 均不阻塞监听循环。求值失败保留最后有效快照，不能伪装成真实删除。
