@@ -90,7 +90,7 @@ Categories of CLI surface:
 - `--ast-cache --ast-cache-mode index|stats|lookup|search|sync|changes|watch_start|watch_stop|watch_status|invalidate` — AST cache ops (project index default cap: 20k files)
 - `--ast-cache-include-activation` — opt in to slower temporal git activation during project indexing
 - `--autoindex [--autoindex-mode status|warm|reset]` — transparent auto-index
-- `--full-index [--full-index-mode rebuild|stats|clear]` — one-shot complete index (default cap: 20k files)
+- `--full-index [--full-index-mode full|incremental]` — one-shot complete index (default cap: 20k files)
 - `--full-index-include-activation` — opt in to temporal git activation during full-index rebuilds
 - `--incremental-sync [--incremental-sync-mode sync|changes|status]` — content-hash diff re-index (SHA-256)
 - `--knowledge-graph-index [--knowledge-graph-index-mode build|update|status]` — refresh the canonical SQLite code+docs index and optionally materialize LadybugDB; `--knowledge-graph-backend auto|sqlite|ladybug` defaults to LadybugDB when installed and SQLite otherwise; update mode scans the full project safely; `--knowledge-graph-max-nodes 0 --knowledge-graph-max-edges 0` means uncapped materialization
