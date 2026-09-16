@@ -157,13 +157,34 @@ def targeted_marker_expression(root: Path) -> str | None:
 def targets_share_root_config(root: str, targets: list[str]) -> bool:
     """子项目配置或越界目标存在时，不用根配置覆盖它们自己的选择规则。"""
     checked: set[Path] = set()
+    resolved_parents: dict[Path, Path] = {}
     try:
         base = Path(root).resolve()
         for target in targets:
-            path = (base / target.partition("::")[0]).resolve()
-            if not path.is_relative_to(base):
-                return False
-            parent = path if path.is_dir() else path.parent
+            relative = Path(target.partition("::")[0])
+            candidate = base / relative
+            special_leaf = relative.is_absolute() or relative.name in {"", ".", ".."}
+            if special_leaf:
+                leaf = candidate.resolve()
+                if not leaf.is_relative_to(base):
+                    return False
+                parent = leaf if leaf.is_dir() else leaf.parent
+            else:
+                parent = None
+            lexical_parent = candidate.parent
+            if parent is None:
+                parent = resolved_parents.get(lexical_parent)
+                if parent is None:
+                    parent = lexical_parent.resolve()
+                    resolved_parents[lexical_parent] = parent
+                if not parent.is_relative_to(base):
+                    return False
+                # 按文件系统自身的大小写规则查询目标，避免枚举并缓存无关兄弟项。
+                if candidate.is_dir() or candidate.is_symlink():
+                    leaf = candidate.resolve()
+                    if not leaf.is_relative_to(base):
+                        return False
+                    parent = leaf if leaf.is_dir() else leaf.parent
             while parent != base:
                 if parent in checked:
                     break
