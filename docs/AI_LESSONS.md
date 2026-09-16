@@ -1,5 +1,54 @@
 # AI Lessons
 
+## 2026-09 — CI contracts must measure policy at the right granularity
+
+### Context
+
+A Dependabot pull request correctly moved `actions/upload-artifact` from major
+version 6 to 7, but a diagnostics behavior test required the incidental literal
+`v7.0.1` and rejected Dependabot's `v7` selector. A Windows CI replay-policy
+test exceeded its per-test budget because the marker-policy check resolved the
+same parent directory once for every one of 1,000 sibling test targets; the
+original observation did not preserve enough runner metadata for a reproducible
+latency claim, so this record remains qualitative. The first focused
+qualification for the cache fix omitted the existing verification-command
+contract. PR #1489 Windows job `104322614714` then ran
+`uv run pytest tests/unit/mcp/test_verification_command.py -q --reruns 0
+--tb=long` on Microsoft Windows Server 2025, Python 3.11.15, and reported both
+resolution-exception parameters failing within its 42-case file run because the
+synthetic failure hook still targeted the leaf resolution removed by the
+optimization, rather than the parent resolution the new algorithm requires.
+
+### Lessons learned
+
+1. A behavior test should assert the action identity and supported major
+   version it relies on; patch-selector policy belongs in a dedicated policy
+   contract when the repository actually requires it.
+2. Collection validation must cache work by the property being validated. The
+   pytest selection policy belongs to a target's parent directories, so sibling
+   files must share one resolution and configuration walk.
+3. Performance fixes must retain boundary checks. Caching the resolved parent
+   preserves traversal and symlink containment checks while removing duplicate
+   filesystem calls.
+4. A focused set derived only from changed-file suggestions can miss callers
+   whose contracts depend on an internal operation. Search the changed symbol's
+   direct tests and include their existing contract file in qualification.
+5. Directory enumeration is not a bounded substitute for repeated target
+   resolution: it retains unrelated siblings and can disagree with the host
+   filesystem's case semantics. Cache the shared parent, then query only each
+   requested leaf through filesystem-aware operations.
+
+### Required guardrail
+
+`tests/unit/test_classify_windows_pytest_failure.py` checks the diagnostics
+action at its compatibility boundary, and
+`tests/unit/test_verification_plan.py` requires 1,000 sibling targets to resolve
+their shared parent only once while retaining replay-policy invalidation.
+`tests/unit/mcp/test_verification_command.py` injects both supported resolution
+exceptions at the required parent-resolution boundary and verifies fail-closed
+command generation. `tests/unit/test_verification_plan.py` also forbids sibling
+enumeration and exercises native Windows case-insensitive directory lookup.
+
 ## 2026-08 — Remove the legacy compact wire format
 
 ### Context
@@ -319,3 +368,40 @@ double hides the same class of drift the catch does. The tests that pin the
 hoist are `tests/unit/test_health_git_context.py`, and the equivalence check
 that the score is unchanged is its
 `test_the_scan_still_scores_git_hotspot_inside_a_repository`.
+
+## 2026-09 — A historical qualification claim needs a reproducible receipt
+
+### Context
+
+The roadmap repeated a historical report of 429 passing tests and labeled it
+`LOCAL_GO`. The current workspace contains no reproducible selection command,
+exact collected and executed nodeids, or durable receipt for that run. The
+count may describe a run that happened, but it cannot reveal which semantics
+were exercised and therefore cannot serve as a semantic baseline or
+qualification evidence. The roadmap was corrected, and this lesson records the
+same correction so a later agent does not promote the orphaned count again.
+
+### Lessons learned
+
+1. **A published historical count is not a trusted baseline by itself.** A
+   qualification claim must carry enough identity to reproduce the same
+   selection against the same source, not only a total and a status label.
+2. **Exact nodeids define the tested semantics.** The selector command and the
+   complete nodeid manifest, including parameter IDs, distinguish the intended
+   suite from a similarly sized but different selection.
+3. **Evidence must outlive the workspace.** A durable receipt must bind the
+   source identity, selector, nodeids, and item results; a local terminal report
+   or remembered total cannot be upgraded later.
+4. **Correct the lesson with the roadmap.** When a published qualification
+   statement is withdrawn or narrowed, update the reusable lesson in the same
+   change so the stale claim does not return through future planning work.
+
+### Required guardrail
+
+Any qualification statement in `rfcs/ROADMAP-no1-agent-trust.md` must either
+link a durable receipt that binds the exact source identity, reproducible
+selector, exact nodeids, and item results, or explicitly state that it is not a
+semantic baseline or qualification evidence. The synchronized correction lives
+in `docs/AI_LESSONS.md`, and
+`tests/contracts/test_agent_docs_contract.py` pins the exact lesson-entry count
+and required structure.

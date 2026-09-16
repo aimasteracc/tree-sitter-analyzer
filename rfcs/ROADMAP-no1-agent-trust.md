@@ -6,33 +6,40 @@
 - **North star:** Verified Change Success Rate (VCSR), not feature, language, tool, test, or edge count.
 - **Claim policy:** Public language is always bounded to named tools, versions, repositories, models, dates, and evidence levels. E0–E3 emit no quantitative competitive wording; E4 permits only the exact admitted bounded sentence, never an unqualified "No.1" claim.
 
-## 2026-09-15 交付状态：先关闭阻断，再接续历史证据
+## 2026-09-16 交付状态：先关闭阻断，再接续历史证据
 
-本节以 GitHub 当前 `develop@7e1ed4f571c9180ebdf42d1ef6153bed4222587f`
-与公开 PR 状态为准；较早本地快照不覆盖这里的交付裁决。四个 PR 均未合入。
+本节以 GitHub 当前 `develop@6ffb55b5fe871f983b3926fc79b2f6d30e467fff`
+与公开 PR 状态为准；较早本地快照不覆盖这里的交付裁决。#1489 已合入，
+其余 3 个 PR 未合入。
 已成功的 CI / Native 轴只支持其具名范围内的证据，不证明整个愿景已经完成，
 也不构成发版或 VCSR / E4 达标声明。
 
 | PR | 当前状态 | 完成门槛 |
 |---|---|---|
-| [#1489](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1489) CI 策略与路径约束 | 当前 CI 与 Native 成功；仍为 open、未合入 | 完成审查并按 GitFlow 合入；合入前不把成功检查写成已交付能力 |
-| [#1490](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1490) 订阅求值失败隔离 | 首次 Native 失败已定位到从 `files.pythonhosted.org` 下载时的 `ReadTimeoutError`，其后触发失败轴绑定。仅重跑失败任务的第二次尝试按 `github.run_attempt=2` 查找工件，但复用的成功 build 只上传了 attempt 1 的 `native-build` 工件；严格的同 attempt provenance 因此按预期拒绝。完整重跑尚未启动；须重新生成同轮 build 与安装资格证据。Windows 另有 14.69 秒超过 12.8 秒及 xdist 崩溃，本地尚未复现，根因未解决 | 重跑不能替代诊断；分别关闭下载、Windows 时限和 xdist 稳定性问题，并取得终态检查与审查通过 |
-| [#1491](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1491) 认证源码正文 | 前一 head `ceddf564` 的 Native 成功；新 head `b638cb61` 的 CI 与 Native 仍在运行，尚无终态资格。抽取后 CI 指导仍引用已失效的源码检查，公开 execute guidance 测试修复已于 2026-09-15 UTC 以 `b638cb61` 提交并推送，52 项焦点测试通过。Windows 正文缺失已定位为 `CertifiedIndexRead.read_source` 无条件调用仅支持 POSIX 的 `source_oracle.safe_workspace_path`，该路径按设计拒绝 Windows；有界 Windows `NativeFiles` 生产修复因涉及安全敏感的文件系统与句柄改动，被自动审批以“监控请求未明确授权”为由阻断，所有生产改动已回退，须等待知情授权，不能视为正在实现 | 修复指导与 Windows 读取缺口，重跑相关焦点测试、补丁覆盖和原生 CI；最终 head 经审查后方可合入 |
+| [#1489](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1489) CI 策略与路径约束 | CI 与 Native 成功；已合入 `develop@6ffb55b5` | 已完成；成功证据仅支持具名 CI 与 Native 范围，不自动升级其他资格 |
+| [#1490](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1490) 订阅求值失败隔离 | 当前 head `5cd017fb` 已以双父 merge 纳入 `develop@6ffb55b5`，未改写远端历史。首次 Native 失败已定位到从 `files.pythonhosted.org` 下载时的 `ReadTimeoutError`；仅重跑失败任务的 attempt 2 又因复用的 build 只上传 attempt 1 工件而被同 attempt provenance 正确拒绝。此前 Windows 另有 14.69 秒超过 12.8 秒及 xdist worker 崩溃；变更不触及 workflow、pytest、xdist 或超时配置，本地尚未复现。新 head 已于 2026-09-16 04:31 UTC 触发完整新运行；本状态快照时 CI 尚在排队、Native 与其余轴仍在运行，不能视为恢复或资格完成 | 以完整新运行关闭下载、Windows 时限和 xdist 稳定性问题；取得终态检查与最终 head 审查通过后方可合入 |
+| [#1491](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1491) 认证源码正文 | 当前 head `b638cb61`；Native Install Qualification 已成功。CI 只剩 Windows PR-fast 与 Quality Gate 尚未终态成功；Windows PR-fast 中 3 项 certified source body restoration 测试均未返回 body。此外还有 3 条 substantive Codex review 尚未解决：重复执行 full-scope certification scan；SQLite deadline 的 `DatabaseError` 未统一捕获；`call_graph_built` 会覆盖并撤掉 owner 安装的 deadline progress handler。这些均不能记为已修复 | 使 3 项正文恢复测试返回 body，关闭 3 条实质审查意见，并取得 Windows PR-fast 与 Quality Gate 终态成功；最终 head 经审查后方可合入 |
 | [#1492](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1492) 生命周期所有权 | draft；当前完整 CI 成功，但包含 #1490 依赖 | 先合入 #1490，再基于新的 `develop` rebase、缩小差异并重新完成当前最终树的焦点测试、补丁覆盖、完整 CI 与审查，之后才可转 ready |
 
-历史读取与 Python 声明 lineage ledger 在保留证据 `f4fd8f6e` 上曾取得
-429 项测试通过、0 失败、0 跳过、0 重跑的 **LOCAL_GO**。该证据只覆盖内部、
-明确请求的 HEAD Python 路径；不覆盖全项目、当前工作区、当前 generation、
-持久化、receipt、expiry、公开 selector 或原生平台。保留证据中仅找到较早 R0 / R1b 压缩包与本地 SHA 匹配，尚未恢复
-`f4fd8f6e` ledger 源码，因此不能
-把该提交称为可提交、可合入或可发布。
+路线图曾记录历史读取与 Python 声明 lineage ledger 在 `f4fd8f6e`
+上有“429 项测试通过、0 失败、0 跳过、0 重跑”的 **LOCAL_GO**
+报告。当前工作区没有可审计的精确 nodeids、可复现的 selection command
+或 durable receipt；历史总数不能重建当时的选择与覆盖语义，因此不得
+作为 semantic baseline 或 qualification evidence。重新资格化至少需要：
+
+1. 绑定精确源码提交与环境的可复现 selection command。
+2. 收集和实际执行的精确 nodeid 清单，包含参数化 ID。
+3. 将源码 SHA、命令、nodeids 与逐项结果绑定在可长期访问的 durable receipt 中。
+
+恢复 `f4fd8f6e` ledger 源码本身不会恢复上述资格，也不能把该提交
+称为可提交、可合入或可发布。
 
 下一轮按三个可独立审查的切片推进：
 
 1. 关闭 #1489–#1492 的现有阻断，保持依赖顺序，并为每个最终 head 保存独立资格证据。
 2. 从受信 Git 对象恢复并逐文件核对 `f4fd8f6e` 的内部历史读取与 ledger；
-   恢复后在当前 `develop` 上保留历史测试覆盖的全部语义范围，并对当前最终树
-   重新运行焦点测试、补丁覆盖和静态门禁，如实记录新的测试数量，再形成独立 PR。
+   恢复后在当前 `develop` 上冻结可复现 selector 和 exact nodeids，对当前最终树
+   重新运行焦点测试、补丁覆盖和静态门禁，并保存 durable receipt，再形成独立 PR。
 3. 在历史核心合入后，单独设计并实现严格的持久化 temporal schema 与
    current-generation 绑定；普通非 temporal manifest 不得因可选 temporal
    credential 缺失而失败。认证持久化读取、receipt / 时间 / expiry、订阅刷新
