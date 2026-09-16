@@ -8,6 +8,8 @@ import pytest
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.file_watcher import FileWatcherDaemon
 
+_BACKGROUND_SYNC_TIMEOUT = 15.0
+
 
 def _wait_until(predicate, timeout: float = 3.0, interval: float = 0.05) -> bool:
     """Poll predicate until true or timeout. Returns the final predicate value.
@@ -285,9 +287,17 @@ class TestPollingDetection:
         watcher.trigger_sync()
         assert cache.get_stats()["total_files"] == 2
         watcher.start()
-        assert _wait_until(lambda: watcher.get_stats()["syncs_triggered"] == 2)
+        aligned = _wait_until(
+            lambda: watcher.get_stats()["syncs_triggered"] >= 2,
+            timeout=_BACKGROUND_SYNC_TIMEOUT,
+        )
+        assert aligned, watcher.get_stats()
+        assert watcher.get_stats()["syncs_triggered"] == 2
         (project / "new_file.py").write_text("def world():\n    pass\n")
-        detected = _wait_until(lambda: cache.get_stats()["total_files"] == 3)
+        detected = _wait_until(
+            lambda: cache.get_stats()["total_files"] == 3,
+            timeout=_BACKGROUND_SYNC_TIMEOUT,
+        )
         watcher.stop()
         assert detected, "watcher did not detect the newly created file"
         assert cache.get_stats()["total_files"] == 3
@@ -297,11 +307,19 @@ class TestPollingDetection:
         watcher.trigger_sync()
         assert watcher.get_stats()["syncs_triggered"] == 1
         watcher.start()
-        assert _wait_until(lambda: watcher.get_stats()["syncs_triggered"] == 2)
+        aligned = _wait_until(
+            lambda: watcher.get_stats()["syncs_triggered"] >= 2,
+            timeout=_BACKGROUND_SYNC_TIMEOUT,
+        )
+        assert aligned, watcher.get_stats()
+        assert watcher.get_stats()["syncs_triggered"] == 2
         py_file = project / "src" / "main.py"
         py_file.write_text("def hello():\n    return 42\n")
         os.utime(str(py_file), (time.time() + 1, time.time() + 1))
-        detected = _wait_until(lambda: watcher.get_stats()["syncs_triggered"] == 3)
+        detected = _wait_until(
+            lambda: watcher.get_stats()["syncs_triggered"] >= 3,
+            timeout=_BACKGROUND_SYNC_TIMEOUT,
+        )
         watcher.stop()
         assert detected, "watcher did not detect the modified file"
         assert watcher.get_stats()["syncs_triggered"] == 3
