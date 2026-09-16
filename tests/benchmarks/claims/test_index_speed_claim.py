@@ -23,15 +23,10 @@ from __future__ import annotations
 import os
 import tempfile
 import time
-from unittest.mock import patch
 
 import pytest
 
-from tree_sitter_analyzer import incremental_sync
 from tree_sitter_analyzer.ast_cache import ASTCache
-from tree_sitter_analyzer.cache import indexer
-from tree_sitter_analyzer.mcp.tools import full_index_tool
-from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
 
 pytestmark = [
     pytest.mark.benchmark,
@@ -99,50 +94,6 @@ def test_index_speed_scales_linearly_not_quadratically():
             f"{_SYNTHETIC_FILE_COUNT} files. "
             f"README claims ~33ms/file on django (2950 files in 97s)."
         )
-
-
-@pytest.mark.asyncio
-async def test_full_index_uses_one_filesystem_walk_for_all_index_phases(tmp_path):
-    """AST 与增量阶段必须复用同一次不可变候选遍历。"""
-    _generate_synthetic_project(str(tmp_path), 20)
-    tool = CodeGraphFullIndexTool(str(tmp_path))
-
-    with (
-        patch.object(
-            full_index_tool,
-            "walk_index_candidate_entries",
-            wraps=full_index_tool.walk_index_candidate_entries,
-        ) as walk,
-        patch.object(
-            indexer,
-            "walk_index_candidate_entries",
-            side_effect=AssertionError("AST phase rebuilt the candidate snapshot"),
-        ) as ast_snapshot_fallback,
-        patch.object(
-            indexer,
-            "_walk_source_files",
-            side_effect=AssertionError("AST phase performed a legacy source walk"),
-        ) as ast_legacy_fallback,
-        patch.object(
-            incremental_sync,
-            "_walk_source_files",
-            side_effect=AssertionError("incremental phase performed a source walk"),
-        ) as sync_fallback,
-    ):
-        result = await tool.execute(
-            {
-                "mode": "full",
-                "resolve_synapse": False,
-                "output_format": "json",
-            }
-        )
-
-    assert walk.call_count == 1
-    assert ast_snapshot_fallback.call_count == 0
-    assert ast_legacy_fallback.call_count == 0
-    assert sync_fallback.call_count == 0
-    assert result["candidate_snapshot"]["discovered"] == 20
-    assert result["candidate_snapshot"]["processed"] == 20
 
 
 def test_index_speed_claim_measurement_command_is_documented():

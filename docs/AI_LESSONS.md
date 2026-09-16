@@ -11,6 +11,10 @@ facade alias and restored 38 passing claim tests, but it still observed only the
 expected initial walk. If either the AST or incremental phase stopped accepting
 the shared snapshot, that phase could perform an extra walk through its own
 imported alias while the test still counted exactly one facade call.
+The repaired assertion then remained outside every pull-request gate because its
+module carried both `benchmark` and `full_language`, while dogfood selected
+`claims_benchmark and not full_language` and the coverage axis selected
+`not benchmark`.
 
 ### Lessons learned
 
@@ -24,13 +28,16 @@ imported alias while the test still counted exactly one facade call.
 3. **A performance invariant needs positive and negative evidence.** The test
    must count the one authorized discovery and fail immediately if either phase
    invokes a candidate-less fallback walker.
+4. **A guard outside CI is documentation, not enforcement.** Put a fast
+   correctness invariant in the ordinary unit boundary even when the defect was
+   first noticed through a benchmark claim.
 
 ### Required guardrail
 
-`tests/benchmarks/claims/test_index_speed_claim.py` wraps the authorized
+`tests/unit/test_codegraph_full_index_tool.py` wraps the authorized
 candidate walker exported by `tree_sitter_analyzer/mcp/tools/full_index_tool.py`
 and installs failing probes on the AST and incremental fallback aliases. The same
-test requires one primary walk, zero fallback walks, and the exact 20-file
+test requires one primary walk, zero fallback walks, and the exact two-file
 discovery and processing totals.
 
 ## 2026-09 — CI contracts must measure policy at the right granularity
