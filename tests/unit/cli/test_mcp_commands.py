@@ -1023,6 +1023,7 @@ def test_callers_cli_delegates_to_callers_tool(monkeypatch) -> None:
             "function_name": "parse_file",
             "file_path": "src/parser.py",
             "limit": 50,
+            "include_bodies": True,
             "output_format": "json",
         },
     }
@@ -1042,7 +1043,7 @@ def test_callees_cli_delegates_to_callees_tool(monkeypatch) -> None:
     monkeypatch.setattr(mcp_commands, "CodeGraphCalleesTool", FakeCalleesTool)
 
     result = mcp_commands.handle_mcp_commands(
-        _args(callees="main", callees_file=None),
+        _args(callees="main", callees_file=None, call_no_bodies=True),
         lambda payload: None,
         lambda error: None,
         lambda: "json",
@@ -1055,9 +1056,20 @@ def test_callees_cli_delegates_to_callees_tool(monkeypatch) -> None:
             "function_name": "main",
             "file_path": None,
             "limit": 50,
+            "include_bodies": False,
             "output_format": "json",
         },
     }
+
+
+def test_call_no_bodies_cli_flag_parses_default_and_opt_out() -> None:
+    parser = create_argument_parser()
+
+    explicit = parser.parse_args(["--callers", "execute", "--call-no-bodies"])
+    default = parser.parse_args(["--callees", "execute"])
+
+    assert explicit.call_no_bodies is True
+    assert default.call_no_bodies is False
 
 
 def test_symbol_resolve_cli_delegates_to_resolve_tool(monkeypatch) -> None:

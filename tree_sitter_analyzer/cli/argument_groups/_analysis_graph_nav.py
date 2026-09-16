@@ -331,6 +331,11 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--call-no-bodies",
+        action="store_true",
+        help="Omit source bodies from --callers / --callees results.",
+    )
+    parser.add_argument(
         "--callees",
         help="Find all functions called by the given function (CodeGraph parity). "
         "Shorthand for --call-graph callees --call-graph-function",

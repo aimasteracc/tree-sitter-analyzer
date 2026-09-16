@@ -251,12 +251,12 @@ _NAV_DESCRIPTION = (
     "source_generation, output_format.\n"
     "- action=callers — who calls a function (codegraph_callers equivalent).\n"
     "  scope=point (default) → direct 1-hop callers (fast). "
-    "Params: function_name/symbol (required), file_path, output_format.\n"
+    "Params: function_name/symbol (required), file_path, include_bodies, output_format.\n"
     "  scope=graph → full call-graph traversal (callers mode). "
     "Params: function_name/symbol (required), file_path, depth, output_format.\n"
     "- action=callees — what a function calls (codegraph_callees equivalent).\n"
     "  scope=point (default) → direct 1-hop callees (fast). "
-    "Params: function_name/symbol (required), file_path, output_format.\n"
+    "Params: function_name/symbol (required), file_path, include_bodies, output_format.\n"
     "  scope=graph → full call-graph traversal (callees mode). "
     "Params: function_name/symbol (required), file_path, depth, output_format.\n"
     "- action=callee_tree — depth-limited NESTED tree of everything a function "
@@ -377,7 +377,14 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         point_args = {
             k: v
             for k, v in args.items()
-            if k in ("function_name", "file_path", "limit", "output_format")
+            if k
+            in (
+                "function_name",
+                "file_path",
+                "limit",
+                "include_bodies",
+                "output_format",
+            )
         }
         return await callers_point.execute(point_args)
 
@@ -396,7 +403,14 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         point_args = {
             k: v
             for k, v in args.items()
-            if k in ("function_name", "file_path", "limit", "output_format")
+            if k
+            in (
+                "function_name",
+                "file_path",
+                "limit",
+                "include_bodies",
+                "output_format",
+            )
         }
         return await callees_point.execute(point_args)
 
