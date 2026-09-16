@@ -105,9 +105,6 @@ POSIX 发布包含文件与目录同步；Windows 目录掉电持久性仍不作
    source fingerprint plus coverage, weights, moving-window, repository-specific
    git metadata, and scoring-version context
 
-`mcp/utils/search_cache.py` remains in the source tree, but has no production
-callers; it is not an active caching layer for the current search tools.
-
 ### MCP / CLI parity
 Every MCP tool has a CLI equivalent — enforced by `tests/contracts/test_mcp_cli_parity_contract.py`
 and `tests/unit/cli/test_mcp_commands.py`. **Adding an MCP tool without a CLI flag is a

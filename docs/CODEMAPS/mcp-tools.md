@@ -149,7 +149,6 @@ All tools return:
 | `mcp/utils/project_index/` | Persistent project structure snapshot |
 | `mcp/utils/file_output_factory.py` | Atomic file output for large payloads |
 | `mcp/utils/error_handler.py` | Typed error envelopes |
-| `mcp/utils/gitignore_detector.py` | `.gitignore` aware file filtering |
 | `mcp/utils/edge_extractors/` | Per-language call graph edge extraction |
 | `mcp/server_utils/smart_prompts.py` | LLM-facing system prompts for `smart_context` |
 | `mcp/server_utils/tool_registration.py` | Tool → JSON Schema generation |

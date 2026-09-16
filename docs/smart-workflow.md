@@ -329,8 +329,8 @@ Use incremental approach:
 ### "Can't find the file"
 
 Use discovery tools:
-1. `list_files` with broad pattern
-2. CC Grep tool for content search (`find_and_grep` は廃止済み)
+1. Use the host agent's file search with a broad pattern
+2. Use the host agent's content search
 3. Check file extension and directory
 
 ### "Results are too verbose"

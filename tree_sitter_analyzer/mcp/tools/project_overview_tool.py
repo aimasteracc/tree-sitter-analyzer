@@ -174,7 +174,10 @@ class ProjectOverviewTool(BaseMCPTool):
                 "WHEN NOT TO USE:\n"
                 "- To read a single file — use partial_read or get_code_outline\n"
                 "- For per-file quality grades — use file_health\n"
-                "- To list files matching a pattern — use structure action=sitemap\n"
+                "- For indexed per-directory structure — use structure "
+                "action=sitemap\n"
+                "- For arbitrary filename patterns — use the host agent's "
+                "file-search capability\n"
                 "- For dependency graph queries — use dependency_analysis"
             ),
             "inputSchema": TOOL_SCHEMA,

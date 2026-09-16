@@ -135,16 +135,15 @@ tree-sitter-analyzer/
 
 ### 4.1. テスト対象ツール
 
-原則として、以下の8つの主要MCPツールをテスト対象とします。
+原則として、以下の5つの主要MCPツールをテスト対象とします。
 
 1. `analyze_code_structure`
 2. `query_code`
 3. `check_code_scale`
 4. `extract_code_section`
 5. `set_project_path`
-6. `list_files`
-~~7. `find_and_grep`~~ *(廃止済み)*
-~~8. `search_content`~~ *(廃止済み)*
+
+v2 で削除した `list_files`、`find_and_grep`、`search_content` は互換性対象外です。
 
 ### 4.2. テストケースの定義
 
@@ -231,7 +230,7 @@ tree-sitter-analyzer/
 
 テストの透明性を高めるため、テスト実行前後のキャッシュ状態を記録し、分析レポートに含めることを推奨します。
 
-- `compatibility_test/utils/cache_reporter.py` は、各キャッシュシステム（`UnifiedAnalysisEngine`）の統計情報（ヒット率、アイテム数など）を取得し、レポートを生成する機能を提供します。（`SearchContentTool` は廃止済み）
+- `compatibility_test/utils/cache_reporter.py` は、`UnifiedAnalysisEngine` の統計情報（ヒット率、アイテム数など）を取得し、レポートを生成する機能を提供します。
 - テスト結果に予期せぬ一致や不一致が見られた場合、このキャッシュレポートを参照することで、キャッシュが影響しているかどうかを判断する手がかりとなります。
 
 #### 4.4.3. キャッシュ管理の重要性

@@ -49,18 +49,16 @@ FACADE_NAMES: tuple[str, ...] = (
     "viz",
 )
 
-# Tool aliases a released breaking change REMOVED, so no crosswalk entry exists
-# for them. They are named here because "removed" is otherwise only prose: a
-# ``next_step`` telling an agent to call one of these is a dead route, and
-# nothing machine-checkable currently distinguishes it from a live name.
-#
-# Source: CHANGELOG 1.30.0 — "search.content / legacy search_content /
-# search-content, and search.grep / legacy find_and_grep / find-and-grep are
-# removed." Listed as the identifier forms that can appear as a token.
+# 破坏性删除不会写入 LEGACY_TOOL_MAP，也不存在可用路由。这里保留标识符，
+# 让契约测试能够识别仍然引导代理调用已删除能力的 ``next_step``。
+# 来源：CHANGELOG 1.30.0 与 RFC-0033。只列出可能作为词法标记出现的形式。
 REMOVED_TOOL_NAMES: frozenset[str] = frozenset(
     {
         "search_content",
         "find_and_grep",
+        "batch_search",
+        "list_files",
+        "check_tools",
     }
 )
 

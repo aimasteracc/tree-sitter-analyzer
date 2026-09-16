@@ -45,8 +45,9 @@ uv run python -m tree_sitter_analyzer --codegraph-sitemap --codegraph-sitemap-mo
 
 The current shim forwards the **62 names** in
 [`LEGACY_TOOL_MAP`](../tree_sitter_analyzer/mcp/facade_map.py). The removed
-`search_content` and `find_and_grep` names are not forwarded. Callers should migrate
-to facades rather than assume every historical name remains supported.
+`search_content`, `find_and_grep`, `batch_search`, `list_files`, and `check_tools`
+names are not forwarded. Callers should migrate to facades rather than assume every
+historical name remains supported.
 
 A forwarded dictionary response receives a `deprecation` object; the shim also
 emits a warning on stderr. Example of that field, with the tool-specific response
@@ -161,10 +162,8 @@ actions are listed in the [MCP codemap](CODEMAPS/mcp-tools.md).
 | Legacy tool name | Current call |
 |---|---|
 | `get_project_overview` | `project` `action=overview` |
-| `list_files` | `project` `action=files` |
 | `smart_context` | `project` `action=smart` |
 | `advise_parser_readiness` | `project` `action=parser` |
-| `check_tools` | `project` `action=tools` |
 | `codegraph_metrics` | `project` `action=metrics` |
 | `list_agent_skills` | `project` `action=skills` |
 | `get_agent_workflow` | `project` `action=workflow` |

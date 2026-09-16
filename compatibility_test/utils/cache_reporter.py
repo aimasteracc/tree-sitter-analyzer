@@ -78,8 +78,6 @@ class CacheReporter:
             if "hit_rate" in ae_stats:
                 summary["cache_hit_rates"]["analysis_engine"] = ae_stats["hit_rate"]
 
-        # Search Content キャッシュは廃止済み (SearchContentTool 削除)
-
         # 潜在的な問題を特定
         if summary["active_caches"] > 0:
             summary["potential_issues"].append(
@@ -98,7 +96,6 @@ class CacheReporter:
         """詳細情報を生成"""
         details = {
             "analysis_engine_cache": {},
-            # search_content_cache は廃止済み (SearchContentTool 削除)
             "cache_configurations": {},
         }
 
@@ -119,8 +116,6 @@ class CacheReporter:
                 }
             else:
                 details["analysis_engine_cache"]["error"] = ae_stats["error"]
-
-        # search_content キャッシュは廃止済み (SearchContentTool 削除)
 
         # キャッシュ設定情報
         details["cache_configurations"] = {
@@ -151,8 +146,6 @@ class CacheReporter:
             ):
                 active_caches += 1
 
-        # search_content キャッシュは廃止済み
-
         if active_caches > 0:
             recommendations.append(
                 "🚨 アクティブなキャッシュが検出されました。テスト前にキャッシュをクリアすることを強く推奨します。"
@@ -161,7 +154,7 @@ class CacheReporter:
                 "💡 --no-cache-clear オプションを使用せず、デフォルトのキャッシュクリア機能を有効にしてください。"
             )
 
-        # ヒット率の確認 (search_content は廃止済み)
+        # 检查命中率
         for cache_name in ["analysis_engine"]:
             if cache_name in cache_stats and not cache_stats[cache_name].get("error"):
                 stats = cache_stats[cache_name]
@@ -225,8 +218,6 @@ class CacheReporter:
                 impact_analysis["risk_factors"].append(
                     f"Analysis Engineのヒット率が高い ({hit_rate:.1%})"
                 )
-
-        # Search Content キャッシュは廃止済み (SearchContentTool 削除)
 
         # リスクレベルの決定
         if max_risk_score > 0:

@@ -103,25 +103,5 @@
       },
       "output_file": "set_project_path.json"
     }
-  ],
-  "list_files": [
-    {
-      "id": "list_examples",
-      "params": {
-        "roots": ["examples/"],
-        "extensions": ["java", "py", "js"],
-        "types": ["f"]
-      },
-      "output_file": "list_files_examples.json"
-    },
-    {
-      "id": "list_core",
-      "params": {
-        "roots": ["tree_sitter_analyzer/core/"],
-        "extensions": ["py"],
-        "types": ["f"]
-      },
-      "output_file": "list_files_core.json"
-    }
   ]
 }

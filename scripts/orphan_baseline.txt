@@ -183,7 +183,6 @@ tree_sitter_analyzer/mcp/server_utils/tool_registration.py
 # tree_sitter_analyzer/mcp/tools/find_and_grep_agent_summary.py  # 廃止済み
 # tree_sitter_analyzer/mcp/tools/find_and_grep_execution.py  # 廃止済み
 # tree_sitter_analyzer/mcp/tools/find_and_grep_response.py  # 廃止済み
-tree_sitter_analyzer/mcp/tools/list_files_helpers.py
 tree_sitter_analyzer/mcp/tools/query_helpers.py
 tree_sitter_analyzer/mcp/tools/route_detector_tool.py
 # tree_sitter_analyzer/mcp/tools/search_content_agent_summary.py  # 廃止済み

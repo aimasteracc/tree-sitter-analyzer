@@ -542,8 +542,8 @@ figure is stale in two ways, measured 2026-08-19:
   formatter registry is re-imported inside its own reset lambda), not ~50:
   `core.analysis_engine`, `core.language_detector`, `core.query`,
   `formatters.formatter_registry`, `core.engine_manager`,
-  `mcp.utils.file_output_factory`, `mcp.utils.search_cache`,
-  `mcp.utils.gitignore_detector`, `language_loader`, `query_loader`.
+  `mcp.utils.file_output_factory`, `cache.answer_cache`, `language_loader`,
+  `query_loader`, `latency`.
 
 So §3.1's one-way property is **safe, but the stated reason for it was wrong**.
 These invariants still use only the zero-caller signal, because one-way false

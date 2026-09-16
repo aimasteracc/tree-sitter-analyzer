@@ -58,7 +58,6 @@ routes:
     - "benchmarks/**"
     - "tests/benchmarks/**"
     - "tree_sitter_analyzer/ast_cache.py"
-    - "tree_sitter_analyzer/mcp/tools/utils/search_cache.py"
     - "tree_sitter_analyzer/mcp/tools/utils/change_impact_cached_graph.py"
     - ".github/workflows/benchmarks.yml"
   run_grammar_coverage:
@@ -87,10 +86,9 @@ scopes:
     values:
       query:
         - "tests/benchmarks/test_query_performance.py"
-        - "tree_sitter_analyzer/mcp/tools/query_code_tool.py"
+        - "tree_sitter_analyzer/mcp/tools/query_tool.py"
       cache:
         - "tree_sitter_analyzer/ast_cache.py"
-        - "tree_sitter_analyzer/mcp/tools/utils/search_cache.py"
       analysis:
         - "tests/benchmarks/test_large_file_performance.py"
         - "tree_sitter_analyzer/core/**"

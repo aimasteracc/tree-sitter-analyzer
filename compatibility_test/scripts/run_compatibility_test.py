@@ -56,12 +56,7 @@ def _load_mcp_tool_class(tool_name: str) -> type[Any]:
 
         return ReadPartialTool
 
-    if tool_name == "list_files":
-        from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
-
-        return ListFilesTool
-
-    # find_and_grep (FindAndGrepTool) と search_content (SearchContentTool) は廃止済み
+    # v2 で廃止された検索ラッパーは互換性対象外。
 
     raise ValueError(f"未知のツール名: {tool_name}")
 

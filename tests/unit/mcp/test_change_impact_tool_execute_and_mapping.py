@@ -972,22 +972,22 @@ def test_find_test_files_avoids_discarded_full_suite_affinity_scan(monkeypatch):
 
 
 def test_find_test_files_preserves_direct_variants_at_best_outer_affinity():
-    """Nested source modules retain all direct variants at the best outer rank."""
+    """嵌套源码模块应保留最佳外层亲和度中的全部直接变体。"""
     mapping = change_impact_tool._find_test_files(
-        ["tree_sitter_analyzer/cli/commands/list_files_cli.py"],
+        ["tree_sitter_analyzer/cli/commands/doctor.py"],
         {
-            "tests/unit/cli/test_list_files_cli.py",
-            "tests/unit/cli/test_list_files_cli_main.py",
-            "tests/unit/cli/test_list_files_cli_parser.py",
-            "tests/unit/cli/test_list_files_cli_run.py",
+            "tests/unit/cli/test_doctor.py",
+            "tests/unit/cli/test_doctor_main.py",
+            "tests/unit/cli/test_doctor_parser.py",
+            "tests/unit/cli/test_doctor_run.py",
         },
     )
 
-    assert mapping["tree_sitter_analyzer/cli/commands/list_files_cli.py"] == [
-        "tests/unit/cli/test_list_files_cli.py",
-        "tests/unit/cli/test_list_files_cli_main.py",
-        "tests/unit/cli/test_list_files_cli_parser.py",
-        "tests/unit/cli/test_list_files_cli_run.py",
+    assert mapping["tree_sitter_analyzer/cli/commands/doctor.py"] == [
+        "tests/unit/cli/test_doctor.py",
+        "tests/unit/cli/test_doctor_main.py",
+        "tests/unit/cli/test_doctor_parser.py",
+        "tests/unit/cli/test_doctor_run.py",
     ]
 
 
@@ -1403,26 +1403,22 @@ def test_find_test_files_maps_extracted_query_helpers_to_family_tests():
     assert mapping["tree_sitter_analyzer/mcp/tools/query_validation.py"] == expected
 
 
-def test_find_test_files_maps_list_files_execution_to_family_tests():
-    """执行辅助模块应映射到保留的 list_files 行为测试。"""
+def test_find_test_files_maps_query_execution_to_family_tests():
+    """执行辅助模块应映射到保留的 query 行为测试。"""
     mapping = change_impact_tool._find_test_files(
-        ["tree_sitter_analyzer/mcp/tools/list_files_execution.py"],
+        ["tree_sitter_analyzer/mcp/tools/query_execution.py"],
         {
-            "tests/unit/core/test_list_files_tool_file_output.py",
-            "tests/unit/mcp/test_list_files_tool.py",
-            "tests/unit/mcp/test_mcp_list_files_p1a_validation.py",
-            "tests/unit/mcp/test_mcp_list_files_p1b_fd_features.py",
-            "tests/unit/mcp/test_mcp_list_files_p2.py",
+            "tests/unit/core/test_query_tool_file_output.py",
+            "tests/unit/mcp/test_query_tool.py",
+            "tests/unit/mcp/test_mcp_query_p1.py",
+            "tests/unit/mcp/test_mcp_query_p2.py",
             "tests/unit/mcp/test_change_impact_tool.py",
         },
     )
 
-    assert mapping["tree_sitter_analyzer/mcp/tools/list_files_execution.py"] == [
-        "tests/unit/core/test_list_files_tool_file_output.py",
-        "tests/unit/mcp/test_list_files_tool.py",
-        "tests/unit/mcp/test_mcp_list_files_p1a_validation.py",
-        "tests/unit/mcp/test_mcp_list_files_p1b_fd_features.py",
-        "tests/unit/mcp/test_mcp_list_files_p2.py",
+    assert mapping["tree_sitter_analyzer/mcp/tools/query_execution.py"] == [
+        "tests/unit/core/test_query_tool_file_output.py",
+        "tests/unit/mcp/test_query_tool.py",
     ]
 
 

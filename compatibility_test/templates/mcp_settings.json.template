@@ -15,8 +15,7 @@
         "query_code",
         "check_code_scale",
         "extract_code_section",
-        "set_project_path",
-        "list_files"
+        "set_project_path"
       ],
       "timeout": 3600,
       "disabled": true
@@ -36,8 +35,7 @@
         "query_code",
         "check_code_scale",
         "extract_code_section",
-        "set_project_path",
-        "list_files"
+        "set_project_path"
       ],
       "timeout": 3600,
       "disabled": true
