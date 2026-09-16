@@ -5,12 +5,25 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
 from tree_sitter_analyzer.mcp.tools.search_facade import build_search_facade
 
 INDEXED_SOURCE = "def target():\n    return 'INDEXED_MARKER'\n"
 MOVED_SOURCE = "# MOVED_MARKER\n\ndef target():\n    return 'CURRENT_MARKER'\n"
+
+
+def reject_certified_capture(monkeypatch: Any) -> None:
+    """把重建期间的认证快照捕获转换为立即失败。"""
+    import tree_sitter_analyzer.index_snapshot as snapshot_owner
+
+    monkeypatch.setattr(
+        snapshot_owner,
+        "certified_index_read",
+        lambda _root: pytest.fail("重建期间不应捕获认证快照"),
+    )
 
 
 async def assert_sqlite_deadline_falls_back(

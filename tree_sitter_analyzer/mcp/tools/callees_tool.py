@@ -106,6 +106,8 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
+        if is_index_rebuilding(self.project_root):
+            return await self._execute_bound(arguments, None, None)
         if self.project_root:
             from ...index_snapshot import certified_index_read
 
@@ -164,11 +166,14 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
             if bound_cache is not None:
                 from ...call_graph import CachedCallGraph
 
-                graph = CachedCallGraph(self.project_root or ".", cache=bound_cache)
+                graph = CachedCallGraph(
+                    self.project_root or ".", cache=bound_cache, fallback=False
+                )
+                data_source = "cache"
             else:
                 graph = self._get_call_graph()
+                data_source = self._data_source
             callees = graph.callees_of(func_name, file_path)
-            data_source = self._data_source
             if include_activation:
                 self._enrich_graph_callees_with_activation(callees)
             self._enrich_callees_with_resolution(callees)

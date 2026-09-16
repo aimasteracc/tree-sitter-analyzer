@@ -100,7 +100,7 @@ class TestExecuteDefinition:
         assert calls == [(bound_cache, owner.read_source), (None, None)]
 
     def test_bound_definition_sql_error_is_not_converted_to_not_found(self, tool):
-        """严格认证缓存的 SQL 故障不能伪装成定义不存在。"""
+        """严格认证缓存的 SQL 故障不能伪装成坐标不存在。"""
 
         class StrictCache:
             strict_sql_errors = True
@@ -112,8 +112,30 @@ class TestExecuteDefinition:
                 connection.execute.side_effect = sqlite3.DatabaseError("broken")
                 return connection
 
-        with pytest.raises(sqlite3.DatabaseError, match="broken"):
-            tool._resolve_definition("target", 50, StrictCache())
+        for lookup in (tool._resolve_definition, tool._find_references):
+            with pytest.raises(sqlite3.DatabaseError, match="broken"):
+                lookup("target", 50, StrictCache())
+
+    def test_unbound_sql_errors_remain_explanatory_results(self, tool):
+        """普通坐标查询的数据库故障仍返回可诊断结果。"""
+        with (
+            patch.object(tool, "get_cache", return_value=MagicMock()),
+            patch(
+                "tree_sitter_analyzer.symbol_resolver.SymbolResolver",
+                side_effect=sqlite3.DatabaseError("broken"),
+            ),
+        ):
+            definition = tool._resolve_definition("target", 50)
+            references = tool._find_references("target", 50)
+
+        assert definition == {
+            "found": False,
+            "reason": "SQLite definition lookup failed",
+        }
+        assert references == {
+            "found": False,
+            "reason": "SQLite reference lookup failed",
+        }
 
     def test_non_database_lookup_failures_remain_explanatory_results(self, tool):
         """普通解析故障仍返回可诊断的坐标查询结果。"""
@@ -184,6 +206,34 @@ class TestExecuteDefinition:
 
 
 class TestExecuteHierarchy:
+    def test_bound_hierarchy_never_parses_live_files(self, tool, monkeypatch):
+        """认证缓存为空时也不能退回实时文件解析。"""
+        from tree_sitter_analyzer.call_graph import CallGraph
+
+        class EmptyCache:
+            @staticmethod
+            def get_call_edges():
+                return []
+
+            @staticmethod
+            def get_functions():
+                return []
+
+            @staticmethod
+            def get_imports():
+                return {}
+
+        monkeypatch.setattr(
+            CallGraph,
+            "build",
+            lambda _self: pytest.fail("认证层级查询不能解析实时文件"),
+        )
+
+        result = tool._call_hierarchy("target", None, 1, 50, EmptyCache())
+
+        assert result["callers"] == []
+        assert result["callees"] == []
+
     @pytest.mark.asyncio
     async def test_hierarchy_no_graph(self, tool):
         mock_graph = MagicMock()

@@ -416,7 +416,7 @@ class CodeGraphNavigateTool(BaseMCPTool):
         bound_cache: Any = None,
     ) -> dict[str, Any]:
         graph = (
-            CachedCallGraph(self.project_root or ".", cache=bound_cache)
+            CachedCallGraph(self.project_root or ".", cache=bound_cache, fallback=False)
             if bound_cache is not None
             else self.get_call_graph()
         )

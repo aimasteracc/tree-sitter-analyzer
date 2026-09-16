@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.unit._navigation_test_support import build_many_relation_project
+from tests.unit import _navigation_test_support as nav_support
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache import build_state
 from tree_sitter_analyzer.mcp.tools.callees_tool import CodeGraphCalleesTool
@@ -312,7 +312,7 @@ class TestHonestTruncationCallers:
 
     @pytest.fixture
     def many_callers_root(self, tmp_path):
-        return build_many_relation_project(tmp_path, "callers")
+        return nav_support.build_many_relation_project(tmp_path, "callers")
 
     @pytest.mark.asyncio
     async def test_default_limit_caps_at_50(self, many_callers_root):
@@ -380,7 +380,7 @@ class TestHonestTruncationCallees:
 
     @pytest.fixture
     def many_callees_root(self, tmp_path):
-        return build_many_relation_project(tmp_path, "callees")
+        return nav_support.build_many_relation_project(tmp_path, "callees")
 
     @pytest.mark.asyncio
     async def test_default_limit_caps_at_50(self, many_callees_root):
@@ -542,7 +542,7 @@ class TestEmptyIndexHint:
 
     @pytest.mark.asyncio
     async def test_callers_rebuild_marker_warns_without_phantom_count(
-        self, tmp_path
+        self, tmp_path, monkeypatch
     ) -> None:
         (tmp_path / "sample.py").write_text(
             "def foo():\n    bar()\n\ndef bar():\n    return 1\n",
@@ -552,7 +552,7 @@ class TestEmptyIndexHint:
         try:
             cache.index_project(workers=0)
             build_state.mark_build_in_progress(cache.get_conn())
-
+            nav_support.reject_certified_capture(monkeypatch)
             tool = CodeGraphCallersTool(str(tmp_path))
             result = await tool.execute(
                 {"function_name": "bar", "output_format": "json"}
@@ -571,7 +571,7 @@ class TestEmptyIndexHint:
 
     @pytest.mark.asyncio
     async def test_callees_rebuild_marker_warns_without_phantom_count(
-        self, tmp_path
+        self, tmp_path, monkeypatch
     ) -> None:
         (tmp_path / "sample.py").write_text(
             "def foo():\n    bar()\n\ndef bar():\n    return 1\n",
@@ -581,7 +581,7 @@ class TestEmptyIndexHint:
         try:
             cache.index_project(workers=0)
             build_state.mark_build_in_progress(cache.get_conn())
-
+            nav_support.reject_certified_capture(monkeypatch)
             tool = CodeGraphCalleesTool(str(tmp_path))
             result = await tool.execute(
                 {"function_name": "foo", "output_format": "json"}
