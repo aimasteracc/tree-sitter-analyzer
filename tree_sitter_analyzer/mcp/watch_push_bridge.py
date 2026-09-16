@@ -1,14 +1,9 @@
-"""RFC-0001 criterion 4: watch→push bridge.
+"""RFC-0001 标准 4：watch→push 桥接器。
 
-Wires the ``FileWatcherDaemon`` (background thread) to the
-``SubscriptionRegistry`` (process-wide singleton). When a sync event
-fires the bridge:
-
-1. Gathers all active (session_id, selector) pairs from the registry.
-2. Re-evaluates each selector against the updated index.
-3. Computes the delta (added / removed items).
-4. Schedules ``send_resource_updated(uri)`` on the captured asyncio loop
-   via ``asyncio.run_coroutine_threadsafe`` (thread → loop bridge).
+本模块把后台线程 ``FileWatcherDaemon`` 接入应用拥有的订阅生命周期管理器。
+同步事件到达后，桥接器收集所有活跃的会话与选择器，基于更新后的索引重新求值，
+计算新增与删除差异，并通过管理器可撤销的线程到事件循环交接来调度
+``send_resource_updated(uri)``。
 
 推送采用尽力而为语义：会话循环缺失或关闭时移除会话，发送失败只记录诊断，
 均不阻塞监听循环。求值失败保留最后有效快照，不能伪装成真实删除。
@@ -16,18 +11,18 @@ fires the bridge:
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
 from .resources.hyphae_resource import uri_from_selector
-from .tools.hyphae_subscribe_tool import get_session_loop
 
 logger = logging.getLogger(__name__)
 
 
 def make_on_sync_callback(
     project_root: str | None,
+    lifecycle_manager: Any | None = None,
+    watch_token: Any | None = None,
 ) -> Any:
     """Return an ``on_sync`` callable suitable for ``FileWatcherDaemon``.
 
@@ -36,7 +31,9 @@ def make_on_sync_callback(
     """
 
     def _on_sync(sync_result: dict[str, Any]) -> None:
-        _drive_subscriptions(project_root, sync_result)
+        if lifecycle_manager is None or watch_token is None:
+            return
+        _drive_subscriptions(project_root, sync_result, lifecycle_manager, watch_token)
 
     return _on_sync
 
@@ -44,14 +41,12 @@ def make_on_sync_callback(
 def _drive_subscriptions(
     project_root: str | None,
     sync_result: dict[str, Any],
+    lifecycle_manager: Any,
+    watch_token: Any,
 ) -> None:
     """Re-evaluate each subscription and push deltas.  Called on the watcher thread."""
     if not project_root:
         return
-
-    from ..registry.singleton_registry import get_subscription_registry
-
-    registry = get_subscription_registry()
 
     def _evaluate(session_id: str, selector: str) -> list[Any]:
         from ..ast_cache import ASTCache
@@ -70,28 +65,22 @@ def _drive_subscriptions(
             for item in items
         ]
 
-    def _push(session_id: str, selector: str) -> None:
-        loop = get_session_loop(session_id)
-        if loop is None or loop.is_closed():
-            registry.remove_session(session_id)
-            return
-        uri = uri_from_selector(selector)
+    for ticket in lifecycle_manager.snapshot_for_watch(watch_token):
         try:
-            future = asyncio.run_coroutine_threadsafe(
-                _send_update(session_id, uri),
-                loop,
-            )
-            future.add_done_callback(
-                lambda f: _handle_push_result(f, session_id, selector, registry)
-            )
+            snapshot = _evaluate(ticket.session_id, ticket.selector)
         except Exception:
             logger.debug(
-                "push scheduling failed for session %s", session_id, exc_info=True
+                "subscription evaluation failed for session %s selector %s",
+                ticket.session_id,
+                ticket.selector,
+                exc_info=True,
             )
-
-    # Push ONLY the (session, selector) pairs whose result actually changed.
-    for session_id, selector in collect_changed_pairs(registry, _evaluate):
-        _push(session_id, selector)
+            continue
+        lifecycle_manager.commit_evaluation_and_schedule(
+            ticket,
+            snapshot,
+            uri_from_selector(ticket.selector),
+        )
 
 
 def collect_changed_pairs(
@@ -123,38 +112,3 @@ def collect_changed_pairs(
             if added or removed:
                 changed.append((session_id, selector))
     return changed
-
-
-async def _send_update(session_id: str, uri: str) -> None:
-    """Coroutine that sends resource-updated; runs on the captured loop."""
-    try:
-        from pydantic import AnyUrl
-
-        from .tools.hyphae_subscribe_tool import get_session_obj
-
-        session = get_session_obj(session_id)
-        if session is None:
-            logger.debug("no session for %s — push skipped", session_id)
-            return
-        await session.send_resource_updated(AnyUrl(uri))
-    except Exception:
-        logger.debug("send_resource_updated failed for %s", uri, exc_info=True)
-
-
-def _handle_push_result(
-    future: Any,
-    session_id: str,
-    selector: str,
-    registry: Any,
-) -> None:
-    """Callback on push future completion — GC dead sessions."""
-    try:
-        future.result()
-    except Exception:
-        logger.debug(
-            "push future error for session %s selector %s",
-            session_id,
-            selector,
-            exc_info=True,
-        )
-        registry.unsubscribe(session_id, selector)
