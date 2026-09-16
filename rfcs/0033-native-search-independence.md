@@ -96,7 +96,7 @@ TSA 的索引发现改用进程内实现，实时源码核验使用自带 Python
 - [x] 无 rg/fd 安装步骤或缺少它们而跳过测试的机制
 - [x] CLI↔MCP parity 与 codemap 自检通过
 - [x] 迁移说明、安装文档与内置检索 skill 一致
-- [ ] 完整本地测试及跨平台 CI 通过
+- [x] 完整本地测试及跨平台 CI 通过
 
 ## Deferred
 

@@ -6,48 +6,43 @@
 - **North star:** Verified Change Success Rate (VCSR), not feature, language, tool, test, or edge count.
 - **Claim policy:** Public language is always bounded to named tools, versions, repositories, models, dates, and evidence levels. E0–E3 emit no quantitative competitive wording; E4 permits only the exact admitted bounded sentence, never an unqualified "No.1" claim.
 
-## 2026-09-16 交付状态：先关闭阻断，再接续历史证据
+## 2026-09-16 交付状态：仓库内阻断已收敛，竞争证据仍受门控
 
-本节以 GitHub 当前 `develop@6ffb55b5fe871f983b3926fc79b2f6d30e467fff`
-与公开 PR 状态为准；较早本地快照不覆盖这里的交付裁决。#1489 已合入，
-其余 3 个 PR 未合入。
-已成功的 CI / Native 轴只支持其具名范围内的证据，不证明整个愿景已经完成，
-也不构成发版或 VCSR / E4 达标声明。
+本节以 `develop@ff338304631db4e59544408a88660d8eb9ec03a4` 为基线。
+[#1489](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1489) 至
+[#1504](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1504) 已全部合入
+`develop`；其中包括订阅失败隔离、认证源码正文、生命周期所有权、路由与
+Decision Journal / ASTCache 的确定关闭、main→develop 对账，以及 v2 外部搜索
+wrapper 退役。#1504 的最终 head 已通过 Linux、macOS、Windows、Python
+3.10–3.13、MCP 黑盒、Native qualification、SQL 兼容、回归、Codecov patch
+和构建门禁。成功证据只支持这些具名范围，不自动升级 VCSR 或竞争性证据等级。
 
-| PR | 当前状态 | 完成门槛 |
-|---|---|---|
-| [#1489](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1489) CI 策略与路径约束 | CI 与 Native 成功；已合入 `develop@6ffb55b5` | 已完成；成功证据仅支持具名 CI 与 Native 范围，不自动升级其他资格 |
-| [#1490](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1490) 订阅求值失败隔离 | 当前 head `5cd017fb` 已以双父 merge 纳入 `develop@6ffb55b5`，未改写远端历史。首次 Native 失败已定位到从 `files.pythonhosted.org` 下载时的 `ReadTimeoutError`；仅重跑失败任务的 attempt 2 又因复用的 build 只上传 attempt 1 工件而被同 attempt provenance 正确拒绝。此前 Windows 另有 14.69 秒超过 12.8 秒及 xdist worker 崩溃；变更不触及 workflow、pytest、xdist 或超时配置，本地尚未复现。新 head 已于 2026-09-16 04:31 UTC 触发完整新运行；本状态快照时 CI 尚在排队、Native 与其余轴仍在运行，不能视为恢复或资格完成 | 以完整新运行关闭下载、Windows 时限和 xdist 稳定性问题；取得终态检查与最终 head 审查通过后方可合入 |
-| [#1491](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1491) 认证源码正文 | 当前 head `b638cb61`；Native Install Qualification 已成功。CI 只剩 Windows PR-fast 与 Quality Gate 尚未终态成功；Windows PR-fast 中 3 项 certified source body restoration 测试均未返回 body。此外还有 3 条 substantive Codex review 尚未解决：重复执行 full-scope certification scan；SQLite deadline 的 `DatabaseError` 未统一捕获；`call_graph_built` 会覆盖并撤掉 owner 安装的 deadline progress handler。这些均不能记为已修复 | 使 3 项正文恢复测试返回 body，关闭 3 条实质审查意见，并取得 Windows PR-fast 与 Quality Gate 终态成功；最终 head 经审查后方可合入 |
-| [#1492](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1492) 生命周期所有权 | draft；当前完整 CI 成功，但包含 #1490 依赖 | 先合入 #1490，再基于新的 `develop` rebase、缩小差异并重新完成当前最终树的焦点测试、补丁覆盖、完整 CI 与审查，之后才可转 ready |
+本节同提交关闭 dogfood 暴露的两个发版前可信度缺口：`change-impact` 的
+`branch` 模式改为从 GitFlow 目标分支的 merge base 读取全部提交，不再只看
+`HEAD~1..HEAD`；测试侧 SQLite 读取 helper 在边界确定关闭连接。后者的限定
+重放从实际 FD `15 → 75 → 71`、DB FD 峰值 59 / 结束 56，降至
+`15 → 19 → 15`、DB FD 峰值 3 / 结束 0。随后普通 comprehensive run 为
+`24788 passed, 98 skipped, 1 rerun`，退出码 0；原 256-FD 低上限节点在 19 FD
+通过，worker 边界峰值从前次观测的 129 降至 69。一次既有 WAL 并发用例发生
+rerun，不能计为额外成功，也不能把历史 EMFILE 的唯一根因追溯为本 helper。
 
-路线图曾记录历史读取与 Python 声明 lineage ledger 在 `f4fd8f6e`
-上有“429 项测试通过、0 失败、0 跳过、0 重跑”的 **LOCAL_GO**
-报告。当前工作区没有可审计的精确 nodeids、可复现的 selection command
-或 durable receipt；历史总数不能重建当时的选择与覆盖语义，因此不得
-作为 semantic baseline 或 qualification evidence。重新资格化至少需要：
+### 发版裁决
 
-1. 绑定精确源码提交与环境的可复现 selection command。
-2. 收集和实际执行的精确 nodeid 清单，包含参数化 ID。
-3. 将源码 SHA、命令、nodeids 与逐项结果绑定在可长期访问的 durable receipt 中。
+- RFC-0033 的仓库内实现、迁移、完整本地测试和跨平台 CI 验收已经完成；v2
+  公开搜索 wrapper 退役不再有仓库内待办。
+- 只有本修复通过最终 PR CI 并合入 `develop` 后，才可从该最终提交创建
+  `release/v2.0.0`。release 分支推送会触发 PyPI 发布，仍须按 GITFLOW 完成
+  `release/v* → main`、标记版本、GitHub Release 及回合 `develop`。
+- VCSR、外部维护者采用、模型裁判、生产 canary、签名证明以及 E2–E4 竞争性
+  表述属于外部或人工证据门槛。它们仍未完成，不能用仓库测试代替；它们阻止
+  “No.1”公开声明，但不伪装成尚可继续编码的本地功能清单。
+- [#1230](https://github.com/aimasteracc/tree-sitter-analyzer/issues/1230) 是每日重算的
+  维护队列，不是一次性发版故事；只有 TSA `safe-to-edit` 给出可验证收益时才取项，
+  不能为清空列表而制造重构。
 
-恢复 `f4fd8f6e` ledger 源码本身不会恢复上述资格，也不能把该提交
-称为可提交、可合入或可发布。
-
-下一轮按三个可独立审查的切片推进：
-
-1. 关闭 #1489–#1492 的现有阻断，保持依赖顺序，并为每个最终 head 保存独立资格证据。
-2. 从受信 Git 对象恢复并逐文件核对 `f4fd8f6e` 的内部历史读取与 ledger；
-   恢复后在当前 `develop` 上冻结可复现 selector 和 exact nodeids，对当前最终树
-   重新运行焦点测试、补丁覆盖和静态门禁，并保存 durable receipt，再形成独立 PR。
-3. 在历史核心合入后，单独设计并实现严格的持久化 temporal schema 与
-   current-generation 绑定；普通非 temporal manifest 不得因可选 temporal
-   credential 缺失而失败。认证持久化读取、receipt / 时间 / expiry、订阅刷新
-   和公开 temporal selector 继续作为后续切片，不在本步扩张。
-
-完成上述切片仍不等于整体路线图完成。规模与延迟资格、全项目和原生平台覆盖、
-真实 Agent 任务 VCSR、外部采用及受限竞争性表述继续沿用既定门槛，未取得对应
-证据前保持未完成。
+下一步顺序固定为：合入本修复并核对最终 `develop`；执行 release 文档、版本、
+构建与安装审计；得到发布动作授权后再推送 `release/v2.0.0`。外部证据计划继续按
+TRUST-C1 / TRUST-T1 / TRUST-I1 的门槛推进，失败、未知和未签名结果保留在分母中。
 
 ## 2026-09-08 第二轮合入：内容新鲜度与健康评分
 
