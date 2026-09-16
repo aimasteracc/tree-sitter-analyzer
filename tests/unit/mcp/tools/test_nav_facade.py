@@ -432,6 +432,28 @@ def test_callees_scope_point_uses_callees_tool() -> None:
     mocks["callees_graph"].assert_not_called()
 
 
+@pytest.mark.parametrize(
+    ("action", "inner_name"),
+    [("callers", "callers_point"), ("callees", "callees_point")],
+)
+def test_point_scope_forwards_body_opt_out(action: str, inner_name: str) -> None:
+    """Issue #1450：点查询必须把正文选择传给底层工具。"""
+    facade, mocks = _build_facade_with_mock_inners()
+    asyncio.run(
+        facade.execute(
+            {
+                "action": action,
+                "symbol": "process",
+                "scope": "point",
+                "include_bodies": False,
+            }
+        )
+    )
+
+    call_args = mocks[inner_name].call_args[0][0]
+    assert call_args["include_bodies"] is False
+
+
 def test_callees_scope_graph_uses_call_graph_tool() -> None:
     facade, mocks = _build_facade_with_mock_inners()
     result = asyncio.run(

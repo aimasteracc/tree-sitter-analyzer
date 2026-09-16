@@ -94,6 +94,14 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
                     ),
                     "default": False,
                 },
+                "include_bodies": {
+                    "type": "boolean",
+                    "description": (
+                        "When false, omit callee source bodies and return only "
+                        "call-graph coordinates and metadata."
+                    ),
+                    "default": True,
+                },
             },
             "required": ["function_name"],
             "additionalProperties": False,
@@ -128,6 +136,7 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
         file_path = arguments.get("file_path")
         output_format = arguments.get("output_format", "json")
         include_activation = bool(arguments.get("include_activation", False))
+        include_bodies = bool(arguments.get("include_bodies", True))
         listed_cap = int(arguments.get("limit", 50))
 
         if is_index_rebuilding(self.project_root):
@@ -195,10 +204,11 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
         truncated = total_callees > listed_cap
         callees = callees[:listed_cap]
 
-        # P2: inline each callee's verbatim source body (top-N capped) so the
-        # agent answers from content, not coordinates — no Read per file:line.
-        body_reader = source_reader if call_graph_indexed else None
-        next_step = self._inline_callee_bodies(cache, callees, body_reader)
+        # 默认内联有上限的被调用方源码；调用者可只请求坐标和元数据。
+        next_step = None
+        if include_bodies:
+            body_reader = source_reader if call_graph_indexed else None
+            next_step = self._inline_callee_bodies(cache, callees, body_reader)
 
         result = build_response(
             verdict="INFO" if callees or total_callees else "NOT_FOUND",
