@@ -165,3 +165,38 @@ class TestCallGraphMetricsSanity:
             f"files_with_functions={m['files_with_functions']} — paths collapsed "
             "to empty string (F1 key-mismatch regression)"
         )
+
+
+def test_route_metrics_closes_request_owned_detector(tool_with_root):
+    """一次性指标采集必须在返回前释放 routes.db 连接。"""
+    detector = MagicMock()
+    detector.summary.return_value = {
+        "total_routes": 1,
+        "by_framework": {"flask": 1},
+        "by_method": {"GET": 1},
+        "file_count": 1,
+    }
+
+    with patch(
+        "tree_sitter_analyzer.route_detector.RouteDetector",
+        return_value=detector,
+    ):
+        result = tool_with_root._collect_route_metrics()
+
+    assert result["status"] == "computed"
+    detector.close.assert_called_once_with()
+
+
+def test_route_metrics_closes_detector_when_collection_fails(tool_with_root):
+    """指标异常路径同样必须释放请求拥有的路由检测器。"""
+    detector = MagicMock()
+    detector.summary.side_effect = RuntimeError("broken")
+
+    with patch(
+        "tree_sitter_analyzer.route_detector.RouteDetector",
+        return_value=detector,
+    ):
+        result = tool_with_root._collect_route_metrics()
+
+    assert result == {"status": "error", "error": "broken"}
+    detector.close.assert_called_once_with()

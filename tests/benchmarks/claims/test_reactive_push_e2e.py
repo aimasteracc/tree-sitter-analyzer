@@ -24,8 +24,41 @@ import asyncio
 import urllib.parse
 
 import pytest
+from mcp.server.lowlevel.server import RequestContext, request_ctx
+
+from tree_sitter_analyzer.mcp.subscription_lifecycle import (
+    SubscriptionLifecycleManager,
+)
 
 pytestmark = [pytest.mark.benchmark, pytest.mark.claims_benchmark]
+
+
+@pytest.fixture(autouse=True)
+def _clean_push_state():
+    """清理声明测试留下的全局订阅和已关闭事件循环。"""
+    from tree_sitter_analyzer.mcp.tools import hyphae_subscribe_tool as hst
+    from tree_sitter_analyzer.registry.singleton_registry import (
+        reset_subscription_registry,
+    )
+
+    reset_subscription_registry()
+    hst._SESSION_LOOPS.clear()
+    hst._SESSION_MIN_INTERVALS.clear()
+    hst._SESSION_SESSIONS.clear()
+    yield
+    reset_subscription_registry()
+    hst._SESSION_LOOPS.clear()
+    hst._SESSION_MIN_INTERVALS.clear()
+    hst._SESSION_SESSIONS.clear()
+
+
+async def _run_in_request(session, manager, owner, awaitable):
+    """在真实 SDK RequestContext 中运行既有契约调用。"""
+    token = request_ctx.set(RequestContext("claim", None, session, owner))
+    try:
+        return await awaitable
+    finally:
+        request_ctx.reset(token)
 
 
 # ─── Subscribe response contract ─────────────────────────────────────────────
@@ -42,9 +75,16 @@ def test_subscribe_returns_sub_id_and_resource_uri(tmp_path):
     )
 
     reset_subscription_registry()
-    tool = HyphaeSubscribeTool(str(tmp_path))
+    manager = SubscriptionLifecycleManager(str(tmp_path))
+    owner = manager.begin_run()
+    tool = HyphaeSubscribeTool(str(tmp_path), manager)
     result = asyncio.run(
-        tool.execute({"selector": "functions()", "output_format": "json"})
+        _run_in_request(
+            object(),
+            manager,
+            owner,
+            tool.execute({"selector": "functions()", "output_format": "json"}),
+        )
     )
 
     assert result.get("success") is not False, f"subscribe failed: {result}"
@@ -70,8 +110,17 @@ def test_subscribe_resource_uri_uses_tsa_hyphae_scheme(tmp_path):
 
     reset_subscription_registry()
     selector = "classes(language='python')"
-    tool = HyphaeSubscribeTool(str(tmp_path))
-    result = asyncio.run(tool.execute({"selector": selector, "output_format": "json"}))
+    manager = SubscriptionLifecycleManager(str(tmp_path))
+    owner = manager.begin_run()
+    tool = HyphaeSubscribeTool(str(tmp_path), manager)
+    result = asyncio.run(
+        _run_in_request(
+            object(),
+            manager,
+            owner,
+            tool.execute({"selector": selector, "output_format": "json"}),
+        )
+    )
 
     uri = result.get("resource_uri", "")
     assert uri.startswith("tsa://hyphae/"), (
@@ -101,9 +150,17 @@ def test_unsubscribe_removes_subscription(tmp_path):
 
     reset_subscription_registry()
     selector = "functions()"
-    sub_tool = HyphaeSubscribeTool(str(tmp_path))
+    session = object()
+    manager = SubscriptionLifecycleManager(str(tmp_path))
+    owner = manager.begin_run()
+    sub_tool = HyphaeSubscribeTool(str(tmp_path), manager)
     sub_result = asyncio.run(
-        sub_tool.execute({"selector": selector, "output_format": "json"})
+        _run_in_request(
+            session,
+            manager,
+            owner,
+            sub_tool.execute({"selector": selector, "output_format": "json"}),
+        )
     )
     sub_id = sub_result["sub_id"]
 
@@ -112,10 +169,15 @@ def test_unsubscribe_removes_subscription(tmp_path):
         "Subscription not registered after subscribe"
     )
 
-    unsub_tool = HyphaeUnsubscribeTool(str(tmp_path))
+    unsub_tool = HyphaeUnsubscribeTool(str(tmp_path), manager)
     asyncio.run(
-        unsub_tool.execute(
-            {"sub_id": sub_id, "selector": selector, "output_format": "json"}
+        _run_in_request(
+            session,
+            manager,
+            owner,
+            unsub_tool.execute(
+                {"sub_id": sub_id, "selector": selector, "output_format": "json"}
+            ),
         )
     )
 
@@ -180,14 +242,16 @@ def test_subscribe_is_idempotent(tmp_path):
 
     reset_subscription_registry()
     selector = "functions()"
-    tool = HyphaeSubscribeTool(str(tmp_path))
+    manager = SubscriptionLifecycleManager(str(tmp_path))
+    owner = manager.begin_run()
+    tool = HyphaeSubscribeTool(str(tmp_path), manager)
 
     async def _subscribe_twice():
         first = await tool.execute({"selector": selector, "output_format": "json"})
         await tool.execute({"selector": selector, "output_format": "json"})
         return first
 
-    r1 = asyncio.run(_subscribe_twice())
+    r1 = asyncio.run(_run_in_request(object(), manager, owner, _subscribe_twice()))
 
     reg = get_subscription_registry()
     subs = reg.subscriptions_for(r1["sub_id"])
