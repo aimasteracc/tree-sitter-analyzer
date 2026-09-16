@@ -214,6 +214,49 @@ class TestSupersede:
 
 
 class TestPersistence:
+    # Issue #1402（2026-09-16）: 低 FD 上限で再発しないよう即時 close を固定する。
+    def test_each_operation_closes_its_connection_immediately(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import tree_sitter_analyzer.decision_journal as journal_module
+
+        original_connect = journal_module.sqlite3.connect
+        live_connections = 0
+
+        class TrackedConnection(journal_module.sqlite3.Connection):
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                nonlocal live_connections
+                super().__init__(*args, **kwargs)
+                live_connections += 1
+                self._tracked_closed = False
+
+            def close(self) -> None:
+                nonlocal live_connections
+                if not self._tracked_closed:
+                    live_connections -= 1
+                    self._tracked_closed = True
+                super().close()
+
+        def tracked_connect(*args: object, **kwargs: object) -> TrackedConnection:
+            kwargs["factory"] = TrackedConnection
+            return original_connect(*args, **kwargs)
+
+        monkeypatch.setattr(journal_module.sqlite3, "connect", tracked_connect)
+
+        journal = DecisionJournal(tmp_path)
+        assert live_connections == 0
+
+        old = journal.record(title="v1", rationale="initial", verdict="INFO")
+        assert live_connections == 0
+        new = journal.record(title="v2", rationale="revised", verdict="INFO")
+        assert live_connections == 0
+        assert journal.get(old.id) == old
+        assert live_connections == 0
+        assert len(journal.search()) == 2
+        assert live_connections == 0
+        assert journal.supersede(old.id, new.id) is not None
+        assert live_connections == 0
+
     def test_storage_persists_across_journal_instances(self, tmp_path: Path) -> None:
         j1 = DecisionJournal(tmp_path)
         rec = j1.record(title="durable", rationale="r", verdict="INFO")

@@ -33,6 +33,7 @@ from __future__ import annotations
 import json
 import sqlite3  # nosec B404 - parameterised queries only
 import uuid
+from contextlib import closing
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -244,7 +245,7 @@ class DecisionJournal:
         return conn
 
     def _init_schema(self) -> None:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.executescript(_SCHEMA)
 
     # ------------------------------------------------------------------
@@ -274,7 +275,7 @@ class DecisionJournal:
         tags_v = _validate_string_list(tags, "tags", _MAX_TAGS)
         rec_id = _new_id()
         created_at = _utc_now_iso()
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.execute(
                 "INSERT INTO decision (id, created_at, title, rationale, "
                 "verdict, scope_paths, alternatives, related_symbols, tags) "
@@ -305,7 +306,7 @@ class DecisionJournal:
         )
 
     def get(self, decision_id: str) -> DecisionRecord | None:
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             row = conn.execute(
                 "SELECT * FROM decision WHERE id = ?", (decision_id,)
             ).fetchone()
@@ -338,7 +339,7 @@ class DecisionJournal:
             params.append(f"%{path_scope}%")
         sql += " ORDER BY created_at DESC LIMIT ?"
         params.append(limit)
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             rows = conn.execute(sql, params).fetchall()
         return [_row_to_record(r) for r in rows]
 
@@ -346,7 +347,7 @@ class DecisionJournal:
         """Mark ``old_id`` as superseded by ``new_id``. Returns updated row."""
         if old_id == new_id:
             raise JournalValidationError("old_id and new_id must differ")
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             # Ensure both exist first so we don't half-update.
             old_row = conn.execute(
                 "SELECT id FROM decision WHERE id = ?", (old_id,)
