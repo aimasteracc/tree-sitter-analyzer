@@ -204,7 +204,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload dogfood report
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7
         with:
           name: dogfood-sprint-report-${{ github.run_id }}
           path: artifacts/
@@ -309,7 +309,7 @@ jobs:
 
       - name: Upload brief artifact
         if: steps.brief.outputs.has_items == 'true'
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7
         with:
           name: dogfood-sprint-brief-${{ github.run_id }}
           path: artifacts/opus-brief.md
