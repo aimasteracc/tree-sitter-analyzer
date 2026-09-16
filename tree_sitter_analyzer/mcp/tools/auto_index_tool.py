@@ -14,6 +14,7 @@ Modes:
 
 from __future__ import annotations
 
+from contextlib import closing
 from typing import Any
 
 from ...indexing_limits import normalize_index_max_files
@@ -130,8 +131,8 @@ class CodeGraphAutoIndexTool(BaseMCPTool):
         try:
             from ...ast_cache import ASTCache
 
-            cache = ASTCache(self.project_root)
-            cache_stats = cache.get_stats()
+            with closing(ASTCache(self.project_root)) as cache:
+                cache_stats = cache.get_stats()
         except Exception:
             cache_stats = None
 
