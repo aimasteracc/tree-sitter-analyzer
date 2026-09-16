@@ -64,6 +64,51 @@ def test_target_resolution_failure_preserves_default_policy(
     )
 
 
+@pytest.mark.parametrize(
+    "target",
+    [
+        "tests/benchmarks/claims/test_index_speed_claim.py",
+        "tests\\benchmarks\\claims\\test_index_speed_claim.py::test_one_walk",
+    ],
+)
+def test_claim_target_lifts_only_benchmark_marker(tmp_path, target):
+    """显式 claim 测试必须可执行，同时继续禁止 network 测试。"""
+    claim_dir = tmp_path / "tests" / "benchmarks" / "claims"
+    claim_dir.mkdir(parents=True)
+    (claim_dir / "test_index_speed_claim.py").write_text("", encoding="utf-8")
+    default = DefaultTestCommand(
+        "pytest",
+        "uv run pytest -q",
+        "not network and not benchmark",
+        str(tmp_path),
+    )
+
+    assert build_test_command(default, [target]) == (
+        f"uv run pytest -m 'not network' '{target}' -q"
+        if "::" in target
+        else f"uv run pytest -m 'not network' {target} -q"
+    )
+
+
+def test_non_claim_benchmark_target_keeps_benchmark_excluded(tmp_path):
+    """普通benchmark目录不能借claim例外启动基准测量。"""
+    benchmark_dir = tmp_path / "tests" / "benchmarks"
+    benchmark_dir.mkdir(parents=True)
+    target = "tests/benchmarks/test_runtime_benchmark.py"
+    (tmp_path / target).write_text("", encoding="utf-8")
+    default = DefaultTestCommand(
+        "pytest",
+        "uv run pytest -q",
+        "not network and not benchmark",
+        str(tmp_path),
+    )
+
+    assert build_test_command(default, [target]) == (
+        "uv run pytest -m 'not network and not benchmark' "
+        "tests/benchmarks/test_runtime_benchmark.py -q"
+    )
+
+
 def test_detect_default_test_command_falls_back_to_pytest(tmp_path):
     """Unknown or Python-style projects should keep the repo's pytest contract."""
     assert detect_default_test_command(tmp_path) == DefaultTestCommand(
