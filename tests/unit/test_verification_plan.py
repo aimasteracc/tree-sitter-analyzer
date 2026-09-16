@@ -3,6 +3,7 @@
 import base64
 import json
 import shlex
+import sys
 from dataclasses import replace
 
 import pytest
@@ -304,6 +305,122 @@ def test_marker_policy_changes_invalidate_replayed_plan(tmp_path, monkeypatch):
     )
     with pytest.raises(ValueError, match="VERIFICATION_PLAN_CHANGED"):
         rebuild_request(value, str(tmp_path.resolve()))
+
+
+def test_marker_policy_resolves_each_shared_parent_once(tmp_path, monkeypatch):
+    """2026-09-15 PR #1489：大批同目录目标只解析一次共享父目录。"""
+    from pathlib import Path
+
+    from tree_sitter_analyzer.mcp.tools.utils import verification_pytest_config
+
+    root = tmp_path.resolve()
+    calls = 0
+    original_resolve = Path.resolve
+
+    def counted_resolve(path, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original_resolve(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", counted_resolve)
+    targets = [f"tests/unit/test_feature_{index:04d}.py" for index in range(1000)]
+    assert verification_pytest_config.targets_share_root_config(str(root), targets)
+    assert calls == 2
+
+
+def test_marker_policy_does_not_enumerate_unrequested_siblings(tmp_path, monkeypatch):
+    """2026-09-15 PR #1489：单个目标不能扫描并保存父目录全部兄弟项。"""
+    from tree_sitter_analyzer.mcp.tools.utils import verification_pytest_config
+
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "test_selected.py").write_text("", encoding="utf-8")
+
+    def unexpected_scandir(*args, **kwargs):
+        raise AssertionError("target classification must not enumerate siblings")
+
+    monkeypatch.setattr(verification_pytest_config.os, "scandir", unexpected_scandir)
+    assert verification_pytest_config.targets_share_root_config(
+        str(tmp_path.resolve()), ["tests/test_selected.py"]
+    )
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="tracked: PR #1489 Windows 文件系统原生大小写语义",
+)
+def test_marker_policy_uses_windows_case_semantics_for_directory_target(tmp_path):
+    """2026-09-15 PR #1489：大小写变体目录仍须发现其 pytest 配置。"""
+    from tree_sitter_analyzer.mcp.tools.utils import verification_pytest_config
+
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    assert not verification_pytest_config.targets_share_root_config(
+        str(tmp_path.resolve()), ["TESTS"]
+    )
+
+
+def test_marker_policy_checks_config_inside_directory_target(tmp_path, monkeypatch):
+    """目录目标仍需检查目录自身的 pytest 配置，不能按文件父目录处理。"""
+    from tree_sitter_analyzer.mcp.tools.utils import verification_pytest_config
+
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    assert not verification_pytest_config.targets_share_root_config(
+        str(tmp_path.resolve()), ["tests"]
+    )
+
+
+def test_marker_policy_rejects_file_symlink_outside_root(tmp_path):
+    """文件符号链接的叶节点也必须参与项目根 containment 检查。"""
+    from tree_sitter_analyzer.mcp.tools.utils import verification_pytest_config
+
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.py"
+    outside.write_text("", encoding="utf-8")
+    (tmp_path / "external.py").symlink_to(outside)
+    assert not verification_pytest_config.targets_share_root_config(
+        str(tmp_path.resolve()), ["external.py"]
+    )
+
+
+def test_marker_policy_rejects_regular_file_parent_outside_root(tmp_path):
+    """普通文件目标的词法父目录越界也必须拒绝。"""
+    from tree_sitter_analyzer.mcp.tools.utils import verification_pytest_config
+
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.py"
+    outside.write_text("", encoding="utf-8")
+    assert not verification_pytest_config.targets_share_root_config(
+        str(tmp_path.resolve()), [f"../{outside.name}"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("target", "expected"),
+    [("..", False), (".", True), ("tests/..", True), ("tests/../..", False)],
+)
+def test_marker_policy_normalizes_special_directory_targets(tmp_path, target, expected):
+    """特殊目录目标须按真实路径判断 containment。"""
+    from tree_sitter_analyzer.mcp.tools.utils import verification_pytest_config
+
+    (tmp_path / "tests").mkdir()
+    assert (
+        verification_pytest_config.targets_share_root_config(
+            str(tmp_path.resolve()), [target]
+        )
+        is expected
+    )
+
+
+def test_marker_policy_accepts_absolute_directory_inside_root(tmp_path):
+    """项目内绝对目录目标与等价相对目标采用相同配置边界。"""
+    from tree_sitter_analyzer.mcp.tools.utils import verification_pytest_config
+
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    assert verification_pytest_config.targets_share_root_config(
+        str(tmp_path.resolve()), [str(tests_dir.resolve())]
+    )
 
 
 def test_mapped_batches_keep_unmapped_default_gate(tmp_path):
