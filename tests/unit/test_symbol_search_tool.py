@@ -206,13 +206,10 @@ class TestCodeGraphSymbolSearchExecution:
         )
         assert result["match_count"] == 1
         hit = next(r for r in result["results"] if r["name"] == "target")
-        if os.name == "nt":
-            assert "code" not in hit and "body" not in hit
-        else:
-            assert "body" in hit, "top match must carry inlined body"
-            assert "content" in hit["body"]
-            assert "def target" in hit["body"]["content"]
-            assert "INDEXED_MARKER" in hit["body"]["content"]
+        assert "body" in hit, "top match must carry inlined body"
+        assert "content" in hit["body"]
+        assert "def target" in hit["body"]["content"]
+        assert "INDEXED_MARKER" in hit["body"]["content"]
         symbol._cache.close()
 
     async def test_public_search_does_not_mix_old_coordinates_with_moved_source(
@@ -293,20 +290,10 @@ class TestCodeGraphSymbolSearchExecution:
         result = await facade.execute(
             {"action": "symbol", "query": "target", "output_format": "json"}
         )
-        if os.name == "nt":
-            assert "no Read needed" not in result.get("next_step", "")
-            assert all(
-                "code" not in row and "body" not in row for row in result["results"]
-            )
-        else:
-            assert "no Read needed" in result["next_step"]
+        assert "no Read needed" in result["next_step"]
         symbol._cache.close()
 
     @pytest.mark.parametrize("query", ["~arge", "tar*", "missing", "z"])
-    @pytest.mark.skipif(
-        os.name != "posix",
-        reason="tracked:C1 certified source owner is POSIX-only",
-    )
     async def test_certified_search_modes_share_the_owner_connection(
         self, tmp_path, query, monkeypatch
     ):
@@ -341,9 +328,14 @@ class TestCodeGraphSymbolSearchExecution:
         self, tmp_path, monkeypatch
     ):
         from tree_sitter_analyzer import source_oracle
+        from tree_sitter_analyzer.source_oracle import SourceOracleError
 
         _source, facade, symbol = await _published_search(tmp_path)
-        monkeypatch.setattr(source_oracle, "_supports_nofollow", lambda: False)
+
+        def unsupported(*_args, **_kwargs):
+            raise SourceOracleError("DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED")
+
+        monkeypatch.setattr(source_oracle, "safe_index_source_path", unsupported)
         result = await facade.execute(
             {"action": "symbol", "query": "target", "output_format": "json"}
         )
@@ -353,50 +345,55 @@ class TestCodeGraphSymbolSearchExecution:
         assert "no Read needed" not in result.get("next_step", "")
         symbol._cache.close()
 
-    @pytest.mark.skipif(
-        os.name != "posix",
-        reason="tracked:C1 certified source owner is POSIX-only",
-    )
-    async def test_post_read_source_failure_removes_all_enrichment(
+    async def test_certified_search_does_not_rescan_repository_after_read(
         self, tmp_path, monkeypatch
     ):
+        # PR #1491：导航正文按返回文件摘要认证，不再在请求前后扫描整个仓库。
         from tree_sitter_analyzer import index_snapshot
 
         _source, facade, symbol = await _published_search(tmp_path)
-        original = index_snapshot.verify_snapshot_source_current
-        calls = 0
-        stripped_enrichment = False
-
-        def fail_after_read(*args: Any, **kwargs: Any) -> None:
-            nonlocal calls
-            calls += 1
-            if calls == 2:
-                raise ValueError("SOURCE_GENERATION_MISMATCH")
-            original(*args, **kwargs)
-
         monkeypatch.setattr(
-            index_snapshot, "verify_snapshot_source_current", fail_after_read
+            index_snapshot,
+            "verify_snapshot_source_current",
+            lambda *_args, **_kwargs: pytest.fail("认证搜索不得执行全仓库源码扫描"),
         )
-        original_strip = symbol._remove_unbound_source
 
-        def observe_strip(response: dict[str, Any]) -> None:
-            nonlocal stripped_enrichment
-            target = next(row for row in response["results"] if row["name"] == "target")
-            assert "code" in target and "body" in target
-            assert "INDEXED_MARKER" in target["body"]["content"]
-            assert "no Read needed" in response.get("next_step", "")
-            stripped_enrichment = True
-            original_strip(response)
-
-        monkeypatch.setattr(symbol, "_remove_unbound_source", observe_strip)
         result = await facade.execute(
             {"action": "symbol", "query": "target", "output_format": "json"}
         )
+
         assert result["success"] is True
-        assert calls == 2
-        assert stripped_enrichment is True
+        target = next(row for row in result["results"] if row["name"] == "target")
+        assert "code" in target and "body" in target
+        assert "INDEXED_MARKER" in target["body"]["content"]
+        assert "no Read needed" in result.get("next_step", "")
+        symbol._cache.close()
+
+    async def test_owner_exit_failure_removes_all_unbound_enrichment(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1491：owner 在响应提交前失败时，已拼装的正文必须退回纯坐标结果。
+        from contextlib import contextmanager
+
+        from tree_sitter_analyzer import index_snapshot
+
+        _source, facade, symbol = await _published_search(tmp_path)
+        original = index_snapshot.certified_index_read
+
+        @contextmanager
+        def fail_on_exit(project_root):
+            with original(project_root) as certified:
+                yield certified
+            raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
+
+        monkeypatch.setattr(index_snapshot, "certified_index_read", fail_on_exit)
+        result = await facade.execute(
+            {"action": "symbol", "query": "target", "output_format": "json"}
+        )
+
+        assert result["success"] is True
         assert all("code" not in row and "body" not in row for row in result["results"])
-        assert "no Read needed" not in result.get("next_step", "")
+        assert result["next_step"] == "Use the returned coordinates to read the source."
         symbol._cache.close()
 
     async def test_snapshot_acquisition_failure_preserves_coordinate_success(

@@ -437,3 +437,73 @@ def test_native_pins_reject_new_generation_publication(tmp_path, pair, kernel):
     with pytest.raises(ValueError, match="^CONCURRENT_WRITER$"):
         with _capture(tmp_path):
             project_store(str(tmp_path), make_source_scope_descriptor()).sync()
+
+
+def test_native_workspace_reader_pins_hierarchy_and_releases_handles(tmp_path, kernel):
+    # PR #1491：Windows 正文读取复用原生 File ID 能力，不能退化成普通 pathname open。
+    package = tmp_path / "pkg"
+    package.mkdir()
+    source = package / "sample.py"
+    source.write_bytes(b"value = 1\n")
+
+    data, metadata = owner.read_pinned_workspace_file(
+        str(tmp_path),
+        "pkg/sample.py",
+        deadline=time.monotonic() + 5,
+        limit=1024,
+    )
+
+    assert data == b"value = 1\n"
+    assert len(metadata) == 3
+    assert all(isinstance(item, bytes) for item in metadata)
+    assert kernel.handles
+    for handle, (_path, directory, _info) in kernel.handles.items():
+        assert directory is False
+        with pytest.raises(OSError) as error:
+            os.fstat(handle)
+        assert error.value.errno == errno.EBADF
+
+
+def test_native_workspace_reader_enforces_deadline_and_byte_budget(tmp_path, kernel):
+    # PR #1491：源码句柄读取与数据库读取共享同一个绝对 deadline 和请求预算。
+    source = tmp_path / "sample.py"
+    source.write_bytes(b"abcdef")
+
+    with pytest.raises(TimeoutError, match="INDEX_SNAPSHOT_DEADLINE"):
+        owner.read_pinned_workspace_file(
+            str(tmp_path), "sample.py", deadline=0.0, limit=1024
+        )
+    with pytest.raises(OverflowError, match="INDEX_SOURCE_CAPACITY"):
+        owner.read_pinned_workspace_file(
+            str(tmp_path),
+            "sample.py",
+            deadline=time.monotonic() + 5,
+            limit=1,
+        )
+
+
+def test_native_workspace_reader_rejects_change_after_read(
+    tmp_path, kernel, monkeypatch
+):
+    # PR #1491：读取后必须重新验证固定句柄与 pathname，不能发布漂移期间的字节。
+    source = tmp_path / "sample.py"
+    source.write_bytes(b"before\n")
+    real_read = owner._read_descriptor
+    changed = False
+
+    def read_then_change(fd, size):
+        nonlocal changed
+        data = real_read(fd, size)
+        if data and not changed:
+            changed = True
+            source.write_bytes(b"after-content\n")
+        return data
+
+    monkeypatch.setattr(owner, "_read_descriptor", read_then_change)
+    with pytest.raises(ValueError, match="INDEX_SOURCE_CHANGED"):
+        owner.read_pinned_workspace_file(
+            str(tmp_path),
+            "sample.py",
+            deadline=time.monotonic() + 5,
+            limit=1024,
+        )

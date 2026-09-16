@@ -6,17 +6,13 @@ import errno
 import os
 import sqlite3
 import time
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
 
 from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import CodeGraphStatusTool
-
-requires_posix_source_capture = pytest.mark.skipif(
-    os.name != "posix",
-    reason="tracked:C1 Windows safe descriptor source capture is unsupported",
-)
 
 
 def _certified_source_reader(tmp_path, source_text="value = 1\n"):
@@ -41,12 +37,6 @@ def _certified_source_reader(tmp_path, source_text="value = 1\n"):
 def test_certified_source_reader_returns_and_caches_expected_bytes(tmp_path):
     reader, connection = _certified_source_reader(tmp_path)
     try:
-        if os.name != "posix":
-            from tree_sitter_analyzer.source_oracle import SourceOracleError
-
-            with pytest.raises(SourceOracleError, match="WORKSPACE_UNSUPPORTED"):
-                reader.read_source("sample.py")
-            return
         assert reader.read_source("sample.py") == "value = 1\n"
         (tmp_path / "sample.py").write_text("changed = 2\n", encoding="utf-8")
         assert reader.read_source("sample.py") == "value = 1\n"
@@ -57,7 +47,6 @@ def test_certified_source_reader_returns_and_caches_expected_bytes(tmp_path):
 @pytest.mark.parametrize(
     "damage", ["missing_row", "invalid_hash", "changed", "missing_file"]
 )
-@requires_posix_source_capture
 def test_certified_source_reader_rejects_unbound_bytes(tmp_path, damage):
     reader, connection = _certified_source_reader(tmp_path)
     try:
@@ -75,7 +64,6 @@ def test_certified_source_reader_rejects_unbound_bytes(tmp_path, damage):
         connection.close()
 
 
-@requires_posix_source_capture
 def test_certified_source_reader_enforces_request_total_budget(tmp_path, monkeypatch):
     import tree_sitter_analyzer.index_snapshot as owner
 
@@ -88,7 +76,6 @@ def test_certified_source_reader_enforces_request_total_budget(tmp_path, monkeyp
         connection.close()
 
 
-@requires_posix_source_capture
 def test_certified_source_reader_bounds_count_and_remaining_capture(
     tmp_path, monkeypatch
 ):
@@ -104,13 +91,13 @@ def test_certified_source_reader_bounds_count_and_remaining_capture(
     from tree_sitter_analyzer import source_oracle
 
     limits = []
-    safe_capture = source_oracle.safe_workspace_path
+    safe_capture = source_oracle.safe_index_source_path
 
     def capture(root, path, **kwargs):
         limits.append(kwargs["limit"])
         return safe_capture(root, path, **kwargs)
 
-    monkeypatch.setattr(source_oracle, "safe_workspace_path", capture)
+    monkeypatch.setattr(source_oracle, "safe_index_source_path", capture)
     monkeypatch.setattr(owner, "_SOURCE_TOTAL_BYTE_LIMIT", 12)
     monkeypatch.setattr(owner, "_SOURCE_FILE_COUNT_LIMIT", 1)
     try:
@@ -123,7 +110,6 @@ def test_certified_source_reader_bounds_count_and_remaining_capture(
         connection.close()
 
 
-@requires_posix_source_capture
 def test_certified_source_reader_charges_normalized_output(tmp_path, monkeypatch):
     import tree_sitter_analyzer.index_snapshot as owner
     import tree_sitter_analyzer.indexing_snapshot as source_format
@@ -143,7 +129,6 @@ def test_certified_source_reader_charges_normalized_output(tmp_path, monkeypatch
         connection.close()
 
 
-@requires_posix_source_capture
 def test_certified_source_reader_rejects_exhausted_or_oversized_input(
     tmp_path, monkeypatch
 ):
@@ -160,7 +145,7 @@ def test_certified_source_reader_rejects_exhausted_or_oversized_input(
         reader._source_input_bytes = 0
         monkeypatch.setattr(
             source_oracle,
-            "safe_workspace_path",
+            "safe_index_source_path",
             lambda *_args, **_kwargs: SimpleNamespace(kind="file", data=b"x" * 9),
         )
         with pytest.raises(RuntimeError, match="INDEX_BACKUP_BUDGET"):
@@ -169,7 +154,6 @@ def test_certified_source_reader_rejects_exhausted_or_oversized_input(
         connection.close()
 
 
-@requires_posix_source_capture
 def test_certified_source_reader_cache_obeys_lifetime_and_deadline(tmp_path):
     reader, connection = _certified_source_reader(tmp_path)
     try:
@@ -350,6 +334,106 @@ def test_certified_query_cache_uses_existing_bfs_fallback(tmp_path, monkeypatch)
     try:
         assert cache.query_callers("target") == [{"caller_name": "a"}]
         assert cache.query_callees("target") == [{"callee_name": "b"}]
+    finally:
+        connection.close()
+
+
+def test_certified_query_cache_preserves_outer_deadline_handler(tmp_path, monkeypatch):
+    # PR #1491：owner 已安装共同 deadline 时，嵌套探针不得覆盖或清空它。
+    import tree_sitter_analyzer.index_snapshot_query as query
+
+    reader, connection = _certified_source_reader(tmp_path)
+    observed = {}
+
+    def call_graph_built(conn, **kwargs):
+        assert conn is connection
+        observed.update(kwargs)
+        return True
+
+    monkeypatch.setattr(query, "_call_graph_built", call_graph_built)
+    try:
+        assert reader.query_cache().call_graph_built() is True
+        assert observed == {
+            "deadline": reader.deadline,
+            "install_progress_handler": False,
+        }
+    finally:
+        connection.close()
+
+
+def test_certified_query_reuses_pinned_database_capability(tmp_path, monkeypatch):
+    # PR #1491：导航查询不得为每次请求重新复制同一个私有数据库。
+    import tree_sitter_analyzer.index_snapshot as owner
+    from tree_sitter_analyzer.index_snapshot_registry import IndexSnapshot
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    snapshot = IndexSnapshot(
+        snapshot_id="snapshot",
+        source_fingerprint="source-fingerprint",
+        index_fingerprint="index-fingerprint",
+        source_generation="generation",
+        completeness="complete",
+        reason=None,
+        canonical_root=str(tmp_path),
+        file_count=1,
+        source_scope=make_source_scope_descriptor(),
+    )
+
+    @contextmanager
+    def pin_reusable(_project_root):
+        yield snapshot
+
+    @contextmanager
+    def reject_recapture(*_args, **_kwargs):
+        pytest.fail("可复用 owner 存在时不得重新捕获数据库")
+        yield snapshot
+
+    monkeypatch.setattr(owner.REGISTRY, "pin_reusable", pin_reusable)
+    monkeypatch.setattr(owner, "lease_existing_snapshot", reject_recapture)
+    with owner._lease_certified_query_snapshot(
+        str(tmp_path), deadline=time.monotonic() + 5
+    ) as leased:
+        assert leased is snapshot
+
+
+def test_certified_query_scope_does_not_rescan_whole_repository(tmp_path, monkeypatch):
+    # PR #1491：查询层只固定数据库；返回正文时再逐文件按索引摘要认证。
+    import tree_sitter_analyzer.index_snapshot as owner
+    from tree_sitter_analyzer.index_snapshot_registry import IndexSnapshot
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    connection = sqlite3.connect(":memory:")
+    snapshot = IndexSnapshot(
+        snapshot_id="snapshot",
+        source_fingerprint="source-fingerprint",
+        index_fingerprint="index-fingerprint",
+        source_generation="generation",
+        completeness="complete",
+        reason=None,
+        canonical_root=str(tmp_path),
+        file_count=1,
+        source_scope=make_source_scope_descriptor(),
+    )
+
+    @contextmanager
+    def acquire(*_args, **_kwargs):
+        yield snapshot, connection
+
+    monkeypatch.setattr(owner, "acquire_index_snapshot", acquire)
+    monkeypatch.setattr(
+        owner,
+        "verify_snapshot_source_current",
+        lambda *_args, **_kwargs: pytest.fail("认证查询不得执行全仓库源码扫描"),
+    )
+    try:
+        with owner._read_certified_query_scope(
+            "snapshot",
+            str(tmp_path),
+            "generation",
+            deadline=time.monotonic() + 5,
+        ) as (leased, bound):
+            assert leased is snapshot
+            assert bound.execute("SELECT 1").fetchone() == (1,)
     finally:
         connection.close()
 

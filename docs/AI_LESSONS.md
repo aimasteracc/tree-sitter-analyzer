@@ -436,11 +436,19 @@ PR #1491 将 symbol search 的实现拆到 `_execute_search` 后，一个测试�
    空结果或正文 deterrent 会绕过目标分支形成假绿。
 3. **平台能力必须逐层闭合。** Windows 能捕获索引数据库并不代表它能认证工作区源码；恢复
    正文还需要同样防重解析点、固定身份、限额和 deadline 的原生读取能力。
+4. **认证成本应跟实际返回的证据成正比。** 导航查询可复用进程内固定的数据库能力，并只对本次
+   响应真正返回的源码逐文件校验索引摘要；每次查询重新复制数据库并四次扫描仓库既慢，也扩大
+   了 deadline 与并发漂移的故障面。
+5. **SQLite progress handler 只有一个槽位。** 内层 call-graph 探针若安装再清空自己的 handler，
+   会无意删除外层请求的绝对 deadline；嵌套读取必须显式复用外层 handler 所有权。
 
 ### Required guardrail
 
-本次已由 `tests/unit/mcp/test_runtime_guidance_facade_names.py` 通过公开 `execute` 固定精确
-facade 提示。Windows 正文恢复仍未实现：未来的原生 reader 必须在
-`tests/unit/test_index_snapshot_windows.py` 中证明身份、路径、预算、deadline 与清理契约；现有
-`tests/unit/test_codegraph_navigate_tool.py`、`tests/unit/test_callers_callees_tools.py` 和
-`tests/unit/mcp/tools/test_call_path_enrich.py` 的正文恢复回归测试继续作为平台资格门槛。
+`tests/unit/mcp/test_runtime_guidance_facade_names.py` 通过公开 `execute` 固定精确 facade 提示。
+Windows 正文恢复现由 `tree_sitter_analyzer/index_snapshot_windows.py` 的原生只读句柄完成，并在
+`tests/unit/test_index_snapshot_windows.py` 证明完整 File ID、重解析点拒绝、层级固定、预算、
+deadline、读取后复核与清理契约。`tests/unit/test_index_snapshot.py` 还固定数据库能力复用、逐文件
+摘要认证和外层 progress handler 所有权；`tests/unit/test_certified_navigation_fallback.py` 固定
+SQLite 中断只降级正文而不击穿公开工具。`tests/unit/test_codegraph_navigate_tool.py`、
+`tests/unit/test_callers_callees_tools.py` 与 `tests/unit/mcp/tools/test_call_path_enrich.py` 的正文恢复
+测试继续作为跨平台资格门槛。

@@ -661,6 +661,24 @@ def lease_reusable_snapshot(
         yield snapshot
 
 
+@contextmanager
+def _lease_certified_query_snapshot(
+    project_root: str, *, deadline: float
+) -> Iterator[IndexSnapshot]:
+    """优先复用已固定的私有数据库；仅在没有能力时重新捕获。"""
+    with REGISTRY.pin_reusable(project_root) as reusable:
+        if (
+            reusable is not None
+            and reusable.snapshot_id is not None
+            and reusable.source_generation is not None
+            and reusable.completeness == "complete"
+        ):
+            yield reusable
+            return
+    with lease_existing_snapshot(project_root, deadline=deadline) as captured:
+        yield captured
+
+
 def run_graph_snapshot_read(
     snapshot_id: str, project_root: str, source_generation: str | None, reader: Any
 ) -> dict[str, Any]:
@@ -757,7 +775,7 @@ class CertifiedIndexRead:
         from .source_oracle import (
             SourceOracleError,
             normalize_repo_path,
-            safe_workspace_path,
+            safe_index_source_path,
         )
 
         path = normalize_repo_path(relative_path)
@@ -787,7 +805,7 @@ class CertifiedIndexRead:
         if remaining_input <= 0:
             raise RuntimeError("INDEX_BACKUP_BUDGET")
         try:
-            captured = safe_workspace_path(
+            captured = safe_index_source_path(
                 root,
                 path,
                 deadline=self.deadline,
@@ -815,10 +833,48 @@ class CertifiedIndexRead:
 
 
 @contextmanager
+def _read_certified_query_scope(
+    snapshot_id: str,
+    project_root: str,
+    source_generation: str,
+    *,
+    deadline: float,
+) -> Iterator[tuple[IndexSnapshot, sqlite3.Connection]]:
+    """固定查询数据库和共同期限；源码仅在真正返回正文时逐文件认证。"""
+    with acquire_index_snapshot(
+        snapshot_id,
+        project_root,
+        source_generation,
+        deadline=deadline,
+    ) as (snapshot, connection):
+        if snapshot.completeness != "complete":
+            raise ValueError("INDEX_SNAPSHOT_INCOMPLETE")
+        from .index_source_scope import SourceScopeDescriptor
+
+        if not (
+            isinstance(snapshot.source_scope, SourceScopeDescriptor)
+            and snapshot.source_scope.roots == (".",)
+            and not snapshot.source_scope.exclude_patterns
+        ):
+            raise ValueError("CONSTRAINED_INDEX_SCOPE")
+
+        def deadline_breached() -> int:
+            return int(_clock() >= deadline)
+
+        connection.set_progress_handler(deadline_breached, 1_000)
+        try:
+            yield snapshot, connection
+        finally:
+            connection.set_progress_handler(None, 0)
+        if _clock() >= deadline:
+            raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
+
+
+@contextmanager
 def certified_index_read(project_root: str) -> Iterator[CertifiedIndexRead | None]:
-    """完整认证索引返回单一读能力；旧索引保持无正文的兼容查询。"""
+    """复用认证索引 owner，并只认证本次响应实际返回的源码。"""
     deadline = _clock() + _CAPTURE_DEADLINE_SECONDS
-    with lease_existing_snapshot(project_root, deadline=deadline) as advertised:
+    with _lease_certified_query_snapshot(project_root, deadline=deadline) as advertised:
         if (
             advertised.snapshot_id is None
             or advertised.source_generation is None
@@ -826,7 +882,7 @@ def certified_index_read(project_root: str) -> Iterator[CertifiedIndexRead | Non
         ):
             yield None
             return
-        with read_existing_index_scope(
+        with _read_certified_query_scope(
             advertised.snapshot_id,
             project_root,
             advertised.source_generation,

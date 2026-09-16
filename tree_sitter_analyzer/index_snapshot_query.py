@@ -183,7 +183,14 @@ class CertifiedSnapshotCache:
         return bfs_callees(self.get_conn(), caller_name, normalized, max_depth)
 
     def call_graph_built(self) -> bool:
-        return bool(_call_graph_built(self.get_conn()))
+        # PR #1491：外层 owner 已安装共同 deadline，内层探针不得清空它。
+        return bool(
+            _call_graph_built(
+                self.get_conn(),
+                deadline=self._owner.deadline,
+                install_progress_handler=False,
+            )
+        )
 
     def _store(self) -> EdgeStore:
         return EdgeStore(self.get_conn(), ensure_schema=False)

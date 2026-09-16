@@ -16,6 +16,7 @@ Supports three search strategies:
 
 from __future__ import annotations
 
+import sqlite3
 from typing import Any
 
 from ...call_path import CallPathFinder
@@ -133,7 +134,7 @@ class CodeGraphCallPathTool(BaseMCPTool):
                         return await self._execute_bound(
                             arguments, owner.query_cache(), owner.read_source
                         )
-            except (OSError, ValueError, RuntimeError):
+            except (OSError, ValueError, RuntimeError, sqlite3.DatabaseError):
                 pass
         return await self._execute_bound(arguments, None, None)
 

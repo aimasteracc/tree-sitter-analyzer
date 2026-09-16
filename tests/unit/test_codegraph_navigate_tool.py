@@ -87,6 +87,22 @@ class TestExecuteDefinition:
         assert result["success"] is True
         assert "definition" in result
 
+    def test_definition_body_inlining_without_cache_keeps_coordinates(
+        self, tool_with_root
+    ):
+        # PR #1491：认证 cache 不可用时只保留坐标，不得触发普通文件读取。
+        result = {
+            "definition": {
+                "found": True,
+                "definitions": [{"name": "target", "file": "sample.py", "line": 1}],
+            }
+        }
+        with patch.object(tool_with_root, "get_cache", return_value=None):
+            tool_with_root._inline_definition_bodies(result)
+        assert result["definition"]["definitions"] == [
+            {"name": "target", "file": "sample.py", "line": 1}
+        ]
+
 
 class TestExecuteHierarchy:
     @pytest.mark.asyncio
