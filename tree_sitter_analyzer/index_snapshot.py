@@ -666,12 +666,17 @@ def _lease_certified_query_snapshot(
     project_root: str, *, deadline: float
 ) -> Iterator[IndexSnapshot]:
     """优先复用已固定的私有数据库；仅在没有能力时重新捕获。"""
+    from .cache.generation_routing import resolve_index_path
+
     with REGISTRY.pin_reusable(project_root) as reusable:
+        active_database = os.path.abspath(str(resolve_index_path(project_root)))
         if (
             reusable is not None
             and reusable.snapshot_id is not None
             and reusable.source_generation is not None
             and reusable.completeness == "complete"
+            and reusable.database_path is not None
+            and os.path.abspath(reusable.database_path) == active_database
         ):
             yield reusable
             return

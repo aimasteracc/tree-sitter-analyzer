@@ -317,10 +317,11 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 from ...call_graph import CachedCallGraph
 
                 graph = CachedCallGraph(self.project_root or ".", cache=bound_cache)
+                data_source = "cache"
             else:
                 graph = self._get_call_graph()
+                data_source = self._data_source
             callers = graph.callers_of(func_name, file_path)
-            data_source = self._data_source
             self._enrich_callers_with_resolution(callers)
             # #981 defense-in-depth: the built marker can be a false-negative
             # (e.g. cleared while the index actually holds 125K call edges).

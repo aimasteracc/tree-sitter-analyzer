@@ -371,6 +371,10 @@ class CodeGraphNavigateTool(BaseMCPTool):
                 "listed_cap": listed_cap,
                 "resolved_via": resolve_result.resolved_via,
             }
+        except sqlite3.Error:
+            if bound_cache is not None:
+                raise
+            return {"found": False, "reason": "SQLite definition lookup failed"}
         except Exception as exc:
             logger.debug(f"Definition lookup failed: {exc}")
             return {"found": False, "reason": str(exc)}
@@ -395,6 +399,10 @@ class CodeGraphNavigateTool(BaseMCPTool):
                 "references_truncated": len(references) > listed_cap,
                 "listed_cap": listed_cap,
             }
+        except sqlite3.Error:
+            if bound_cache is not None:
+                raise
+            return {"found": False, "reason": "SQLite reference lookup failed"}
         except Exception as exc:
             logger.debug(f"Reference lookup failed: {exc}")
             return {"found": False, "reason": str(exc)}

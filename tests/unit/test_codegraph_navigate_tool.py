@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sqlite3
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -63,6 +65,71 @@ class TestExecuteDefinition:
             CodeGraphNavigateTool(str(tmp_path)),
             {"symbol": "target"},
         )
+
+    @pytest.mark.asyncio
+    async def test_certified_sql_error_reaches_coordinate_fallback(
+        self, tmp_path, monkeypatch
+    ):
+        """认证查询的数据库错误必须退出 owner 并重试普通坐标查询。"""
+        import tree_sitter_analyzer.index_snapshot as snapshot_owner
+
+        bound_cache = object()
+        owner = MagicMock()
+        owner.query_cache.return_value = bound_cache
+        owner.read_source = MagicMock()
+
+        @contextmanager
+        def certified(_project_root):
+            yield owner
+
+        calls: list[tuple[object | None, object | None]] = []
+
+        async def execute_bound(_arguments, cache, source_reader):
+            calls.append((cache, source_reader))
+            if cache is bound_cache:
+                raise sqlite3.DatabaseError("corrupt certified lookup")
+            return {"success": True, "fallback": True}
+
+        tool = CodeGraphNavigateTool(str(tmp_path))
+        monkeypatch.setattr(snapshot_owner, "certified_index_read", certified)
+        monkeypatch.setattr(tool, "_execute_bound", execute_bound)
+
+        result = await tool.execute({"symbol": "target"})
+
+        assert result == {"success": True, "fallback": True}
+        assert calls == [(bound_cache, owner.read_source), (None, None)]
+
+    def test_bound_definition_sql_error_is_not_converted_to_not_found(self, tool):
+        """严格认证缓存的 SQL 故障不能伪装成定义不存在。"""
+
+        class StrictCache:
+            strict_sql_errors = True
+            _fts5_available = False
+
+            @staticmethod
+            def get_conn():
+                connection = MagicMock()
+                connection.execute.side_effect = sqlite3.DatabaseError("broken")
+                return connection
+
+        with pytest.raises(sqlite3.DatabaseError, match="broken"):
+            tool._resolve_definition("target", 50, StrictCache())
+
+    def test_non_database_lookup_failures_remain_explanatory_results(self, tool):
+        """普通解析故障仍返回可诊断的坐标查询结果。"""
+        cache = MagicMock()
+        with (
+            patch.object(tool, "get_cache", return_value=cache),
+            patch(
+                "tree_sitter_analyzer.symbol_resolver.SymbolResolver",
+                side_effect=RuntimeError("resolver failed"),
+            ),
+        ):
+            definition = tool._resolve_definition("target", 50)
+            references = tool._find_references("target", 50)
+
+        assert definition == {"found": False, "reason": "resolver failed"}
+        assert references == {"found": False, "reason": "resolver failed"}
 
     @pytest.mark.asyncio
     async def test_definition_no_cache(self, tool):

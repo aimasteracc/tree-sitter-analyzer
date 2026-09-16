@@ -377,6 +377,7 @@ def test_certified_query_reuses_pinned_database_capability(tmp_path, monkeypatch
         canonical_root=str(tmp_path),
         file_count=1,
         source_scope=make_source_scope_descriptor(),
+        database_path=str(resolve_index_path(str(tmp_path))),
     )
 
     @contextmanager
@@ -394,6 +395,60 @@ def test_certified_query_reuses_pinned_database_capability(tmp_path, monkeypatch
         str(tmp_path), deadline=time.monotonic() + 5
     ) as leased:
         assert leased is snapshot
+
+
+def test_certified_query_rejects_superseded_index_generation(tmp_path, monkeypatch):
+    """活动索引路径切换后不得复用旧世代的认证快照。"""
+    import tree_sitter_analyzer.index_snapshot as owner
+    from tree_sitter_analyzer.index_snapshot_registry import IndexSnapshot
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    old_snapshot = IndexSnapshot(
+        snapshot_id="old-snapshot",
+        source_fingerprint="source-fingerprint",
+        index_fingerprint="old-index",
+        source_generation="old-generation",
+        completeness="complete",
+        reason=None,
+        canonical_root=str(tmp_path),
+        file_count=1,
+        source_scope=make_source_scope_descriptor(),
+        database_path=str(tmp_path / ".ast-cache" / "generations" / "old" / "index.db"),
+    )
+    fresh_snapshot = IndexSnapshot(
+        snapshot_id="fresh-snapshot",
+        source_fingerprint="source-fingerprint",
+        index_fingerprint="fresh-index",
+        source_generation="fresh-generation",
+        completeness="complete",
+        reason=None,
+        canonical_root=str(tmp_path),
+        file_count=1,
+        source_scope=make_source_scope_descriptor(),
+        database_path=str(
+            tmp_path / ".ast-cache" / "generations" / "fresh" / "index.db"
+        ),
+    )
+
+    @contextmanager
+    def pin_reusable(_project_root):
+        yield old_snapshot
+
+    @contextmanager
+    def recapture(*_args, **_kwargs):
+        yield fresh_snapshot
+
+    monkeypatch.setattr(owner.REGISTRY, "pin_reusable", pin_reusable)
+    monkeypatch.setattr(owner, "lease_existing_snapshot", recapture)
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.cache.generation_routing.resolve_index_path",
+        lambda _root: fresh_snapshot.database_path,
+    )
+
+    with owner._lease_certified_query_snapshot(
+        str(tmp_path), deadline=time.monotonic() + 5
+    ) as leased:
+        assert leased is fresh_snapshot
 
 
 def test_certified_query_scope_does_not_rescan_whole_repository(tmp_path, monkeypatch):

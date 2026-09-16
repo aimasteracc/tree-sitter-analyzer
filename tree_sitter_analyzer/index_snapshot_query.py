@@ -24,6 +24,8 @@ from .graph.edge_store import EdgeKind, EdgeStore
 class CertifiedSnapshotCache:
     """所有操作均使用 owner 连接的窄只读适配器。"""
 
+    strict_sql_errors = True
+
     def __init__(self, owner: Any) -> None:
         self._owner = owner
         self.project_root = str(owner.snapshot.canonical_root)
