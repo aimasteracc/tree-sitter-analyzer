@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import shutil
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -88,11 +90,15 @@ def _make_pkg(tmp_path: Path, files: list[str], pkg_name: str = "synapse_pkg") -
     return tmp_path
 
 
-def _open_db(cache: ASTCache) -> sqlite3.Connection:
-    """Fresh SQLite connection (separate from ASTCache's WAL handle)."""
+@contextmanager
+def _open_db(cache: ASTCache) -> Iterator[sqlite3.Connection]:
+    """提供独立 SQLite 连接，并在测试边界确定关闭。"""
     conn = sqlite3.connect(cache.db_path)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def _column_names(conn: sqlite3.Connection, table: str) -> set[str]:

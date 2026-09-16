@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess  # nosec B404
 
 from tree_sitter_analyzer.cache.fingerprint import (
@@ -105,18 +106,44 @@ def _get_untracked_files(
     return _filter_excluded_paths(_split_git_lines(out))
 
 
+def _branch_diff_range(project_root: str | None) -> str:
+    """选择当前 GitFlow 分支相对目标分支的完整差异范围。"""
+    ci_base = os.environ.get("GITHUB_BASE_REF", "").strip()
+    rc, branch = _run_git(["branch", "--show-current"], cwd=project_root)
+    branch = branch.strip() if rc == 0 else ""
+    default_base = "main" if branch.startswith("hotfix/") else "develop"
+
+    base_names = [ci_base, default_base, "main"]
+    candidates: list[str] = []
+    for name in base_names:
+        if not name:
+            continue
+        for ref in (f"origin/{name}", name):
+            if ref not in candidates:
+                candidates.append(ref)
+
+    for ref in candidates:
+        verify_rc, _out = _run_git(
+            ["rev-parse", "--verify", "--quiet", ref], cwd=project_root
+        )
+        if verify_rc == 0:
+            return f"{ref}...HEAD"
+    return "HEAD~1..HEAD"
+
+
 def _get_changed_files(
     mode: str, project_root: str | None, scope_paths: list[str] | None = None
 ) -> list[str]:
-    """Get list of changed file paths from git diff."""
+    """从 Git 差异中读取变更文件列表。"""
     if mode == "staged":
         rc, out = _run_git(
             _with_pathspec(["diff", "--cached", "--name-only"], scope_paths),
             cwd=project_root,
         )
     elif mode == "branch":
+        diff_range = _branch_diff_range(project_root)
         rc, out = _run_git(
-            _with_pathspec(["diff", "--name-only", "HEAD~1", "HEAD"], scope_paths),
+            _with_pathspec(["diff", "--name-only", diff_range], scope_paths),
             cwd=project_root,
         )
     else:
@@ -136,15 +163,16 @@ def _get_changed_files(
 def _get_diff_stat(
     mode: str, project_root: str | None, scope_paths: list[str] | None = None
 ) -> str:
-    """Get diff stat summary from git."""
+    """读取与文件列表使用同一范围的 Git 差异统计。"""
     if mode == "staged":
         rc, out = _run_git(
             _with_pathspec(["diff", "--cached", "--stat"], scope_paths),
             cwd=project_root,
         )
     elif mode == "branch":
+        diff_range = _branch_diff_range(project_root)
         rc, out = _run_git(
-            _with_pathspec(["diff", "--stat", "HEAD~1", "HEAD"], scope_paths),
+            _with_pathspec(["diff", "--stat", diff_range], scope_paths),
             cwd=project_root,
         )
     else:

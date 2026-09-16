@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -121,6 +122,33 @@ class TestGetChangedFiles:
         mock_git.return_value = (0, "branch.py\n")
         files = _get_changed_files("branch", "/src", None)
         assert "branch.py" in files
+
+    def test_branch_mode_uses_merge_base_for_every_commit(self, tmp_path):
+        def git(*args: str) -> str:
+            return subprocess.check_output(
+                ["git", *args], cwd=tmp_path, text=True
+            ).strip()
+
+        git("init", "-q", "-b", "develop")
+        git("config", "user.email", "tsa@example.invalid")
+        git("config", "user.name", "TSA Test")
+        (tmp_path / "base.py").write_text("BASE = 1\n", encoding="utf-8")
+        git("add", "base.py")
+        git("commit", "-q", "-m", "base")
+        git("switch", "-q", "-c", "feature/multiple-commits")
+        (tmp_path / "first.py").write_text("FIRST = 1\n", encoding="utf-8")
+        git("add", "first.py")
+        git("commit", "-q", "-m", "first")
+        (tmp_path / "second.py").write_text("SECOND = 1\n", encoding="utf-8")
+        git("add", "second.py")
+        git("commit", "-q", "-m", "second")
+
+        files = _get_changed_files("branch", str(tmp_path), None)
+        stat = _get_diff_stat("branch", str(tmp_path), None)
+
+        assert files == ["first.py", "second.py"]
+        assert "first.py" in stat
+        assert "second.py" in stat
 
 
 class TestGetDiffStat:
