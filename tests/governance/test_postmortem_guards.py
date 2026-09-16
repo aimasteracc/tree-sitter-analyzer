@@ -429,6 +429,12 @@ def test_readme_counts_match_registry() -> None:
             flag_count,
             "CLI flag count (zh section)",
         ),
+        (
+            "README.es-ES.md",
+            re.compile(r"### (\d+) banderas de CLI"),
+            flag_count,
+            "CLI flag count (es section)",
+        ),
     ]
 
     failures: list[str] = []

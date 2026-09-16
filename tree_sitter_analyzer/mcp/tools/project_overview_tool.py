@@ -684,7 +684,7 @@ def _build_tool_routing() -> dict[str, str]:
         "find_symbol": (
             "search action=symbol query='...'  # wildcards: *Service, fuzzy: ~analyz"
         ),
-        "find_files": "structure action=sitemap mode=flat language=python",
+        "indexed_structure": "structure action=sitemap mode=flat",
         # Deep analysis
         "deps": "health action=deps mode='summary'",
         "call_graph": "nav action=callers scope=graph",

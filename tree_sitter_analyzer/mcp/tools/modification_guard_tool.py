@@ -262,7 +262,7 @@ def _build_required_actions(
     actions.append(
         f"Review all {total_callers} live source occurrence(s) before modifying."
     )
-    actions.append(f"Use nav action=trace to find callers: ['{symbol}']")
+    actions.append(f"Use nav action=trace symbol='{symbol}' to find callers.")
 
     if modification_type in ("rename", "signature_change"):
         actions.append(

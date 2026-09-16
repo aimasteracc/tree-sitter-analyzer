@@ -632,7 +632,7 @@ without `capture_diff_snapshot=true` remains supported on Windows.
   "arguments": {
     "action": "sitemap",
     "directory": "src/",
-    "mode": "summary",
+    "mode": "flat",
     "max_files": 1000
   }
 }
@@ -1857,8 +1857,7 @@ All error responses now include actionable recovery guidance:
   "error": "File not found: /path/to/missing.py",
   "error_type": "FileNotFoundError",
   "error_category": "file_not_found",
-  "recovery_hint": "The file does not exist at the given path. Verify the path or use structure action=sitemap to inspect indexed source paths.",
-  "suggested_tool": "structure"
+  "recovery_hint": "The file does not exist at the given path. Verify it with the host agent's live file-search capability. Rebuild the index before using structure action=sitemap for indexed source structure."
 }
 ```
 

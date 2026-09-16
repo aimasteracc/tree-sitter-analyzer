@@ -127,7 +127,7 @@ class TestToolRoutingFacadeNames:
             "project_health",
             "edit_risk",
             "find_symbol",
-            "find_files",
+            "indexed_structure",
             "call_graph",
             "agent_workflow",
         ]
@@ -206,35 +206,31 @@ class TestSmartWorkflowHint:
 
 
 class TestErrorRecoverySuggestedTool:
-    def test_file_not_found_suggested_tool_is_facade(self) -> None:
-        """file_not_found recovery hint must suggest a facade name, not list_files."""
+    def test_file_not_found_suggests_live_host_search(self) -> None:
+        """缺失文件应引导到宿主实时搜索，并说明索引结构的前置条件。"""
         from tree_sitter_analyzer.mcp.server_utils.error_recovery import (
             build_agent_friendly_error,
         )
 
         err = FileNotFoundError("file not found at /tmp/missing.py")
         result = build_agent_friendly_error("analyze_file", err)
-        # Must have a suggested_tool
-        assert "suggested_tool" in result
-        tool = result["suggested_tool"]
-        # Must be a facade name or facade action= form (not a raw legacy name)
-        assert tool not in _FORBIDDEN, (
-            f"suggested_tool={tool!r} is a legacy name; must be facade form"
+        assert "suggested_tool" not in result
+        assert "host agent's live file-search capability" in result["recovery_hint"]
+        assert (
+            "Rebuild the index before using structure action=sitemap"
+            in result["recovery_hint"]
         )
 
-    def test_no_such_file_suggested_tool_is_facade(self) -> None:
-        """'no such file' recovery hint must suggest a facade name."""
+    def test_no_such_file_suggests_live_host_search(self) -> None:
+        """另一种缺失文件错误也必须使用相同的实时恢复路径。"""
         from tree_sitter_analyzer.mcp.server_utils.error_recovery import (
             build_agent_friendly_error,
         )
 
         err = FileNotFoundError("no such file or directory: /tmp/missing.py")
         result = build_agent_friendly_error("analyze_file", err)
-        assert "suggested_tool" in result
-        tool = result["suggested_tool"]
-        assert tool not in _FORBIDDEN, (
-            f"suggested_tool={tool!r} is a legacy name; must be facade form"
-        )
+        assert "suggested_tool" not in result
+        assert "host agent's live file-search capability" in result["recovery_hint"]
 
     def test_error_recovery_hint_texts_no_legacy_names(self) -> None:
         """All recovery hint text strings in _ERROR_RECOVERY_HINTS must be clean."""

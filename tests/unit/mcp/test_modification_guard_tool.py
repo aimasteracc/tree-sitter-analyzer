@@ -367,6 +367,7 @@ class TestModificationGuardToolExecution:
 
         assert isinstance(result["required_actions"], list)
         assert len(result["required_actions"]) > 0
+        assert "nav action=trace symbol='bigFunc'" in result["required_actions"][1]
 
     @pytest.mark.asyncio
     async def test_callers_by_file(self, tool: ModificationGuardTool) -> None:

@@ -46,14 +46,14 @@ _ERROR_RECOVERY_HINTS: list[tuple[str, str, str, str]] = [
     (
         "not found",
         "file_not_found",
-        "The file does not exist at the given path. Verify the path or use structure action=sitemap to discover files.",
-        "structure action=sitemap",
+        "The file does not exist at the given path. Verify it with the host agent's live file-search capability. Rebuild the index before using structure action=sitemap for indexed source structure.",
+        "",
     ),
     (
         "no such file",
         "file_not_found",
-        "The file does not exist at the given path. Verify the path or use structure action=sitemap to discover files.",
-        "structure action=sitemap",
+        "The file does not exist at the given path. Verify it with the host agent's live file-search capability. Rebuild the index before using structure action=sitemap for indexed source structure.",
+        "",
     ),
     (
         "unsupported language",
