@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -204,6 +205,76 @@ class TestRouteCachePersistence:
                 "file_count": 0,
                 "total_bytes": 0,
             }
+
+    def test_connection_setup_failure_closes_partial_connection(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """连接初始化失败时不能遗留已打开的底层句柄。"""
+        cache = RouteCache(tmp_path / "routes.db")
+        cache.close()
+        cache._local = threading.local()
+
+        class BrokenConnection:
+            def __init__(self) -> None:
+                self.closed = False
+
+            def execute(self, _statement: str) -> None:
+                raise sqlite3.OperationalError("pragma failed")
+
+            def close(self) -> None:
+                self.closed = True
+
+        broken = BrokenConnection()
+        monkeypatch.setattr(sqlite3, "connect", lambda *_args, **_kwargs: broken)
+
+        with pytest.raises(sqlite3.OperationalError, match="pragma failed"):
+            cache._conn()
+        assert broken.closed is True
+
+    def test_connection_open_racing_close_retries_current_generation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """连接创建与 close 竞态时必须丢弃旧代连接并重试。"""
+        cache = RouteCache(tmp_path / "routes.db")
+        cache.close()
+        cache._local = threading.local()
+        original_connect = sqlite3.connect
+        opened: list[sqlite3.Connection] = []
+
+        def connect_with_one_close(*args, **kwargs):
+            connection = original_connect(*args, **kwargs)
+            opened.append(connection)
+            if len(opened) == 1:
+                cache.close()
+            return connection
+
+        monkeypatch.setattr(sqlite3, "connect", connect_with_one_close)
+
+        current = cache._conn()
+
+        assert current is opened[1]
+        with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+            opened[0].execute("SELECT 1")
+        assert current.execute("SELECT 1").fetchone()[0] == 1
+
+    def test_detector_finalizer_swallows_close_failure(self, tmp_path: Path):
+        """析构兜底不能让缓存关闭异常逃逸到解释器。"""
+        detector = RouteDetector(str(tmp_path), cache_enabled=False)
+
+        class BrokenCache:
+            def __init__(self) -> None:
+                self.close_calls = 0
+
+            def close(self) -> None:
+                self.close_calls += 1
+                raise sqlite3.OperationalError("close failed")
+
+        broken = BrokenCache()
+        detector._cache = broken  # type: ignore[assignment]
+
+        detector.__del__()
+
+        assert broken.close_calls == 1
 
     def test_tool_rebind_closes_previous_detector_cache(self, tmp_path: Path):
         """切换项目根时不能把旧 routes.db 连接留给垃圾回收。"""
