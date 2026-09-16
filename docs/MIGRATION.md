@@ -1,10 +1,10 @@
-# Migration Guide: v1.x → proposed v2.0.0
+# Migration Guide: v1.x → v2.0.0
 
-This guide describes the breaking search-surface and encoding changes prepared on develop for v2.0.0. It does not announce a publication. The 8 MCP facades plus `set_project_path` remain the stable top-level surface.
+This guide describes the breaking search-surface and encoding changes released in v2.0.0. The 8 MCP facades plus `set_project_path` remain the stable top-level surface.
 
 ## Changes callers must handle
 
-| Surface | v1.x | Proposed v2.0.0 |
+| Surface | v1.x | v2.0.0 |
 |---|---|---|
 | MCP response encoding | TOON by default | JSON only; remove TOON decoding and consume the structured response envelope |
 | CLI machine-readable encoding | JSON available | `--format json`; TOON is removed |
@@ -18,11 +18,11 @@ replacements for arbitrary text search in unindexed files. Likewise, indexed
 `structure action=sitemap` is not a live filesystem listing. Native source
 occurrences are heuristic text evidence, not proof of AST call relationships.
 
-The proposed v2 surface has **84 facade actions, 354 unique long CLI flags, and six console-script entry points**. The three published v1.29.5 routes `edit.rename`,
+The v2.0.0 surface has **84 facade actions, 354 unique long CLI flags, and six console-script entry points**. The three published v1.29.5 routes `edit.rename`,
 `health.unreachable`, and `health.middleware` remain available. Explicit rename
 apply can write files; `edit.plan_rename` remains preview-only.
 
-The wrapper retirement is implemented on the v2 preparation branch. Optional rg/fd acceleration remains a separate qualification effort; executables on PATH never change the core backend automatically. See
+The wrapper retirement ships in v2.0.0. Optional rg/fd acceleration remains a separate qualification effort; executables on PATH never change the core backend automatically. See
 [RFC-0033](../rfcs/0033-native-search-independence.md) and
 [RFC-0034](../rfcs/0034-optional-search-backend-qualification.md).
 
@@ -68,7 +68,13 @@ fields omitted:
 This describes present behavior, not a new promise about a future shim-removal
 version. Follow the migration notes for the selected release before upgrading.
 
-## Pin the published baseline
+## Install v2.0.0
+
+```bash
+pip install --upgrade "tree-sitter-analyzer==2.0.0"
+```
+
+## Pin the published v1 baseline
 
 To keep the latest v1 behavior while migrating, pin its exact version:
 

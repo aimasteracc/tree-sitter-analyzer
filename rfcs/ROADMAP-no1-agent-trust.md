@@ -8,9 +8,9 @@
 
 ## 2026-09-16 交付状态：仓库内阻断已收敛，竞争证据仍受门控
 
-本节以 `develop@ff338304631db4e59544408a88660d8eb9ec03a4` 为基线。
+本节以 `develop@b793dc827d220906bfdd260260c42d6179e50bba` 为基线。
 [#1489](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1489) 至
-[#1504](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1504) 已全部合入
+[#1505](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1505) 已全部合入
 `develop`；其中包括订阅失败隔离、认证源码正文、生命周期所有权、路由与
 Decision Journal / ASTCache 的确定关闭、main→develop 对账，以及 v2 外部搜索
 wrapper 退役。#1504 的最终 head 已通过 Linux、macOS、Windows、Python
@@ -30,9 +30,11 @@ rerun，不能计为额外成功，也不能把历史 EMFILE 的唯一根因追�
 
 - RFC-0033 的仓库内实现、迁移、完整本地测试和跨平台 CI 验收已经完成；v2
   公开搜索 wrapper 退役不再有仓库内待办。
-- 只有本修复通过最终 PR CI 并合入 `develop` 后，才可从该最终提交创建
-  `release/v2.0.0`。release 分支推送会触发 PyPI 发布，仍须按 GITFLOW 完成
-  `release/v* → main`、标记版本、GitHub Release 及回合 `develop`。
+- 本修复 #1505 已通过最终 PR CI 并合入 `develop`；`release/v2.0.0` 已从该
+  最终提交创建，并完成版本同步、focused/quick/patch coverage、构建、Twine、
+  Python 3.10 净环境安装及 CLI smoke 审计。release 分支推送会触发 PyPI
+  发布，仍须按 GITFLOW 完成 `release/v* → main`、标记版本、GitHub Release
+  及回合 `develop`。
 - VCSR、外部维护者采用、模型裁判、生产 canary、签名证明以及 E2–E4 竞争性
   表述属于外部或人工证据门槛。它们仍未完成，不能用仓库测试代替；它们阻止
   “No.1”公开声明，但不伪装成尚可继续编码的本地功能清单。
@@ -40,9 +42,10 @@ rerun，不能计为额外成功，也不能把历史 EMFILE 的唯一根因追�
   维护队列，不是一次性发版故事；只有 TSA `safe-to-edit` 给出可验证收益时才取项，
   不能为清空列表而制造重构。
 
-下一步顺序固定为：合入本修复并核对最终 `develop`；执行 release 文档、版本、
-构建与安装审计；得到发布动作授权后再推送 `release/v2.0.0`。外部证据计划继续按
-TRUST-C1 / TRUST-T1 / TRUST-I1 的门槛推进，失败、未知和未签名结果保留在分母中。
+下一步顺序固定为：得到发布动作授权后推送 `release/v2.0.0`；等待自动化测试、
+构建、PyPI 发布及 main PR；随后标记版本、创建 GitHub Release，并将 release
+提交回合 `develop`。外部证据计划继续按 TRUST-C1 / TRUST-T1 / TRUST-I1 的门槛
+推进，失败、未知和未签名结果保留在分母中。
 
 ## 2026-09-08 第二轮合入：内容新鲜度与健康评分
 
