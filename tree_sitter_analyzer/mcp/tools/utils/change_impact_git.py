@@ -111,7 +111,8 @@ def _branch_diff_range(project_root: str | None) -> str:
     ci_base = os.environ.get("GITHUB_BASE_REF", "").strip()
     rc, branch = _run_git(["branch", "--show-current"], cwd=project_root)
     branch = branch.strip() if rc == 0 else ""
-    default_base = "main" if branch.startswith("hotfix/") else "develop"
+    targets_main = branch == "main" or branch.startswith(("hotfix/", "release/"))
+    default_base = "main" if targets_main else "develop"
 
     base_names = [ci_base, default_base, "main"]
     candidates: list[str] = []

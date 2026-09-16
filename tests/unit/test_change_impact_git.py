@@ -13,6 +13,7 @@ from tree_sitter_analyzer.mcp.tools.change_impact_frozen import (
     build_frozen_scope_result,
 )
 from tree_sitter_analyzer.mcp.tools.utils.change_impact_git import (
+    _branch_diff_range,
     _get_changed_files,
     _get_diff_stat,
     _get_untracked_files,
@@ -149,6 +150,35 @@ class TestGetChangedFiles:
         assert files == ["first.py", "second.py"]
         assert "first.py" in stat
         assert "second.py" in stat
+
+    @pytest.mark.parametrize(
+        ("branch", "expected_ref"),
+        [
+            ("main", "origin/main"),
+            ("hotfix/urgent", "origin/main"),
+            ("release/v2.0.0", "origin/main"),
+            ("fix/ordinary", "origin/develop"),
+        ],
+    )
+    @patch("tree_sitter_analyzer.mcp.tools.utils.change_impact_git._run_git")
+    def test_branch_uses_gitflow_target(self, mock_git, branch, expected_ref):
+        def run(args, cwd=None):
+            del cwd
+            if args == ["branch", "--show-current"]:
+                return 0, branch
+            if args[-1] == expected_ref:
+                return 0, expected_ref
+            return 1, ""
+
+        mock_git.side_effect = run
+
+        assert _branch_diff_range("/src") == f"{expected_ref}...HEAD"
+
+    @patch("tree_sitter_analyzer.mcp.tools.utils.change_impact_git._run_git")
+    def test_branch_without_known_base_uses_latest_commit(self, mock_git):
+        mock_git.side_effect = [(0, "detached"), *[(1, "")] * 4]
+
+        assert _branch_diff_range("/src") == "HEAD~1..HEAD"
 
 
 class TestGetDiffStat:
