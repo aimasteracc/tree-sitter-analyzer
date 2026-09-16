@@ -14,6 +14,9 @@ import sqlite3
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
+from tests.unit._navigation_test_support import assert_sqlite_deadline_falls_back
 from tree_sitter_analyzer.mcp.tools import call_path_enrich as enrich
 from tree_sitter_analyzer.mcp.tools.call_path_tool import CodeGraphCallPathTool
 
@@ -59,6 +62,10 @@ _SYMBOLS = {
     "b.py": [{"name": "beta", "kind": "function", "line": 1, "end_line": 4}],
     "c.py": [{"name": "gamma", "kind": "function", "line": 1, "end_line": 2}],
 }
+
+
+def _reader(root: Path):
+    return lambda path: (root / path).read_text(encoding="utf-8")
 
 
 def _build_cache(tmp_path: Path) -> MagicMock:
@@ -197,14 +204,16 @@ def test_inline_path_bodies_returns_verbatim_bodies(tmp_path):
             ]
         }
     ]
-    bodies, truncated = enrich.inline_path_bodies(str(tmp_path), cache, paths)
+    bodies, truncated = enrich.inline_path_bodies(
+        str(tmp_path), cache, paths, source_reader=_reader(tmp_path)
+    )
     names = {b["name"] for b in bodies}
     assert names == {"alpha", "beta", "gamma"}  # deduped, all three
     assert truncated is False
     # Verbatim source body — not just file:line.
     gamma = next(b for b in bodies if b["name"] == "gamma")
-    assert "GAMMA_BODY_MARKER" in gamma["content"]
-    assert "def gamma" in gamma["content"]
+    # PR #1491：认证正文必须逐字保留原始换行符。
+    assert gamma["content"] == _SRC_C
 
 
 def test_inline_path_bodies_cpp_header_callee_lang_hint(tmp_path):
@@ -262,7 +271,9 @@ def test_inline_path_bodies_cpp_header_callee_lang_hint(tmp_path):
         }
     ]
 
-    bodies, _ = enrich.inline_path_bodies(str(tmp_path), cache, paths)
+    bodies, _ = enrich.inline_path_bodies(
+        str(tmp_path), cache, paths, source_reader=_reader(tmp_path)
+    )
     names = {b["name"] for b in bodies}
     # Without fix: lang_hint="c" from .h gates out the cpp definition → names={}
     # With fix: "" (neutral) used as path_lang_hint → no lang filter → caller_func inlined
@@ -325,7 +336,9 @@ def test_inline_path_bodies_cpp_with_explicit_h_callee_file(tmp_path):
         }
     ]
 
-    bodies, _ = enrich.inline_path_bodies(str(tmp_path), cache, paths)
+    bodies, _ = enrich.inline_path_bodies(
+        str(tmp_path), cache, paths, source_reader=_reader(tmp_path)
+    )
     names = {b["name"] for b in bodies}
     # caller_func body must be inlined even when callee_file is an explicit .h path
     assert "caller_func" in names
@@ -342,7 +355,9 @@ def test_inline_path_bodies_dedupes(tmp_path):
         "line": 3,
     }
     paths = [{"hops": [hop_ab]}, {"hops": [hop_ab]}]
-    bodies, _ = enrich.inline_path_bodies(str(tmp_path), cache, paths)
+    bodies, _ = enrich.inline_path_bodies(
+        str(tmp_path), cache, paths, source_reader=_reader(tmp_path)
+    )
     names = [b["name"] for b in bodies]
     assert names.count("alpha") == 1
     assert names.count("beta") == 1
@@ -365,7 +380,9 @@ def test_body_truncation_caps_lines(tmp_path, monkeypatch):
             ]
         }
     ]
-    bodies, truncated = enrich.inline_path_bodies(str(tmp_path), cache, paths)
+    bodies, truncated = enrich.inline_path_bodies(
+        str(tmp_path), cache, paths, source_reader=_reader(tmp_path)
+    )
     alpha = next(b for b in bodies if b["name"] == "alpha")
     assert alpha.get("truncated") is True
     assert "full_at" in alpha
@@ -379,7 +396,15 @@ def test_body_truncation_caps_lines(tmp_path, monkeypatch):
 
 def test_build_dead_end_inlines_both_endpoints(tmp_path):
     cache = _build_cache(tmp_path)
-    out = enrich.build_dead_end(str(tmp_path), cache, "alpha", "gamma", None, None)
+    out = enrich.build_dead_end(
+        str(tmp_path),
+        cache,
+        "alpha",
+        "gamma",
+        None,
+        None,
+        source_reader=_reader(tmp_path),
+    )
     src = out["source_endpoint"]
     tgt = out["target_endpoint"]
     assert src["name"] == "alpha"
@@ -421,14 +446,39 @@ def test_tool_path_found_inlines_bodies_and_deterrent(tmp_path):
     )
     assert result["verdict"] == "PATH_FOUND"
     assert "source_bodies" in result
-    assert result["source_bodies"], "expected inlined bodies"
-    # Verbatim body present (the whole point of the upgrade).
-    joined = " ".join(b["content"] for b in result["source_bodies"])
-    assert "GAMMA_BODY_MARKER" in joined
-    # Deterrent next_step.
-    assert "next_step" in result
-    assert "no Read needed" in result["next_step"]
-    assert "inlined" in result["next_step"]
+    assert result["source_bodies"] == []
+    assert "no Read needed" not in result["next_step"]
+
+
+def test_dead_end_reader_failure_drops_body(tmp_path):
+    cache = _build_cache(tmp_path)
+
+    def unavailable(_path):
+        raise RuntimeError("SOURCE_GENERATION_MISMATCH")
+
+    result = enrich.build_dead_end(
+        str(tmp_path),
+        cache,
+        "alpha",
+        "gamma",
+        None,
+        None,
+        source_reader=unavailable,
+    )
+    assert "body" not in result["source_endpoint"]
+    assert "body" not in result["target_endpoint"]
+
+
+async def test_call_path_without_root_does_not_acquire_owner():
+    tool = CodeGraphCallPathTool()
+    with pytest.raises(ValueError, match="Project root not set"):
+        await tool.execute(
+            {
+                "source_function": "a",
+                "target_function": "b",
+                "output_format": "json",
+            }
+        )
 
 
 def test_tool_dead_end_inlines_endpoints_and_deterrent(tmp_path):
@@ -447,8 +497,80 @@ def test_tool_dead_end_inlines_endpoints_and_deterrent(tmp_path):
     assert result["verdict"] == "NO_PATH"
     assert "dead_end" in result
     de = result["dead_end"]
-    assert "GAMMA_BODY_MARKER" in de["source_endpoint"]["body"]["content"]
-    assert "def alpha" in de["target_endpoint"]["body"]["content"]
+    assert "body" not in de["source_endpoint"]
+    assert "body" not in de["target_endpoint"]
     assert "next_step" in result
     assert "No static path" in result["next_step"]
-    assert "no Read needed" in result["next_step"]
+    assert "no Read needed" not in result["next_step"]
+
+
+async def test_certified_call_path_restores_bodies(tmp_path):
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    (tmp_path / "path.py").write_text(
+        "def alpha():\n    return beta()\n\ndef beta():\n"
+        "    return 'CERTIFIED_PATH_BODY'\n",
+        encoding="utf-8",
+    )
+    indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
+        {"mode": "full", "max_files": 10}
+    )
+    assert indexed["published"] is True
+    result = await CodeGraphCallPathTool(str(tmp_path)).execute(
+        {
+            "source_function": "alpha",
+            "target_function": "beta",
+            "direction": "forward",
+            "output_format": "json",
+        }
+    )
+    joined = "\n".join(body["content"] for body in result["source_bodies"])
+    assert "CERTIFIED_PATH_BODY" in joined
+
+
+async def test_sqlite_deadline_falls_back_to_coordinate_query(tmp_path, monkeypatch):
+    await assert_sqlite_deadline_falls_back(
+        tmp_path,
+        monkeypatch,
+        CodeGraphCallPathTool(str(tmp_path)),
+        {"source_function": "source", "target_function": "target"},
+    )
+
+
+async def test_move_after_bound_path_query_drops_bodies(tmp_path, monkeypatch):
+    from tree_sitter_analyzer.call_path import CallPathFinder
+    from tree_sitter_analyzer.index_snapshot_query import CertifiedSnapshotCache
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    source = tmp_path / "path.py"
+    source.write_text(
+        "def alpha():\n    return beta()\n\ndef beta():\n    return 'INDEXED'\n",
+        encoding="utf-8",
+    )
+    assert (
+        await CodeGraphFullIndexTool(str(tmp_path)).execute(
+            {"mode": "full", "max_files": 10}
+        )
+    )["published"] is True
+    original = CallPathFinder.find_path
+
+    def find_then_move(self, *args, **kwargs):
+        result = original(self, *args, **kwargs)
+        if isinstance(self._cache, CertifiedSnapshotCache):
+            source.write_text(
+                "\n\ndef alpha():\n    return beta()\n\ndef beta():\n    return 'MOVED'\n",
+                encoding="utf-8",
+            )
+        return result
+
+    monkeypatch.setattr(CallPathFinder, "find_path", find_then_move)
+    result = await CodeGraphCallPathTool(str(tmp_path)).execute(
+        {
+            "source_function": "alpha",
+            "target_function": "beta",
+            "direction": "forward",
+            "output_format": "json",
+        }
+    )
+    assert result["source_bodies"] == []
+    assert "no Read needed" not in result["next_step"]

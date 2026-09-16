@@ -99,6 +99,8 @@ class CodeGraphQueryBackend:
                 (symbol,),
             ).fetchall()
         except sqlite3.Error:
+            if getattr(self.cache, "strict_sql_errors", False):
+                raise
             return []
         return [
             _definition(
@@ -120,6 +122,8 @@ class CodeGraphQueryBackend:
                 "SELECT file_path, symbols_json, language FROM ast_index"
             ).fetchall()
         except sqlite3.Error:
+            if getattr(self.cache, "strict_sql_errors", False):
+                raise
             return []
         results: list[dict[str, Any]] = []
         for row in rows:

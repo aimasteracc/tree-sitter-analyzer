@@ -13,6 +13,7 @@ Key classes:
 """
 
 import os
+import sqlite3
 from collections import defaultdict, deque
 from collections.abc import Set as AbstractSet
 from pathlib import Path
@@ -733,6 +734,10 @@ class CachedCallGraph(CallGraph):
             edges = self._cache.get_call_edges()
             functions = self._cache.get_functions()
             imports_raw = self._cache.get_imports()
+        except sqlite3.Error:
+            if getattr(self._cache, "strict_sql_errors", False):
+                raise
+            return
         except Exception:
             return
 

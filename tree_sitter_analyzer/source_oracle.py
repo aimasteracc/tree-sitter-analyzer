@@ -132,6 +132,52 @@ def stable_descriptor_chain(metadata: tuple[bytes, ...]) -> tuple[bytes, ...]:
     return tuple(result)
 
 
+def safe_index_source_path(
+    root: str,
+    path: str,
+    *,
+    deadline: float,
+    limit: int,
+) -> SafePath:
+    """读取待返回的索引源码；POSIX 与 Windows 都拒绝链接和身份漂移。"""
+    normalized = normalize_repo_path(path)
+    if _supports_nofollow():
+        return safe_workspace_path(
+            root,
+            normalized,
+            deadline=deadline,
+            limit=limit,
+        )
+    if os.name != "nt":
+        raise SourceOracleError("DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED")
+
+    from .index_snapshot_windows import read_pinned_workspace_file
+
+    try:
+        data, metadata = read_pinned_workspace_file(
+            root,
+            normalized,
+            deadline=deadline,
+            limit=limit,
+        )
+    except FileNotFoundError:
+        return SafePath(None, (b"missing",), "missing")
+    except OverflowError as exc:
+        raise SourceOracleError("DIFF_SNAPSHOT_CAPACITY") from exc
+    except TimeoutError as exc:
+        raise SourceOracleError("DIFF_SNAPSHOT_TIMEOUT") from exc
+    except ValueError as exc:
+        code = (
+            "DIFF_SNAPSHOT_SOURCE_CHANGED"
+            if str(exc) == "INDEX_SOURCE_CHANGED"
+            else "DIFF_SNAPSHOT_UNSAFE_PATH"
+        )
+        raise SourceOracleError(code) from exc
+    except OSError as exc:
+        raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_PATH") from exc
+    return SafePath(data, tuple(metadata), "file")
+
+
 def safe_workspace_path(
     root: str,
     path: str,

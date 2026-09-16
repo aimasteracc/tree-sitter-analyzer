@@ -26,6 +26,8 @@ def search_symbols_cascade(
     language: str | None = None,
     limit: int = 100,
     fts5_available: bool = True,
+    *,
+    suppress_sql_errors: bool = True,
 ) -> list[dict[str, Any]]:
     """Cascade symbol search: exact -> FTS5 -> LIKE -> fuzzy edit distance.
 
@@ -52,7 +54,13 @@ def search_symbols_cascade(
     )
 
     if fts5_available and len(query) >= 2 and len(results) < limit:
-        for row in fts_search_ranked(conn, query, language, limit * 2):
+        for row in fts_search_ranked(
+            conn,
+            query,
+            language,
+            limit * 2,
+            suppress_sql_errors=suppress_sql_errors,
+        ):
             _add_result(
                 results,
                 seen,
@@ -66,7 +74,13 @@ def search_symbols_cascade(
         _extend_results(
             results,
             seen,
-            _like_rows(conn, query, language, limit * 3),
+            _like_rows(
+                conn,
+                query,
+                language,
+                limit * 3,
+                suppress_sql_errors=suppress_sql_errors,
+            ),
             query,
             "like",
             0.42,
@@ -80,6 +94,7 @@ def search_symbols_cascade(
             limit,
             results,
             seen,
+            suppress_sql_errors=suppress_sql_errors,
         )
 
     _apply_file_colocation_bonus(results)
@@ -124,6 +139,8 @@ def _like_rows(
     query: str,
     language: str | None,
     limit: int,
+    *,
+    suppress_sql_errors: bool = True,
 ) -> list[sqlite3.Row]:
     query_lower = query.lower()
     try:
@@ -143,6 +160,8 @@ def _like_rows(
             (f"%{query_lower}%", limit),
         ).fetchall()
     except sqlite3.OperationalError:
+        if not suppress_sql_errors:
+            raise
         return []
 
 
@@ -150,6 +169,8 @@ def _fuzzy_rows(
     conn: sqlite3.Connection,
     language: str | None,
     limit: int,
+    *,
+    suppress_sql_errors: bool = True,
 ) -> list[sqlite3.Row]:
     try:
         if language:
@@ -165,6 +186,8 @@ def _fuzzy_rows(
             (limit,),
         ).fetchall()
     except sqlite3.OperationalError:
+        if not suppress_sql_errors:
+            raise
         return []
 
 
@@ -187,11 +210,18 @@ def _extend_fuzzy_results(
     limit: int,
     results: list[dict[str, Any]],
     seen: set[tuple[str, str, int]],
+    *,
+    suppress_sql_errors: bool = True,
 ) -> None:
     query_norm = _normalise_symbol(query)
     if not query_norm:
         return
-    for row in _fuzzy_rows(conn, language, max(limit * 30, 300)):
+    for row in _fuzzy_rows(
+        conn,
+        language,
+        max(limit * 30, 300),
+        suppress_sql_errors=suppress_sql_errors,
+    ):
         name = str(row["name"])
         distance = _bounded_levenshtein(_normalise_symbol(name), query_norm, 2)
         if distance > 2:

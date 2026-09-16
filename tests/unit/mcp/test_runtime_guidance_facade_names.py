@@ -26,7 +26,6 @@ CALLABILITY RATCHET PRINCIPLE (Codex P2 — issue #496):
 
 from __future__ import annotations
 
-import inspect
 import re
 
 import pytest
@@ -284,19 +283,38 @@ class TestSearchSymbolNextStep:
                 f"symbol search next_step does not use facade form: {next_step!r}"
             )
 
-    def test_symbol_search_next_step_exact_facade_form(self) -> None:
-        """The next_step builder must produce the facade call form string."""
-        # Inspect the source of execute() to confirm the legacy name is gone.
-        # The next_step is constructed inline at the call site (not a constant),
-        # so we verify via source inspection that the legacy name is absent.
-        source = inspect.getsource(CodeGraphSymbolSearchTool.execute)
-        # Must NOT contain the legacy name
-        assert "codegraph_explore" not in source, (
-            "CodeGraphSymbolSearchTool.execute still references legacy 'codegraph_explore'"
+    def test_symbol_search_next_step_exact_facade_form(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """公开搜索边界必须返回精确的 facade 下一步提示。"""
+        import asyncio
+        from types import SimpleNamespace
+
+        tool = CodeGraphSymbolSearchTool(project_root=str(tmp_path))
+        cache = SimpleNamespace(fts5_available=False)
+        monkeypatch.setattr(tool, "_get_cache", lambda: cache)
+        monkeypatch.setattr(
+            tool,
+            "_search",
+            lambda *_args: [
+                {
+                    "name": "needle",
+                    "kind": "function",
+                    "file": "sample.py",
+                    "line": 1,
+                    "end_line": 2,
+                    "language": "python",
+                }
+            ],
         )
-        # Must reference the facade form
-        assert "structure" in source, (
-            "CodeGraphSymbolSearchTool.execute does not reference the 'structure' facade"
+        # incident1491：固定“有结果但无正文”的公开边界，避免检查实现源码。
+        monkeypatch.setattr(tool, "_inline_match_bodies", lambda *_args: None)
+
+        result = asyncio.run(tool.execute({"query": "needle", "output_format": "json"}))
+
+        assert result["next_step"] == (
+            "Run structure action=explore query='needle' before raw grep/read to "
+            "bulk-fetch related symbols and concept matches."
         )
 
 
