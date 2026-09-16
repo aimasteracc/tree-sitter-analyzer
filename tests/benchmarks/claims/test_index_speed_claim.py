@@ -28,6 +28,7 @@ from unittest.mock import patch
 import pytest
 
 from tree_sitter_analyzer.ast_cache import ASTCache
+from tree_sitter_analyzer.mcp.tools import full_index_tool
 from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
 
 pytestmark = [
@@ -101,15 +102,13 @@ def test_index_speed_scales_linearly_not_quadratically():
 @pytest.mark.asyncio
 async def test_full_index_uses_one_filesystem_walk_for_all_index_phases(tmp_path):
     """The AST and incremental phases must reuse one immutable candidate walk."""
-    from tree_sitter_analyzer.cache import indexer
-
     _generate_synthetic_project(str(tmp_path), 20)
     tool = CodeGraphFullIndexTool(str(tmp_path))
 
     with patch.object(
-        indexer,
-        "_walk_source_files",
-        wraps=indexer._walk_source_files,
+        full_index_tool,
+        "walk_index_candidate_entries",
+        wraps=full_index_tool.walk_index_candidate_entries,
     ) as walk:
         result = await tool.execute(
             {
