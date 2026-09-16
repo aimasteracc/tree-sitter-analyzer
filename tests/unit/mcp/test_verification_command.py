@@ -41,9 +41,13 @@ def test_target_resolution_failure_preserves_default_policy(
         verification_pytest_config as config,
     )
 
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    (nested / "test_loop.py").write_text("", encoding="utf-8")
+
     class UnresolvablePath(type(tmp_path)):
         def resolve(self, *args, **kwargs):
-            if self.name == "test_loop.py":
+            if self.name == "nested":
                 raise error
             return self
 
@@ -55,7 +59,8 @@ def test_target_resolution_failure_preserves_default_policy(
         str(Path(tmp_path)),
     )
     assert (
-        build_test_command(default, ["test_loop.py"]) == "uv run pytest test_loop.py -q"
+        build_test_command(default, ["nested/test_loop.py"])
+        == "uv run pytest nested/test_loop.py -q"
     )
 
 
