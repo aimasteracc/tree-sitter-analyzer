@@ -48,6 +48,8 @@ class _Kernel:
         self.requests.append(
             (path, access, share, security, disposition, flags, template)
         )
+        if self.fail == "open":
+            return ctypes.c_void_p(-1).value
         try:
             info = os.lstat(path)
             directory = stat.S_ISDIR(info.st_mode)
@@ -562,18 +564,18 @@ def test_native_workspace_reader_closes_handle_when_fd_adoption_fails(
 def test_native_workspace_reader_translates_reopen_failure(
     tmp_path, kernel, monkeypatch
 ):
-    """读取后 pathname 消失时必须报告源码变化并清理全部句柄。"""
+    """读取后 pathname 无法重开时必须报告源码变化并清理全部句柄。"""
     source = tmp_path / "sample.py"
     source.write_bytes(b"value = 1\n")
     real_read = owner._read_descriptor
 
-    def read_then_unlink(fd, size):
+    def read_then_reject_reopen(fd, size):
         data = real_read(fd, size)
-        if data and source.exists():
-            source.unlink()
+        if data:
+            kernel.fail = "open"
         return data
 
-    monkeypatch.setattr(owner, "_read_descriptor", read_then_unlink)
+    monkeypatch.setattr(owner, "_read_descriptor", read_then_reject_reopen)
     with pytest.raises(ValueError, match="^INDEX_SOURCE_CHANGED$"):
         owner.read_pinned_workspace_file(
             str(tmp_path),

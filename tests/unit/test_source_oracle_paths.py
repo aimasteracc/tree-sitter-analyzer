@@ -70,6 +70,7 @@ def test_safe_workspace_path_rejects_unsupported_platform(monkeypatch) -> None:
 def test_safe_index_source_path_rejects_unsupported_platform(monkeypatch) -> None:
     """缺少 no-follow 且不是 Windows 时，索引源码读取必须关闭。"""
     monkeypatch.setattr(oracle, "_supports_nofollow", lambda: False)
+    monkeypatch.setattr(oracle, "os", SimpleNamespace(name="posix"))
 
     _error(
         lambda: oracle.safe_index_source_path(".", "pkg/a.py", deadline=1.0, limit=20),
