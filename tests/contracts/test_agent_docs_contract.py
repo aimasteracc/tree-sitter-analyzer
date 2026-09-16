@@ -268,7 +268,7 @@ def test_cli_codemap_flag_count_matches_the_real_parser() -> None:
 _LESSONS_PATH = PROJECT_ROOT / "docs" / "AI_LESSONS.md"
 
 #: Entries measured 2026-09-13. Update deliberately when a lesson is added.
-_LESSON_ENTRY_COUNT = 9
+_LESSON_ENTRY_COUNT = 10
 
 _LESSON_SECTIONS = ("### Context", "### Lessons learned", "### Required guardrail")
 _LESSON_TITLE = re.compile(r"^## \d{4}-\d{2} — \S")
