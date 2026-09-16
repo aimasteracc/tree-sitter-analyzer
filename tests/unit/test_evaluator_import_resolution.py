@@ -319,7 +319,9 @@ def test_constraint_loader_wraps_read_failure(tmp_path, monkeypatch):
 
 
 def test_evaluator_callback_covers_python_import_materialization() -> None:
-    from tree_sitter_analyzer.constraints import Constraint, evaluate
+    from tree_sitter_analyzer.constraints.evaluator_import_resolution import (
+        _build_import_index,
+    )
 
     # PR #1254 review 3767373475: Python-side DB materialization obeys callback.
     conn = sqlite3.connect(":memory:")
@@ -328,8 +330,7 @@ def test_evaluator_callback_covers_python_import_materialization() -> None:
     calls = []
     try:
         with pytest.raises(RuntimeError, match="^deadline$"):
-            evaluate(
-                [Constraint("r", "warn", "deny", "**", "**", "test")],
+            _build_import_index(
                 conn,
                 check_callback=lambda: (
                     calls.append("check")
@@ -342,7 +343,9 @@ def test_evaluator_callback_covers_python_import_materialization() -> None:
 
 
 def test_evaluator_bounds_python_import_materialization() -> None:
-    from tree_sitter_analyzer.constraints import Constraint, evaluate
+    from tree_sitter_analyzer.constraints.evaluator_import_resolution import (
+        _build_import_index,
+    )
 
     # PR #1254 review 3767373475: API capacity bounds Python-owned collections.
     conn = sqlite3.connect(":memory:")
@@ -352,11 +355,41 @@ def test_evaluator_bounds_python_import_materialization() -> None:
     )
     try:
         with pytest.raises(RuntimeError, match="^CONSTRAINT_EVALUATION_CAPACITY$"):
-            evaluate(
-                [Constraint("r", "warn", "deny", "**", "**", "test")], conn, capacity=1
-            )
+            _build_import_index(conn, capacity=1)
     finally:
         conn.close()
+
+
+def test_evaluator_ignores_import_rows_outside_candidate_callers() -> None:
+    """无关文件的海量导入记录不能耗尽约束响应容量。"""
+    from tree_sitter_analyzer.constraints import Constraint, evaluate
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_imports(file_path TEXT, module_path TEXT)")
+    conn.execute(
+        "CREATE TABLE edges("
+        "kind TEXT, caller_name TEXT, file_path TEXT, caller_line INTEGER, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO ast_imports VALUES (?, ?)",
+        [(f"vendor/{index}.py", "vendor.target") for index in range(25)],
+    )
+    conn.execute("INSERT INTO ast_imports VALUES ('src/caller.py', 'allowed.target')")
+    conn.execute(
+        "INSERT INTO edges VALUES "
+        "('calls', 'caller', 'src/caller.py', 7, 'target', 'allowed/target.py')"
+    )
+    try:
+        violations = evaluate(
+            [Constraint("r", "warn", "forbid", "src/**", "blocked/**", "test")],
+            conn,
+            capacity=2,
+        )
+    finally:
+        conn.close()
+
+    assert violations == []
 
 
 @pytest.mark.parametrize("row", [("", "missing.file"), ("caller.py", "")])

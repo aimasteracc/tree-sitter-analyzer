@@ -56,6 +56,29 @@ logger = logging.getLogger(__name__)
 _MAX_MATERIALIZED_ITEMS = MAX_MATERIALIZED_ITEMS
 
 
+def _candidate_caller_files(
+    db_conn: sqlite3.Connection,
+    select_sql: str,
+    select_params: tuple[str, ...],
+    *,
+    check_callback: Callable[[], None] | None,
+    capacity: int,
+) -> frozenset[str]:
+    """从约束候选边中提取受容量限制的唯一调用方。"""
+    query = "SELECT DISTINCT caller_file FROM (" + select_sql + ")"
+    callers: set[str] = set()
+    for row in db_conn.execute(query, select_params):
+        if check_callback is not None:
+            check_callback()
+        caller_file = row[0]
+        if not caller_file:
+            continue
+        callers.add(str(caller_file))
+        if len(callers) > capacity:
+            raise RuntimeError("CONSTRAINT_EVALUATION_CAPACITY")
+    return frozenset(callers)
+
+
 def evaluate(
     constraints: list[Constraint],
     db_conn: sqlite3.Connection,
@@ -128,11 +151,21 @@ def _iter_violations(
     transaction; the choice of which ``callee_file`` survives is arbitrary
     but deterministic and the PK is the same violation regardless).
     """
+    select_sql, select_params = _build_select_query(db_conn, compiled)
+    candidate_callers = _candidate_caller_files(
+        db_conn,
+        select_sql,
+        select_params,
+        check_callback=check_callback,
+        capacity=capacity,
+    )
     seen: set[tuple[str, str, int, str]] = set()
     import_index = _build_import_index(
-        db_conn, check_callback=check_callback, capacity=capacity
+        db_conn,
+        file_paths=candidate_callers,
+        check_callback=check_callback,
+        capacity=capacity,
     )
-    select_sql, select_params = _build_select_query(db_conn, compiled)
     cursor = db_conn.execute(select_sql, select_params)
     for row in cursor:
         if check_callback is not None:

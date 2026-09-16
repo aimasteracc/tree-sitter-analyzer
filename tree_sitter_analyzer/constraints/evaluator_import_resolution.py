@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Collection, Iterator
 
 _MAX_MATERIALIZED_ITEMS = 10_000
 
@@ -11,29 +11,36 @@ _MAX_MATERIALIZED_ITEMS = 10_000
 def _build_import_index(
     db_conn: sqlite3.Connection,
     *,
+    file_paths: Collection[str] | None = None,
     check_callback: Callable[[], None] | None = None,
     capacity: int = _MAX_MATERIALIZED_ITEMS,
 ) -> dict[str, set[str]] | None:
-    """Build a lookup of {file_path: set(module_path_suffixes)} from ast_imports.
-
-    Returns ``None`` when the ``ast_imports`` table is absent (e.g. in
-    test fixtures that only populate the ``edges`` table) so callers can
-    skip the import-reachability guard and fall back to pre-guard behaviour.
-
-    The set stored per file is the union of the raw module_path and its
-    terminal component (the basename after the last ``.`` or ``/``).
-    This handles both absolute imports (``tree_sitter_analyzer.mcp.x``)
-    and relative imports (``.x``) with a single membership test.
-    """
+    """只为候选调用方构建 ``{文件: 导入模块集合}``，并限制物化行数。"""
     try:
-        cursor = db_conn.execute("SELECT file_path, module_path FROM ast_imports")
+        db_conn.execute("SELECT 1 FROM ast_imports LIMIT 0")
     except sqlite3.OperationalError:
-        # Table absent (test fixture, fresh DB) — degrade gracefully.
+        # 测试夹具或新数据库可能尚未创建导入表，此时保持旧的保守行为。
         return None
+    if file_paths is not None and not file_paths:
+        return {}
+
+    def selected_rows() -> Iterator[tuple[str, str]]:
+        if file_paths is None:
+            yield from db_conn.execute("SELECT file_path, module_path FROM ast_imports")
+            return
+        ordered_paths = sorted(file_paths)
+        for offset in range(0, len(ordered_paths), 800):
+            chunk = ordered_paths[offset : offset + 800]
+            placeholders = ",".join("?" for _ in chunk)
+            query = (
+                "SELECT file_path, module_path FROM ast_imports "
+                "WHERE file_path IN (" + placeholders + ")"
+            )
+            yield from db_conn.execute(query, chunk)
 
     index: dict[str, set[str]] = {}
     materialized = 0
-    for file_path, module_path in cursor:
+    for file_path, module_path in selected_rows():
         if check_callback is not None:
             check_callback()
         if not file_path or not module_path:

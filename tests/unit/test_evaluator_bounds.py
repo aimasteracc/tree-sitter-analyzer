@@ -113,7 +113,7 @@ def test_iter_violations_checks_deadline_and_filters_scope_before_rules(
     assert [(item.rule_id, item.callee_file, item.detected_at) for item in result] == [
         ("rule", "lib/b.py", 7)
     ]
-    assert callbacks == ["checked", "checked", "checked", "checked"]
+    assert callbacks == ["checked"] * 7
 
 
 def test_iter_violations_accepts_optional_callbacks_and_scope(
