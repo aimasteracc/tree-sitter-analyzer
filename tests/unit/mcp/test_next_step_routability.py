@@ -111,27 +111,36 @@ def test_no_next_step_names_a_removed_tool() -> None:
 
 
 def test_the_harvest_is_not_vacuous() -> None:
-    """Exact rather than lower bounds: RFC-0028 §3.2 requires set equality.
+    """使用精确计数，确保 RFC-0028 §3.2 的采集器没有静默退化。
 
-    Measured 2026-09-13: 148 harvested constants, 17 route-name tokens. The
-    count rose from 145 when the navigate truncation note was added; the
-    route-name token set is unchanged, which is the part that matters. Update
-    these constants deliberately when the vocabulary legitimately changes — a
-    `> 50` / `>= 5` bound would keep passing while the harvest shrank to a third
-    of its real size, leaving the invariant below constraining almost nothing.
+    2026-09-16 实测：146 个常量、16 个路由名标记。合法改变词汇或文案时必须
+    明确更新计数；宽松下界会让采集范围大幅缩水后仍然通过。
     """
     harvest = _next_step_strings()
-    assert len(harvest) == 148, (
-        f"expected 148 next_step string constants, harvested {len(harvest)}; "
+    assert len(harvest) == 146, (
+        f"expected 146 next_step string constants, harvested {len(harvest)}; "
         "update this constant if the phrasing changed, otherwise the AST walk is "
         "no longer matching how next_step is assigned"
     )
     tokens = _vocabulary_tokens(harvest)
-    assert len(tokens) == 17, (
-        f"expected 17 route-name tokens across {len(harvest)} strings, found "
+    assert len(tokens) == 16, (
+        f"expected 16 route-name tokens across {len(harvest)} strings, found "
         f"{len(tokens)}; update this constant if the vocabulary changed, "
         "otherwise the tokenizer has drifted and the invariant below no longer "
         "constrains anything"
+    )
+
+
+def test_removed_tool_vocabulary_covers_the_v2_retirement() -> None:
+    """v2 删除的公开搜索入口必须全部参与死路由检测。"""
+    assert REMOVED_TOOL_NAMES == frozenset(
+        {
+            "search_content",
+            "find_and_grep",
+            "batch_search",
+            "list_files",
+            "check_tools",
+        }
     )
 
 

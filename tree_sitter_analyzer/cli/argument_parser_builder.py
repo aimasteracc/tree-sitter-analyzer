@@ -22,7 +22,6 @@ from .argument_groups import (
     _add_agent_workflow_options,
     _add_analysis_options,
     _add_batch_options,
-    _add_batch_search_options,
     _add_clean_state_options,
     _add_core_options,
     _add_decision_journal_options,
@@ -52,7 +51,6 @@ __all__ = [
     "_add_agent_workflow_options",
     "_add_analysis_options",
     "_add_batch_options",
-    "_add_batch_search_options",
     "_add_clean_state_options",
     "_add_core_options",
     "_add_decision_journal_options",
@@ -147,7 +145,6 @@ def _add_mcp_equivalent_options(parser: argparse.ArgumentParser) -> None:
     _add_environment_probe_options(parser)
     _add_modification_guard_options(parser)
     _add_decision_journal_options(parser)
-    _add_batch_search_options(parser)
     # PL-C sprint additions
     _add_mcp_index_management_options(parser)
     _add_clean_state_options(parser)

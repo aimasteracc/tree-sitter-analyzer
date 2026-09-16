@@ -32,10 +32,10 @@ _SAFE_SPANS = (
     re.compile(r"13 言語は `?pipeline_registered|13 种语言为 `?pipeline_registered"),
     re.compile(r"5 言語 gap|5 语言 gap"),
     re.compile(r"1 ワークフロー|一个工作流"),
-    # #1450 增加 --call-no-bodies，运行时选项数量从 356 增至 357。
+    # 移除三个外部搜索选项后，当前运行时为 354 个。
     # 只放行经运行时与文档契约验证的精确数量，不允许任意数字。
-    re.compile(r"\b357 CLI flags\b", re.IGNORECASE),
-    re.compile(r"357 の CLI フラグ|357 个 CLI flag", re.IGNORECASE),
+    re.compile(r"\b354 CLI flags\b", re.IGNORECASE),
+    re.compile(r"354 の CLI フラグ|354 个 CLI flag", re.IGNORECASE),
     re.compile(r"\b(?:FTS5|BM25)\b"),
     re.compile(r"\bE[0-4]\b"),
     re.compile(r"\bE2E\b", re.IGNORECASE),

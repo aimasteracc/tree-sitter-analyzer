@@ -848,26 +848,22 @@ class TestFindTestFilesPython:
                 results = find_test_files(str(source), tmp)
                 assert "tests/unit/mcp/test_query_tool.py" in results
 
-    def test_finds_python_family_tests_for_list_files_execution_helper(self):
-        """Execution helper modules should peel back to the list_files family."""
+    def test_finds_python_family_tests_for_query_execution_helper(self):
+        """执行辅助模块应回退到 query 工具族。"""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             source = (
-                root
-                / "tree_sitter_analyzer"
-                / "mcp"
-                / "tools"
-                / "list_files_execution.py"
+                root / "tree_sitter_analyzer" / "mcp" / "tools" / "query_execution.py"
             )
             source.parent.mkdir(parents=True)
-            source.write_text("def helper(): pass")
+            source.write_text("def helper(): pass", encoding="utf-8")
 
-            test = root / "tests" / "unit" / "mcp" / "test_list_files_tool.py"
+            test = root / "tests" / "unit" / "mcp" / "test_query_tool.py"
             test.parent.mkdir(parents=True)
-            test.write_text("def test_list_files(): pass")
+            test.write_text("def test_query(): pass", encoding="utf-8")
 
             results = find_test_files(str(source), tmp)
-            assert "tests/unit/mcp/test_list_files_tool.py" in results
+            assert "tests/unit/mcp/test_query_tool.py" in results
 
     def test_finds_python_family_tests_for_sources_helper(self):
         """r37q dogfood: ``parser_readiness_sources.py`` must inherit

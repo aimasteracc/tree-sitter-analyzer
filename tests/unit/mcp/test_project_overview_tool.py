@@ -542,7 +542,7 @@ class TestBuildToolRouting:
         assert "structure_table" in routing
         assert "read_lines" in routing
         assert "find_symbol" in routing
-        assert "find_files" in routing
+        assert routing["indexed_structure"] == "structure action=sitemap mode=flat"
 
 
 class TestCountLines:

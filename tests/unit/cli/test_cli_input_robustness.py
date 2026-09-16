@@ -1,23 +1,16 @@
 #!/usr/bin/env python3
-"""CLI input-robustness regression tests (#1002, #1003).
+"""CLI 输入健壮性回归测试（#1002）。
 
-These tests pin the *failure presentation* contract for three CLI input
-paths that previously mishandled bad input:
+这些测试固定两个曾经错误处理非法输入的 CLI 路径的失败呈现契约：
 
-* ``--batch-search`` with a missing / malformed ``--batch-search-queries-json``
-  used to leak a raw Python traceback instead of a structured error envelope
-  (#1003).
-* ``--safe-to-edit <dir>`` used to silently analyze a directory as a file and
-  exit 0 (#1002, finding 1).
-* ``--agent-workflow <dir>`` returned the right error message but exited 0
-  (#1002, finding 3).
+* ``--safe-to-edit <dir>`` 曾把目录当作文件静默分析并返回 0。
+* ``--agent-workflow <dir>`` 曾返回正确错误信息，却仍以 0 退出。
 
-All cases must now: emit a structured ``{success: false, ...}`` envelope on
-``--format json``, never leak a traceback, and return a non-zero exit code.
+所有情形在 ``--format json`` 下都必须输出结构化
+``{success: false, ...}`` 信封，不得泄漏回溯，并返回非零退出码。
 
-Run end-to-end via subprocess so the assertions cover the real process exit
-code and the real stdout/stderr split (a traceback only surfaces at process
-level, not when calling handlers in-process).
+测试通过子进程端到端执行，以覆盖真实进程退出码以及 stdout/stderr 分流；直接调用
+处理器无法发现只在进程层出现的回溯。
 """
 
 from __future__ import annotations
@@ -48,44 +41,6 @@ def _run_cli(*cli_args: str) -> subprocess.CompletedProcess[str]:
 def _assert_no_traceback(proc: subprocess.CompletedProcess[str]) -> None:
     assert "Traceback (most recent call last)" not in proc.stdout
     assert "Traceback (most recent call last)" not in proc.stderr
-
-
-class TestBatchSearchInputRobustness:
-    """#1003 — no raw traceback for bad --batch-search-queries-json."""
-
-    def test_batch_search_missing_queries_json_returns_structured_error(self) -> None:
-        proc = _run_cli(
-            "--batch-search",
-            "--batch-search-queries-json",
-            "/nonexistent/path/does/not/exist.json",
-            "--format",
-            "json",
-        )
-        _assert_no_traceback(proc)
-        assert proc.returncode == 1
-        payload = json.loads(proc.stdout)
-        assert payload["success"] is False
-        assert payload["verdict"] == "ERROR"
-        assert isinstance(payload["error"], str)
-
-    def test_batch_search_malformed_json_returns_structured_error(
-        self, tmp_path: Path
-    ) -> None:
-        bad = tmp_path / "bad.json"
-        bad.write_text("not-json{]", encoding="utf-8")
-        proc = _run_cli(
-            "--batch-search",
-            "--batch-search-queries-json",
-            str(bad),
-            "--format",
-            "json",
-        )
-        _assert_no_traceback(proc)
-        assert proc.returncode == 1
-        payload = json.loads(proc.stdout)
-        assert payload["success"] is False
-        assert payload["verdict"] == "ERROR"
-        assert isinstance(payload["error"], str)
 
 
 class TestSafeToEditDirectoryRejection:

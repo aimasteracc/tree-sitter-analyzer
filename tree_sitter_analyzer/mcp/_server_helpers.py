@@ -166,7 +166,6 @@ def attach_tool_aliases(
     from .tools.analyze_scale_tool import AnalyzeScaleTool
     from .tools.dependency_analysis_tool import DependencyAnalysisTool
     from .tools.file_health_tool import FileHealthTool
-    from .tools.list_files_tool import ListFilesTool
     from .tools.parser_readiness_tool import ParserReadinessTool
     from .tools.project_overview_tool import ProjectOverviewTool
     from .tools.query_tool import QueryTool
@@ -178,7 +177,6 @@ def attach_tool_aliases(
     target.table_format_tool = target.analyze_code_structure_tool
     target.read_partial_tool = ReadPartialTool(project_root)
     target.query_tool = QueryTool(project_root)
-    target.list_files_tool = ListFilesTool(project_root)
     target.agent_skills_tool = AgentSkillsTool(project_root)
     target.agent_workflow_tool = AgentWorkflowTool(project_root)
     target.parser_readiness_tool = ParserReadinessTool(project_root)
@@ -191,7 +189,6 @@ def attach_tool_aliases(
         target.analyze_code_structure_tool,
         target.read_partial_tool,
         target.query_tool,
-        target.list_files_tool,
         target.agent_skills_tool,
         target.agent_workflow_tool,
         target.parser_readiness_tool,

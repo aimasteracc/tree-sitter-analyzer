@@ -15,11 +15,8 @@ from pathlib import Path
 import pytest
 
 from tests.unit.security._test_mcp_security_helpers import (
-    assert_absolute_paths_restricted,
-    assert_directory_paths_rejected,
     assert_error_message_sanitization,
     assert_file_content_filtering,
-    assert_project_root_enforcement,
     assert_query_paths_rejected,
     assert_stack_trace_filtering,
     assert_symlink_traversal_prevention,
@@ -29,8 +26,8 @@ from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
     AnalyzeCodeStructureTool as TableFormatTool,
 )
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
-from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
 from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
+from tree_sitter_analyzer.mcp.tools.trace_impact_tool import TraceImpactTool
 from tree_sitter_analyzer.security.validator import SecurityValidator
 
 
@@ -80,6 +77,13 @@ def malicious_paths():
 class TestInputValidation:
     """入力検証の包括的テスト"""
 
+    def test_directory_path_validation(self, safe_project_structure, malicious_paths):
+        # 2026-09-09：保留旧发现接口的恶意根输入分区，在原生 trace 边界验证。
+        tool = TraceImpactTool(safe_project_structure)
+        for path in malicious_paths:
+            with pytest.raises((ValueError, SecurityError, ValidationError)):
+                tool._resolve_search_roots(path)
+
     @pytest.mark.asyncio
     async def test_file_path_validation(self, safe_project_structure, malicious_paths):
         """ファイルパス検証テスト"""
@@ -90,14 +94,6 @@ class TestInputValidation:
                 (SecurityError, ValidationError, FileNotFoundError, ValueError)
             ):
                 await tool.execute({"file_path": malicious_path})
-        assert len(malicious_paths) == 12
-
-    @pytest.mark.asyncio
-    async def test_directory_path_validation(
-        self, safe_project_structure, malicious_paths
-    ):
-        """ディレクトリパス検証テスト"""
-        await assert_directory_paths_rejected(malicious_paths)
         assert len(malicious_paths) == 12
 
     @pytest.mark.asyncio
@@ -147,8 +143,32 @@ class TestInputValidation:
             await tool.execute({"file_path": long_path})
         assert len(long_path) == 10003
 
+
 class TestProjectBoundaryProtection:
     """プロジェクト境界保護の検証"""
+
+    def test_absolute_path_restriction(self, safe_project_structure):
+        # 2026-09-09：保留 Unix 与 Windows 绝对路径输入，不启动任何扫描。
+        tool = TraceImpactTool(safe_project_structure)
+        for path in [
+            "/etc",
+            "/usr/bin",
+            "/var/log",
+            "C:\\Windows",
+            "C:\\Program Files",
+            "/home/user/.ssh",
+            "C:\\Users\\Administrator\\Documents",
+        ]:
+            with pytest.raises((ValueError, SecurityError, ValidationError)):
+                tool._resolve_search_roots(path)
+
+    def test_project_root_enforcement(self, safe_project_structure):
+        # 2026-09-09：父目录即使位于临时目录也不能绕过项目边界。
+        tool = TraceImpactTool(safe_project_structure)
+        root = Path(safe_project_structure)
+        for path in [str(root.parent), str(root.parent.parent), "/tmp", "C:\\Temp"]:
+            with pytest.raises((ValueError, SecurityError, ValidationError)):
+                tool._resolve_search_roots(path)
 
     @pytest.mark.asyncio
     async def test_path_traversal_prevention(self, safe_project_structure):
@@ -178,32 +198,10 @@ class TestProjectBoundaryProtection:
             )
 
     @pytest.mark.asyncio
-    async def test_absolute_path_restriction(self, safe_project_structure):
-        """絶対パス制限テスト"""
-        absolute_paths = [
-            "/etc",
-            "/usr/bin",
-            "/var/log",
-            "C:\\Windows",
-            "C:\\Program Files",
-            "/home/user/.ssh",
-            "C:\\Users\\Administrator\\Documents",
-        ]
-
-        await assert_absolute_paths_restricted(absolute_paths)
-        assert len(absolute_paths) == 7
-
-    @pytest.mark.asyncio
     async def test_symlink_traversal_prevention(self, tmp_path):
         """シンボリックリンクトラバーサル防御テスト"""
         await assert_symlink_traversal_prevention(tmp_path)
         assert tmp_path.exists()
-
-    @pytest.mark.asyncio
-    async def test_project_root_enforcement(self, safe_project_structure):
-        """プロジェクトルート強制テスト"""
-        await assert_project_root_enforcement(safe_project_structure)
-        assert Path(safe_project_structure).exists()
 
 
 class TestInformationLeakagePrevention:
@@ -234,27 +232,6 @@ class TestSecurityBestPractices:
         assert security_validator is not None
         assert hasattr(security_validator, "validate_path")
         assert hasattr(security_validator, "is_safe_path")
-
-    @pytest.mark.requires_fd
-    @pytest.mark.asyncio
-    async def test_resource_limits(self, safe_project_structure):
-        """リソース制限の確認"""
-        tool = ListFilesTool()
-
-        # 大量のファイル要求
-        result = await tool.execute(
-            {
-                "roots": [safe_project_structure],
-                "limit": 100000,  # 非常に大きな値
-            }
-        )
-
-        # リソース制限が適用されることを確認
-        assert result["success"] is True
-        if "count" in result:
-            assert (
-                result["count"] <= 10000
-            )  # ratchet: nondeterministic — implementation-defined upper limit, not a fixture count
 
     @pytest.mark.asyncio
     async def test_concurrent_request_handling(self, safe_project_structure):

@@ -191,24 +191,6 @@ else
   echo "✅ $UV_VERSION_OUTPUT: $(command -v uv)"
 fi
 
-# ─── fd / ripgrep check (optional, warning only) ──────────────────────────────
-if ! command -v fd >/dev/null 2>&1; then
-  echo "⚠️  fd not found (required for text search). Install it later:"
-  if [ "$(uname -s)" = "Darwin" ]; then
-    echo "   brew install fd"
-  else
-    echo "   apt install fd-find  # or: sudo snap install fd"
-  fi
-fi
-
-if ! command -v rg >/dev/null 2>&1; then
-  echo "⚠️  ripgrep (rg) not found (required for text search). Install it later:"
-  if [ "$(uname -s)" = "Darwin" ]; then
-    echo "   brew install ripgrep"
-  else
-    echo "   apt install ripgrep"
-  fi
-fi
 
 # ─── Resolve absolute project root ────────────────────────────────────────────
 if command -v realpath >/dev/null 2>&1; then

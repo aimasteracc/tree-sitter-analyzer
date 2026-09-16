@@ -70,7 +70,7 @@ Check that the test job:
 - ✅ Uses reusable-test.yml workflow
 - ✅ Runs on multiple OS platforms (ubuntu, windows, macos)
 - ✅ Tests Python 3.10, 3.11, 3.12, 3.13
-- ✅ Installs system dependencies (fd, ripgrep)
+- ✅ Verifies Git and the locked Python environment
 - ✅ Runs quality checks on ubuntu-latest with Python 3.11
 - ✅ Uploads coverage to Codecov
 - ✅ Updates README statistics

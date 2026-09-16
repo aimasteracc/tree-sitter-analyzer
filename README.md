@@ -66,9 +66,6 @@ CLI equivalent (no agent needed): `tree-sitter-analyzer --codegraph-status`
 curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
 
-# fd + ripgrep (required for `search action=batch` multi-query text search; symbol search uses SQLite FTS5 and needs neither)
-brew install fd ripgrep                                # macOS
-winget install sharkdp.fd BurntSushi.ripgrep.MSVC      # Windows
 ```
 
 #### 2. Install Tree-sitter Analyzer
@@ -174,7 +171,7 @@ TSA ships curated workflows under `.claude/skills/tsa-*/`:
 
 Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 8 tools on every question.
 
-### 357 CLI flags
+### 354 CLI flags
 
 Highlights:
 
@@ -193,11 +190,7 @@ tree-sitter-analyzer --safe-to-edit <file>        # refuse if risky
 tree-sitter-analyzer --uml class                  # Mermaid UML class diagram
 ```
 
-The package retains the standalone file-listing helper:
-
-```bash
-list-files <dir>          # fd-style file discovery
-```
+TSA performs indexed code search and live source verification in process. No ripgrep or fd installation is required.
 
 `search-content` and `find-and-grep` have been removed on develop. See the
 [migration guide](docs/MIGRATION.md) and [`CLI codemap`](docs/CODEMAPS/cli.md).

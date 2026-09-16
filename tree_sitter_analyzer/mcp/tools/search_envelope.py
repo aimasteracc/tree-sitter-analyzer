@@ -65,11 +65,8 @@ def normalize_envelope(
             ):
                 result["summary_line"] = agent_summary["summary_line"]
 
-    # r37w: top-level verdict mirror. The r37u envelope contract requires
-    # ``result["verdict"]`` to equal ``result["agent_summary"]["verdict"]``
-    # (not None) whenever the agent_summary carries a verdict. Doing it
-    # in the central normalizer fixes the four search/navigation drifters
-    # (query, list_files, batch_search) in one shot.
+    # 在统一标准化入口同步顶层 verdict，避免各搜索与导航路径各自漂移。
+    # 只要 agent_summary 提供 verdict，顶层字段就必须镜像同一值。
     if "verdict" not in result or result.get("verdict") is None:
         agent_summary = result.get("agent_summary")
         if isinstance(agent_summary, dict) and isinstance(

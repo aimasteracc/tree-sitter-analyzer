@@ -129,7 +129,6 @@ BESPOKE_ROUTE_SPECS: dict[tuple[str, str], dict[str, Any]] = {
         ),
         "source": "nav_facade.py::_co_change_route",
     },
-    # ("search", "content"): SearchContentTool は廃止済み。CC Grep tool を使用すること。
     ("structure", "read"): {
         "params": (
             "single: `file_path`* + `start_line`* [+ `end_line`, `start_column`, "

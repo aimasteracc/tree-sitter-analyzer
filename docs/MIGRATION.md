@@ -1,19 +1,16 @@
-# Migration Guide: published v1.29.5 → Unreleased develop
+# Migration Guide: v1.x → proposed v2.0.0
 
-This guide describes the current develop implementation, compared with the published
-v1.29.5 baseline. It does not assign a release version or announce a publication.
-Both already expose **8 MCP facades plus `set_project_path`**; the facade cutover is
-not a new change in this migration.
+This guide describes the breaking search-surface and encoding changes prepared on develop for v2.0.0. It does not announce a publication. The 8 MCP facades plus `set_project_path` remain the stable top-level surface.
 
 ## Changes callers must handle
 
-| Surface | Published v1.29.5 | Unreleased develop |
+| Surface | v1.x | Proposed v2.0.0 |
 |---|---|---|
 | MCP response encoding | TOON by default | JSON only; remove TOON decoding and consume the structured response envelope |
 | CLI machine-readable encoding | JSON available | `--format json`; TOON is removed |
 | Table rendering | Additional legacy table formats | `--table full` or `--table signatures`; compact/csv table modes are removed |
 | Text-search wrappers | `search.content`, `search.grep`; legacy `search_content`, `find_and_grep`; `search-content`, `find-and-grep` commands | Removed; use the host's text/file search tools, or invoke a suitable text-search program directly |
-| Remaining external-tool wrappers | Batch text search, file listing, tool checks | Still available: `search.batch`, `project.files`, `project.tools`, `list-files`, `--check-tools` |
+| External-tool wrappers | `search.batch`, `project.files`, `project.tools`, `list-files`, `--check-tools` | Removed; use indexed search/structure views, bounded native trace, or a host text-search tool according to the task |
 | Internal file discovery and live symbol tracing | External search processes | Native discovery and a bounded Python source-scanning worker |
 
 Indexed symbol search and AST queries serve code-intelligence tasks. They are not
@@ -21,14 +18,11 @@ replacements for arbitrary text search in unindexed files. Likewise, indexed
 `structure action=sitemap` is not a live filesystem listing. Native source
 occurrences are heuristic text evidence, not proof of AST call relationships.
 
-Develop currently has **87 facade actions, 356 unique long CLI flags, and seven
-console-script entry points**. The three published v1.29.5 routes `edit.rename`,
+The proposed v2 surface has **84 facade actions, 354 unique long CLI flags, and six console-script entry points**. The three published v1.29.5 routes `edit.rename`,
 `health.unreachable`, and `health.middleware` remain available. Explicit rename
 apply can write files; `edit.plan_rename` remains preview-only.
 
-The remaining wrapper retirement is a separate proposal, not part of the current
-implementation. Optional rg/fd integration is also under qualification; their
-presence on PATH does not select a new core backend. See
+The wrapper retirement is implemented on the v2 preparation branch. Optional rg/fd acceleration remains a separate qualification effort; executables on PATH never change the core backend automatically. See
 [RFC-0033](../rfcs/0033-native-search-independence.md) and
 [RFC-0034](../rfcs/0034-optional-search-backend-qualification.md).
 
@@ -49,10 +43,11 @@ uv run python -m tree_sitter_analyzer --codegraph-sitemap --codegraph-sitemap-mo
 
 ## Legacy-name compatibility
 
-The current shim forwards the **65 names** in
+The current shim forwards the **62 names** in
 [`LEGACY_TOOL_MAP`](../tree_sitter_analyzer/mcp/facade_map.py). The removed
-`search_content` and `find_and_grep` names are not forwarded. Callers should migrate
-to facades rather than assume every historical name remains supported.
+`search_content`, `find_and_grep`, `batch_search`, `list_files`, and `check_tools`
+names are not forwarded. Callers should migrate to facades rather than assume every
+historical name remains supported.
 
 A forwarded dictionary response receives a `deprecation` object; the shim also
 emits a warning on stderr. Example of that field, with the tool-specific response
@@ -75,17 +70,17 @@ version. Follow the migration notes for the selected release before upgrading.
 
 ## Pin the published baseline
 
-To keep the published behavior while migrating, pin its exact version:
+To keep the latest v1 behavior while migrating, pin its exact version:
 
 ```bash
-pip install "tree-sitter-analyzer==1.29.5"
+pip install "tree-sitter-analyzer==1.32.0"
 ```
 
 For a project, use the normal dependency specification:
 
 ```toml
 [project]
-dependencies = ["tree-sitter-analyzer==1.29.5"]
+dependencies = ["tree-sitter-analyzer==1.32.0"]
 ```
 
 ## Legacy name → current facade crosswalk
@@ -99,7 +94,6 @@ actions are listed in the [MCP codemap](CODEMAPS/mcp-tools.md).
 |---|---|
 | `codegraph_symbol_search` | `search` `action=symbol` |
 | `query_code` | `search` `action=query` |
-| `batch_search` | `search` `action=batch` |
 | `codegraph_query` | `search` `action=chain` |
 
 ### nav facade
@@ -168,10 +162,8 @@ actions are listed in the [MCP codemap](CODEMAPS/mcp-tools.md).
 | Legacy tool name | Current call |
 |---|---|
 | `get_project_overview` | `project` `action=overview` |
-| `list_files` | `project` `action=files` |
 | `smart_context` | `project` `action=smart` |
 | `advise_parser_readiness` | `project` `action=parser` |
-| `check_tools` | `project` `action=tools` |
 | `codegraph_metrics` | `project` `action=metrics` |
 | `list_agent_skills` | `project` `action=skills` |
 | `get_agent_workflow` | `project` `action=workflow` |

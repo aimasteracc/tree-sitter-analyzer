@@ -350,8 +350,8 @@ def start_here_score(f: FileFacts) -> float:
    `tree_sitter_analyzer/` with exact-value tests. A formula that lives only in
    a prompt is a formula with no regression protection.
 3. **Fix the two wrong-signal verdicts.**
-   `modification_guard_tool.py:485` ranks symbol-level edit risk on **ripgrep
-   occurrence counts** while the AST caller count is fetched at `:484` and left
+   `modification_guard_tool.py` ranks symbol-level edit risk on **source text
+   occurrence counts** while the AST caller count is fetched and left
    unused; `test_gap_analyzer.py:652` (`who_should_test`) uses basename matching
    while the graph-correct `test_map` (`nav_facade.py:466`) exists. Both are
    heuristic answers presented with an authoritative label. Switch both to the

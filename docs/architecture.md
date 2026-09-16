@@ -180,35 +180,26 @@ inner tool classes (79 classes across 146 modules). For the full action-to-tool 
 
 | Facade | Purpose |
 |--------|---------|
-| `search` | Symbol/content/grep/query/batch/chain/DSL search |
+| `search` | Indexed symbol/query/chain/DSL search and subscriptions |
 | `nav` | Call-graph navigation, context, callers/callees, impact |
 | `structure` | AST outline, analyze, read, class tree, explore |
 | `health` | Project/file health, patterns, heatmap, deps, test_gap |
 | `edit` | Edit safety, guard, impact, refactor, constraints, PR review |
-| `project` | Project overview, files, smart context, workflow |
+| `project` | Project overview, smart context, workflow, journal, and docs |
 | `index` | CodeGraph index lifecycle (status/build/sync) |
 | `viz` | UML / graph diagrams + similarity |
 | `set_project_path` | Project boundary setting (standalone, not a facade) |
 
-### External Tool Integration
+### Native retrieval pipeline
 
+```text
+indexed symbol / graph / AST candidates
+        -> freshness and project-boundary checks
+        -> bounded Python source verification when text evidence is needed
+        -> structured JSON evidence with explicit stale/partial/unknown states
 ```
-┌──────────────────┐     ┌──────────────────┐
-│       fd         │     │     ripgrep      │
-│  (file search)   │     │ (content search) │
-└────────┬─────────┘     └────────┬─────────┘
-         │                        │
-         ▼                        ▼
-┌─────────────────────────────────────────────┐
-│           External Tool Wrapper              │
-│   (tree_sitter_analyzer/tools/external/)     │
-├─────────────────────────────────────────────┤
-│  • Process execution                        │
-│  • Output parsing                           │
-│  • Error handling                           │
-│  • Result normalization                     │
-└─────────────────────────────────────────────┘
-```
+
+The core package does not spawn fd or ripgrep. Optional external acceleration may be evaluated separately, but it cannot become the authoritative index file set or silently change semantics.
 
 ## Data Models
 
@@ -399,10 +390,7 @@ tree_sitter_analyzer/
 ├── services/
 │   ├── file_service.py      # File operations
 │   └── security_service.py  # Security validation
-└── tools/
-    └── external/            # External tool wrappers
-        ├── fd_wrapper.py
-        └── ripgrep_wrapper.py
+└── skills/                 # Bundled TSA agent workflows
 ```
 
 ## Related Documentation

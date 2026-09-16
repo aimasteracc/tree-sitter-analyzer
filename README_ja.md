@@ -65,9 +65,6 @@ CLI での同等操作 (エージェント不要): `tree-sitter-analyzer --codeg
 curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
 
-# fd + ripgrep (`search action=batch` の複数クエリ テキスト検索に必須; シンボル検索は SQLite FTS5 を使用しどちらも不要)
-brew install fd ripgrep                                # macOS
-winget install sharkdp.fd BurntSushi.ripgrep.MSVC      # Windows
 ```
 
 #### 2. Tree-sitter Analyzer をインストール
@@ -170,7 +167,7 @@ TSA は `.claude/skills/tsa-*/` 下にキュレーション済みワークフロ
 
 各 skill は `allowed-tools` ツール サブセット + 手順レシピ + 決定面スキーマを同梱し、エージェントは 8 個のツールから毎回選別する必要がありません。
 
-### 357 の CLI フラグ
+### 354 の CLI フラグ
 
 主なもの:
 
@@ -189,14 +186,7 @@ tree-sitter-analyzer --safe-to-edit <file>        # リスク時に拒否
 tree-sitter-analyzer --uml class                  # Mermaid UML class 図
 ```
 
-このパッケージにはスタンドアロンのファイル一覧ヘルパーも同梱されています:
-
-```bash
-list-files <dir>          # fd 相当のファイル探索
-```
-
-`search-content` と `find-and-grep` は develop で削除されました。詳細は
-[migration guide](docs/MIGRATION.md) と [`CLI codemap`](docs/CODEMAPS/cli.md) を参照。
+TSA はインデックス検索と有界なライブソース検証をプロセス内で実行します。ripgrep や fd のインストールは不要です。削除された検索ラッパーからの移行は [migration guide](docs/MIGRATION.md) と [`CLI codemap`](docs/CODEMAPS/cli.md) を参照してください。
 
 ---
 

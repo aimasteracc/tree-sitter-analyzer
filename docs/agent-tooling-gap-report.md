@@ -6,7 +6,7 @@ Last updated: 2026-05-23 JST
 ## Ingested Local Sources
 
 - `CONTEXT.md`: domain language for the Analysis Engine, Language Plugin, Element Extractor, Formatter, Output Manager, and SMART Workflow.
-- `docs/features.md`: Deep AI Integration, MCP support, SMART Workflow, token reduction, fd/ripgrep search, and security boundaries.
+- `docs/features.md`: Deep AI Integration, MCP support, SMART Workflow, token reduction, indexed and bounded native search, and security boundaries.
 - `docs/smart-workflow.md`: Set-Map-Analyze-Retrieve-Trace workflow and CLI/MCP mapping.
 - `docs/api/mcp_tools_specification.md`: project-level tools, tool routing, `pytest_command` change-impact output, SMART prompts, and recovery hints.
 - `AGENTS.md` and `CLAUDE.md`: durable local agent contracts for test runtime, MCP/CLI parity, self-hosted safe-edit/change-impact workflow, and handoff verification.

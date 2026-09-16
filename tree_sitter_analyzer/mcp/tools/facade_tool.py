@@ -88,22 +88,15 @@ BespokeHandler = Callable[[dict[str, Any]], Awaitable[Any]]
 # whose meaning is action-scoped and whose legal set the inner validates.
 _FACADE_CONTROL_KEYS: frozenset[str] = frozenset({"action"})
 
-# Core high-frequency parameters surfaced explicitly on EVERY facade's public
-# inputSchema. Wave D (tool-def token diet): the facade no longer unions every
-# inner param verbatim into its public schema — that re-imported ~50 ripgrep
-# flags into ``search`` alone and blew the tool-def token budget. Instead the
-# public schema declares only these shared, cross-action params plus
-# ``additionalProperties: True``; any inner-specific param (e.g. an rg flag) is
-# accepted via additionalProperties and projected internally by ``_project_args``
-# against the inner's REAL schema whitelist (so F4 strict-param projection is
-# unaffected — it reads ``inner.get_tool_definition()``, never this public
-# schema). Per-action param discovery is carried in the facade ``description``
-# (description-as-discovery, à la Rhizome), not in the schema body.
+# 每个门面都在公共 inputSchema 中显式公开这些高频核心参数。Wave D 为缩减
+# 工具定义令牌，不再把每个内部工具的参数原样合并到公共模式中；旧做法会把
+# 大量已经退役的外部搜索参数重新带入 ``search``。公共模式只声明跨动作共享
+# 参数，并允许 ``additionalProperties: True``。内部工具专属参数仍可传入，再由
+# ``_project_args`` 按内部工具的真实模式白名单投影，因此 F4 严格参数投影不受
+# 影响。各动作的参数发现信息放在门面的 ``description`` 中，而不塞进模式主体。
 #
-# Descriptions are deliberately terse: per-action semantics live in the facade
-# ``description`` text (description-as-discovery), so repeating a long blurb on
-# every core param across all 8 facades is pure token waste. One short clause
-# each keeps the schema body small while still typing the common surface.
+# 参数描述有意保持简短：动作语义已在门面描述中呈现，在八个门面上重复长说明
+# 只会浪费令牌。每项使用一个短句即可保留类型信息和可发现性。
 _CORE_FACADE_PARAMS: dict[str, dict[str, Any]] = {
     "scope": {
         "type": "string",
@@ -466,28 +459,20 @@ class FacadeTool(BaseMCPTool):
     # -- schema / definition ----------------------------------------------
 
     def get_tool_schema(self) -> dict[str, Any]:
-        """Slim public facade schema: ``action`` (required) + core shared params.
+        """返回精简的公共门面模式：必需的 ``action`` 加核心共享参数。
 
-        Wave D tool-def token diet. The public schema deliberately does NOT
-        union every inner tool's parameters. Unioning re-imported ~50 ripgrep
-        flags into the ``search`` facade alone and pushed the 8-facade tool-def
-        payload to only -56.6% vs the PRD's ~84% target. Instead:
+        Wave D 通过缩减工具定义控制令牌开销。公共模式不再合并全部内部工具参数，
+        而采用以下规则：
 
-        * ``action`` (required, enum of every routable action) selects the route.
-        * A curated set of high-frequency, cross-action params
-          (``_CORE_FACADE_PARAMS``: scope/mode/file_path/symbol/function_name/
-          query/language/limit/output_format) is declared explicitly so the
-          common surface stays typed and discoverable.
-        * ``additionalProperties: True`` accepts any inner-specific param
-          (e.g. an rg flag, ``mode``-driven sub-param) without listing it.
-        * Per-action parameter discovery lives in the facade ``description``
-          (description-as-discovery), not in the schema body.
+        * ``action`` 是包含全部可路由动作的必需枚举，用于选择路由。
+        * ``_CORE_FACADE_PARAMS`` 显式声明高频跨动作参数，使公共表面保持类型化且
+          可发现。
+        * ``additionalProperties: True`` 接受未列出的内部工具专属参数。
+        * 各动作的参数发现信息放在门面 ``description`` 中，而不放进模式主体。
 
-        F4 is unaffected: ``_project_args`` projects the caller's args against
-        ``inner.get_tool_definition()`` (the inner's REAL schema), never against
-        this public schema — so slimming the public surface cannot mis-project
-        or leak sibling-action params. The inner tools keep their own strict
-        schemas; per-action correctness is enforced there.
+        F4 不受影响：``_project_args`` 依据 ``inner.get_tool_definition()`` 返回的
+        真实内部模式投影调用参数，不依赖此公共模式。因此精简公共表面不会误投影
+        或泄漏同级动作参数；每个内部工具仍用自己的严格模式保证动作级正确性。
         """
         properties: dict[str, Any] = {
             "action": {

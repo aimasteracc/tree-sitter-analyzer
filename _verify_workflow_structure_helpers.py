@@ -279,22 +279,15 @@ def _check_action_runs(content: dict[Any, Any], errors: list[str]) -> None:
         errors.append("Missing steps in runs")
         return
 
-    _check_os_specific_steps(steps, errors)
-
-
-def _check_os_specific_steps(steps: list[dict[str, Any]], errors: list[str]) -> None:
-    step_conditions = [
-        str(step.get("if", "")) for step in steps if isinstance(step, dict)
-    ]
-    if not any("ubuntu-latest" in condition for condition in step_conditions):
-        errors.append("Missing Linux-specific step")
+    # GitHub 的三个托管系统均提供 bash 和 Git，不再安装外部搜索程序。
     if not any(
-        "macos-" in condition or "macos-latest" in condition
-        for condition in step_conditions
+        isinstance(step, dict)
+        and step.get("run", "").strip() == "git --version"
+        and step.get("shell") == "bash"
+        and not step.get("if")
+        for step in steps
     ):
-        errors.append("Missing macOS-specific step")
-    if not any("windows-latest" in condition for condition in step_conditions):
-        errors.append("Missing Windows-specific step")
+        errors.append("Missing unconditional Git verification step")
 
 
 def workflow_path(*parts: str) -> str:

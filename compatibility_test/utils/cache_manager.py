@@ -53,9 +53,7 @@ class CacheManager:
             results["errors"].append(f"UnifiedAnalysisEngine: {str(e)}")
             logger.error(f"❌ UnifiedAnalysisEngine キャッシュクリア失敗: {e}")
 
-        # 2. SearchContentTool は廃止済み - キャッシュクリア不要
-
-        # 3. その他のMCPツールキャッシュをクリア
+        # 2. 清理其他 MCP 工具缓存
         try:
             self._clear_other_mcp_caches()
             results["cleared_caches"].append("OtherMCPTools")
@@ -111,7 +109,6 @@ class CacheManager:
         Returns:
             キャッシュ統計情報
         """
-        # search_content キャッシュは廃止済み (SearchContentTool 削除)
         stats = {"analysis_engine": {}, "timestamp": None}
 
         # UnifiedAnalysisEngine の統計
@@ -144,8 +141,6 @@ class CacheManager:
             "total_disabled": 0,
             "errors": [],
         }
-
-        # SearchContentTool は廃止済み - キャッシュ無効化不要
 
         return results
 

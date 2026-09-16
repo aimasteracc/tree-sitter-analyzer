@@ -5,9 +5,7 @@ from __future__ import annotations
 from tree_sitter_analyzer.cli.commands.mcp_command_helpers import McpCommandSpec
 
 from ._builders import (
-    _build_batch_search_tool_args,
     _build_build_project_index_tool_args,
-    _build_check_tools_tool_args,
     _build_code_similarity_tool_args,
     _build_codegraph_explore_tool_args,
     _build_codegraph_query_tool_args,
@@ -79,7 +77,7 @@ _EXTENDED_SPECS: tuple[McpCommandSpec, ...] = (
     ),
     # CodeGraph parity gap-closure (2026-05-24): codegraph_status is a thin
     # facade returning index health in one call (was: 3-4 separate calls to
-    # ast_cache + auto_index + check_tools). Bare boolean flag.
+    # 汇总 AST 缓存与自动索引状态，无附加参数。
     McpCommandSpec(
         flag_name="codegraph_status",
         tool_attr="CodeGraphStatusTool",
@@ -334,12 +332,6 @@ _EXTENDED_SPECS: tuple[McpCommandSpec, ...] = (
         build_tool_args=_build_trace_impact_tool_args,
     ),
     McpCommandSpec(
-        flag_name="check_tools",
-        tool_attr="CheckToolsTool",
-        label="Check whether fd and ripgrep are installed",
-        build_tool_args=_build_check_tools_tool_args,
-    ),
-    McpCommandSpec(
         flag_name="build_project_index",
         tool_attr="BuildProjectIndexTool",
         label="Rebuild persistent project index",
@@ -356,12 +348,6 @@ _EXTENDED_SPECS: tuple[McpCommandSpec, ...] = (
         tool_attr="DecisionJournalTool",
         label="Decision journal (record/get/search/supersede)",
         build_tool_args=_build_decision_journal_tool_args,
-    ),
-    McpCommandSpec(
-        flag_name="batch_search",
-        tool_attr="BatchSearchTool",
-        label="Batch ripgrep search (2-10 queries via JSON file)",
-        build_tool_args=_build_batch_search_tool_args,
     ),
     McpCommandSpec(
         flag_name="test_gap",

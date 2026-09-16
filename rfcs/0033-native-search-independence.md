@@ -1,6 +1,6 @@
 # RFC-0033: Native search independence
 
-- **Status**: draft — 内部去依赖已授权；公开接口删除等待明确主版本裁决
+- **Status**: accepted — v2.0.0 公开接口退役已获授权，PR #1504 执行验收
 - **Created**: 2026-09-09
 - **Tracking**: 用户发布准备任务；内部扫描实现 PR #1423
 - **Affected source paths**: `source_lines.py`, `mcp/tools/{trace_impact_tool,search_facade,project_facade,modification_guard_tool}.py`, `mcp/utils/project_index/`, `cli/`, 安装脚本与测试
@@ -32,7 +32,7 @@ TSA 的索引发现改用进程内实现，实时源码核验使用自带 Python
 
 ### 公开表面移除与迁移
 
-依照 [既定主版本政策](ROADMAP-no1-agent-trust.md#用户已裁决的边界)，候选迁移版本为 **v2.0.0**，尚待用户明确裁决。本 RFC 不把“去掉依赖”解释为绕过已发布接口的版本门槛。内部替换可先合入 develop；公开 CLI/MCP/Python 接口删除 PR 在具名主版本裁决前保持待审，不合并，不创建或推送会自动发布的 release 分支。发布前还须完成迁移说明和全部验收项。
+依照 [既定主版本政策](ROADMAP-no1-agent-trust.md#用户已裁决的边界)，迁移版本为 **v2.0.0**。用户已授权清除依赖、合并公开接口退役并继续达到发布标准。发布前仍须完成迁移说明和全部验收项；自动发布的 release 分支只能在这些验收通过后创建。
 
 | 移除 | 迁移 |
 |---|---|
@@ -48,7 +48,7 @@ TSA 的索引发现改用进程内实现，实时源码核验使用自带 Python
 
 ## Three-Surface impact (CLI ↔ MCP parity)
 
-同步删除 `--batch-search`、`--batch-search-queries-json`、`--check-tools` 和 `list-files` console script，以及对应 MCP action/legacy mapping。主 CLI 的长选项从 356 变为 353，8 个公共门面保持不变，action 从 87 变为 84。
+同步删除 `--batch-search`、`--batch-search-queries-json`、`--check-tools` 和 `list-files` console script，以及对应 MCP action/legacy mapping。主 CLI 的唯一长选项从 356 变为 354（包含隐式 `--help`），8 个公共门面保持不变，action 从 87 变为 84。
 
 `--trace-impact --trace-impact-symbol NAME` 与 `nav action=trace symbol=NAME` 继续对应；所有返回使用 JSON。更新 CLI/MCP codemap、生成的 action 文档和中英日西安装说明。
 
@@ -86,14 +86,16 @@ TSA 的索引发现改用进程内实现，实时源码核验使用自带 Python
 
 清单核对命令：`python -c 'import json,pathlib; rows=[json.loads(line) for p in sorted(pathlib.Path("rfcs/evidence").glob("0033-retired-tests-*.jsonl")) for line in p.read_text().splitlines()]; assert len(rows)==537; assert len({r["original_nodeid"] for r in rows})==537; assert all(r["behavior"] and r["input_partitions"] and r["failure_witness"] and r["retained_at"] for r in rows)'`。该命令检查登记完整性，不替代运行行为测试或审阅原始断言。
 
+补充清理见 [未使用的 Phase 7 helper 清单](evidence/0033-orphaned-helpers.jsonl)。这些私有模块仍导入 `ListFilesTool`，但源码查询未发现显式导入者，模块内没有 pytest 测试函数。清单保留函数名及固定提交的全部输入/断言源码；不把未执行的 helper 断言计为有效测试，也不声称现有测试逐项替代其行为。现存安全和项目资源测试继续独立运行。
+
 ## Acceptance criteria
 
-- [ ] 公开接口删除对应的具名主版本裁决完成
-- [ ] 内部文件发现与 trace 不启动外部搜索进程
-- [ ] 旧 MCP action、CLI 参数、console script 及死代码全部移除
-- [ ] 无 rg/fd 安装步骤或缺少它们而跳过测试的机制
-- [ ] CLI↔MCP parity 与 codemap 自检通过
-- [ ] 迁移说明、安装文档与内置检索 skill 一致
+- [x] 公开接口删除对应的具名主版本裁决完成
+- [x] 内部文件发现与 trace 不启动外部搜索进程
+- [x] 旧 MCP action、CLI 参数、console script 及死代码全部移除
+- [x] 无 rg/fd 安装步骤或缺少它们而跳过测试的机制
+- [x] CLI↔MCP parity 与 codemap 自检通过
+- [x] 迁移说明、安装文档与内置检索 skill 一致
 - [ ] 完整本地测试及跨平台 CI 通过
 
 ## Deferred

@@ -53,7 +53,7 @@ The test job should:
 - ✅ Use the reusable-test.yml workflow
 - ✅ Run tests across multiple Python versions (3.10, 3.11, 3.12, 3.13)
 - ✅ Run tests across multiple OS platforms (ubuntu-latest, windows-latest, macos-latest)
-- ✅ Install system dependencies (fd, ripgrep)
+- ✅ Verify Git and the locked Python environment
 - ✅ Run pre-commit quality checks
 - ✅ Upload coverage to Codecov
 - ✅ Update README statistics

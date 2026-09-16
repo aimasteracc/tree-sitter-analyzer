@@ -3,8 +3,6 @@
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from tree_sitter_analyzer.cli.argument_validator import CLIArgumentValidator
 from tree_sitter_analyzer.constants import (
     ELEMENT_TYPE_CLASS,
@@ -16,7 +14,6 @@ from tree_sitter_analyzer.constants import (
     is_element_of_type,
 )
 from tree_sitter_analyzer.core.engine_manager import EngineManager
-from tree_sitter_analyzer.mcp.tools.output_format_validator import OutputFormatValidator
 
 
 class TestCLIArgumentValidator:
@@ -89,34 +86,3 @@ class TestEngineManager:
         second = EngineManager.get_instance(MagicMock, "/t")
         assert first is not second
         assert list(EngineManager._instances) == ["/t"]
-
-
-class TestOutputFormatValidator:
-    def test_init(self):
-        assert isinstance(OutputFormatValidator(), OutputFormatValidator)
-
-    def test_no_conflict_passes(self):
-        v = OutputFormatValidator()
-        assert v.validate_output_format_exclusion({"query": "test"}) is None
-
-    def test_mutual_exclusion_raises(self):
-        v = OutputFormatValidator()
-        with pytest.raises(ValueError):
-            v.validate_output_format_exclusion(
-                {"total_only": True, "count_only_matches": True}
-            )
-
-    def test_single_format_passes(self):
-        v = OutputFormatValidator()
-        assert v.validate_output_format_exclusion({"total_only": True}) is None
-
-    def test_format_params(self):
-        v = OutputFormatValidator()
-        assert "total_only" in v.OUTPUT_FORMAT_PARAMS
-        assert v.OUTPUT_FORMAT_PARAMS == [
-            "total_only",
-            "count_only_matches",
-            "summary_only",
-            "group_by_file",
-            "suppress_output",
-        ]
