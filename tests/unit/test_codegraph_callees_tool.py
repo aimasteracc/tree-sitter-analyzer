@@ -124,6 +124,7 @@ async def test_sqlite_deadline_falls_back_to_coordinate_query(
     )
 
 
+# Issue #1450：关闭正文后必须彻底绕过源码读取路径。
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("tool_type", "function_name"),
@@ -156,3 +157,68 @@ async def test_certified_graph_routes_report_cache_source(
     )
 
     assert result["data_source"] == "cache"
+
+
+@pytest.mark.parametrize("tool_type", [CodeGraphCallersTool, CodeGraphCalleesTool])
+def test_call_graph_tools_expose_body_opt_out(tool_type) -> None:
+    """调用图工具必须声明保留默认行为的正文开关。"""
+    schema = tool_type().get_tool_schema()
+
+    assert schema["properties"]["include_bodies"] == {
+        "type": "boolean",
+        "description": (
+            "When false, omit "
+            f"{'caller' if tool_type is CodeGraphCallersTool else 'callee'} "
+            "source bodies and return only call-graph coordinates and metadata."
+        ),
+        "default": True,
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool_type", "function_name", "list_key", "count_key", "inline_method"),
+    [
+        (
+            CodeGraphCallersTool,
+            "helper",
+            "callers",
+            "caller_count",
+            "_inline_caller_bodies",
+        ),
+        (
+            CodeGraphCalleesTool,
+            "build",
+            "callees",
+            "callee_count",
+            "_inline_callee_bodies",
+        ),
+    ],
+)
+async def test_include_bodies_false_skips_source_enrichment(
+    indexed_call_project,
+    monkeypatch,
+    tool_type,
+    function_name,
+    list_key,
+    count_key,
+    inline_method,
+) -> None:
+    """关闭正文时仍返回完整坐标结果，并且不进入源码读取路径。"""
+    tool = tool_type(indexed_call_project)
+
+    def reject_inline(*_args, **_kwargs):
+        raise AssertionError("include_bodies=false must skip source enrichment")
+
+    monkeypatch.setattr(tool, inline_method, reject_inline)
+    result = await tool.execute(
+        {
+            "function_name": function_name,
+            "include_bodies": False,
+            "output_format": "json",
+        }
+    )
+
+    assert result[count_key] == 1
+    assert len(result[list_key]) == 1
+    assert "body" not in result[list_key][0]
