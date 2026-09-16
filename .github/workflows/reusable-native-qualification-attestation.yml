@@ -451,7 +451,7 @@ jobs:
             sandbox_root=trusted_sandbox_root(axis)
             verify_executable_sandbox(old["executable"],old_member,"old",axis,sandbox_root); verify_executable_sandbox(supported["executable"],supported_member,"supported",axis,sandbox_root)
             assert report["status"]=="PASSED" and report["passed"] is True and report["qualification_performed"] is True
-            installer=report["installer"]; exact(installer,("path","sha256","first_exit","second_exit","curl_invocations","first_path","second_path","curated_tools")); assert installer["sha256"]==sha(path/"installer.source")=="754799ff21807228b604b001b6a93bfd62b9748b3cfea45a33e59fefcbb717d5" and (installer["first_exit"],installer["second_exit"],installer["curl_invocations"])==(1,0,0)
+            installer=report["installer"]; exact(installer,("path","sha256","first_exit","second_exit","curl_invocations","first_path","second_path","curated_tools")); assert installer["sha256"]==sha(path/"installer.source")=="937700c0f95e88faab97636c78021935c75ff305aae52d37e10fee1ac58c07ef" and (installer["first_exit"],installer["second_exit"],installer["curl_invocations"])==(1,0,0)
             verify_installer_paths(installer,old["executable"],supported["executable"],sandbox_root)
             first=(path/"first.stdout").read_text(); second=(path/"second.stdout").read_text()
             assert "TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP=1" in first and re.search(r"uv 0\.10\.9(?: [^\n]+)? does not satisfy required uv >= 0\.11\.0",first) and "installation complete" not in first and "uv 0.11.0" in second
