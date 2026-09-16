@@ -872,17 +872,36 @@ class TestExecute:
         )
 
     async def test_full_index_walks_project_once_for_both_phases(self, tmp_path):
+        import tree_sitter_analyzer.cache.indexer as indexer_module
+        import tree_sitter_analyzer.incremental_sync as incremental_sync_module
         import tree_sitter_analyzer.mcp.tools.full_index_tool as full_index_module
 
         (tmp_path / "a.py").write_text("a = 1\n")
         (tmp_path / "b.py").write_text("b = 2\n")
         full_tool = CodeGraphFullIndexTool(str(tmp_path))
 
-        with patch.object(
-            full_index_module,
-            "walk_index_candidate_entries",
-            wraps=full_index_module.walk_index_candidate_entries,
-        ) as walk:
+        with (
+            patch.object(
+                full_index_module,
+                "walk_index_candidate_entries",
+                wraps=full_index_module.walk_index_candidate_entries,
+            ) as walk,
+            patch.object(
+                indexer_module,
+                "walk_index_candidate_entries",
+                side_effect=AssertionError("AST 阶段重新构建了候选快照"),
+            ) as ast_snapshot_fallback,
+            patch.object(
+                indexer_module,
+                "_walk_source_files",
+                side_effect=AssertionError("AST 阶段执行了旧源码遍历"),
+            ) as ast_legacy_fallback,
+            patch.object(
+                incremental_sync_module,
+                "_walk_source_files",
+                side_effect=AssertionError("增量阶段执行了源码遍历"),
+            ) as sync_fallback,
+        ):
             result = await full_tool.execute(
                 {
                     "mode": "full",
@@ -892,6 +911,10 @@ class TestExecute:
             )
 
         assert walk.call_count == 1
+        assert ast_snapshot_fallback.call_count == 0
+        assert ast_legacy_fallback.call_count == 0
+        assert sync_fallback.call_count == 0
+        assert result["candidate_snapshot"]["discovered"] == 2
         assert result["candidate_snapshot"]["selected"] == 2
         assert result["candidate_snapshot"]["processed"] == 2
 
