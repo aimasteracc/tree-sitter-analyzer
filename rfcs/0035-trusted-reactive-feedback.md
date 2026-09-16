@@ -1,10 +1,10 @@
 # RFC-0035: Reactive subscription lifecycle ownership
 
-- **Status**: draft
+- **Status**: implemented
 - **Author(s)**: Codex
 - **Created**: 2026-09-14
-- **Last updated**: 2026-09-15
-- **Tracking issue**: TBD
+- **Last updated**: 2026-09-16
+- **Implementation**: PR #1492, merged as `1b69997c`
 - **Baseline**: `develop@7e1ed4f571c9180ebdf42d1ef6153bed4222587f`
 - **Affected source paths**:
   - `tree_sitter_analyzer/mcp/subscription_lifecycle.py`
@@ -179,15 +179,20 @@ PR base.
 
 ## Acceptance criteria
 
-- [ ] Real SDK connections provide stable, isolated subscription ownership.
-- [ ] Invalid context and foreign ownership fail before mutation.
-- [ ] Application, run, project, selector, and watcher lifetimes fence all
+- [x] Real SDK connections provide stable, isolated subscription ownership.
+- [x] Invalid context and foreign ownership fail before mutation.
+- [x] Application, run, project, selector, and watcher lifetimes fence all
   registry commits and scheduled sends.
-- [ ] Cleanup races preserve replacements and leave no orphan pending work.
-- [ ] Existing MCP, CLI, schema, URI, and response surfaces remain unchanged.
-- [ ] Focused tests, quick gate, Ruff, MyPy, build, and patch coverage pass on
+- [x] Cleanup races preserve replacements and leave no orphan pending work.
+- [x] Existing MCP, CLI, schema, URI, and response surfaces remain unchanged.
+- [x] Focused tests, quick gate, Ruff, MyPy, build, and patch coverage pass on
   the final source candidate.
-- [ ] Codex review findings are triaged before merge.
+- [x] Codex review findings are triaged before merge.
+
+PR #1492 completed R1a/R1b and passed the Linux, macOS, Windows, MCP E2E,
+regression, SQL compatibility, patch coverage, and Codex review gates on its
+final head. The deferred delivery features below remain outside this RFC's
+implemented boundary.
 
 ## What this RFC does NOT do (deferred)
 

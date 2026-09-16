@@ -336,7 +336,10 @@ class CodeGraphMetricsTool(BaseMCPTool):
 
             assert self.project_root is not None, "project_root required"
             detector = RouteDetector(self.project_root)
-            summary = detector.summary()
+            try:
+                summary = detector.summary()
+            finally:
+                detector.close()
             return {
                 "status": "computed",
                 "total_routes": summary.get("total_routes", 0),
