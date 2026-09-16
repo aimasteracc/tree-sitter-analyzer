@@ -551,8 +551,12 @@ and required structure.
 
 ### Context
 
-全量索引有 25,628 条 `ast_imports`，但约束查询只有 10,823 条 SQL 候选边、211 个候选
-调用文件和 2,247 条相关导入。原求值器先把整个导入表物化，再检查调用边，因此固定的
+这些计数来自 `aimasteracc/tree-sitter-analyzer` 提交
+`355f1657fa5618d5fbb67c7bc0ffc2af1792e28e`：在 macOS 26.6.2 arm64、Python 3.14.3
+上，以仓库默认排除规则和语言插件建立全量项目索引，再用仓库的
+`architectural-constraints.yml` 执行约束检查。该索引有 25,628 条 `ast_imports`，但约束
+查询只有 10,823 条 SQL 候选边、211 个候选调用文件和 2,247 条相关导入。原求值器先把
+整个导入表物化，再检查调用边，因此固定的
 10,000 项响应容量在读取无关证据时耗尽，真实 `--check-constraints` 以
 `CONSTRAINT_EVALUATION_CAPACITY` 失败。首次修复把容量移到近似 SQL 候选上，又暴露了
 无字面前缀 glob、重复边与缺少导入表三条边界。
@@ -570,7 +574,7 @@ and required structure.
 
 ### Required guardrail
 
-`tests/unit/test_evaluator_import_resolution.py` 固定无关导入不耗尽容量、无前缀 glob 只计算
+`tests/unit/test_evaluator_bounds.py` 固定无关导入不耗尽容量、无前缀 glob 只计算
 精确候选、重复候选持续检查 deadline，以及缺少导入表时只扫描一次 edge；约束求值的
 focused patch-coverage gate 必须覆盖这些边界。真实全量索引 dogfood 还必须返回三条规则、
 零违规和非零 evaluated-edge 计数，不能用空索引的 SAFE 替代。
