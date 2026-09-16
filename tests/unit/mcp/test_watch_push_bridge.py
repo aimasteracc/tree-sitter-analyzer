@@ -109,7 +109,10 @@ def test_successful_empty_snapshot_is_a_real_removal(
     token = manager.issue_watch_token("/project")
     old = [{"name": "foo", "file": "a.py", "line": 1}]
     reg.compute_delta(ticket.session_id, ticket.selector, old)
-    monkeypatch.setattr(ast_cache, "ASTCache", lambda root: _FakeCache(root, []))
+    closed = []
+    monkeypatch.setattr(
+        ast_cache, "ASTCache", lambda root: _FakeCache(root, [], closed)
+    )
     monkeypatch.setattr(hyphae, "parse", lambda selector: selector)
     monkeypatch.setattr(hyphae.Evaluator, "eval", lambda _self, _ast: [])
     scheduled = _capture_bridge_schedules(monkeypatch, manager)
@@ -118,6 +121,7 @@ def test_successful_empty_snapshot_is_a_real_removal(
 
     assert scheduled == [(ticket.session_id, "tsa://hyphae/.function")]
     assert reg._subs[ticket.session_id][ticket.selector].last_snapshot == []
+    assert closed == [True]
 
 
 def test_failed_evaluation_recovers_against_last_good_snapshot() -> None:
@@ -138,11 +142,21 @@ def test_failed_evaluation_recovers_against_last_good_snapshot() -> None:
 
 
 class _FakeCache:
-    def __init__(self, _project_root: str, results: list[dict[str, Any]]) -> None:
+    def __init__(
+        self,
+        _project_root: str,
+        results: list[dict[str, Any]],
+        closed: list[bool] | None = None,
+    ) -> None:
         self._results = results
+        self._closed = closed
 
     def get_functions(self) -> list[dict[str, Any]]:
         return list(self._results)
+
+    def close(self) -> None:
+        if self._closed is not None:
+            self._closed.append(True)
 
 
 def _capture_bridge_schedules(

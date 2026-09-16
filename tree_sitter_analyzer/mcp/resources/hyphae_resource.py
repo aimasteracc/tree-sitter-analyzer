@@ -8,6 +8,7 @@ against the current index and returns the result set.  The URI is produced by
 from __future__ import annotations
 
 import urllib.parse
+from contextlib import closing
 from typing import Any
 
 _RESOURCE_SCHEME = "tsa://hyphae/"
@@ -47,9 +48,9 @@ async def read_hyphae_resource(
         from ...hyphae import Evaluator, parse
 
         selector_ast = parse(selector)
-        cache = ASTCache(project_root)
-        evaluator = Evaluator(cache)
-        items = evaluator.eval(selector_ast)
+        with closing(ASTCache(project_root)) as cache:
+            evaluator = Evaluator(cache)
+            items = evaluator.eval(selector_ast)
         return {
             "selector": selector,
             "items": [_item_to_dict(item) for item in items],

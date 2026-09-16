@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import closing
 from typing import Any
 
 from .resources.hyphae_resource import uri_from_selector
@@ -53,9 +54,9 @@ def _drive_subscriptions(
         from ..hyphae import Evaluator, parse
 
         selector_ast = parse(selector)
-        cache = ASTCache(project_root)
-        evaluator = Evaluator(cache)
-        items = evaluator.eval(selector_ast)
+        with closing(ASTCache(project_root)) as cache:
+            evaluator = Evaluator(cache)
+            items = evaluator.eval(selector_ast)
         return [
             {
                 "name": getattr(item, "name", str(item)),
