@@ -1,5 +1,29 @@
 # AI Lessons
 
+## 2026-09 — A green suite can still retain request-owned resources
+
+### Context
+
+Issue #1402 的一次完整 macOS 验证全部通过，但 `gw1` 在测试边界仍持有 329 个
+文件描述符，其中包括 78 个 `routes.db`、78 个 `routes.db-wal` 和 69 个
+`routes.db-shm`；随后一次垃圾回收把描述符数从 328 降到 19。实现检查发现
+`RouteCache` 没有关闭接口，`RouteDetectorTool` 切换项目根时也只是丢弃旧对象。
+测试结果为绿色，只能证明垃圾回收在低文件描述符用例运行前恰好发生，不能证明
+连接所有权正确。
+
+### Lessons learned
+
+1. 持有 SQLite、文件或线程句柄的对象必须提供幂等的显式关闭接口；垃圾回收不是生命周期协议。
+2. 使用线程局部连接时，关闭动作必须覆盖所有曾经创建连接的线程，并让后续访问按新代次惰性重建。
+3. 长生命周期工具在项目根切换时必须先释放旧项目资源；一次性采集器要在成功和异常路径都关闭请求拥有的对象。
+4. 全套测试通过不能抵消资源高水位证据；应同时验证旧句柄已经不可用，而不只验证返回值。
+
+### Required guardrail
+
+`tests/unit/test_route_detector_cache.py` 验证当前线程和工作线程的连接都会被关闭，
+并验证项目根切换立即释放旧缓存；`tests/unit/test_codegraph_metrics_tool.py` 验证
+一次性路由指标采集在成功和异常路径都调用关闭接口。
+
 ## 2026-09 — CI contracts must measure policy at the right granularity
 
 ### Context

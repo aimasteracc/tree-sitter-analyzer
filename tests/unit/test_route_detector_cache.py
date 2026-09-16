@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -176,6 +178,49 @@ class TestRouteCachePersistence:
         # Bulk hit.
         bulk = cache.bulk_get_by_stat([("/p", 12345), ("/missing", 0)])
         assert bulk == {"/p": sample}
+
+    def test_close_releases_connection_and_allows_lazy_reopen(self, tmp_path: Path):
+        """close 必须立即释放连接，并保持重复调用和后续复用安全。"""
+        cache = RouteCache(tmp_path / "routes.db")
+        connection = cache._conn()
+
+        cache.close()
+        cache.close()
+
+        with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+            connection.execute("SELECT 1")
+        assert cache.stats() == {"file_count": 0, "total_bytes": 0}
+
+    def test_close_releases_connections_created_by_worker_threads(self, tmp_path: Path):
+        """共享缓存关闭时必须回收其他线程创建的连接。"""
+        cache = RouteCache(tmp_path / "routes.db")
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            worker_connection = pool.submit(cache._conn).result()
+            cache.close()
+
+            with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+                worker_connection.execute("SELECT 1")
+            assert pool.submit(cache.stats).result() == {
+                "file_count": 0,
+                "total_bytes": 0,
+            }
+
+    def test_tool_rebind_closes_previous_detector_cache(self, tmp_path: Path):
+        """切换项目根时不能把旧 routes.db 连接留给垃圾回收。"""
+        first = tmp_path / "first"
+        second = tmp_path / "second"
+        first.mkdir()
+        second.mkdir()
+        tool = RouteDetectorTool(str(first))
+        detector = tool._get_detector()
+        assert detector._cache is not None
+        connection = detector._cache._conn()
+
+        tool.set_project_path(str(second))
+
+        assert tool._detector is None
+        with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+            connection.execute("SELECT 1")
 
 
 # ---------------------------------------------------------------------------

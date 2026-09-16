@@ -28,6 +28,8 @@ class RouteDetectorTool(BaseMCPTool):
     # ARCH-A4: hook fires from both __init__ and set_project_path, so the
     # one-line reset covers both lifecycles without a separate override.
     def _on_project_root_changed(self, project_root: str | None) -> None:
+        if self._detector is not None:
+            self._detector.close()
         self._detector = None
 
     def _get_detector(self) -> RouteDetector:

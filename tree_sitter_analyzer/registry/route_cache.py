@@ -64,6 +64,9 @@ class RouteCache:
         self.db_path = db_path
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()
+        self._connection_lock = threading.Lock()
+        self._connections: set[sqlite3.Connection] = set()
+        self._connection_generation = 0
         with self._conn() as conn:
             conn.executescript(_ROUTE_CACHE_SCHEMA)
             conn.commit()
@@ -107,14 +110,41 @@ class RouteCache:
             raise
 
     def _conn(self) -> sqlite3.Connection:
-        conn = getattr(self._local, "conn", None)
-        if conn is None:
-            conn = sqlite3.connect(str(self.db_path), timeout=10, isolation_level=None)
+        holder = getattr(self._local, "connection_holder", None)
+        generation = self._connection_generation
+        if holder is not None and holder[0] == generation:
+            return holder[1]
+        conn = sqlite3.connect(
+            str(self.db_path),
+            timeout=10,
+            isolation_level=None,
+            check_same_thread=False,
+        )
+        try:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
             conn.row_factory = sqlite3.Row
-            self._local.conn = conn
+        except BaseException:
+            conn.close()
+            raise
+        with self._connection_lock:
+            stale_generation = generation != self._connection_generation
+            if not stale_generation:
+                self._connections.add(conn)
+                self._local.connection_holder = (generation, conn)
+        if stale_generation:
+            conn.close()
+            return self._conn()
         return conn
+
+    def close(self) -> None:
+        """关闭所有线程持有的 SQLite 连接；重复调用保持安全。"""
+        with self._connection_lock:
+            connections = tuple(self._connections)
+            self._connections.clear()
+            self._connection_generation += 1
+        for conn in connections:
+            conn.close()
 
     @staticmethod
     def _hash(content: bytes) -> str:
