@@ -150,10 +150,13 @@ def _capture_bridge_schedules(
 ) -> list[tuple[str, str]]:
     scheduled: list[tuple[str, str]] = []
 
-    def capture(ticket: Any, uri: str) -> None:
+    def capture(ticket: Any, snapshot: list[Any], uri: str) -> bool:
+        if not manager.commit_evaluation(ticket, snapshot):
+            return False
         scheduled.append((ticket.session_id, uri))
+        return True
 
-    monkeypatch.setattr(manager, "schedule_send", capture)
+    monkeypatch.setattr(manager, "commit_evaluation_and_schedule", capture)
     return scheduled
 
 

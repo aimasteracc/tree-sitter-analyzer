@@ -201,6 +201,32 @@ def test_rebind_removes_last_registry_session_and_pre_watch_ticket_is_stale() ->
     assert registry.subscriptions_for(ticket.session_id) == []
 
 
+def test_revoked_watch_cannot_commit_or_reserve_a_notification() -> None:
+    """watch token撤销后，旧求值不得改写基线或建立pending通知。"""
+    from tree_sitter_analyzer.mcp.subscription_lifecycle import (
+        SubscriptionLifecycleManager,
+    )
+
+    registry = SubscriptionRegistry(min_interval_s=0.0)
+    manager = SubscriptionLifecycleManager("/project", registry)
+    owner = manager.begin_run()
+    ticket = manager.subscribe(owner, object(), object(), ".function", 0.0)
+    token = manager.issue_watch_token("/project")
+    watch_ticket = manager.snapshot_for_watch(token)[0]
+    manager.revoke_watch_token(token)
+
+    assert (
+        manager.commit_evaluation_and_schedule(
+            watch_ticket,
+            [{"name": "stale"}],
+            "tsa://hyphae/.function",
+        )
+        is False
+    )
+    assert registry._subs[ticket.session_id][ticket.selector].last_snapshot == []
+    assert manager._pending == {}
+
+
 def test_scheduling_failure_clears_only_its_pending_reservation() -> None:
     """loop拒绝线程投递时清理确切pending，并保留有效订阅。"""
     from tree_sitter_analyzer.mcp.subscription_lifecycle import (
@@ -226,10 +252,10 @@ def test_scheduling_failure_clears_only_its_pending_reservation() -> None:
 
 
 @pytest.mark.asyncio
-async def test_watch_token_revocation_cancels_only_matching_pending(
+async def test_watch_token_revocation_preserves_already_accepted_delivery(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """撤销一个watch incarnation只取消其pending，保留同订阅的新token工作。"""
+    """撤销watch token后，已原子接纳的通知仍须送达且旧token不能再排队。"""
     from tree_sitter_analyzer.mcp.subscription_lifecycle import (
         SubscriptionLifecycleManager,
     )
@@ -261,7 +287,11 @@ async def test_watch_token_revocation_cancels_only_matching_pending(
     new_token = manager.issue_watch_token("/project")
     old_ticket = manager.snapshot_for_watch(old_token)[0]
     new_ticket = manager.snapshot_for_watch(new_token)[0]
-    manager.schedule_send(old_ticket, "tsa://hyphae/.function")
+    assert manager.commit_evaluation_and_schedule(
+        old_ticket,
+        [{"name": "old-token-change"}],
+        "tsa://hyphae/.function",
+    )
     manager.schedule_send(new_ticket, "tsa://hyphae/.function")
     old_pending, new_pending = manager._pending.values()
     old_handle = old_pending.handle
@@ -276,14 +306,19 @@ async def test_watch_token_revocation_cancels_only_matching_pending(
     assert manager.is_watch_token_current(old_token) is False
     assert manager.snapshot_for_watch(old_token) == []
     assert manager.is_watch_token_current(new_token) is True
-    assert old_handle.cancelled() is True
+    assert old_handle.cancelled() is False
     assert new_handle.cancelled() is False
-    assert len(manager._pending) == 1
-    assert sent == 1
+    assert len(manager._pending) == 2
+    assert sent == 2
+    manager.schedule_send(old_ticket, "tsa://hyphae/.function")
+    assert len(manager._pending) == 2
+    assert old_pending.task is not None
     assert new_pending.task is not None
 
     release.set()
+    await asyncio.wait_for(old_pending.task, timeout=1)
     await asyncio.wait_for(new_pending.task, timeout=1)
+    await asyncio.sleep(0)
     await asyncio.wait_for(finished.wait(), timeout=1)
     assert manager._pending == {}
 

@@ -308,18 +308,23 @@ class ASTCacheTool(BaseMCPTool):
         if not raw_root:
             raise ValueError("Project root not set. Call set_project_path first.")
         candidate = ASTCache(raw_root)
+        winner: ASTCache | None = None
+        published = False
         with self._watch_state_lock:
-            valid = (
-                generation == self._root_generation
-                and raw_root == self._project_root
-                and self._cache is None
+            same_project = (
+                generation == self._root_generation and raw_root == self._project_root
             )
-            if valid:
+            if same_project and self._cache is None:
                 self._cache = candidate
                 self._cache_raw_root = raw_root
-        if valid:
+                published = True
+            elif same_project and self._cache_raw_root == raw_root:
+                winner = self._cache
+        if published:
             return candidate
         candidate.close()
+        if winner is not None:
+            return winner
         raise TimeoutError("Project changed during cache construction")
 
     def get_cache(self) -> ASTCache:

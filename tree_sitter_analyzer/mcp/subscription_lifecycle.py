@@ -206,10 +206,6 @@ class SubscriptionLifecycleManager:
             return
         with self._lock:
             self._watch_tokens.discard(token)
-            pending = self._pop_pending_locked(
-                lambda item: item.ticket.watch_token == token
-            )
-        self._cancel_pending(pending)
 
     def is_watch_token_current(self, token: WatchToken) -> bool:
         """核验 watch token 仍属于本应用当前 raw root 与 epoch。"""
@@ -248,6 +244,25 @@ class SubscriptionLifecycleManager:
             )
         return bool(added or removed)
 
+    def commit_evaluation_and_schedule(
+        self, ticket: SubscriptionTicket, snapshot: list[Any], uri: str
+    ) -> bool:
+        """在同一所有权临界区提交变化并预约通知。"""
+        pending_id = uuid.uuid4().hex
+        pending = _Pending(ticket)
+        with self._lock:
+            if not self._valid_locked(ticket):
+                return False
+            registry = self._registry
+            added, removed = registry.compute_delta(
+                ticket.session_id, ticket.selector, snapshot
+            )
+            if not (added or removed):
+                return False
+            self._pending[pending_id] = pending
+        self._schedule_pending(pending_id, pending, uri)
+        return True
+
     def schedule_send(self, ticket: SubscriptionTicket, uri: str) -> None:
         pending_id = uuid.uuid4().hex
         pending = _Pending(ticket)
@@ -255,6 +270,11 @@ class SubscriptionLifecycleManager:
             if not self._valid_locked(ticket):
                 return
             self._pending[pending_id] = pending
+        self._schedule_pending(pending_id, pending, uri)
+
+    def _schedule_pending(self, pending_id: str, pending: _Pending, uri: str) -> None:
+        """把已接纳的通知交给会话事件循环；watch 换代不撤销该通知。"""
+        ticket = pending.ticket
         try:
             handle = ticket.loop.call_soon_threadsafe(self._start_send, pending_id, uri)
         except Exception:
@@ -269,14 +289,14 @@ class SubscriptionLifecycleManager:
             current = self._pending.get(pending_id)
             if current is pending:
                 pending.handle = handle
-                cancel = not self._valid_locked(ticket)
+                cancel = not self._delivery_valid_locked(ticket)
         if cancel:
             handle.cancel()
 
     def _start_send(self, pending_id: str, uri: str) -> None:
         with self._lock:
             pending = self._pending.get(pending_id)
-            if pending is None or not self._valid_locked(pending.ticket):
+            if pending is None or not self._delivery_valid_locked(pending.ticket):
                 self._pending.pop(pending_id, None)
                 return
             ticket = pending.ticket
@@ -295,7 +315,7 @@ class SubscriptionLifecycleManager:
             current = self._pending.get(pending_id)
             if current is pending:
                 pending.task = task
-                cancel = not self._valid_locked(ticket)
+                cancel = not self._delivery_valid_locked(ticket)
             else:
                 cancel = True
         task.add_done_callback(
@@ -308,9 +328,9 @@ class SubscriptionLifecycleManager:
         from pydantic import AnyUrl
 
         with self._lock:
-            if self._pending.get(pending_id) is not pending or not self._valid_locked(
-                pending.ticket
-            ):
+            if self._pending.get(
+                pending_id
+            ) is not pending or not self._delivery_valid_locked(pending.ticket):
                 return
             ticket = pending.ticket
         try:
@@ -334,6 +354,13 @@ class SubscriptionLifecycleManager:
             logger.debug("push task failed", exc_info=True)
 
     def _valid_locked(self, ticket: SubscriptionTicket) -> bool:
+        return (
+            self._delivery_valid_locked(ticket)
+            and ticket.watch_token in self._watch_tokens
+        )
+
+    def _delivery_valid_locked(self, ticket: SubscriptionTicket) -> bool:
+        """核验已接纳通知的订阅所有权，不再依赖 watcher incarnation。"""
         current = self._records.get((ticket.session_id, ticket.selector))
         return (
             current is not None
@@ -341,7 +368,6 @@ class SubscriptionLifecycleManager:
             and ticket.run_owner in self._runs
             and ticket.project_epoch == self._project_epoch
             and ticket.project_root == self._project_root
-            and ticket.watch_token in self._watch_tokens
         )
 
     def _require_owner_locked(self, owner: RunOwner) -> None:

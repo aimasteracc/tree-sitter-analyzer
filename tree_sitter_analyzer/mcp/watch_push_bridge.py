@@ -76,8 +76,11 @@ def _drive_subscriptions(
                 exc_info=True,
             )
             continue
-        if lifecycle_manager.commit_evaluation(ticket, snapshot):
-            lifecycle_manager.schedule_send(ticket, uri_from_selector(ticket.selector))
+        lifecycle_manager.commit_evaluation_and_schedule(
+            ticket,
+            snapshot,
+            uri_from_selector(ticket.selector),
+        )
 
 
 def collect_changed_pairs(
