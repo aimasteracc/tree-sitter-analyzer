@@ -535,4 +535,11 @@ def test_start_reconciles_changes_before_baseline(watcher, cache, project, monke
 
     monkeypatch.setattr(watcher, "_take_snapshot", baseline)
     watcher.start()
-    assert _wait_until(lambda: cache.get_stats()["total_files"] == 3)
+    reconciled = _wait_until(
+        lambda: cache.get_stats()["total_files"] == 3,
+        timeout=_BACKGROUND_SYNC_TIMEOUT,
+    )
+    assert reconciled, {
+        "cache": cache.get_stats(),
+        "watcher": watcher.get_stats(),
+    }
