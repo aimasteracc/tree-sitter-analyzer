@@ -433,6 +433,90 @@ hoist are `tests/unit/test_health_git_context.py`, and the equivalence check
 that the score is unchanged is its
 `test_the_scan_still_scores_git_hotspot_inside_a_repository`.
 
+## 2026-09 — 读前后相同不能证明中间读取可信
+
+### Context
+
+为 symbol search 添加索引后源码变化测试时，最初只比较请求前后的源码状态。若文件在正文读取
+期间由 A 短暂变为 B，再恢复 A，两个检查都能通过，却可能把旧索引坐标和 B 的正文组合进响应。
+后续测试又一度只钩住新安全读取 primitive；这能覆盖新实现，却不能证明旧 live reader 在修复前
+确实会混读，因此不是同一条 RED 的可靠回放。
+
+### Lessons learned
+
+1. **读前与读后相等不排除 ABA。** 返回的字节必须来自与索引 record、期望 hash 相同的 owner
+   capability，而不是再打开一次当前路径。
+2. **新 seam 变绿不能证明旧缺陷被捕获。** 回归测试应保留旧 reader 的故障注入，并让它完成
+   A→B→A；否则基线可能只是因为新 primitive 不存在或未调用而失败。
+3. **降级结果需要正反两类 oracle。** 测试既要证明健康 owner 实际返回正文，也要证明后验认证
+   失败前正文确实存在、失败后才被清除，避免从头 coordinate-only 的假绿。
+
+### Required guardrail
+
+`tests/unit/test_symbol_search_tool.py` 的 transient ABA、same-connection 与 post-read 测试分别固定
+旧 reader 的 A→B→A 回放、所有搜索模式使用 owner connection，以及第二次 scope 认证失败前后
+正文状态；`tests/unit/test_index_snapshot.py` 固定 owner 的平台支持面与请求级预算。
+
+## 2026-09 — 最终异常断言不能证明修复分支被执行
+
+### Context
+
+认证查询的首个回归测试先删除 `ast_symbol_rows`，随后断言搜索抛出异常；但级联搜索在 exact
+阶段就失败，FTS 方法也因测试缓存未启用 FTS 而走已有的线性路径。测试因此没有执行本次修改的
+LIKE、fuzzy 或 FTS 异常传播分支，在旧实现上也可能通过。
+
+### Lessons learned
+
+1. **最终结果相同不等于覆盖故障点。** 回归测试必须把失败注入到修复处理的具体阶段，并允许
+   之前的阶段正常完成。
+2. **兼容路径与严格路径要在同一故障下对照。** 普通缓存返回空列表、认证适配器抛出异常的并列
+   断言，才能证明行为差异来自严格模式。
+3. **功能开关属于测试前提。** FTS 异常测试必须创建真实 FTS5 表并确认适配器选择 FTS 路径，
+   不能让线性回退替代目标分支。
+4. **每个认证适配器都必须显式选择严格语义。** 共用查询函数的默认值服务普通缓存；新增 owner
+   适配器若遗漏严格参数，另一适配器的通过证据不能证明真实公共调用链也会传播异常。
+
+### Required guardrail
+
+`tests/unit/test_index_snapshot.py` 使用 SQLite authorizer 分别在 LIKE 与真实 FTS5 `bm25` 阶段
+拒绝查询，并对照普通缓存和 `tree_sitter_analyzer/index_snapshot_query.py` 的认证适配器行为；
+`tests/unit/test_symbol_search_conceptual_demotion.py` 通过真实 search facade 固定公共适配器的严格参数、
+坐标降级与 FTS 特殊字符兼容边界。
+
+## 2026-09 — 源码扫描不能证明公共边界行为
+
+### Context
+
+PR #1491 将 symbol search 的实现拆到 `_execute_search` 后，一个测试仍用
+`inspect.getsource(execute)` 查找提示字符串，四个 CI 轴都失败。与此同时，三个 Windows
+正文恢复测试暴露了另一条平台边界：认证读取无条件调用只支持 POSIX `dir_fd` 与
+`O_NOFOLLOW` 的 reader，因此 Windows 健康索引也只能返回坐标。
+
+### Lessons learned
+
+1. **实现文本不是行为契约。** 重构可移动字符串而不改变输出；测试必须调用用户实际调用的
+   `execute` 边界并精确断言响应。
+2. **分支前提必须由 fixture 固定。** next step 测试要强制“有结果、未截断、无正文”，否则
+   空结果或正文 deterrent 会绕过目标分支形成假绿。
+3. **平台能力必须逐层闭合。** Windows 能捕获索引数据库并不代表它能认证工作区源码；恢复
+   正文还需要同样防重解析点、固定身份、限额和 deadline 的原生读取能力。
+4. **认证成本应跟实际返回的证据成正比。** 导航查询可复用进程内固定的数据库能力，并只对本次
+   响应真正返回的源码逐文件校验索引摘要；每次查询重新复制数据库并四次扫描仓库既慢，也扩大
+   了 deadline 与并发漂移的故障面。
+5. **SQLite progress handler 只有一个槽位。** 内层 call-graph 探针若安装再清空自己的 handler，
+   会无意删除外层请求的绝对 deadline；嵌套读取必须显式复用外层 handler 所有权。
+
+### Required guardrail
+
+`tests/unit/mcp/test_runtime_guidance_facade_names.py` 通过公开 `execute` 固定精确 facade 提示。
+Windows 正文恢复现由 `tree_sitter_analyzer/index_snapshot_windows.py` 的原生只读句柄完成，并在
+`tests/unit/test_index_snapshot_windows.py` 证明完整 File ID、重解析点拒绝、层级固定、预算、
+deadline、读取后复核与清理契约。`tests/unit/test_index_snapshot.py` 还固定数据库能力复用、逐文件
+摘要认证和外层 progress handler 所有权；`tests/unit/test_codegraph_navigate_tool.py`、
+`tests/unit/test_codegraph_callees_tool.py` 与 `tests/unit/mcp/tools/test_call_path_enrich.py` 固定 SQLite
+中断只降级正文而不击穿公开工具，并继续作为跨平台正文恢复资格门槛。原有
+`tests/unit/test_callers_callees_tools.py` 的正文恢复测试保留同一资格证据。
+
 ## 2026-09 — 求值失败不是空结果
 
 ### Context
@@ -547,6 +631,37 @@ in `docs/AI_LESSONS.md`, and
 `tests/contracts/test_agent_docs_contract.py` pins the exact lesson-entry count
 and required structure.
 
+## 2026-09 — 容量必须约束相关证据，而不是全局支持表
+
+### Context
+
+这些计数来自 `aimasteracc/tree-sitter-analyzer` 提交
+`355f1657fa5618d5fbb67c7bc0ffc2af1792e28e`：在 macOS 26.6.2 arm64、Python 3.14.3
+上，以仓库默认排除规则和语言插件建立全量项目索引，再用仓库的
+`architectural-constraints.yml` 执行约束检查。该索引有 25,628 条 `ast_imports`，但约束
+查询只有 10,823 条 SQL 候选边、211 个候选调用文件和 2,247 条相关导入。原求值器先把
+整个导入表物化，再检查调用边，因此固定的
+10,000 项响应容量在读取无关证据时耗尽，真实 `--check-constraints` 以
+`CONSTRAINT_EVALUATION_CAPACITY` 失败。首次修复把容量移到近似 SQL 候选上，又暴露了
+无字面前缀 glob、重复边与缺少导入表三条边界。
+
+### Lessons learned
+
+1. **容量边界必须跟用户请求的相关集合对齐。** 全局支持表可以很大；只有通过规则 glob、
+   scope 和 exception 的调用方及其导入行才应消耗本次求值的物化容量。
+2. **SQL 预过滤不是精确资格。** 没有字面前缀的 glob 会保留全部边；在正则和 scope 前
+   限制唯一调用方，会让完全无匹配的请求也失败。
+3. **数据库内部去重会隐藏截止时间。** `SELECT DISTINCT` 可在 Python 重新获得控制前扫描
+   大量重复行；需要流式读取并在 Python 去重，才能持续执行 deadline callback。
+4. **兼容回退不能支付无用预扫描。** `ast_imports` 不存在时不会使用候选调用方集合，必须先
+   检查证据表，再决定是否进行第二次边扫描。
+
+### Required guardrail
+
+`tests/unit/test_evaluator_bounds.py` 固定无关导入不耗尽容量、无前缀 glob 只计算
+精确候选、重复候选持续检查 deadline，以及缺少导入表时只扫描一次 edge；约束求值的
+focused patch-coverage gate 必须覆盖这些边界。真实全量索引 dogfood 还必须返回三条规则、
+零违规和非零 evaluated-edge 计数，不能用空索引的 SAFE 替代。
 ## 2026-09 — 验证命令必须能选中它声称验证的目标
 
 ### Context

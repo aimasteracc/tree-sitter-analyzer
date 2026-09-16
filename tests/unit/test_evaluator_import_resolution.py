@@ -319,7 +319,9 @@ def test_constraint_loader_wraps_read_failure(tmp_path, monkeypatch):
 
 
 def test_evaluator_callback_covers_python_import_materialization() -> None:
-    from tree_sitter_analyzer.constraints import Constraint, evaluate
+    from tree_sitter_analyzer.constraints.evaluator_import_resolution import (
+        _build_import_index,
+    )
 
     # PR #1254 review 3767373475: Python-side DB materialization obeys callback.
     conn = sqlite3.connect(":memory:")
@@ -328,8 +330,7 @@ def test_evaluator_callback_covers_python_import_materialization() -> None:
     calls = []
     try:
         with pytest.raises(RuntimeError, match="^deadline$"):
-            evaluate(
-                [Constraint("r", "warn", "deny", "**", "**", "test")],
+            _build_import_index(
                 conn,
                 check_callback=lambda: (
                     calls.append("check")
@@ -341,8 +342,23 @@ def test_evaluator_callback_covers_python_import_materialization() -> None:
     assert calls == ["check"]
 
 
+def test_import_index_falls_back_when_evidence_table_is_missing() -> None:
+    """缺少导入证据表时保持兼容的保守回退。"""
+    from tree_sitter_analyzer.constraints.evaluator_import_resolution import (
+        _build_import_index,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    try:
+        assert _build_import_index(conn) is None
+    finally:
+        conn.close()
+
+
 def test_evaluator_bounds_python_import_materialization() -> None:
-    from tree_sitter_analyzer.constraints import Constraint, evaluate
+    from tree_sitter_analyzer.constraints.evaluator_import_resolution import (
+        _build_import_index,
+    )
 
     # PR #1254 review 3767373475: API capacity bounds Python-owned collections.
     conn = sqlite3.connect(":memory:")
@@ -352,9 +368,7 @@ def test_evaluator_bounds_python_import_materialization() -> None:
     )
     try:
         with pytest.raises(RuntimeError, match="^CONSTRAINT_EVALUATION_CAPACITY$"):
-            evaluate(
-                [Constraint("r", "warn", "deny", "**", "**", "test")], conn, capacity=1
-            )
+            _build_import_index(conn, capacity=1)
     finally:
         conn.close()
 

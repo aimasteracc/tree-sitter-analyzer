@@ -5,11 +5,598 @@ from __future__ import annotations
 import errno
 import os
 import sqlite3
+import time
+from contextlib import contextmanager
+from types import SimpleNamespace
 
 import pytest
 
 from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import CodeGraphStatusTool
+
+
+def _certified_source_reader(tmp_path, source_text="value = 1\n"):
+    from tree_sitter_analyzer.index_snapshot import CertifiedIndexRead
+    from tree_sitter_analyzer.index_snapshot_registry import IndexSnapshot
+    from tree_sitter_analyzer.indexing_snapshot import index_source_content_hash
+
+    (tmp_path / "sample.py").write_text(source_text, encoding="utf-8")
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    connection.execute(
+        "CREATE TABLE ast_index (file_path TEXT, content_hash TEXT, certified_at TEXT)"
+    )
+    connection.execute(
+        "INSERT INTO ast_index VALUES (?, ?, ?)",
+        ("sample.py", index_source_content_hash(source_text), "now"),
+    )
+    snapshot = IndexSnapshot(None, None, None, None, "complete", None, str(tmp_path), 1)
+    return CertifiedIndexRead(snapshot, connection, time.monotonic() + 5), connection
+
+
+def test_certified_source_reader_returns_and_caches_expected_bytes(tmp_path):
+    reader, connection = _certified_source_reader(tmp_path)
+    try:
+        assert reader.read_source("sample.py") == "value = 1\n"
+        (tmp_path / "sample.py").write_text("changed = 2\n", encoding="utf-8")
+        assert reader.read_source("sample.py") == "value = 1\n"
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize(
+    "damage", ["missing_row", "invalid_hash", "changed", "missing_file"]
+)
+def test_certified_source_reader_rejects_unbound_bytes(tmp_path, damage):
+    reader, connection = _certified_source_reader(tmp_path)
+    try:
+        if damage == "missing_row":
+            connection.execute("DELETE FROM ast_index")
+        elif damage == "invalid_hash":
+            connection.execute("UPDATE ast_index SET content_hash='invalid'")
+        elif damage == "changed":
+            (tmp_path / "sample.py").write_text("changed = 2\n", encoding="utf-8")
+        else:
+            (tmp_path / "sample.py").unlink()
+        with pytest.raises((OSError, ValueError, RuntimeError)):
+            reader.read_source("sample.py")
+    finally:
+        connection.close()
+
+
+def test_certified_source_reader_enforces_request_total_budget(tmp_path, monkeypatch):
+    import tree_sitter_analyzer.index_snapshot as owner
+
+    reader, connection = _certified_source_reader(tmp_path)
+    monkeypatch.setattr(owner, "_SOURCE_TOTAL_BYTE_LIMIT", 1)
+    try:
+        with pytest.raises(RuntimeError, match="INDEX_BACKUP_BUDGET"):
+            reader.read_source("sample.py")
+    finally:
+        connection.close()
+
+
+def test_certified_source_reader_bounds_count_and_remaining_capture(
+    tmp_path, monkeypatch
+):
+    import tree_sitter_analyzer.index_snapshot as owner
+    from tree_sitter_analyzer.indexing_snapshot import index_source_content_hash
+
+    reader, connection = _certified_source_reader(tmp_path)
+    (tmp_path / "second.py").write_text("x\n", encoding="utf-8")
+    connection.execute(
+        "INSERT INTO ast_index VALUES (?, ?, ?)",
+        ("second.py", index_source_content_hash("x\n"), "now"),
+    )
+    from tree_sitter_analyzer import source_oracle
+
+    limits = []
+    safe_capture = source_oracle.safe_index_source_path
+
+    def capture(root, path, **kwargs):
+        limits.append(kwargs["limit"])
+        return safe_capture(root, path, **kwargs)
+
+    monkeypatch.setattr(source_oracle, "safe_index_source_path", capture)
+    monkeypatch.setattr(owner, "_SOURCE_TOTAL_BYTE_LIMIT", 12)
+    monkeypatch.setattr(owner, "_SOURCE_FILE_COUNT_LIMIT", 1)
+    try:
+        assert reader.read_source("sample.py") == "value = 1\n"
+        assert limits == [12]
+        with pytest.raises(RuntimeError, match="INDEX_BACKUP_BUDGET"):
+            reader.read_source("second.py")
+        assert limits == [12]
+    finally:
+        connection.close()
+
+
+def test_certified_source_reader_charges_normalized_output(tmp_path, monkeypatch):
+    import tree_sitter_analyzer.index_snapshot as owner
+    import tree_sitter_analyzer.indexing_snapshot as source_format
+
+    reader, connection = _certified_source_reader(tmp_path)
+    expanded = "expanded normalized text\n"
+    connection.execute(
+        "UPDATE ast_index SET content_hash=?",
+        (source_format.index_source_content_hash(expanded),),
+    )
+    monkeypatch.setattr(source_format, "decode_index_source", lambda _raw: expanded)
+    monkeypatch.setattr(owner, "_SOURCE_TOTAL_BYTE_LIMIT", 12)
+    try:
+        with pytest.raises(RuntimeError, match="INDEX_BACKUP_BUDGET"):
+            reader.read_source("sample.py")
+    finally:
+        connection.close()
+
+
+def test_certified_source_reader_rejects_exhausted_or_oversized_input(
+    tmp_path, monkeypatch
+):
+    import tree_sitter_analyzer.index_snapshot as owner
+    from tree_sitter_analyzer import source_oracle
+
+    reader, connection = _certified_source_reader(tmp_path)
+    monkeypatch.setattr(owner, "_SOURCE_TOTAL_BYTE_LIMIT", 8)
+    try:
+        reader._source_input_bytes = 8
+        with pytest.raises(RuntimeError, match="INDEX_BACKUP_BUDGET"):
+            reader.read_source("sample.py")
+
+        reader._source_input_bytes = 0
+        monkeypatch.setattr(
+            source_oracle,
+            "safe_index_source_path",
+            lambda *_args, **_kwargs: SimpleNamespace(kind="file", data=b"x" * 9),
+        )
+        with pytest.raises(RuntimeError, match="INDEX_BACKUP_BUDGET"):
+            reader.read_source("sample.py")
+    finally:
+        connection.close()
+
+
+def test_certified_source_reader_cache_obeys_lifetime_and_deadline(tmp_path):
+    reader, connection = _certified_source_reader(tmp_path)
+    try:
+        assert reader.read_source("sample.py") == "value = 1\n"
+        reader.deadline = 0.0
+        with pytest.raises(RuntimeError, match="INDEX_SNAPSHOT_DEADLINE"):
+            reader.read_source("sample.py")
+        reader.close()
+        assert reader._sources == {}
+        with pytest.raises(RuntimeError, match="INDEX_SNAPSHOT_CLOSED"):
+            reader.read_source("sample.py")
+    finally:
+        connection.close()
+
+
+def test_certified_source_reader_requires_owner_root(tmp_path):
+    reader, connection = _certified_source_reader(tmp_path)
+    try:
+        reader.snapshot = type(reader.snapshot)(
+            None, None, None, None, "complete", None, None, 1
+        )
+        with pytest.raises(ValueError, match="INDEX_SNAPSHOT_UNKNOWN"):
+            reader.read_source("sample.py")
+    finally:
+        connection.close()
+
+
+def test_certified_query_cache_is_same_connection_and_request_scoped(tmp_path):
+    reader, connection = _certified_source_reader(tmp_path)
+    cache = reader.query_cache()
+    try:
+        assert cache.get_conn() is connection
+        assert cache.get_stats() == {"total_files": 1}
+        reader.close()
+        with pytest.raises(RuntimeError, match="INDEX_SNAPSHOT_CLOSED"):
+            cache.get_conn()
+    finally:
+        connection.close()
+
+
+def test_certified_query_cache_does_not_turn_sql_failure_into_empty(tmp_path):
+    reader, connection = _certified_source_reader(tmp_path)
+    cache = reader.query_cache()
+    try:
+        connection.execute("DROP TABLE ast_index")
+        with pytest.raises(sqlite3.OperationalError, match="no such table"):
+            cache.get_stats()
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize("failure_stage", ["like", "fuzzy", "fts"])
+def test_certified_query_cache_does_not_swallow_search_sql_failure(
+    tmp_path, failure_stage
+):
+    from tree_sitter_analyzer.cache.query import fts_search_ranked
+    from tree_sitter_analyzer.cache.search import search_symbols_cascade
+
+    reader, connection = _certified_source_reader(tmp_path)
+    connection.execute(
+        "CREATE TABLE ast_symbol_rows ("
+        "id INTEGER PRIMARY KEY, name TEXT, kind TEXT, file_path TEXT, "
+        "language TEXT, line INTEGER, end_line INTEGER)"
+    )
+    if failure_stage == "fts":
+        connection.execute(
+            "CREATE VIRTUAL TABLE ast_symbols_fts USING fts5("
+            "name, file_path, kind, language)"
+        )
+    cache = reader.query_cache()
+
+    def deny_late_search(
+        action, arg1, arg2, _database_name, _trigger_name
+    ):  # pragma: no branch - SQLite 回调动作由参数化场景固定
+        if failure_stage == "like":
+            denied = action == sqlite3.SQLITE_FUNCTION and arg2 == "like"
+        else:
+            denied = action == sqlite3.SQLITE_FUNCTION and arg2 == "bm25"
+        return sqlite3.SQLITE_DENY if denied else sqlite3.SQLITE_OK
+
+    class FuzzyFailureConnection:
+        def execute(self, sql, parameters=()):
+            if "FROM ast_symbol_rows r ORDER BY" in sql:
+                raise sqlite3.OperationalError("injected fuzzy SELECT failure")
+            return connection.execute(sql, parameters)
+
+    query_connection = connection
+    if failure_stage == "fuzzy":
+        query_connection = FuzzyFailureConnection()
+        reader.connection = query_connection
+    else:
+        connection.set_authorizer(deny_late_search)
+    try:
+        # 旧的普通缓存语义会吞掉这些后期 SQL 失败，构成修复前的 RED 回放。
+        if failure_stage in {"like", "fuzzy"}:
+            assert (
+                search_symbols_cascade(
+                    query_connection, "missing", fts5_available=False
+                )
+                == []
+            )
+        else:
+            assert fts_search_ranked(connection, "missing") == []
+
+        expected_error = (
+            "injected fuzzy" if failure_stage == "fuzzy" else "not authorized"
+        )
+        with pytest.raises(sqlite3.DatabaseError, match=expected_error):
+            if failure_stage in {"like", "fuzzy"}:
+                cache._fts5_available = False
+                cache.search_symbols_cascade("missing")
+            else:
+                cache.fts_search_ranked("missing")
+    finally:
+        if failure_stage != "fuzzy":
+            connection.set_authorizer(None)
+        connection.close()
+
+
+async def test_certified_query_cache_exposes_shared_read_surface(tmp_path):
+    from tree_sitter_analyzer.index_snapshot import certified_index_read
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    (tmp_path / "sample.py").write_text(
+        "import os\n\ndef caller():\n    return target()\n\ndef target():\n    return 1\n",
+        encoding="utf-8",
+    )
+    result = await CodeGraphFullIndexTool(str(tmp_path)).execute(
+        {"mode": "full", "max_files": 10}
+    )
+    assert result["published"] is True
+    with certified_index_read(str(tmp_path)) as owner:
+        assert owner is not None
+        cache = owner.query_cache()
+        assert cache.close() is None
+        assert cache.get_stats() == {"total_files": 1}
+        looked_up = cache.lookup(str(tmp_path / "sample.py"))
+        assert looked_up is not None
+        assert looked_up["language"] == "python"
+        assert [row["name"] for row in cache.search_symbols_cascade("target")] == [
+            "target"
+        ]
+        assert [row["name"] for row in cache.fts_search_ranked("target")] == ["target"]
+        assert cache.fts_search("t") == []
+        cache._fts5_available = False
+        assert [row["name"] for row in cache.fts_search_ranked("target")] == ["target"]
+        assert [row["name"] for row in cache.fts_search("target")] == ["target"]
+        assert sorted(row["name"] for row in cache.get_functions()) == [
+            "caller",
+            "target",
+        ]
+        assert [row["name"] for row in cache.get_symbols_by_kind("function")] == [
+            "caller",
+            "target",
+        ]
+        assert cache.get_imports() == {"sample.py": ["import os"]}
+        assert len(cache.get_call_edges()) == 1
+        assert len(cache.query_edges("calls", caller_name="caller")) == 1
+        assert len(cache.query_edges("calls", callee_name="target")) == 1
+        assert len(cache.query_callers("target")) == 1
+        assert len(cache.query_callees("caller")) == 1
+        assert cache.has_call_edges() is True
+        assert cache.call_graph_built() is True
+        assert cache.count_unresolved_callers("target") == 0
+        assert cache.unresolved_call_sites_in_file("sample.py") == []
+        assert isinstance(cache.excluded_call_sites_in_file("sample.py"), list)
+        assert cache.symbol_declaring_files("target") == ("sample.py",)
+
+
+def test_certified_query_cache_uses_existing_bfs_fallback(tmp_path, monkeypatch):
+    import tree_sitter_analyzer.index_snapshot_query as query
+
+    reader, connection = _certified_source_reader(tmp_path)
+    cache = reader.query_cache()
+    monkeypatch.setattr(query.EdgeStore, "has_edges", lambda *_args: False)
+    monkeypatch.setattr(query, "bfs_callers", lambda *_args: [{"caller_name": "a"}])
+    monkeypatch.setattr(query, "bfs_callees", lambda *_args: [{"callee_name": "b"}])
+    try:
+        assert cache.query_callers("target") == [{"caller_name": "a"}]
+        assert cache.query_callees("target") == [{"callee_name": "b"}]
+    finally:
+        connection.close()
+
+
+def test_certified_query_cache_preserves_outer_deadline_handler(tmp_path, monkeypatch):
+    # PR #1491：owner 已安装共同 deadline 时，嵌套探针不得覆盖或清空它。
+    import tree_sitter_analyzer.index_snapshot_query as query
+
+    reader, connection = _certified_source_reader(tmp_path)
+    observed = {}
+
+    def call_graph_built(conn, **kwargs):
+        assert conn is connection
+        observed.update(kwargs)
+        return True
+
+    monkeypatch.setattr(query, "_call_graph_built", call_graph_built)
+    try:
+        assert reader.query_cache().call_graph_built() is True
+        assert observed == {
+            "deadline": reader.deadline,
+            "install_progress_handler": False,
+        }
+    finally:
+        connection.close()
+
+
+def test_certified_query_reuses_pinned_database_capability(tmp_path, monkeypatch):
+    # PR #1491：导航查询不得为每次请求重新复制同一个私有数据库。
+    import tree_sitter_analyzer.index_snapshot as owner
+    from tree_sitter_analyzer.index_snapshot_registry import IndexSnapshot
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    snapshot = IndexSnapshot(
+        snapshot_id="snapshot",
+        source_fingerprint="source-fingerprint",
+        index_fingerprint="index-fingerprint",
+        source_generation="generation",
+        completeness="complete",
+        reason=None,
+        canonical_root=str(tmp_path),
+        file_count=1,
+        source_scope=make_source_scope_descriptor(),
+        database_path=str(resolve_index_path(str(tmp_path))),
+    )
+
+    @contextmanager
+    def pin_reusable(_project_root):
+        yield snapshot
+
+    @contextmanager
+    def reject_recapture(*_args, **_kwargs):
+        pytest.fail("可复用 owner 存在时不得重新捕获数据库")
+        yield snapshot
+
+    monkeypatch.setattr(owner.REGISTRY, "pin_reusable", pin_reusable)
+    monkeypatch.setattr(owner, "lease_existing_snapshot", reject_recapture)
+    with owner._lease_certified_query_snapshot(
+        str(tmp_path), deadline=time.monotonic() + 5
+    ) as leased:
+        assert leased is snapshot
+
+
+def test_certified_query_rejects_superseded_index_generation(tmp_path, monkeypatch):
+    """活动索引路径切换后不得复用旧世代的认证快照。"""
+    import tree_sitter_analyzer.index_snapshot as owner
+    from tree_sitter_analyzer.index_snapshot_registry import IndexSnapshot
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    old_snapshot = IndexSnapshot(
+        snapshot_id="old-snapshot",
+        source_fingerprint="source-fingerprint",
+        index_fingerprint="old-index",
+        source_generation="old-generation",
+        completeness="complete",
+        reason=None,
+        canonical_root=str(tmp_path),
+        file_count=1,
+        source_scope=make_source_scope_descriptor(),
+        database_path=str(tmp_path / ".ast-cache" / "generations" / "old" / "index.db"),
+    )
+    fresh_snapshot = IndexSnapshot(
+        snapshot_id="fresh-snapshot",
+        source_fingerprint="source-fingerprint",
+        index_fingerprint="fresh-index",
+        source_generation="fresh-generation",
+        completeness="complete",
+        reason=None,
+        canonical_root=str(tmp_path),
+        file_count=1,
+        source_scope=make_source_scope_descriptor(),
+        database_path=str(
+            tmp_path / ".ast-cache" / "generations" / "fresh" / "index.db"
+        ),
+    )
+
+    @contextmanager
+    def pin_reusable(_project_root):
+        yield old_snapshot
+
+    @contextmanager
+    def recapture(*_args, **_kwargs):
+        yield fresh_snapshot
+
+    monkeypatch.setattr(owner.REGISTRY, "pin_reusable", pin_reusable)
+    monkeypatch.setattr(owner, "lease_existing_snapshot", recapture)
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.cache.generation_routing.resolve_index_path",
+        lambda _root: fresh_snapshot.database_path,
+    )
+
+    with owner._lease_certified_query_snapshot(
+        str(tmp_path), deadline=time.monotonic() + 5
+    ) as leased:
+        assert leased is fresh_snapshot
+
+
+def test_certified_query_scope_does_not_rescan_whole_repository(tmp_path, monkeypatch):
+    # PR #1491：查询层只固定数据库；返回正文时再逐文件按索引摘要认证。
+    import tree_sitter_analyzer.index_snapshot as owner
+    from tree_sitter_analyzer.index_snapshot_registry import IndexSnapshot
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    connection = sqlite3.connect(":memory:")
+    snapshot = IndexSnapshot(
+        snapshot_id="snapshot",
+        source_fingerprint="source-fingerprint",
+        index_fingerprint="index-fingerprint",
+        source_generation="generation",
+        completeness="complete",
+        reason=None,
+        canonical_root=str(tmp_path),
+        file_count=1,
+        source_scope=make_source_scope_descriptor(),
+    )
+
+    @contextmanager
+    def acquire(*_args, **_kwargs):
+        yield snapshot, connection
+
+    monkeypatch.setattr(owner, "acquire_index_snapshot", acquire)
+    monkeypatch.setattr(
+        owner,
+        "verify_snapshot_source_current",
+        lambda *_args, **_kwargs: pytest.fail("认证查询不得执行全仓库源码扫描"),
+    )
+    try:
+        with owner._read_certified_query_scope(
+            "snapshot",
+            str(tmp_path),
+            "generation",
+            deadline=time.monotonic() + 5,
+        ) as (leased, bound):
+            assert leased is snapshot
+            assert bound.execute("SELECT 1").fetchone() == (1,)
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize("invalid_state", ["incomplete", "constrained"])
+def test_certified_query_scope_rejects_invalid_snapshot_state(
+    tmp_path, monkeypatch, invalid_state
+):
+    """认证查询必须拒绝不完整索引或受限源码范围。"""
+    import tree_sitter_analyzer.index_snapshot as owner
+    from tree_sitter_analyzer.index_snapshot_registry import IndexSnapshot
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    connection = sqlite3.connect(":memory:")
+    snapshot = IndexSnapshot(
+        snapshot_id="snapshot",
+        source_fingerprint="source-fingerprint",
+        index_fingerprint="index-fingerprint",
+        source_generation="generation",
+        completeness="partial" if invalid_state == "incomplete" else "complete",
+        reason=None,
+        canonical_root=str(tmp_path),
+        file_count=1,
+        source_scope=make_source_scope_descriptor(
+            exclude_patterns=(("vendor",) if invalid_state == "constrained" else ())
+        ),
+    )
+
+    @contextmanager
+    def acquire(*_args, **_kwargs):
+        yield snapshot, connection
+
+    monkeypatch.setattr(owner, "acquire_index_snapshot", acquire)
+    expected = (
+        "INDEX_SNAPSHOT_INCOMPLETE"
+        if invalid_state == "incomplete"
+        else "CONSTRAINED_INDEX_SCOPE"
+    )
+    try:
+        with pytest.raises(ValueError, match=f"^{expected}$"):
+            with owner._read_certified_query_scope(
+                "snapshot", str(tmp_path), "generation", deadline=1.0
+            ):
+                pytest.fail("无效快照不得进入查询作用域")
+    finally:
+        connection.close()
+
+
+def _install_certified_query_scope(tmp_path, monkeypatch):
+    import tree_sitter_analyzer.index_snapshot as owner
+    from tree_sitter_analyzer.index_snapshot_registry import IndexSnapshot
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    connection = sqlite3.connect(":memory:")
+    snapshot = IndexSnapshot(
+        snapshot_id="snapshot",
+        source_fingerprint="source-fingerprint",
+        index_fingerprint="index-fingerprint",
+        source_generation="generation",
+        completeness="complete",
+        reason=None,
+        canonical_root=str(tmp_path),
+        file_count=1,
+        source_scope=make_source_scope_descriptor(),
+    )
+
+    @contextmanager
+    def acquire(*_args, **_kwargs):
+        yield snapshot, connection
+
+    monkeypatch.setattr(owner, "acquire_index_snapshot", acquire)
+    return owner, connection
+
+
+def test_certified_query_scope_deadline_interrupts_sql(tmp_path, monkeypatch):
+    """共同期限到期后，SQLite progress handler 必须中断长查询。"""
+    owner, connection = _install_certified_query_scope(tmp_path, monkeypatch)
+    clock = {"now": 0.0}
+    monkeypatch.setattr(owner, "_clock", lambda: clock["now"])
+    try:
+        with pytest.raises(RuntimeError, match="^INDEX_SNAPSHOT_DEADLINE$"):
+            with owner._read_certified_query_scope(
+                "snapshot", str(tmp_path), "generation", deadline=1.0
+            ) as (_snapshot, bound):
+                clock["now"] = 2.0
+                with pytest.raises(sqlite3.OperationalError, match="interrupted"):
+                    bound.execute(
+                        "WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL "
+                        "SELECT x + 1 FROM n WHERE x < 100000) SELECT sum(x) FROM n"
+                    ).fetchone()
+    finally:
+        connection.close()
+
+
+def test_certified_query_scope_rejects_result_after_deadline(tmp_path, monkeypatch):
+    """查询完成后越过共同期限时，结果仍不得离开 owner 作用域。"""
+    owner, connection = _install_certified_query_scope(tmp_path, monkeypatch)
+    clock = {"now": 0.0}
+    monkeypatch.setattr(owner, "_clock", lambda: clock["now"])
+    try:
+        with pytest.raises(RuntimeError, match="^INDEX_SNAPSHOT_DEADLINE$"):
+            with owner._read_certified_query_scope(
+                "snapshot", str(tmp_path), "generation", deadline=1.0
+            ):
+                clock["now"] = 2.0
+    finally:
+        connection.close()
+
 
 requires_posix_snapshot = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
 requires_posix_fd = requires_posix_snapshot

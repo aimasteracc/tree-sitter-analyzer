@@ -1,42 +1,34 @@
-#!/usr/bin/env python3
 """Tests for codegraph_symbol_search MCP tool — FTS5-powered instant symbol lookup."""
+
+import os
+from pathlib import Path
+from typing import Any
 
 import pytest
 
+from tests.unit._navigation_test_support import (
+    INDEXED_SOURCE as _INDEXED_SOURCE,
+)
+from tests.unit._navigation_test_support import (
+    MOVED_SOURCE as _MOVED_SOURCE,
+)
+from tests.unit._navigation_test_support import (
+    FTSAndLinearCache,
+    build_indexed_project,
+)
+from tests.unit._navigation_test_support import (
+    assert_no_mixed_source as _assert_no_mixed_source,
+)
+from tests.unit._navigation_test_support import (
+    published_search as _published_search,
+)
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.mcp.tools.symbol_search_tool import CodeGraphSymbolSearchTool
 
 
 @pytest.fixture
 def indexed_project(tmp_path):
-    project = tmp_path / "proj"
-    project.mkdir()
-
-    (project / "app.py").write_text(
-        "class UserService:\n"
-        "    def get_user(self, user_id):\n"
-        "        return self._find_user(user_id)\n"
-        "\n"
-        "    def _find_user(self, user_id):\n"
-        "        pass\n"
-        "\n"
-        "def handle_request(request):\n"
-        "    svc = UserService()\n"
-        "    return svc.get_user(1)\n"
-    )
-
-    (project / "utils.py").write_text(
-        "def format_user(user):\n"
-        "    return str(user)\n"
-        "\n"
-        "def validate_input(data):\n"
-        "    return bool(data)\n"
-    )
-
-    cache = ASTCache(str(project))
-    cache.index_project(max_files=100)
-    cache.close()
-    return project
+    return build_indexed_project(tmp_path)
 
 
 class TestCodeGraphSymbolSearchToolDefinition:
@@ -45,29 +37,30 @@ class TestCodeGraphSymbolSearchToolDefinition:
         defn = tool.get_tool_definition()
         assert defn["name"] == "codegraph_symbol_search"
 
-    def test_schema_requires_query(self):
-        tool = CodeGraphSymbolSearchTool()
-        schema = tool.get_tool_schema()
-        assert "query" in schema["properties"]
-        assert "query" in schema["required"]
-
-    def test_schema_has_kind_filter(self):
-        tool = CodeGraphSymbolSearchTool()
-        schema = tool.get_tool_schema()
-        kind_prop = schema["properties"]["kind"]
-        assert "function" in kind_prop["enum"]
-        assert "class" in kind_prop["enum"]
+    @pytest.mark.parametrize(
+        ("section", "key", "value"),
+        [
+            ("properties", "query", None),
+            ("required", "query", None),
+            ("properties", "kind", "function"),
+            ("properties", "kind", "class"),
+        ],
+    )
+    def test_schema_contract(self, section, key, value):
+        section_value = CodeGraphSymbolSearchTool().get_tool_schema()[section]
+        assert key in section_value
+        if value is not None:
+            assert value in section_value[key]["enum"]
 
 
 class TestCodeGraphSymbolSearchValidation:
-    def test_validate_requires_query(self):
-        tool = CodeGraphSymbolSearchTool()
-        with pytest.raises(ValueError, match="query is required"):
-            tool.validate_arguments({})
-
-    def test_validate_passes_with_query(self):
-        tool = CodeGraphSymbolSearchTool()
-        assert tool.validate_arguments({"query": "UserService"}) is True
+    @pytest.mark.parametrize("arguments", [{}, {"query": "UserService"}])
+    def test_validate_query(self, arguments):
+        if arguments:
+            assert CodeGraphSymbolSearchTool().validate_arguments(arguments) is True
+        else:
+            with pytest.raises(ValueError, match="query is required"):
+                CodeGraphSymbolSearchTool().validate_arguments(arguments)
 
 
 @pytest.mark.asyncio
@@ -134,9 +127,6 @@ class TestCodeGraphSymbolSearchExecution:
         assert "UserService" in names
 
     async def test_exposes_canonical_count_key(self, indexed_project):
-        # Wave 1b (audit search-06): symbol search must also expose the stable
-        # canonical `count` key (already emitted by search action=content) so an
-        # agent can read the result count consistently across both actions.
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "UserService", "output_format": "json"})
         assert result["count"] == result["match_count"]
@@ -145,9 +135,6 @@ class TestCodeGraphSymbolSearchExecution:
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "~user", "output_format": "json"})
         assert result["success"] is True
-        # 4 symbols contain "user": get_user, _find_user, format_user, UserService.
-        # UserService found via user* prefix on token "userservice" (#739) AND via
-        # linear-scan supplement that catches suffix matches FTS misses (#922).
         assert result["match_count"] == 4
 
     async def test_wildcard_match(self, indexed_project):
@@ -204,30 +191,230 @@ class TestCodeGraphSymbolSearchExecution:
         hit = result["results"][0]
         assert "file" in hit
         assert "line" in hit
-        assert "code" in hit
+        assert "code" not in hit
         assert hit["line"] == 1
 
     async def test_next_step_points_to_bulk_explore(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "UserService", "output_format": "json"})
-        assert "codegraph_explore" in result["next_step"]
+        assert "structure action=explore" in result["next_step"]
 
-    async def test_top_match_inlines_source_body(self, indexed_project):
-        """P2: top matches carry an inlined verbatim source body (no Read)."""
-        tool = CodeGraphSymbolSearchTool(str(indexed_project))
-        result = await tool.execute({"query": "get_user", "output_format": "json"})
+    async def test_top_match_inlines_source_body(self, tmp_path):
+        _source, facade, symbol = await _published_search(tmp_path)
+        result = await facade.execute(
+            {"action": "symbol", "query": "target", "output_format": "json"}
+        )
         assert result["match_count"] == 1
-        hit = next(r for r in result["results"] if r["name"] == "get_user")
+        hit = next(r for r in result["results"] if r["name"] == "target")
         assert "body" in hit, "top match must carry inlined body"
         assert "content" in hit["body"]
-        assert "def get_user" in hit["body"]["content"]
-        assert "_find_user" in hit["body"]["content"]
+        assert "def target" in hit["body"]["content"]
+        assert "INDEXED_MARKER" in hit["body"]["content"]
+        symbol._cache.close()
 
-    async def test_search_deterrent_next_step(self, indexed_project):
-        """P2: a deterrent tells the agent to answer from inlined bodies."""
+    async def test_public_search_does_not_mix_old_coordinates_with_moved_source(
+        self, tmp_path, monkeypatch
+    ):
+        source, facade, symbol = await _published_search(tmp_path)
+        original_search = symbol._search
+
+        def search_then_save(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+            rows = original_search(*args, **kwargs)
+            source.write_text(_MOVED_SOURCE, encoding="utf-8")
+            return rows
+
+        monkeypatch.setattr(symbol, "_search", search_then_save)
+        try:
+            result = await facade.execute(
+                {"action": "symbol", "query": "target", "output_format": "json"}
+            )
+            _assert_no_mixed_source(result)
+        finally:
+            if symbol._cache is not None:
+                symbol._cache.close()
+
+    @pytest.mark.skipif(
+        os.name != "posix",
+        reason="tracked:C1 safe descriptor source capture is POSIX-only",
+    )
+    async def test_public_search_body_rejects_transient_source_aba(
+        self, tmp_path, monkeypatch
+    ):
+        from tree_sitter_analyzer import source_oracle
+
+        source, facade, symbol = await _published_search(tmp_path)
+        original_capture = source_oracle.safe_workspace_path
+        observed_transient_read = False
+        legacy_reader_called = False
+
+        from tree_sitter_analyzer.mcp.tools import call_path_enrich
+
+        def legacy_live_read(path: str) -> list[str]:
+            nonlocal legacy_reader_called
+            legacy_reader_called = True
+            source.write_text(_MOVED_SOURCE, encoding="utf-8")
+            try:
+                return Path(path).read_text(encoding="utf-8").splitlines()
+            finally:
+                source.write_text(_INDEXED_SOURCE, encoding="utf-8")
+
+        def capture_during_transient_save(root: str, path: str, **kwargs: Any) -> Any:
+            nonlocal observed_transient_read
+            if path != "sample.py" or observed_transient_read:
+                return original_capture(root, path, **kwargs)
+            observed_transient_read = True
+            source.write_text(_MOVED_SOURCE, encoding="utf-8")
+            try:
+                return original_capture(root, path, **kwargs)
+            finally:
+                source.write_text(_INDEXED_SOURCE, encoding="utf-8")
+
+        monkeypatch.setattr(
+            source_oracle, "safe_workspace_path", capture_during_transient_save
+        )
+        monkeypatch.setattr(call_path_enrich, "read_file_lines", legacy_live_read)
+        try:
+            result = await facade.execute(
+                {"action": "symbol", "query": "target", "output_format": "json"}
+            )
+            _assert_no_mixed_source(result)
+            assert observed_transient_read is True
+            assert legacy_reader_called is False
+            assert source.read_text(encoding="utf-8") == _INDEXED_SOURCE
+        finally:
+            if symbol._cache is not None:
+                symbol._cache.close()
+
+    async def test_search_deterrent_next_step(self, tmp_path):
+        _source, facade, symbol = await _published_search(tmp_path)
+        result = await facade.execute(
+            {"action": "symbol", "query": "target", "output_format": "json"}
+        )
+        assert "no Read needed" in result["next_step"]
+        symbol._cache.close()
+
+    @pytest.mark.parametrize("query", ["~arge", "tar*", "missing", "z"])
+    async def test_certified_search_modes_share_the_owner_connection(
+        self, tmp_path, query, monkeypatch
+    ):
+        _source, facade, symbol = await _published_search(tmp_path)
+
+        def reject_legacy(*_args: Any, **_kwargs: Any) -> Any:
+            pytest.fail("search silently fell back to the live ASTCache connection")
+
+        legacy_cache = symbol._get_cache()
+        for name in (
+            "get_conn",
+            "search_symbols_cascade",
+            "fts_search",
+            "fts_search_ranked",
+            "_search_symbols_linear",
+        ):
+            monkeypatch.setattr(legacy_cache, name, reject_legacy)
+        result = await facade.execute(
+            {"action": "symbol", "query": query, "output_format": "json"}
+        )
+        assert result["success"] is True
+        if query in {"~arge", "tar*"}:
+            assert [row["name"] for row in result["results"]] == ["target"]
+            assert result["verdict"] == "INFO"
+        else:
+            assert result["results"] == []
+            assert result["match_count"] == 0
+            assert result["verdict"] == "NOT_FOUND"
+        symbol._cache.close()
+
+    async def test_unsupported_safe_capture_stays_coordinate_only(
+        self, tmp_path, monkeypatch
+    ):
+        from tree_sitter_analyzer import source_oracle
+        from tree_sitter_analyzer.source_oracle import SourceOracleError
+
+        _source, facade, symbol = await _published_search(tmp_path)
+
+        def unsupported(*_args, **_kwargs):
+            raise SourceOracleError("DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED")
+
+        monkeypatch.setattr(source_oracle, "safe_index_source_path", unsupported)
+        result = await facade.execute(
+            {"action": "symbol", "query": "target", "output_format": "json"}
+        )
+        hit = result["results"][0]
+        assert result["success"] is True
+        assert "code" not in hit and "body" not in hit
+        assert "no Read needed" not in result.get("next_step", "")
+        symbol._cache.close()
+
+    async def test_certified_search_does_not_rescan_repository_after_read(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1491：导航正文按返回文件摘要认证，不再在请求前后扫描整个仓库。
+        from tree_sitter_analyzer import index_snapshot
+
+        _source, facade, symbol = await _published_search(tmp_path)
+        monkeypatch.setattr(
+            index_snapshot,
+            "verify_snapshot_source_current",
+            lambda *_args, **_kwargs: pytest.fail("认证搜索不得执行全仓库源码扫描"),
+        )
+
+        result = await facade.execute(
+            {"action": "symbol", "query": "target", "output_format": "json"}
+        )
+
+        assert result["success"] is True
+        target = next(row for row in result["results"] if row["name"] == "target")
+        assert "code" in target and "body" in target
+        assert "INDEXED_MARKER" in target["body"]["content"]
+        assert "no Read needed" in result.get("next_step", "")
+        symbol._cache.close()
+
+    async def test_owner_exit_failure_removes_all_unbound_enrichment(
+        self, tmp_path, monkeypatch
+    ):
+        # PR #1491：owner 在响应提交前失败时，已拼装的正文必须退回纯坐标结果。
+        from contextlib import contextmanager
+
+        from tree_sitter_analyzer import index_snapshot
+
+        _source, facade, symbol = await _published_search(tmp_path)
+        original = index_snapshot.certified_index_read
+
+        @contextmanager
+        def fail_on_exit(project_root):
+            with original(project_root) as certified:
+                yield certified
+            raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
+
+        monkeypatch.setattr(index_snapshot, "certified_index_read", fail_on_exit)
+        result = await facade.execute(
+            {"action": "symbol", "query": "target", "output_format": "json"}
+        )
+
+        assert result["success"] is True
+        assert all("code" not in row and "body" not in row for row in result["results"])
+        assert result["next_step"] == "Use the returned coordinates to read the source."
+        symbol._cache.close()
+
+    async def test_snapshot_acquisition_failure_preserves_coordinate_success(
+        self, indexed_project, monkeypatch
+    ):
+        from contextlib import contextmanager
+
+        from tree_sitter_analyzer import index_snapshot
+
+        @contextmanager
+        def unavailable(_root):
+            raise OSError("snapshot unavailable")
+            yield
+
+        monkeypatch.setattr(index_snapshot, "certified_index_read", unavailable)
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "get_user", "output_format": "json"})
-        assert "no Read needed" in result["next_step"]
+        assert result["success"] is True
+        assert result["results"]
+        assert all("code" not in row and "body" not in row for row in result["results"])
+        tool._cache.close()
 
     async def test_data_source_field(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
@@ -236,14 +423,12 @@ class TestCodeGraphSymbolSearchExecution:
         assert result["data_source"] in ("fts5", "linear_scan")
 
     async def test_relevance_score_on_fts5_results(self, indexed_project):
-        """BM25 FTS5 results carry relevance_score in [0, 1] — README 'ahead' claim."""
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "format_user", "output_format": "json"})
         assert result["success"] is True
         assert result["match_count"] == 1, (
             "fixture must have exactly one format_user symbol"
         )
-        # Indexed project always has FTS5 via ASTCache.index_project
         assert result["data_source"] == "fts5", (
             f"expected fts5 data source, got {result['data_source']}"
         )
@@ -255,12 +440,6 @@ class TestCodeGraphSymbolSearchExecution:
             assert 0.0 <= score <= 1.0, f"score out of range: {score}"
 
     async def test_fuzzy_suffix_finds_camelcase_class(self, indexed_project):
-        """#919: ~Service must match UserService via linear supplement when FTS5 is present.
-
-        FTS5 prefix matching ("service"*) only matches tokens that START with
-        "service" — it misses "userservice" because that token starts with "user".
-        _linear_search supplements FTS5 results to catch suffix matches FTS misses.
-        """
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "~Service", "output_format": "json"})
         assert result["success"] is True
@@ -270,7 +449,6 @@ class TestCodeGraphSymbolSearchExecution:
         )
 
     async def test_fuzzy_prefix_finds_camelcase_class(self, indexed_project):
-        """#739: ~User must match UserService via FTS5 prefix (user*), not exact-token."""
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute({"query": "~User", "output_format": "json"})
         assert result["success"] is True
@@ -280,11 +458,6 @@ class TestCodeGraphSymbolSearchExecution:
         )
 
     async def test_fuzzy_special_chars_do_not_crash(self, indexed_project):
-        """Codex P2 / #739: ~foo-bar must not raise sqlite3.OperationalError.
-
-        Plain term* drops quoting, so FTS5 special chars (-, ., :) in the query
-        cause a syntax error.  Quoted-prefix ("term"*) is always safe.
-        """
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         for bad_query in ["~foo-bar", "~foo.bar", "~foo:bar"]:
             result = await tool.execute({"query": bad_query, "output_format": "json"})
@@ -305,7 +478,6 @@ class TestCodeGraphSymbolSearchExecution:
         assert fuzzy_hits[0]["match_tier"] == "fuzzy"
 
     async def test_fts5_results_sorted_by_relevance_descending(self, indexed_project):
-        """FTS5 results are ordered best-match first, not by file path."""
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute(
             {"query": "user", "limit": 10, "output_format": "json"}
@@ -325,24 +497,17 @@ class TestCodeGraphSymbolSearchExecution:
             )
 
     async def test_definition_ranks_first_imports_folded(self):
-        """Issue #443: definitions rank first, duplicate imports folded to one.
-
-        A symbol with 1 definition + N imports should return:
-        - First result: the definition (kind != import)
-        - Second result: folded imports (kind=import, import_count==N)
-        """
+        """#443：定义排首位，重复 import 折叠且保留文件总数。"""
         import tempfile
         from pathlib import Path
 
         with tempfile.TemporaryDirectory() as tmpdir:
             project = Path(tmpdir)
 
-            # 1 real definition
             (project / "core.py").write_text(
                 "def apply_toon_format(data):\n    return data\n"
             )
 
-            # 7 files that import the same function
             for i in range(7):
                 (project / f"importer_{i}.py").write_text(
                     f"from core import apply_toon_format\n"
@@ -366,13 +531,11 @@ class TestCodeGraphSymbolSearchExecution:
                 assert result["success"] is True
                 results = result["results"]
 
-                # Should have exactly 2 entries: 1 definition + 1 folded import
                 assert len(results) == 2, (
                     f"Expected 2 results (1 def + 1 folded import), "
                     f"got {len(results)}: {[r['name'] for r in results]}"
                 )
 
-                # First result is the definition
                 definition = results[0]
                 assert definition["kind"] == "function", (
                     f"First result should be function definition, got {definition['kind']}"
@@ -384,7 +547,6 @@ class TestCodeGraphSymbolSearchExecution:
                     "Definition should not have import_count"
                 )
 
-                # Second result is folded imports
                 import_entry = results[1]
                 assert import_entry["kind"] == "import", (
                     f"Second result should be import kind, got {import_entry['kind']}"
@@ -396,8 +558,6 @@ class TestCodeGraphSymbolSearchExecution:
                     f"Folded import should track all 7 importing files, "
                     f"got {len(import_entry.get('import_files', []))}"
                 )
-                # Codex P2: file_count must include every folded import file
-                # (7 importers + 1 definition file = 8).
                 assert result["file_count"] == 8
             finally:
                 if tool._cache is not None:
@@ -487,64 +647,7 @@ class TestCodeGraphSymbolSearchSourceContext:
         assert results[1]["relevance_score"] == 0.7
 
     def test_fuzzy_merge_supplements_fts_with_linear_suffix_hits(self):
-        """Codex P2 (#922): FTS5 returning partial token matches must be supplemented
-        by linear scan so suffix-only symbols (UserService when searching ~Service)
-        appear even when FTS5 found an exact-token match (Service class).
-        """
-        import sqlite3
-
-        class FTSAndLinearCache:
-            fts5_available = True
-
-            def get_conn(self):
-                conn = sqlite3.connect(":memory:")
-                conn.row_factory = sqlite3.Row
-                conn.execute(
-                    "CREATE VIRTUAL TABLE ast_symbols_fts USING fts5(name, kind, docstring)"
-                )
-                conn.execute(
-                    "CREATE TABLE ast_symbol_rows"
-                    "(id INTEGER PRIMARY KEY, name TEXT, kind TEXT, file_path TEXT,"
-                    " language TEXT, line INTEGER, end_line INTEGER)"
-                )
-                # "Service" tokenizes to "service" — FTS5 exact match
-                conn.execute(
-                    "INSERT INTO ast_symbol_rows VALUES (1,'Service','class','svc.py','python',1,10)"
-                )
-                conn.execute(
-                    "INSERT INTO ast_symbols_fts(rowid,name,kind) VALUES (1,'Service','class')"
-                )
-                # "UserService" tokenizes to "userservice" — NOT found by "Service" FTS token
-                conn.execute(
-                    "INSERT INTO ast_symbol_rows VALUES (2,'UserService','class','app.py','python',5,20)"
-                )
-                conn.execute(
-                    "INSERT INTO ast_symbols_fts(rowid,name,kind) VALUES (2,'UserService','class')"
-                )
-                conn.commit()
-                return conn
-
-            def _search_symbols_linear(self, query, language=None):
-                # Linear scan finds both via substring match
-                return [
-                    {
-                        "name": "Service",
-                        "kind": "class",
-                        "file": "svc.py",
-                        "language": "python",
-                        "line": 1,
-                        "end_line": 10,
-                    },
-                    {
-                        "name": "UserService",
-                        "kind": "class",
-                        "file": "app.py",
-                        "language": "python",
-                        "line": 5,
-                        "end_line": 20,
-                    },
-                ]
-
+        """#922：FTS 命中不能阻止线性扫描补回后缀匹配。"""
         tool = CodeGraphSymbolSearchTool()
         results = tool._fuzzy_search(
             FTSAndLinearCache(), "Service", language=None, kind="any", limit=10
@@ -554,7 +657,6 @@ class TestCodeGraphSymbolSearchSourceContext:
         assert "UserService" in names, (
             f"Linear supplement must add UserService; got {names}"
         )
-        # FTS hit comes first (has relevance_score); linear supplement has no score
         assert results[0]["name"] == "Service"
         service_hit = next(r for r in results if r["name"] == "Service")
         assert "relevance_score" in service_hit, "FTS hit must carry relevance_score"
@@ -580,74 +682,51 @@ class TestCodeGraphSymbolSearchSourceContext:
 
 
 class TestCodeGraphSymbolSearchRegistration:
-    """Wave C2: these capabilities are now facade actions, not top-level tools.
-    symbol_search → search.symbol; callers/callees → nav.callers/callees
-    (bespoke, scope-discriminated)."""
-
-    def test_tool_registered_in_server(self):
+    @pytest.mark.parametrize(
+        ("group", "action", "expected"),
+        [
+            ("search", "symbol", "CodeGraphSymbolSearchTool"),
+            ("nav", "callers", None),
+            ("nav", "callees", None),
+        ],
+    )
+    def test_registered_in_server(self, group, action, expected):
         from tree_sitter_analyzer.mcp.server import _create_tool_registry
 
         _, tools = _create_tool_registry(None)
-        assert "search" in tools
-        assert "symbol" in tools["search"].action_map
-        assert (
-            type(tools["search"].action_map["symbol"]).__name__
-            == "CodeGraphSymbolSearchTool"
+        mapping = (
+            tools[group].action_map if group == "search" else tools[group].bespoke_map
         )
-
-    def test_callers_registered_in_server(self):
-        from tree_sitter_analyzer.mcp.server import _create_tool_registry
-
-        _, tools = _create_tool_registry(None)
-        assert "callers" in tools["nav"].bespoke_map
-
-    def test_callees_registered_in_server(self):
-        from tree_sitter_analyzer.mcp.server import _create_tool_registry
-
-        _, tools = _create_tool_registry(None)
-        assert "callees" in tools["nav"].bespoke_map
-
-
-# ---------------------------------------------------------------------------
-# Issue #540 — Leg 2: positive-int validation for limit
-# ---------------------------------------------------------------------------
+        assert action in mapping
+        if expected:
+            assert type(mapping[action]).__name__ == expected
 
 
 class TestSymbolSearchLimitValidation:
-    """validate_arguments must reject limit <= 0."""
+    """#540：limit 必须是正整数。"""
 
-    def test_negative_limit_raises(self):
-        tool = CodeGraphSymbolSearchTool()
-        with pytest.raises(ValueError, match="limit"):
-            tool.validate_arguments({"query": "foo", "limit": -5})
-
-    def test_zero_limit_raises(self):
-        tool = CodeGraphSymbolSearchTool()
-        with pytest.raises(ValueError, match="limit"):
-            tool.validate_arguments({"query": "foo", "limit": 0})
-
-    def test_positive_limit_passes(self):
-        tool = CodeGraphSymbolSearchTool()
-        # Must not raise
-        tool.validate_arguments({"query": "foo", "limit": 1})
+    @pytest.mark.parametrize(("limit", "valid"), [(-5, False), (0, False), (1, True)])
+    def test_limit_validation(self, limit, valid):
+        arguments = {"query": "foo", "limit": limit}
+        if valid:
+            assert CodeGraphSymbolSearchTool().validate_arguments(arguments)
+        else:
+            with pytest.raises(ValueError, match="limit"):
+                CodeGraphSymbolSearchTool().validate_arguments(arguments)
 
 
 class TestSymbolSearchTruncation:
-    """#736: truncated flag must be set when results hit the limit."""
+    """#736：达到结果上限时必须公开 truncated。"""
 
     @pytest.mark.asyncio
     async def test_not_truncated_when_below_limit(self, indexed_project):
-        """Few results → truncated must be False."""
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
-        # Searching 'UserService' returns 1 result; limit defaults to 15
         result = await tool.execute({"query": "UserService", "output_format": "json"})
         assert result["truncated"] is False
 
     @pytest.mark.asyncio
     async def test_truncated_when_at_limit(self, indexed_project):
-        """Results == limit → truncated must be True and next_step advises raising limit."""
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
-        # Set limit=1 — with 5 symbols total, 1 result == limit → truncated
         result = await tool.execute({"query": "*", "limit": 1, "output_format": "json"})
         if result["match_count"] == 1:
             assert result["truncated"] is True
@@ -655,7 +734,6 @@ class TestSymbolSearchTruncation:
 
     @pytest.mark.asyncio
     async def test_truncated_field_always_present(self, indexed_project):
-        """truncated key must always exist in the response envelope."""
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
         result = await tool.execute(
             {"query": "nonexistent_xyz", "output_format": "json"}

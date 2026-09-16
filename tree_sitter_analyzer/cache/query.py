@@ -172,6 +172,8 @@ def fts_search_ranked(
     query: str,
     language: str | None = None,
     limit: int = 100,
+    *,
+    suppress_sql_errors: bool = True,
 ) -> list[dict[str, Any]]:
     """BM25-ranked FTS5 symbol search with kind-priority and test-file demotion.
 
@@ -220,6 +222,8 @@ def fts_search_ranked(
                 (fts_query, fetch_limit),
             ).fetchall()
     except sqlite3.OperationalError:
+        if not suppress_sql_errors:
+            raise
         logger.debug("fts_search_ranked: OperationalError — FTS5 table not available")
         return []
     if not rows:

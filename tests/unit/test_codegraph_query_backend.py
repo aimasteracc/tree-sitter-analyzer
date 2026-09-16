@@ -143,6 +143,19 @@ def test_backend_falls_back_to_symbols_json() -> None:
     ]
 
 
+def test_strict_backend_propagates_symbols_json_database_errors() -> None:
+    """认证查询的旧索引回退也必须传播数据库故障。"""
+    cache = MagicMock(strict_sql_errors=True)
+    cache.get_conn.return_value.execute.side_effect = sqlite3.DatabaseError("broken")
+    backend = CodeGraphQueryBackend(cache)
+
+    with pytest.raises(sqlite3.DatabaseError, match="broken"):
+        backend._symbols_json_definitions("run")
+
+    cache.strict_sql_errors = False
+    assert backend._symbols_json_definitions("run") == []
+
+
 def test_backend_semantic_symbols_rank_token_vector_matches() -> None:
     conn = _connect()
     conn.execute(
