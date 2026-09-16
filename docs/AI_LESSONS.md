@@ -546,3 +546,28 @@ semantic baseline or qualification evidence. The synchronized correction lives
 in `docs/AI_LESSONS.md`, and
 `tests/contracts/test_agent_docs_contract.py` pins the exact lesson-entry count
 and required structure.
+
+## 2026-09 — 验证命令必须能选中它声称验证的目标
+
+### Context
+
+`change-impact` 为 benchmark claim 文件生成了精确测试路径，却同时保留默认的
+`-m 'not network and not benchmark'`。目标文件带 `benchmark` marker，命令因此成功启动
+pytest 但选中零项，给 agent 一个看似可执行、实际永远无法验证改动的建议。
+
+### Lessons learned
+
+1. **测试路径和 marker 是同一个选择表达式。** 单独验证路径存在不够；最终组合后的选择器
+   必须至少能触达目标语义。
+2. **只移除造成矛盾的精确项。** benchmark claim 目标只应移除精确的 `not benchmark`，继续
+   保留 `not network` 等独立安全边界，不能为了让测试运行而清空全部 marker 约束。
+3. **命令成功不等于验证成功。** 零收集、全跳过或目标 marker 被排除都应视为验证计划缺陷，
+   不能成为 green evidence。
+4. **路径表示法属于契约。** POSIX、Windows 分隔符和 pytest nodeid 后缀必须得到同一修正，
+   普通 benchmark 目录仍应保持默认排除。
+
+### Required guardrail
+
+`tests/unit/mcp/test_verification_command.py` 固定 benchmark claim 的 POSIX、Windows 和 nodeid
+路径会删除且只删除 `not benchmark`，并固定普通 benchmark 路径仍受默认 marker 排除；
+生成命令的测试必须断言最终 marker 与目标可达性，不能只比较字符串片段。
