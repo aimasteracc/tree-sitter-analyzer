@@ -207,7 +207,7 @@ def _read_body(
         file_path if os.path.isabs(file_path) else os.path.join(project_root, file_path)
     )
     lines = (
-        source_text.splitlines()
+        source_text.splitlines(keepends=True)
         if source_text is not None
         else read_file_lines(abs_path)
     )

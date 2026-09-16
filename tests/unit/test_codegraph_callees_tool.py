@@ -14,8 +14,10 @@ from pathlib import Path
 
 import pytest
 
+from tests.unit._navigation_test_support import assert_sqlite_deadline_falls_back
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.mcp.tools.callees_tool import CodeGraphCalleesTool
+from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
 
 
 @pytest.fixture
@@ -106,3 +108,16 @@ class TestCodeGraphCalleesResolutionFields:
             "expected build -> helper to resolve across files via the EdgeStore "
             f"read path. Sample entries: {callees[:3]}"
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool_type", [CodeGraphCallersTool, CodeGraphCalleesTool])
+async def test_sqlite_deadline_falls_back_to_coordinate_query(
+    tmp_path, monkeypatch, tool_type
+) -> None:
+    await assert_sqlite_deadline_falls_back(
+        tmp_path,
+        monkeypatch,
+        tool_type(str(tmp_path)),
+        {"function_name": "target"},
+    )

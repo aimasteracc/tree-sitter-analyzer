@@ -416,7 +416,7 @@ LIKE、fuzzy 或 FTS 异常传播分支，在旧实现上也可能通过。
 
 `tests/unit/test_index_snapshot.py` 使用 SQLite authorizer 分别在 LIKE 与真实 FTS5 `bm25` 阶段
 拒绝查询，并对照普通缓存和 `tree_sitter_analyzer/index_snapshot_query.py` 的认证适配器行为；
-`tests/unit/test_certified_symbol_search_errors.py` 通过真实 search facade 固定公共适配器的严格参数、
+`tests/unit/test_symbol_search_conceptual_demotion.py` 通过真实 search facade 固定公共适配器的严格参数、
 坐标降级与 FTS 特殊字符兼容边界。
 
 ## 2026-09 — 源码扫描不能证明公共边界行为
@@ -448,7 +448,69 @@ PR #1491 将 symbol search 的实现拆到 `_execute_search` 后，一个测试�
 Windows 正文恢复现由 `tree_sitter_analyzer/index_snapshot_windows.py` 的原生只读句柄完成，并在
 `tests/unit/test_index_snapshot_windows.py` 证明完整 File ID、重解析点拒绝、层级固定、预算、
 deadline、读取后复核与清理契约。`tests/unit/test_index_snapshot.py` 还固定数据库能力复用、逐文件
-摘要认证和外层 progress handler 所有权；`tests/unit/test_certified_navigation_fallback.py` 固定
-SQLite 中断只降级正文而不击穿公开工具。`tests/unit/test_codegraph_navigate_tool.py`、
-`tests/unit/test_callers_callees_tools.py` 与 `tests/unit/mcp/tools/test_call_path_enrich.py` 的正文恢复
-测试继续作为跨平台资格门槛。
+摘要认证和外层 progress handler 所有权；`tests/unit/test_codegraph_navigate_tool.py`、
+`tests/unit/test_codegraph_callees_tool.py` 与 `tests/unit/mcp/tools/test_call_path_enrich.py` 固定 SQLite
+中断只降级正文而不击穿公开工具，并继续作为跨平台正文恢复资格门槛。原有
+`tests/unit/test_callers_callees_tools.py` 的正文恢复测试保留同一资格证据。
+
+## 2026-09 — 求值失败不是空结果
+
+### Context
+
+2026-09-14 核验已有 watcher、generation 路由和订阅是否构成可信反馈时，发现
+实际运行路径在 Hyphae 求值器外捕获所有 `Exception` 并返回 `[]`；随后 delta
+计算把临时缓存、解析或求值失败当作全部结果被删除，覆盖最后有效快照并更新时间。
+原实现上的针对性回归测试得到 7 个失败、4 个通过：直接收集路径抛出异常，而真实
+桥接路径的三类故障和缺少 `project_root` 都产生了伪删除推送。
+
+### Lessons learned
+
+1. **空集是业务结果，异常是运行状态。** 只有成功求值的空列表能证明真实删除；
+   把异常转换为空列表会同时伪造通知并破坏恢复时的比较基线。
+2. **“已有组件”不证明端到端语义。** watcher、版本路由和订阅各自存在，仍须从
+   保存回调的真实入口注入故障，观察实际快照、节流时间和推送行为。
+3. **故障隔离应放在单个工作单元边界。** 每个订阅对各自捕获普通异常，既保留其
+   最后有效状态，也允许同轮其他健康订阅继续求值；不能用整轮捕获掩盖注册表缺陷。
+
+### Required guardrail
+
+`tests/unit/mcp/test_watch_push_bridge.py` 从真实 `make_on_sync_callback` 路径注入
+缓存构造、选择器解析和 Evaluator 求值失败，并固定失败后相同结果不通知、
+新结果产生 delta、成功空集产生删除以及缺少项目根不改写状态的契约。
+
+## 2026-09 — A historical qualification claim needs a reproducible receipt
+
+### Context
+
+The roadmap repeated a historical report of 429 passing tests and labeled it
+`LOCAL_GO`. The current workspace contains no reproducible selection command,
+exact collected and executed nodeids, or durable receipt for that run. The
+count may describe a run that happened, but it cannot reveal which semantics
+were exercised and therefore cannot serve as a semantic baseline or
+qualification evidence. The roadmap was corrected, and this lesson records the
+same correction so a later agent does not promote the orphaned count again.
+
+### Lessons learned
+
+1. **A published historical count is not a trusted baseline by itself.** A
+   qualification claim must carry enough identity to reproduce the same
+   selection against the same source, not only a total and a status label.
+2. **Exact nodeids define the tested semantics.** The selector command and the
+   complete nodeid manifest, including parameter IDs, distinguish the intended
+   suite from a similarly sized but different selection.
+3. **Evidence must outlive the workspace.** A durable receipt must bind the
+   source identity, selector, nodeids, and item results; a local terminal report
+   or remembered total cannot be upgraded later.
+4. **Correct the lesson with the roadmap.** When a published qualification
+   statement is withdrawn or narrowed, update the reusable lesson in the same
+   change so the stale claim does not return through future planning work.
+
+### Required guardrail
+
+Any qualification statement in `rfcs/ROADMAP-no1-agent-trust.md` must either
+link a durable receipt that binds the exact source identity, reproducible
+selector, exact nodeids, and item results, or explicitly state that it is not a
+semantic baseline or qualification evidence. The synchronized correction lives
+in `docs/AI_LESSONS.md`, and
+`tests/contracts/test_agent_docs_contract.py` pins the exact lesson-entry count
+and required structure.

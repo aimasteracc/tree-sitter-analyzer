@@ -507,3 +507,82 @@ def test_native_workspace_reader_rejects_change_after_read(
             deadline=time.monotonic() + 5,
             limit=1024,
         )
+
+
+@pytest.mark.parametrize(
+    ("relative_path", "limit"),
+    [
+        ("", 1),
+        ("/absolute.py", 1),
+        ("../escape.py", 1),
+        ("C:/drive.py", 1),
+        ("a.py", -1),
+    ],
+)
+def test_native_workspace_reader_rejects_unsafe_paths(
+    tmp_path, kernel, relative_path, limit
+):
+    """Windows 原生读取器必须在打开句柄前拒绝不安全路径。"""
+    with pytest.raises(ValueError, match="^INDEX_PATH_UNSAFE$"):
+        owner.read_pinned_workspace_file(
+            str(tmp_path),
+            relative_path,
+            deadline=time.monotonic() + 5,
+            limit=limit,
+        )
+    assert kernel.handles == {}
+
+
+def test_native_workspace_reader_closes_handle_when_fd_adoption_fails(
+    tmp_path, kernel, monkeypatch
+):
+    """CRT 接管失败时也必须关闭刚打开的原生文件句柄。"""
+    source = tmp_path / "sample.py"
+    source.write_bytes(b"value = 1\n")
+    monkeypatch.setitem(
+        sys.modules,
+        "msvcrt",
+        SimpleNamespace(
+            open_osfhandle=lambda *_args: (_ for _ in ()).throw(
+                OSError("descriptor adoption failed")
+            )
+        ),
+    )
+
+    with pytest.raises(OSError, match="descriptor adoption failed"):
+        owner.read_pinned_workspace_file(
+            str(tmp_path),
+            "sample.py",
+            deadline=time.monotonic() + 5,
+            limit=1024,
+        )
+    assert kernel.handles == {}
+
+
+def test_native_workspace_reader_translates_reopen_failure(
+    tmp_path, kernel, monkeypatch
+):
+    """读取后 pathname 消失时必须报告源码变化并清理全部句柄。"""
+    source = tmp_path / "sample.py"
+    source.write_bytes(b"value = 1\n")
+    real_read = owner._read_descriptor
+
+    def read_then_unlink(fd, size):
+        data = real_read(fd, size)
+        if data and source.exists():
+            source.unlink()
+        return data
+
+    monkeypatch.setattr(owner, "_read_descriptor", read_then_unlink)
+    with pytest.raises(ValueError, match="^INDEX_SOURCE_CHANGED$"):
+        owner.read_pinned_workspace_file(
+            str(tmp_path),
+            "sample.py",
+            deadline=time.monotonic() + 5,
+            limit=1024,
+        )
+    for handle, (_path, directory, _info) in kernel.handles.items():
+        assert directory is False
+        with pytest.raises(OSError) as error:
+            os.fstat(handle)
+        assert error.value.errno == errno.EBADF

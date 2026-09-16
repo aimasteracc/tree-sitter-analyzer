@@ -1,6 +1,7 @@
 """导航测试的共享项目构造器，避免测试主页重复膨胀。"""
 
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,32 @@ from tree_sitter_analyzer.mcp.tools.search_facade import build_search_facade
 
 INDEXED_SOURCE = "def target():\n    return 'INDEXED_MARKER'\n"
 MOVED_SOURCE = "# MOVED_MARKER\n\ndef target():\n    return 'CURRENT_MARKER'\n"
+
+
+async def assert_sqlite_deadline_falls_back(
+    tmp_path: Path, monkeypatch: Any, tool: Any, arguments: dict[str, Any]
+) -> None:
+    """SQLite 截止异常只能降级正文，不能中断公开查询。"""
+    import tree_sitter_analyzer.index_snapshot as snapshot_owner
+
+    @contextmanager
+    def interrupted(_project_root):
+        raise sqlite3.OperationalError("interrupted")
+        yield None
+
+    calls: list[tuple[dict[str, Any], Any, Any]] = []
+
+    async def execute_bound(received, bound_cache, source_reader):
+        calls.append((received, bound_cache, source_reader))
+        return {"success": True, "fallback": True}
+
+    monkeypatch.setattr(snapshot_owner, "certified_index_read", interrupted)
+    monkeypatch.setattr(tool, "_execute_bound", execute_bound)
+
+    result = await tool.execute(arguments)
+
+    assert result == {"success": True, "fallback": True}
+    assert calls == [(arguments, None, None)]
 
 
 class FTSAndLinearCache:

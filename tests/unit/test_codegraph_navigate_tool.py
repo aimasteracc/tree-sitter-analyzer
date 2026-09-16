@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from tests.unit._navigation_test_support import assert_sqlite_deadline_falls_back
 from tree_sitter_analyzer.mcp.tools.codegraph_navigate_tool import (
     CodeGraphNavigateTool,
     _transitive_callees,
@@ -52,6 +53,17 @@ class TestValidateArguments:
 
 
 class TestExecuteDefinition:
+    @pytest.mark.asyncio
+    async def test_sqlite_deadline_falls_back_to_coordinate_query(
+        self, tmp_path, monkeypatch
+    ):
+        await assert_sqlite_deadline_falls_back(
+            tmp_path,
+            monkeypatch,
+            CodeGraphNavigateTool(str(tmp_path)),
+            {"symbol": "target"},
+        )
+
     @pytest.mark.asyncio
     async def test_definition_no_cache(self, tool):
         with patch.object(tool, "get_cache", return_value=None):

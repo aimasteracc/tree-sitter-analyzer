@@ -16,6 +16,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from tests.unit._navigation_test_support import assert_sqlite_deadline_falls_back
 from tree_sitter_analyzer.mcp.tools import call_path_enrich as enrich
 from tree_sitter_analyzer.mcp.tools.call_path_tool import CodeGraphCallPathTool
 
@@ -211,8 +212,8 @@ def test_inline_path_bodies_returns_verbatim_bodies(tmp_path):
     assert truncated is False
     # Verbatim source body — not just file:line.
     gamma = next(b for b in bodies if b["name"] == "gamma")
-    assert "GAMMA_BODY_MARKER" in gamma["content"]
-    assert "def gamma" in gamma["content"]
+    # PR #1491：认证正文必须逐字保留原始换行符。
+    assert gamma["content"] == _SRC_C
 
 
 def test_inline_path_bodies_cpp_header_callee_lang_hint(tmp_path):
@@ -525,6 +526,15 @@ async def test_certified_call_path_restores_bodies(tmp_path):
     )
     joined = "\n".join(body["content"] for body in result["source_bodies"])
     assert "CERTIFIED_PATH_BODY" in joined
+
+
+async def test_sqlite_deadline_falls_back_to_coordinate_query(tmp_path, monkeypatch):
+    await assert_sqlite_deadline_falls_back(
+        tmp_path,
+        monkeypatch,
+        CodeGraphCallPathTool(str(tmp_path)),
+        {"source_function": "source", "target_function": "target"},
+    )
 
 
 async def test_move_after_bound_path_query_drops_bodies(tmp_path, monkeypatch):

@@ -438,6 +438,111 @@ def test_certified_query_scope_does_not_rescan_whole_repository(tmp_path, monkey
         connection.close()
 
 
+@pytest.mark.parametrize("invalid_state", ["incomplete", "constrained"])
+def test_certified_query_scope_rejects_invalid_snapshot_state(
+    tmp_path, monkeypatch, invalid_state
+):
+    """认证查询必须拒绝不完整索引或受限源码范围。"""
+    import tree_sitter_analyzer.index_snapshot as owner
+    from tree_sitter_analyzer.index_snapshot_registry import IndexSnapshot
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    connection = sqlite3.connect(":memory:")
+    snapshot = IndexSnapshot(
+        snapshot_id="snapshot",
+        source_fingerprint="source-fingerprint",
+        index_fingerprint="index-fingerprint",
+        source_generation="generation",
+        completeness="partial" if invalid_state == "incomplete" else "complete",
+        reason=None,
+        canonical_root=str(tmp_path),
+        file_count=1,
+        source_scope=make_source_scope_descriptor(
+            exclude_patterns=(("vendor",) if invalid_state == "constrained" else ())
+        ),
+    )
+
+    @contextmanager
+    def acquire(*_args, **_kwargs):
+        yield snapshot, connection
+
+    monkeypatch.setattr(owner, "acquire_index_snapshot", acquire)
+    expected = (
+        "INDEX_SNAPSHOT_INCOMPLETE"
+        if invalid_state == "incomplete"
+        else "CONSTRAINED_INDEX_SCOPE"
+    )
+    try:
+        with pytest.raises(ValueError, match=f"^{expected}$"):
+            with owner._read_certified_query_scope(
+                "snapshot", str(tmp_path), "generation", deadline=1.0
+            ):
+                pytest.fail("无效快照不得进入查询作用域")
+    finally:
+        connection.close()
+
+
+def _install_certified_query_scope(tmp_path, monkeypatch):
+    import tree_sitter_analyzer.index_snapshot as owner
+    from tree_sitter_analyzer.index_snapshot_registry import IndexSnapshot
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    connection = sqlite3.connect(":memory:")
+    snapshot = IndexSnapshot(
+        snapshot_id="snapshot",
+        source_fingerprint="source-fingerprint",
+        index_fingerprint="index-fingerprint",
+        source_generation="generation",
+        completeness="complete",
+        reason=None,
+        canonical_root=str(tmp_path),
+        file_count=1,
+        source_scope=make_source_scope_descriptor(),
+    )
+
+    @contextmanager
+    def acquire(*_args, **_kwargs):
+        yield snapshot, connection
+
+    monkeypatch.setattr(owner, "acquire_index_snapshot", acquire)
+    return owner, connection
+
+
+def test_certified_query_scope_deadline_interrupts_sql(tmp_path, monkeypatch):
+    """共同期限到期后，SQLite progress handler 必须中断长查询。"""
+    owner, connection = _install_certified_query_scope(tmp_path, monkeypatch)
+    clock = {"now": 0.0}
+    monkeypatch.setattr(owner, "_clock", lambda: clock["now"])
+    try:
+        with pytest.raises(RuntimeError, match="^INDEX_SNAPSHOT_DEADLINE$"):
+            with owner._read_certified_query_scope(
+                "snapshot", str(tmp_path), "generation", deadline=1.0
+            ) as (_snapshot, bound):
+                clock["now"] = 2.0
+                with pytest.raises(sqlite3.OperationalError, match="interrupted"):
+                    bound.execute(
+                        "WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL "
+                        "SELECT x + 1 FROM n WHERE x < 100000) SELECT sum(x) FROM n"
+                    ).fetchone()
+    finally:
+        connection.close()
+
+
+def test_certified_query_scope_rejects_result_after_deadline(tmp_path, monkeypatch):
+    """查询完成后越过共同期限时，结果仍不得离开 owner 作用域。"""
+    owner, connection = _install_certified_query_scope(tmp_path, monkeypatch)
+    clock = {"now": 0.0}
+    monkeypatch.setattr(owner, "_clock", lambda: clock["now"])
+    try:
+        with pytest.raises(RuntimeError, match="^INDEX_SNAPSHOT_DEADLINE$"):
+            with owner._read_certified_query_scope(
+                "snapshot", str(tmp_path), "generation", deadline=1.0
+            ):
+                clock["now"] = 2.0
+    finally:
+        connection.close()
+
+
 requires_posix_snapshot = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
 requires_posix_fd = requires_posix_snapshot
 

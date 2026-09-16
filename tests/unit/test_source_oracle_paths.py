@@ -3,6 +3,7 @@ import hashlib
 import os
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -63,6 +64,80 @@ def test_safe_workspace_path_rejects_unsupported_platform(monkeypatch) -> None:
             ".", "a", deadline=time.monotonic() + 1, limit=1
         ),
         "DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED",
+    )
+
+
+def test_safe_index_source_path_rejects_unsupported_platform(monkeypatch) -> None:
+    """缺少 no-follow 且不是 Windows 时，索引源码读取必须关闭。"""
+    monkeypatch.setattr(oracle, "_supports_nofollow", lambda: False)
+
+    _error(
+        lambda: oracle.safe_index_source_path(".", "pkg/a.py", deadline=1.0, limit=20),
+        "DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED",
+    )
+
+
+def test_safe_index_source_path_uses_windows_native_reader(monkeypatch) -> None:
+    """Windows 索引源码读取必须把原生句柄结果保留为普通文件证据。"""
+    import tree_sitter_analyzer.index_snapshot_windows as windows
+
+    monkeypatch.setattr(oracle, "_supports_nofollow", lambda: False)
+    monkeypatch.setattr(oracle, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(
+        windows,
+        "read_pinned_workspace_file",
+        lambda *_args, **_kwargs: (b"value = 1\n", (b"root", b"file")),
+    )
+
+    result = oracle.safe_index_source_path(".", "pkg/a.py", deadline=1.0, limit=20)
+
+    assert result == oracle.SafePath(b"value = 1\n", (b"root", b"file"), "file")
+
+
+def test_safe_index_source_path_preserves_windows_missing_file(monkeypatch) -> None:
+    """Windows 原生读取的缺失文件必须保持 missing，而不是不安全路径。"""
+    import tree_sitter_analyzer.index_snapshot_windows as windows
+
+    monkeypatch.setattr(oracle, "_supports_nofollow", lambda: False)
+    monkeypatch.setattr(oracle, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(
+        windows,
+        "read_pinned_workspace_file",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(FileNotFoundError()),
+    )
+
+    result = oracle.safe_index_source_path(".", "pkg/a.py", deadline=1.0, limit=20)
+
+    assert result == oracle.SafePath(None, (b"missing",), "missing")
+
+
+@pytest.mark.parametrize(
+    ("failure", "reason"),
+    [
+        (OverflowError(), "DIFF_SNAPSHOT_CAPACITY"),
+        (TimeoutError(), "DIFF_SNAPSHOT_TIMEOUT"),
+        (ValueError("INDEX_SOURCE_CHANGED"), "DIFF_SNAPSHOT_SOURCE_CHANGED"),
+        (ValueError("INDEX_PATH_UNSAFE"), "DIFF_SNAPSHOT_UNSAFE_PATH"),
+        (OSError(), "DIFF_SNAPSHOT_UNSAFE_PATH"),
+    ],
+)
+def test_safe_index_source_path_translates_windows_failures(
+    monkeypatch, failure, reason
+) -> None:
+    """Windows 原生异常必须映射为稳定的源码 oracle 原因码。"""
+    import tree_sitter_analyzer.index_snapshot_windows as windows
+
+    monkeypatch.setattr(oracle, "_supports_nofollow", lambda: False)
+    monkeypatch.setattr(oracle, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(
+        windows,
+        "read_pinned_workspace_file",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(failure),
+    )
+
+    _error(
+        lambda: oracle.safe_index_source_path(".", "pkg/a.py", deadline=1.0, limit=20),
+        reason,
     )
 
 
