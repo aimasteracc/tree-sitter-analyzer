@@ -630,3 +630,35 @@ semantic baseline or qualification evidence. The synchronized correction lives
 in `docs/AI_LESSONS.md`, and
 `tests/contracts/test_agent_docs_contract.py` pins the exact lesson-entry count
 and required structure.
+
+## 2026-09 — 容量必须约束相关证据，而不是全局支持表
+
+### Context
+
+这些计数来自 `aimasteracc/tree-sitter-analyzer` 提交
+`355f1657fa5618d5fbb67c7bc0ffc2af1792e28e`：在 macOS 26.6.2 arm64、Python 3.14.3
+上，以仓库默认排除规则和语言插件建立全量项目索引，再用仓库的
+`architectural-constraints.yml` 执行约束检查。该索引有 25,628 条 `ast_imports`，但约束
+查询只有 10,823 条 SQL 候选边、211 个候选调用文件和 2,247 条相关导入。原求值器先把
+整个导入表物化，再检查调用边，因此固定的
+10,000 项响应容量在读取无关证据时耗尽，真实 `--check-constraints` 以
+`CONSTRAINT_EVALUATION_CAPACITY` 失败。首次修复把容量移到近似 SQL 候选上，又暴露了
+无字面前缀 glob、重复边与缺少导入表三条边界。
+
+### Lessons learned
+
+1. **容量边界必须跟用户请求的相关集合对齐。** 全局支持表可以很大；只有通过规则 glob、
+   scope 和 exception 的调用方及其导入行才应消耗本次求值的物化容量。
+2. **SQL 预过滤不是精确资格。** 没有字面前缀的 glob 会保留全部边；在正则和 scope 前
+   限制唯一调用方，会让完全无匹配的请求也失败。
+3. **数据库内部去重会隐藏截止时间。** `SELECT DISTINCT` 可在 Python 重新获得控制前扫描
+   大量重复行；需要流式读取并在 Python 去重，才能持续执行 deadline callback。
+4. **兼容回退不能支付无用预扫描。** `ast_imports` 不存在时不会使用候选调用方集合，必须先
+   检查证据表，再决定是否进行第二次边扫描。
+
+### Required guardrail
+
+`tests/unit/test_evaluator_bounds.py` 固定无关导入不耗尽容量、无前缀 glob 只计算
+精确候选、重复候选持续检查 deadline，以及缺少导入表时只扫描一次 edge；约束求值的
+focused patch-coverage gate 必须覆盖这些边界。真实全量索引 dogfood 还必须返回三条规则、
+零违规和非零 evaluated-edge 计数，不能用空索引的 SAFE 替代。
