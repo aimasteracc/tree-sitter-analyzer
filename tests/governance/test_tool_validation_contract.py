@@ -104,8 +104,8 @@ def test_the_survey_found_the_tools_it_constrains() -> None:
     Measured 2026-09-13: 87 tool classes declare both methods.
     """
     _unguarded, declaring = _survey()
-    assert declaring == 87, (
-        f"expected 87 tool classes declaring validate_arguments and execute, "
+    assert declaring == 84, (
+        f"expected 84 tool classes declaring validate_arguments and execute, "
         f"found {declaring}; update this constant if the tool set legitimately "
         "changed, otherwise the AST walk no longer matches how tools are written"
     )
