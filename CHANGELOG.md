@@ -6,6 +6,11 @@
 - Complete the removal of external-search wrappers: `search.batch`, `project.files`, `project.tools`, `--batch-search`, `--batch-search-queries-json`, `--check-tools`, and the `list-files` console script are retired. The earlier `search.content`/`search.grep` removal remains in effect.
 - TSA no longer requires ripgrep or fd. Project discovery and live symbol verification run in process; symbol, graph, AST and semantic retrieval remain available.
 
+### Fixed
+
+- `change-impact` branch mode now compares the complete branch from its GitFlow target merge base instead of reporting only the latest commit.
+- SQLite read handles used by Synapse and schema-integrity tests close deterministically, preventing cross-test FD accumulation that could collide with low-limit regression tests.
+
 
 ## [1.32.0] - 2026-09-12
 
