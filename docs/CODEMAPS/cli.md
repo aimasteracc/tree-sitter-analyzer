@@ -90,7 +90,7 @@ Categories of CLI surface:
 - `--ast-cache --ast-cache-mode index|stats|lookup|search|sync|changes|watch_start|watch_stop|watch_status|invalidate` — AST cache ops (project index default cap: 20k files)
 - `--ast-cache-include-activation` — opt in to slower temporal git activation during project indexing
 - `--autoindex [--autoindex-mode status|warm|reset]` — transparent auto-index
-- `--full-index [--full-index-mode rebuild|stats|clear]` — one-shot complete index (default cap: 20k files)
+- `--full-index [--full-index-mode full|incremental]` — one-shot complete index (default cap: 20k files)
 - `--full-index-include-activation` — opt in to temporal git activation during full-index rebuilds
 - `--incremental-sync [--incremental-sync-mode sync|changes|status]` — content-hash diff re-index (SHA-256)
 - `--knowledge-graph-index [--knowledge-graph-index-mode build|update|status]` — refresh the canonical SQLite code+docs index and optionally materialize LadybugDB; `--knowledge-graph-backend auto|sqlite|ladybug` defaults to LadybugDB when installed and SQLite otherwise; update mode scans the full project safely; `--knowledge-graph-max-nodes 0 --knowledge-graph-max-edges 0` means uncapped materialization
@@ -102,7 +102,7 @@ Categories of CLI surface:
 
 ### CodeGraph parity (cross-file intelligence from pre-indexed AST cache)
 - `--codegraph-context TASK` — one-call architecture context: entry points, graph, and source blocks
-- `--callers SYMBOL` / `--callees SYMBOL` — bidirectional call tracking
+- `--callers SYMBOL` / `--callees SYMBOL` — bidirectional call tracking; add `--call-no-bodies` to return coordinates and metadata without inline source bodies
 - `--call-path FROM TO` — BFS path between two functions
 - `--symbol-resolve` — go-to-definition / find-all-references
 - `--ast-path FILE:LINE` — "what is at file:line?"
@@ -175,7 +175,7 @@ boundary.
 
 ## See Also
 
-- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (356 unique flags total — this codemap is intentionally categorical, not exhaustive)
+- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (357 unique flags total — this codemap is intentionally categorical, not exhaustive)
 - [`docs/CODEMAPS/mcp-tools.md`](./mcp-tools.md) — MCP-side counterpart
 - [`tests/unit/cli/test_mcp_commands.py`](../../tests/unit/cli/test_mcp_commands.py) — Parity contract tests
 - [`scripts/codemap-sync-check.sh`](../../scripts/codemap-sync-check.sh) — pre-commit gate that blocks a change to the CLI **flag surface** (any `cli/**/*.py`, compared as a set) without a `cli.md` update

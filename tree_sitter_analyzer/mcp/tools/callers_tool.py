@@ -233,6 +233,14 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                     ),
                     "default": False,
                 },
+                "include_bodies": {
+                    "type": "boolean",
+                    "description": (
+                        "When false, omit caller source bodies and return only "
+                        "call-graph coordinates and metadata."
+                    ),
+                    "default": True,
+                },
             },
             "required": ["function_name"],
             "additionalProperties": False,
@@ -267,6 +275,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         file_path = arguments.get("file_path")
         output_format = arguments.get("output_format", "json")
         include_activation = bool(arguments.get("include_activation", False))
+        include_bodies = bool(arguments.get("include_bodies", True))
         listed_cap = int(arguments.get("limit", 50))
 
         if is_index_rebuilding(self.project_root):
@@ -352,10 +361,13 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         truncated = total_callers > listed_cap
         callers = callers[:listed_cap]
 
-        # P2: inline each caller's verbatim source body (top-N capped) so the
-        # agent answers from content, not coordinates — no Read per file:line.
-        body_reader = source_reader if call_graph_indexed and not is_qualified else None
-        next_step = self._inline_caller_bodies(cache, callers, body_reader)
+        # 默认内联有上限的调用方源码；调用者可只请求坐标和元数据。
+        next_step = None
+        if include_bodies:
+            body_reader = (
+                source_reader if call_graph_indexed and not is_qualified else None
+            )
+            next_step = self._inline_caller_bodies(cache, callers, body_reader)
 
         # RFC-0028 §1.1: declare the epistemic status of this list.  It is
         # assembled from resolved CALLS edges, so an unresolved inbound edge
