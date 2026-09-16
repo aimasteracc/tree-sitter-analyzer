@@ -271,6 +271,7 @@ def test_posix_verification_chain_stops_after_failure(tmp_path):
     assert (tmp_path / "should_not_exist").exists() is False
 
 
+@pytest.mark.slow_ok  # 真实 PowerShell 进程在 Windows 全矩阵 xdist 竞争下会超过单测时限。
 def test_windows_native_verification_chain_stops_after_failure(tmp_path):
     # #1407：Windows CI 使用真实 PowerShell 5.1 验证失败传播。
     import subprocess
@@ -301,6 +302,7 @@ def test_windows_native_verification_chain_stops_after_failure(tmp_path):
 
 
 @pytest.mark.parametrize("step_count", [1, 2])
+@pytest.mark.slow_ok  # 真实 shell 与 Python 子进程在 Windows 全矩阵 xdist 竞争下会超过单测时限。
 def test_native_verification_chain_preserves_order_and_literal_arguments(
     tmp_path, step_count
 ):
@@ -446,6 +448,7 @@ def test_shell_target_still_has_a_command_length_budget():
 
 
 @pytest.mark.parametrize("project_kind", ["python", "node"])
+@pytest.mark.slow_ok  # 真实 git、CLI 与 shell 子进程在 Windows 全矩阵 xdist 竞争下会超过单测时限。
 def test_shell_only_cli_plan_executes_the_actual_script(tmp_path, project_kind):
     # 2026-09-09：用真实 CLI 和新仓库确认不会再返回 pytest 的空收集命令。
     import json
