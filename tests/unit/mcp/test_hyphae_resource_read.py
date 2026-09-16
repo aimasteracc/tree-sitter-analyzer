@@ -24,6 +24,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tree_sitter_analyzer.mcp.resources.hyphae_resource import read_hyphae_resource
 from tree_sitter_analyzer.mcp.server_utils.resource_registration import (
     register_resources,
 )
@@ -219,3 +220,32 @@ class TestDegenerateHyphaeURI:
         assert isinstance(result, list)
         assert len(result) == 1
         assert isinstance(result[0], ReadResourceContents)
+
+
+@pytest.mark.asyncio
+async def test_hyphae_resource_closes_owned_cache(monkeypatch, tmp_path) -> None:
+    # #1402（2026-09-16）：resource 读取结束后不得保留 AST 缓存。
+    closed = []
+
+    class Cache:
+        def __init__(self, _root):
+            pass
+
+        def close(self):
+            closed.append(True)
+
+    class Evaluator:
+        def __init__(self, _cache):
+            pass
+
+        def eval(self, _selector):
+            return []
+
+    monkeypatch.setattr("tree_sitter_analyzer.ast_cache.ASTCache", Cache)
+    monkeypatch.setattr("tree_sitter_analyzer.hyphae.Evaluator", Evaluator)
+    monkeypatch.setattr("tree_sitter_analyzer.hyphae.parse", lambda selector: selector)
+
+    result = await read_hyphae_resource("tsa://hyphae/.function", str(tmp_path))
+
+    assert result["count"] == 0
+    assert closed == [True]

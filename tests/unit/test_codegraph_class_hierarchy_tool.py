@@ -70,6 +70,48 @@ def tool_with_root(tmp_path):
     return ClassHierarchyTool(str(tmp_path))
 
 
+def test_project_root_change_closes_owned_cache(monkeypatch, tmp_path) -> None:
+    # #1402（2026-09-16）：切换根目录时释放旧的 SQLite 所有者。
+    closed = []
+
+    class Cache:
+        def __init__(self, _root):
+            pass
+
+        def close(self):
+            closed.append(True)
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.class_hierarchy_tool.ASTCache", Cache
+    )
+    tool = ClassHierarchyTool(str(tmp_path))
+    hierarchy = tool._get_hierarchy()
+
+    tool._on_project_root_changed(str(tmp_path / "next"))
+
+    assert hierarchy._cache is not None
+    assert tool._hierarchy is None
+    assert tool._cache is None
+    assert closed == [True]
+
+
+def test_project_root_change_detaches_state_when_close_fails(tmp_path) -> None:
+    # #1402（2026-09-16）：关闭失败也不能让新根目录复用旧层级。
+    class Cache:
+        def close(self):
+            raise OSError("synthetic close failure")
+
+    tool = ClassHierarchyTool(str(tmp_path))
+    stale_hierarchy = object()
+    tool._cache = Cache()
+    tool._hierarchy = stale_hierarchy
+
+    tool.set_project_path(str(tmp_path / "next"))
+
+    assert tool._hierarchy is None
+    assert tool._cache is None
+
+
 class TestToolDefinition:
     def test_tool_name(self, tool):
         assert tool.get_tool_definition()["name"] == "codegraph_class_hierarchy"
