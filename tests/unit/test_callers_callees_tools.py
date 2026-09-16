@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
 """Tests for codegraph_callers and codegraph_callees dedicated MCP tools."""
 
 from pathlib import Path
 
 import pytest
 
+from tests.unit import _navigation_test_support as nav_support
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache import build_state
 from tree_sitter_analyzer.mcp.tools.callees_tool import CodeGraphCalleesTool
@@ -63,6 +63,100 @@ class TestCodeGraphCallersTool:
         assert isinstance(result["callers"], list)
 
     @pytest.mark.asyncio
+    async def test_certified_callers_and_callees_restore_bodies(self, tmp_path):
+        from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+            CodeGraphFullIndexTool,
+        )
+
+        (tmp_path / "sample.py").write_text(
+            "def caller():\n    return callee()\n\ndef callee():\n"
+            "    return 'CERTIFIED_CALLEE_BODY'\n",
+            encoding="utf-8",
+        )
+        indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
+            {"mode": "full", "max_files": 10}
+        )
+        assert indexed["published"] is True
+        callers = await CodeGraphCallersTool(str(tmp_path)).execute(
+            {"function_name": "callee", "output_format": "json"}
+        )
+        callees = await CodeGraphCalleesTool(str(tmp_path)).execute(
+            {"function_name": "caller", "output_format": "json"}
+        )
+        assert "def caller" in callers["callers"][0]["body"]["content"]
+        assert "CERTIFIED_CALLEE_BODY" in callees["callees"][0]["body"]["content"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("tool_type", "query", "method", "rows_key"),
+        [
+            (CodeGraphCallersTool, "callee", "query_callers", "callers"),
+            (CodeGraphCalleesTool, "caller", "query_callees", "callees"),
+        ],
+    )
+    async def test_move_after_bound_edge_query_drops_neighbor_body(
+        self, tmp_path, monkeypatch, tool_type, query, method, rows_key
+    ):
+        from tree_sitter_analyzer.index_snapshot_query import CertifiedSnapshotCache
+        from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+            CodeGraphFullIndexTool,
+        )
+
+        source = tmp_path / "sample.py"
+        source.write_text(
+            "def caller():\n    return callee()\n\ndef callee():\n    return 'INDEXED'\n",
+            encoding="utf-8",
+        )
+        assert (
+            await CodeGraphFullIndexTool(str(tmp_path)).execute(
+                {"mode": "full", "max_files": 10}
+            )
+        )["published"] is True
+        original = getattr(CertifiedSnapshotCache, method)
+
+        def query_then_move(self, *args, **kwargs):
+            rows = original(self, *args, **kwargs)
+            source.write_text(
+                "\n\ndef caller():\n    return callee()\n\ndef callee():\n    return 'MOVED'\n",
+                encoding="utf-8",
+            )
+            return rows
+
+        monkeypatch.setattr(CertifiedSnapshotCache, method, query_then_move)
+        result = await tool_type(str(tmp_path)).execute(
+            {"function_name": query, "output_format": "json"}
+        )
+        assert all("body" not in row for row in result[rows_key])
+        assert "no Read needed" not in result.get("next_step", "")
+
+    @pytest.mark.asyncio
+    async def test_certified_index_without_edges_keeps_neighbors_coordinate_only(
+        self, tmp_path
+    ):
+        from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+            CodeGraphFullIndexTool,
+        )
+
+        (tmp_path / "sample.py").write_text(
+            "def lone():\n    return 1\n", encoding="utf-8"
+        )
+        assert (
+            await CodeGraphFullIndexTool(str(tmp_path)).execute(
+                {"mode": "full", "max_files": 10}
+            )
+        )["published"] is True
+        callers = await CodeGraphCallersTool(str(tmp_path)).execute(
+            {"function_name": "lone", "output_format": "json"}
+        )
+        callees = await CodeGraphCalleesTool(str(tmp_path)).execute(
+            {"function_name": "lone", "output_format": "json"}
+        )
+        assert callers["callers"] == []
+        assert callees["callees"] == []
+        assert "no Read needed" not in callers.get("next_step", "")
+        assert "no Read needed" not in callees.get("next_step", "")
+
+    @pytest.mark.asyncio
     async def test_execute_with_file_path(self, tiny_project_root):
         callers_tool = CodeGraphCallersTool(tiny_project_root)
         result = await callers_tool.execute(
@@ -84,17 +178,15 @@ class TestCodeGraphCallersTool:
         assert result["success"] is True
 
     @pytest.mark.asyncio
-    async def test_caller_inlines_source_body(self, tiny_project_root):
-        """P2: each caller carries its inlined verbatim source body (no Read)."""
+    async def test_uncertified_caller_stays_coordinate_only(self, tiny_project_root):
         callers_tool = CodeGraphCallersTool(tiny_project_root)
         result = await callers_tool.execute(
             {"function_name": "bar", "output_format": "json"}
         )
         foo = next((c for c in result["callers"] if c["name"] == "foo"), None)
         assert foo is not None, "foo should call bar in the fixture"
-        assert "body" in foo, "caller must carry inlined body"
-        assert "def foo" in foo["body"]["content"]
-        assert "no Read needed" in result["next_step"]
+        assert "body" not in foo
+        assert "no Read needed" not in result.get("next_step", "")
 
     def test_project_root_change_resets_cache(self, tiny_project_root):
         callers_tool = CodeGraphCallersTool(tiny_project_root)
@@ -150,17 +242,15 @@ class TestCodeGraphCalleesTool:
         assert result["success"] is True
 
     @pytest.mark.asyncio
-    async def test_callee_inlines_source_body(self, tiny_project_root):
-        """P2: each callee carries its inlined verbatim source body (no Read)."""
+    async def test_uncertified_callee_stays_coordinate_only(self, tiny_project_root):
         callees_tool = CodeGraphCalleesTool(tiny_project_root)
         result = await callees_tool.execute(
             {"function_name": "foo", "output_format": "json"}
         )
         bar = next((c for c in result["callees"] if c["name"] == "bar"), None)
         assert bar is not None, "foo should call bar in the fixture"
-        assert "body" in bar, "callee must carry inlined body"
-        assert "def bar" in bar["body"]["content"]
-        assert "no Read needed" in result["next_step"]
+        assert "body" not in bar
+        assert "no Read needed" not in result.get("next_step", "")
 
     @pytest.mark.asyncio
     @pytest.mark.slow_ok  # Real call-graph build on Windows I/O exceeds 5s budget
@@ -218,40 +308,20 @@ class TestCallerCalleeIntegration:
 
 
 class TestHonestTruncationCallers:
-    """DF-13: default limit=50 caps high-fan-in callers; response carries
-    total/truncated/listed_cap so agents know what was omitted."""
+    """DF-13/#500：调用者数量与 CLI limit 必须如实截断。"""
 
     @pytest.fixture
     def many_callers_root(self, tmp_path):
-        """Tiny project with one target function called by 60 callers.
-
-        ``target()`` is defined in target.py.
-        60 caller modules (caller_NN.py) each define ``fn_NN()`` that calls it.
-        This produces 60 call edges to ``target``, which exceeds the default
-        cap of 50 so truncation logic fires.
-        """
-        (tmp_path / "target.py").write_text(
-            "def target():\n    return 42\n",
-            encoding="utf-8",
-        )
-        for i in range(60):
-            (tmp_path / f"caller_{i:03d}.py").write_text(
-                f"from target import target\n\n\ndef fn_{i:03d}():\n    return target()\n",
-                encoding="utf-8",
-            )
-        return str(tmp_path)
+        return nav_support.build_many_relation_project(tmp_path, "callers")
 
     @pytest.mark.asyncio
     async def test_default_limit_caps_at_50(self, many_callers_root):
-        """With 60 callers and default limit=50, listed == 50, total == 60."""
         tool = CodeGraphCallersTool(many_callers_root)
         result = await tool.execute(
             {"function_name": "target", "output_format": "json"}
         )
         assert result["success"] is True
-        # total must be the pre-cap count (60)
         assert result["caller_count"] == 60
-        # listed must be exactly the cap
         assert result["callers_listed"] == 50
         assert result["listed_cap"] == 50
         assert result["truncated"] is True
@@ -259,7 +329,6 @@ class TestHonestTruncationCallers:
 
     @pytest.mark.asyncio
     async def test_raised_limit_shows_all(self, many_callers_root):
-        """limit=100 > 60 callers → no truncation, all listed."""
         tool = CodeGraphCallersTool(many_callers_root)
         result = await tool.execute(
             {"function_name": "target", "output_format": "json", "limit": 100}
@@ -272,7 +341,6 @@ class TestHonestTruncationCallers:
 
     @pytest.mark.asyncio
     async def test_no_truncation_when_few_callers(self, tiny_project_root):
-        """1 caller (foo→bar) → truncated=False, callers_listed == caller_count."""
         tool = CodeGraphCallersTool(tiny_project_root)
         result = await tool.execute({"function_name": "bar", "output_format": "json"})
         assert result["success"] is True
@@ -281,7 +349,6 @@ class TestHonestTruncationCallers:
 
     @pytest.mark.asyncio
     async def test_truncated_next_step_present(self, many_callers_root):
-        """When truncated, next_step must mention the counts and suggest narrowing."""
         tool = CodeGraphCallersTool(many_callers_root)
         result = await tool.execute(
             {"function_name": "target", "output_format": "json"}
@@ -299,7 +366,6 @@ class TestHonestTruncationCallers:
 
     @pytest.mark.asyncio
     async def test_zero_callers_not_truncated(self, tiny_project_root):
-        """0 callers → truncated=False, callers_listed==0."""
         tool = CodeGraphCallersTool(tiny_project_root)
         result = await tool.execute(
             {"function_name": "zzz_nonexistent_xyz", "output_format": "json"}
@@ -310,31 +376,14 @@ class TestHonestTruncationCallers:
 
 
 class TestHonestTruncationCallees:
-    """Symmetric to TestHonestTruncationCallers — callees_tool must apply the
-    same default limit=50 cap and emit honest truncation fields."""
+    """DF-13/#500：被调用者保持相同的截断契约。"""
 
     @pytest.fixture
     def many_callees_root(self, tmp_path):
-        """One source function ``hub()`` calling 60 distinct helpers.
-
-        hub.py defines ``hub()`` which calls ``helper_00()`` … ``helper_59()``
-        from helpers.py. This produces 60 callee edges from ``hub``, exceeding
-        the default cap of 50.
-        """
-        helpers_code = "\n".join(
-            f"def helper_{i:03d}():\n    return {i}\n" for i in range(60)
-        )
-        (tmp_path / "helpers.py").write_text(helpers_code, encoding="utf-8")
-        calls = "\n    ".join(f"helper_{i:03d}()" for i in range(60))
-        (tmp_path / "hub.py").write_text(
-            f"from helpers import {', '.join(f'helper_{i:03d}' for i in range(60))}\n\n\ndef hub():\n    {calls}\n",
-            encoding="utf-8",
-        )
-        return str(tmp_path)
+        return nav_support.build_many_relation_project(tmp_path, "callees")
 
     @pytest.mark.asyncio
     async def test_default_limit_caps_at_50(self, many_callees_root):
-        """With 60 callees and default limit=50, listed == 50, total == 60."""
         tool = CodeGraphCalleesTool(many_callees_root)
         result = await tool.execute({"function_name": "hub", "output_format": "json"})
         assert result["success"] is True
@@ -346,7 +395,6 @@ class TestHonestTruncationCallees:
 
     @pytest.mark.asyncio
     async def test_raised_limit_shows_all(self, many_callees_root):
-        """limit=100 > 60 callees → no truncation."""
         tool = CodeGraphCalleesTool(many_callees_root)
         result = await tool.execute(
             {"function_name": "hub", "output_format": "json", "limit": 100}
@@ -358,7 +406,6 @@ class TestHonestTruncationCallees:
 
     @pytest.mark.asyncio
     async def test_no_truncation_when_few_callees(self, tiny_project_root):
-        """1 callee (foo→bar) → truncated=False."""
         tool = CodeGraphCalleesTool(tiny_project_root)
         result = await tool.execute({"function_name": "foo", "output_format": "json"})
         assert result["success"] is True
@@ -374,7 +421,6 @@ class TestHonestTruncationCallees:
 
     @pytest.mark.asyncio
     async def test_zero_callees_not_truncated(self, tiny_project_root):
-        """0 callees → truncated=False, callees_listed==0."""
         tool = CodeGraphCalleesTool(tiny_project_root)
         result = await tool.execute(
             {"function_name": "zzz_nonexistent_xyz", "output_format": "json"}
@@ -385,10 +431,6 @@ class TestHonestTruncationCallees:
 
 
 class TestStaleCacheWarning:
-    """Stale-cache hint surfaces in callees/callers when ≥80% of edges
-    have ``callee_resolution='unknown'``. The detection helper is
-    deterministic (no live cache needed)."""
-
     def test_helper_is_false_for_empty(self) -> None:
         from tree_sitter_analyzer.mcp.tools.callees_tool import _is_stale_resolution
 
@@ -459,7 +501,6 @@ class TestStaleCacheWarning:
 
 
 def test_cli_call_limit_flag_parity() -> None:
-    """Codex P2 (#500): CLI must be able to raise the new limit (MCP/CLI parity)."""
     from tree_sitter_analyzer.cli_main import create_argument_parser
 
     parser = create_argument_parser()
@@ -471,18 +512,10 @@ def test_cli_call_limit_flag_parity() -> None:
 
 
 class TestEmptyIndexHint:
-    """#548: callers/callees on an empty/partial call-graph index must surface
-    a --full-index hint so users know why NOT_FOUND is returned.
-
-    An empty tmp_path has no indexed call edges — ``has_call_edges()`` returns
-    False and the graph-parse fallback produces zero results.  The NOT_FOUND
-    response's next_step MUST mention ``--full-index`` so the user is told
-    what to do next.
-    """
+    """#548/#705：区分未建图、重建中和已建但零边。"""
 
     @pytest.mark.asyncio
     async def test_callers_empty_index_hint_mentions_full_index(self, tmp_path) -> None:
-        """Callers NOT_FOUND on empty index carries --full-index hint."""
         tool = CodeGraphCallersTool(str(tmp_path))
         result = await tool.execute(
             {"function_name": "some_function", "output_format": "json"}
@@ -496,7 +529,6 @@ class TestEmptyIndexHint:
 
     @pytest.mark.asyncio
     async def test_callees_empty_index_hint_mentions_full_index(self, tmp_path) -> None:
-        """Callees NOT_FOUND on empty index carries --full-index hint."""
         tool = CodeGraphCalleesTool(str(tmp_path))
         result = await tool.execute(
             {"function_name": "some_function", "output_format": "json"}
@@ -510,7 +542,7 @@ class TestEmptyIndexHint:
 
     @pytest.mark.asyncio
     async def test_callers_rebuild_marker_warns_without_phantom_count(
-        self, tmp_path
+        self, tmp_path, monkeypatch
     ) -> None:
         (tmp_path / "sample.py").write_text(
             "def foo():\n    bar()\n\ndef bar():\n    return 1\n",
@@ -520,7 +552,7 @@ class TestEmptyIndexHint:
         try:
             cache.index_project(workers=0)
             build_state.mark_build_in_progress(cache.get_conn())
-
+            nav_support.reject_certified_capture(monkeypatch)
             tool = CodeGraphCallersTool(str(tmp_path))
             result = await tool.execute(
                 {"function_name": "bar", "output_format": "json"}
@@ -539,7 +571,7 @@ class TestEmptyIndexHint:
 
     @pytest.mark.asyncio
     async def test_callees_rebuild_marker_warns_without_phantom_count(
-        self, tmp_path
+        self, tmp_path, monkeypatch
     ) -> None:
         (tmp_path / "sample.py").write_text(
             "def foo():\n    bar()\n\ndef bar():\n    return 1\n",
@@ -549,7 +581,7 @@ class TestEmptyIndexHint:
         try:
             cache.index_project(workers=0)
             build_state.mark_build_in_progress(cache.get_conn())
-
+            nav_support.reject_certified_capture(monkeypatch)
             tool = CodeGraphCalleesTool(str(tmp_path))
             result = await tool.execute(
                 {"function_name": "foo", "output_format": "json"}
@@ -570,7 +602,6 @@ class TestEmptyIndexHint:
     async def test_callers_non_empty_index_no_spurious_hint(
         self, tiny_project_root
     ) -> None:
-        """When a built index has call edges, an unknown symbol gets no hint."""
         cache = ASTCache(tiny_project_root)
         try:
             cache.index_project(workers=0)
@@ -595,10 +626,6 @@ class TestEmptyIndexHint:
 
     @pytest.mark.asyncio
     async def test_callers_built_index_zero_edges_no_hint(self, tmp_path) -> None:
-        """#705 follow-up: index IS built (total_files > 0) but the project has
-        no call edges (e.g. a single ``def solo(): return 1``).  NOT_FOUND must
-        NOT carry a --full-index hint — the user already indexed; they just have
-        a project with no calls."""
         from tree_sitter_analyzer.ast_cache import ASTCache
 
         (tmp_path / "solo.py").write_text(
@@ -621,7 +648,6 @@ class TestEmptyIndexHint:
 
     @pytest.mark.asyncio
     async def test_callees_built_index_zero_edges_no_hint(self, tmp_path) -> None:
-        """#705 follow-up: same zero-edge scenario for callees."""
         from tree_sitter_analyzer.ast_cache import ASTCache
 
         (tmp_path / "solo.py").write_text(
@@ -644,15 +670,8 @@ class TestEmptyIndexHint:
 
 
 class TestAgentSummaryCallers:
-    """#546 seam 3 / #577 leftover: callers must emit agent_summary with
-    verdict + summary_line + next_step, mirroring the top-level verdict."""
-
     @pytest.mark.asyncio
     async def test_callers_has_agent_summary_found(self, tiny_project_root) -> None:
-        """INFO case: foo calls bar → bar has 1 caller (foo).
-        agent_summary must be present and summary_line must report count == 1.
-        Top-level verdict must mirror agent_summary.verdict.
-        """
         tool = CodeGraphCallersTool(tiny_project_root)
         result = await tool.execute({"function_name": "bar", "output_format": "json"})
         assert result["verdict"] == "INFO"
@@ -687,7 +706,6 @@ class TestAgentSummaryCallers:
 
     @pytest.mark.asyncio
     async def test_callers_has_agent_summary_not_found(self, tiny_project_root) -> None:
-        """NOT_FOUND case: unknown symbol → agent_summary present, verdict NOT_FOUND."""
         tool = CodeGraphCallersTool(tiny_project_root)
         result = await tool.execute(
             {"function_name": "zzz_nonexistent_xyz", "output_format": "json"}
@@ -706,7 +724,6 @@ class TestAgentSummaryCallers:
     async def test_callers_verdict_mirrors_agent_summary(
         self, tiny_project_root
     ) -> None:
-        """Top-level verdict must always equal agent_summary.verdict (N4/r37u pattern)."""
         tool = CodeGraphCallersTool(tiny_project_root)
         for fn in ("bar", "foo", "zzz_nonexistent_xyz"):
             result = await tool.execute({"function_name": fn, "output_format": "json"})
@@ -718,15 +735,8 @@ class TestAgentSummaryCallers:
 
 
 class TestAgentSummaryCallees:
-    """#546 seam 3 / #577 leftover: callees must emit agent_summary with
-    verdict + summary_line + next_step, mirroring the top-level verdict."""
-
     @pytest.mark.asyncio
     async def test_callees_has_agent_summary_found(self, tiny_project_root) -> None:
-        """INFO case: foo calls bar → foo has 1 callee (bar).
-        agent_summary must be present and summary_line must report count == 1.
-        Top-level verdict must mirror agent_summary.verdict.
-        """
         tool = CodeGraphCalleesTool(tiny_project_root)
         result = await tool.execute({"function_name": "foo", "output_format": "json"})
         assert result["verdict"] == "INFO"
@@ -761,7 +771,6 @@ class TestAgentSummaryCallees:
 
     @pytest.mark.asyncio
     async def test_callees_has_agent_summary_not_found(self, tiny_project_root) -> None:
-        """NOT_FOUND case: unknown symbol → agent_summary present, verdict NOT_FOUND."""
         tool = CodeGraphCalleesTool(tiny_project_root)
         result = await tool.execute(
             {"function_name": "zzz_nonexistent_xyz", "output_format": "json"}
@@ -780,7 +789,6 @@ class TestAgentSummaryCallees:
     async def test_callees_verdict_mirrors_agent_summary(
         self, tiny_project_root
     ) -> None:
-        """Top-level verdict must always equal agent_summary.verdict (N4/r37u pattern)."""
         tool = CodeGraphCalleesTool(tiny_project_root)
         for fn in ("foo", "bar", "zzz_nonexistent_xyz"):
             result = await tool.execute({"function_name": fn, "output_format": "json"})

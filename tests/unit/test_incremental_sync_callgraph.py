@@ -279,3 +279,29 @@ def test_marker_certification_rechecks_consistency_after_writer_lock(
         "SELECT id, built, pipeline_version FROM ast_call_graph_state"
     ).fetchall()
     assert rows == []
+
+
+def test_call_graph_probe_can_reuse_an_outer_progress_handler() -> None:
+    # PR #1491：认证 owner 的 deadline handler 不能被内层探针覆盖或清空。
+    class OuterDeadlineConnection:
+        def __init__(self) -> None:
+            self.connection = sqlite3.connect(":memory:")
+
+        def execute(self, *args, **kwargs):
+            return self.connection.execute(*args, **kwargs)
+
+        def set_progress_handler(self, *_args):
+            pytest.fail("install_progress_handler=False 时不得触碰外层 handler")
+
+    connection = OuterDeadlineConnection()
+    try:
+        assert (
+            call_graph_built(
+                connection,
+                deadline=float("inf"),
+                install_progress_handler=False,
+            )
+            is False
+        )
+    finally:
+        connection.connection.close()

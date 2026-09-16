@@ -16,6 +16,7 @@ Supports three search strategies:
 
 from __future__ import annotations
 
+import sqlite3
 from typing import Any
 
 from ...call_path import CallPathFinder
@@ -124,7 +125,22 @@ class CodeGraphCallPathTool(BaseMCPTool):
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
+        if self.project_root:
+            from ...index_snapshot import certified_index_read
 
+            try:
+                with certified_index_read(self.project_root) as owner:
+                    if owner is not None:
+                        return await self._execute_bound(
+                            arguments, owner.query_cache(), owner.read_source
+                        )
+            except (OSError, ValueError, RuntimeError, sqlite3.DatabaseError):
+                pass
+        return await self._execute_bound(arguments, None, None)
+
+    async def _execute_bound(
+        self, arguments: dict[str, Any], bound_cache: Any, source_reader: Any
+    ) -> dict[str, Any]:
         source_function = arguments["source_function"]
         target_function = arguments["target_function"]
         source_file = arguments.get("source_file")
@@ -134,7 +150,11 @@ class CodeGraphCallPathTool(BaseMCPTool):
         direction = arguments.get("direction", "bidirectional")
         output_format = arguments.get("output_format", "json")
 
-        finder = self._get_finder()
+        finder = (
+            CallPathFinder(self.project_root or ".", cache=bound_cache)
+            if bound_cache is not None
+            else self._get_finder()
+        )
         result = finder.find_path(
             source_function=source_function,
             target_function=target_function,
@@ -169,6 +189,8 @@ class CodeGraphCallPathTool(BaseMCPTool):
             target_function,
             source_file,
             target_file,
+            bound_cache,
+            source_reader if result.data_source == "sql" else None,
         )
 
         from ..utils.format_helper import apply_output_format_to_response
@@ -183,6 +205,8 @@ class CodeGraphCallPathTool(BaseMCPTool):
         target_function: str,
         source_file: str | None,
         target_file: str | None,
+        bound_cache: Any = None,
+        source_reader: Any = None,
     ) -> None:
         """Inline source bodies + a deterrent ``next_step`` into the envelope.
 
@@ -192,8 +216,8 @@ class CodeGraphCallPathTool(BaseMCPTool):
         from . import call_path_enrich as enrich
 
         finder = self._finder
-        cache = None
-        if finder is not None:
+        cache = bound_cache
+        if cache is None and finder is not None:
             try:
                 cache = finder._try_get_cache()
             except Exception:
@@ -212,7 +236,11 @@ class CodeGraphCallPathTool(BaseMCPTool):
                     endpoint_hints[target_function] = target_file
                 try:
                     bodies, truncated_body = enrich.inline_path_bodies(
-                        project_root, cache, paths, endpoint_hints
+                        project_root,
+                        cache,
+                        paths,
+                        endpoint_hints,
+                        source_reader=source_reader,
                     )
                 except Exception:  # pragma: no cover - defensive
                     bodies, truncated_body = [], False
@@ -227,6 +255,8 @@ class CodeGraphCallPathTool(BaseMCPTool):
             result_dict["next_step"] = (
                 f"Path: {n} path(s), {len(bodies)} function bodies inlined in "
                 "source_bodies below — answer directly, no Read needed." + suffix
+                if bodies
+                else f"Path: {n} path(s) returned as coordinates; read source as needed."
             )
             return
 
@@ -241,12 +271,17 @@ class CodeGraphCallPathTool(BaseMCPTool):
                     target_function,
                     source_file,
                     target_file,
+                    source_reader=source_reader,
                 )
             except Exception:  # pragma: no cover - defensive
                 dead_end = {}
         result_dict["dead_end"] = dead_end
+        has_body = any(
+            isinstance(endpoint, dict) and "body" in endpoint
+            for endpoint in dead_end.values()
+        )
         result_dict["next_step"] = (
-            "No static path (dynamic dispatch or missing edge). Both endpoints' "
-            "bodies + their direct callers/callees are inlined in dead_end — "
-            "answer from these, no Read needed."
+            "No static path; inspect certified endpoint bodies and neighbours."
+            if has_body
+            else "No static path; inspect the endpoint coordinates and neighbours."
         )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+import time
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack, contextmanager
 from typing import Any, cast
@@ -129,6 +130,96 @@ class NativeFiles:
                 handle, os.O_RDONLY | getattr(os, "O_BINARY", 0)
             )
         )
+
+
+def _read_descriptor(fd: int, size: int) -> bytes:
+    """模块级读取 seam，便于故障注入而不修改进程级 ``os``。"""
+    return os.read(fd, size)
+
+
+def read_pinned_workspace_file(
+    project_root: str,
+    relative_path: str,
+    *,
+    deadline: float,
+    limit: int,
+) -> tuple[bytes, tuple[bytes, ...]]:
+    """用原生句柄固定工作区层级，并在同一 deadline 内读取普通文件。"""
+    normalized = relative_path.replace("\\", "/")
+    parts = tuple(normalized.split("/"))
+    if (
+        limit < 0
+        or not parts
+        or normalized.startswith("/")
+        or any(part in {"", ".", ".."} or ":" in part for part in parts)
+    ):
+        raise ValueError("INDEX_PATH_UNSAFE")
+
+    def check() -> None:
+        if time.monotonic() >= deadline:
+            raise TimeoutError("INDEX_SNAPSHOT_DEADLINE")
+
+    api = NativeFiles()
+    root = os.path.realpath(os.path.abspath(project_root))
+    with ExitStack() as owned:
+        pinned: list[tuple[str, int, tuple[Any, ...], bool]] = []
+
+        def pin(path: str, directory: bool) -> int | None:
+            check()
+            handle = api.open(path, directory)
+            fd = None
+            if directory:
+                owned.callback(api.close, handle)
+            else:
+                try:
+                    fd = api.reader_fd(handle)
+                except BaseException:
+                    api.close(handle)
+                    raise
+                owned.callback(os.close, fd)
+            expected = api.identity(handle)
+            pinned.append((path, handle, expected, directory))
+            return fd
+
+        pin(root, True)
+        current = root
+        for component in parts[:-1]:
+            current = os.path.join(current, component)
+            pin(current, True)
+        source_path = os.path.join(current, parts[-1])
+        source_fd = pin(source_path, False)
+        assert source_fd is not None
+
+        def verify() -> None:
+            check()
+            try:
+                for path, handle, expected, directory in pinned:
+                    reopened = api.open(path, directory)
+                    try:
+                        # 目录只比较卷与 File ID；文件还比较大小、时间与属性。
+                        width = 2 if directory else len(expected)
+                        if (
+                            api.identity(reopened)[:width] != expected[:width]
+                            or api.identity(handle)[:width] != expected[:width]
+                        ):
+                            raise ValueError("INDEX_SOURCE_CHANGED")
+                    finally:
+                        api.close(reopened)
+            except OSError as exc:
+                raise ValueError("INDEX_SOURCE_CHANGED") from exc
+
+        data = bytearray()
+        while True:
+            check()
+            chunk = _read_descriptor(source_fd, min(64 * 1024, limit - len(data) + 1))
+            if not chunk:
+                break
+            data.extend(chunk)
+            if len(data) > limit:
+                raise OverflowError("INDEX_SOURCE_CAPACITY")
+        verify()
+        metadata = tuple(repr(expected).encode("ascii") for _, _, expected, _ in pinned)
+        return bytes(data), metadata
 
 
 @contextmanager

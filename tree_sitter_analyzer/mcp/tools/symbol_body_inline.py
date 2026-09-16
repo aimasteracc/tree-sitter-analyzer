@@ -27,6 +27,7 @@ implementation of the def-index scan and the verbatim-read-with-caps logic.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from .call_path_enrich import _build_def_index, _read_body, _resolve_def
@@ -118,12 +119,24 @@ def _body_for_record(
     record: dict[str, Any],
     per_body_cap: int,
     budget: list[int],
+    source_reader: Callable[[str], str | None] | None,
 ) -> dict[str, Any] | None:
     """Read one verbatim body for ``record`` honouring per-body + total caps."""
+    if source_reader is None:
+        return None
     span = _record_span(record, cache)
     if span is None:
         return None
-    return _read_body(project_root, span, budget, max_body_lines=per_body_cap)
+    source_text = source_reader(str(span["file"]))
+    if not isinstance(source_text, str):
+        return None
+    return _read_body(
+        project_root,
+        span,
+        budget,
+        max_body_lines=per_body_cap,
+        source_text=source_text,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -135,6 +148,8 @@ def inline_symbol_bodies(
     project_root: str,
     cache: Any,
     records: list[dict[str, Any]],
+    *,
+    source_reader: Callable[[str], str | None] | None = None,
 ) -> list[dict[str, Any]]:
     """Attach a body to the leading definitions (full tier) for ``nav navigate``.
 
@@ -155,7 +170,7 @@ def inline_symbol_bodies(
         new_record = dict(record)
         if bodied < MAX_DEFINITION_BODIES and budget[0] > 0:
             body = _body_for_record(
-                project_root, cache, record, MAX_DEFINITION_LINES, budget
+                project_root, cache, record, MAX_DEFINITION_LINES, budget, source_reader
             )
             if body is not None:
                 new_record["body"] = body
@@ -168,6 +183,8 @@ def inline_neighbor_bodies(
     project_root: str,
     cache: Any,
     neighbors: list[dict[str, Any]],
+    *,
+    source_reader: Callable[[str], str | None] | None = None,
 ) -> list[dict[str, Any]]:
     """Attach a body (neighbour tier) to the top-N caller/callee records.
 
@@ -183,7 +200,7 @@ def inline_neighbor_bodies(
         new_record = dict(record)
         if bodied < MAX_NEIGHBOR_BODIES and budget[0] > 0:
             body = _body_for_record(
-                project_root, cache, record, MAX_NEIGHBOR_LINES, budget
+                project_root, cache, record, MAX_NEIGHBOR_LINES, budget, source_reader
             )
             if body is not None:
                 new_record["body"] = body
@@ -196,6 +213,8 @@ def inline_search_summaries(
     project_root: str,
     cache: Any,
     results: list[dict[str, Any]],
+    *,
+    source_reader: Callable[[str], str | None] | None = None,
 ) -> list[dict[str, Any]]:
     """Attach a short body summary (summary tier) to the top search matches.
 
@@ -211,7 +230,7 @@ def inline_search_summaries(
         new_record = dict(record)
         if bodied < MAX_SUMMARY_BODIES and budget[0] > 0:
             body = _body_for_record(
-                project_root, cache, record, MAX_SUMMARY_LINES, budget
+                project_root, cache, record, MAX_SUMMARY_LINES, budget, source_reader
             )
             if body is not None:
                 new_record["body"] = body

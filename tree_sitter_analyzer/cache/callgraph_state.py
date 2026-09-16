@@ -116,7 +116,10 @@ def clear_call_graph_built_strict(conn: sqlite3.Connection) -> None:
 
 
 def exact_call_graph_marker(
-    conn: sqlite3.Connection, *, deadline: float | None = None
+    conn: sqlite3.Connection,
+    *,
+    deadline: float | None = None,
+    install_progress_handler: bool = True,
 ) -> bool:
     """Check the exact marker with bounded SQL and scalar-only fetches."""
     expires_at = (
@@ -128,9 +131,12 @@ def exact_call_graph_marker(
     def expired() -> int:
         return int(time.monotonic() > expires_at)
 
-    set_progress_handler = getattr(conn, "set_progress_handler", None)
-    if callable(set_progress_handler):
-        set_progress_handler(expired, 1_000)
+    candidate = getattr(conn, "set_progress_handler", None)
+    progress_handler = (
+        candidate if install_progress_handler and callable(candidate) else None
+    )
+    if progress_handler is not None:
+        progress_handler(expired, 1_000)
     try:
         count_row = conn.execute(
             "SELECT COUNT(*) FROM ast_call_graph_state WHERE id IN (1, 2)"
@@ -160,12 +166,15 @@ def exact_call_graph_marker(
     except (sqlite3.DatabaseError, AttributeError, TypeError, ValueError):
         return False
     finally:
-        if callable(set_progress_handler):
-            set_progress_handler(None, 0)
+        if progress_handler is not None:
+            progress_handler(None, 0)
 
 
 def call_graph_edges_are_consistent(
-    conn: sqlite3.Connection, *, deadline: float | None = None
+    conn: sqlite3.Connection,
+    *,
+    deadline: float | None = None,
+    install_progress_handler: bool = True,
 ) -> bool:
     """Reject resolved call targets that no longer have canonical rows."""
     expires_at = (
@@ -177,9 +186,12 @@ def call_graph_edges_are_consistent(
     def expired() -> int:
         return int(time.monotonic() > expires_at)
 
-    set_progress_handler = getattr(conn, "set_progress_handler", None)
-    if callable(set_progress_handler):
-        set_progress_handler(expired, 1_000)
+    candidate = getattr(conn, "set_progress_handler", None)
+    progress_handler = (
+        candidate if install_progress_handler and callable(candidate) else None
+    )
+    if progress_handler is not None:
+        progress_handler(expired, 1_000)
     try:
         tables = {
             str(row[0])
@@ -221,18 +233,42 @@ def call_graph_edges_are_consistent(
     except (sqlite3.DatabaseError, AttributeError, TypeError, ValueError):
         return False
     finally:
-        if callable(set_progress_handler):
-            set_progress_handler(None, 0)
+        if progress_handler is not None:
+            progress_handler(None, 0)
 
 
-def call_graph_marker_is_current(conn: sqlite3.Connection) -> bool:
+def call_graph_marker_is_current(
+    conn: sqlite3.Connection,
+    *,
+    deadline: float | None = None,
+    install_progress_handler: bool = True,
+) -> bool:
     """Require both the exact marker and non-dangling resolved call targets."""
-    deadline = time.monotonic() + _CALL_GRAPH_MARKER_DEADLINE_SECONDS
+    expires_at = (
+        time.monotonic() + _CALL_GRAPH_MARKER_DEADLINE_SECONDS
+        if deadline is None
+        else deadline
+    )
     return exact_call_graph_marker(
-        conn, deadline=deadline
-    ) and call_graph_edges_are_consistent(conn, deadline=deadline)
+        conn,
+        deadline=expires_at,
+        install_progress_handler=install_progress_handler,
+    ) and call_graph_edges_are_consistent(
+        conn,
+        deadline=expires_at,
+        install_progress_handler=install_progress_handler,
+    )
 
 
-def call_graph_built(conn: sqlite3.Connection) -> bool:
+def call_graph_built(
+    conn: sqlite3.Connection,
+    *,
+    deadline: float | None = None,
+    install_progress_handler: bool = True,
+) -> bool:
     """Compatibility name for the shared exact marker predicate."""
-    return call_graph_marker_is_current(conn)
+    return call_graph_marker_is_current(
+        conn,
+        deadline=deadline,
+        install_progress_handler=install_progress_handler,
+    )

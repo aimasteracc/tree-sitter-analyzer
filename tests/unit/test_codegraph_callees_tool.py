@@ -14,8 +14,11 @@ from pathlib import Path
 
 import pytest
 
+from tests.unit._navigation_test_support import assert_sqlite_deadline_falls_back
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.mcp.tools.callees_tool import CodeGraphCalleesTool
+from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
 
 
 @pytest.fixture
@@ -106,3 +109,50 @@ class TestCodeGraphCalleesResolutionFields:
             "expected build -> helper to resolve across files via the EdgeStore "
             f"read path. Sample entries: {callees[:3]}"
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool_type", [CodeGraphCallersTool, CodeGraphCalleesTool])
+async def test_sqlite_deadline_falls_back_to_coordinate_query(
+    tmp_path, monkeypatch, tool_type
+) -> None:
+    await assert_sqlite_deadline_falls_back(
+        tmp_path,
+        monkeypatch,
+        tool_type(str(tmp_path)),
+        {"function_name": "target"},
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool_type", "function_name"),
+    [
+        (CodeGraphCallersTool, "Service.target"),
+        (CodeGraphCalleesTool, "caller"),
+    ],
+)
+async def test_certified_graph_routes_report_cache_source(
+    tmp_path, monkeypatch, tool_type, function_name
+) -> None:
+    """认证图回退路径必须准确声明缓存证据来源。"""
+    (tmp_path / "sample.py").write_text(
+        "class Service:\n"
+        "    def target(self):\n"
+        "        return 1\n\n"
+        "def caller(service):\n"
+        "    return service.target()\n",
+        encoding="utf-8",
+    )
+    indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
+        {"mode": "full", "max_files": 10}
+    )
+    assert indexed["published"] is True
+
+    tool = tool_type(str(tmp_path))
+    monkeypatch.setattr(tool, "_cache_call_graph_built", lambda _cache: False)
+    result = await tool.execute(
+        {"function_name": function_name, "output_format": "json"}
+    )
+
+    assert result["data_source"] == "cache"

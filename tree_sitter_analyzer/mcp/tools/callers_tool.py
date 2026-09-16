@@ -9,6 +9,7 @@ Simpler and more discoverable than the monolithic codegraph_call_graph tool.
 """
 
 import os
+import sqlite3
 from typing import Any
 
 from ...utils import setup_logger
@@ -244,7 +245,24 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
+        if is_index_rebuilding(self.project_root):
+            return await self._execute_bound(arguments, None, None)
+        if self.project_root:
+            from ...index_snapshot import certified_index_read
 
+            try:
+                with certified_index_read(self.project_root) as owner:
+                    if owner is not None:
+                        return await self._execute_bound(
+                            arguments, owner.query_cache(), owner.read_source
+                        )
+            except (OSError, ValueError, RuntimeError, sqlite3.DatabaseError):
+                pass
+        return await self._execute_bound(arguments, None, None)
+
+    async def _execute_bound(
+        self, arguments: dict[str, Any], bound_cache: Any, source_reader: Any
+    ) -> dict[str, Any]:
         func_name = arguments["function_name"]
         file_path = arguments.get("file_path")
         output_format = arguments.get("output_format", "json")
@@ -282,7 +300,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         )
 
         unattributed_call_sites = 0
-        cache = self._try_get_cache()
+        cache = bound_cache if bound_cache is not None else self._try_get_cache()
         call_graph_built = (
             self._cache_call_graph_built(cache) if cache is not None else False
         )
@@ -296,9 +314,18 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             data_source = "sql"
             has_any_call_edges = True  # SQL path only runs when edges exist
         else:
-            graph = self._get_call_graph()
+            graph: Any
+            if bound_cache is not None:
+                from ...call_graph import CachedCallGraph
+
+                graph = CachedCallGraph(
+                    self.project_root or ".", cache=bound_cache, fallback=False
+                )
+                data_source = "cache"
+            else:
+                graph = self._get_call_graph()
+                data_source = self._data_source
             callers = graph.callers_of(func_name, file_path)
-            data_source = self._data_source
             self._enrich_callers_with_resolution(callers)
             # #981 defense-in-depth: the built marker can be a false-negative
             # (e.g. cleared while the index actually holds 125K call edges).
@@ -327,7 +354,8 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
 
         # P2: inline each caller's verbatim source body (top-N capped) so the
         # agent answers from content, not coordinates — no Read per file:line.
-        next_step = self._inline_caller_bodies(cache, callers)
+        body_reader = source_reader if call_graph_indexed and not is_qualified else None
+        next_step = self._inline_caller_bodies(cache, callers, body_reader)
 
         # RFC-0028 §1.1: declare the epistemic status of this list.  It is
         # assembled from resolved CALLS edges, so an unresolved inbound edge
@@ -548,6 +576,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         self,
         cache: Any,
         callers: list[dict[str, Any]],
+        source_reader: Any = None,
     ) -> str | None:
         """P2: attach a body to the top-N callers (in place). Returns deterrent.
 
@@ -562,7 +591,9 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             # cache may be None (graph-parse path with no index yet); the
             # helper only needs it for the end_line fallback, and records on
             # the graph path already carry end_line, so it degrades cleanly.
-            enriched = sbi.inline_neighbor_bodies(self.project_root, cache, callers)
+            enriched = sbi.inline_neighbor_bodies(
+                self.project_root, cache, callers, source_reader=source_reader
+            )
             if not any("body" in c for c in enriched):
                 return None
             callers[:] = enriched

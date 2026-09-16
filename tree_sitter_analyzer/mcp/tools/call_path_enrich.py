@@ -188,6 +188,7 @@ def _read_body(
     defn: dict[str, Any],
     budget: list[int],
     max_body_lines: int | None = None,
+    source_text: str | None = None,
 ) -> dict[str, Any] | None:
     """Read a verbatim function body, honouring per-body and total caps.
 
@@ -205,7 +206,11 @@ def _read_body(
     abs_path = (
         file_path if os.path.isabs(file_path) else os.path.join(project_root, file_path)
     )
-    lines = read_file_lines(abs_path)
+    lines = (
+        source_text.splitlines(keepends=True)
+        if source_text is not None
+        else read_file_lines(abs_path)
+    )
     if not lines:
         return None
     end = int(defn.get("end_line", 0) or 0)
@@ -288,6 +293,8 @@ def inline_path_bodies(
     cache: Any,
     paths: list[dict[str, Any]],
     endpoint_hints: dict[str, str] | None = None,
+    *,
+    source_reader: Any = None,
 ) -> tuple[list[dict[str, Any]], bool]:
     """Return ``(source_bodies, any_truncated)`` for a found path.
 
@@ -329,7 +336,13 @@ def inline_path_bodies(
         if defn is None:
             continue
         defn = {**defn, "name": name}
-        block = _read_body(project_root, defn, budget)
+        if source_reader is None:
+            continue
+        try:
+            source_text = source_reader(str(defn["file"]))
+        except (OSError, ValueError, RuntimeError):
+            continue
+        block = _read_body(project_root, defn, budget, source_text=source_text)
         if block is None:
             continue
         any_truncated = any_truncated or bool(block.get("truncated"))
@@ -372,12 +385,26 @@ def _endpoint_block(
     name: str,
     file_hint: str | None,
     budget: list[int],
+    source_reader: Any = None,
 ) -> dict[str, Any]:
     """Build one endpoint block: body + direct callers + direct callees."""
     defn = _resolve_def(index, name, file_hint)
     block: dict[str, Any] = {"name": name}
     if defn is not None:
-        body = _read_body(project_root, {**defn, "name": name}, budget)
+        try:
+            source_text = source_reader(str(defn["file"])) if source_reader else None
+        except (OSError, ValueError, RuntimeError):
+            source_text = None
+        body = (
+            _read_body(
+                project_root,
+                {**defn, "name": name},
+                budget,
+                source_text=source_text,
+            )
+            if isinstance(source_text, str)
+            else None
+        )
         if body is not None:
             block["body"] = body
     try:
@@ -400,15 +427,17 @@ def build_dead_end(
     target: str,
     source_file: str | None,
     target_file: str | None,
+    *,
+    source_reader: Any = None,
 ) -> dict[str, Any]:
     """Return a dead-end payload with both endpoints inlined + neighbours."""
     index = _build_def_index(cache, {source, target})
     budget = [MAX_TOTAL_BODY_LINES]
     return {
         "source_endpoint": _endpoint_block(
-            project_root, cache, index, source, source_file, budget
+            project_root, cache, index, source, source_file, budget, source_reader
         ),
         "target_endpoint": _endpoint_block(
-            project_root, cache, index, target, target_file, budget
+            project_root, cache, index, target, target_file, budget, source_reader
         ),
     }

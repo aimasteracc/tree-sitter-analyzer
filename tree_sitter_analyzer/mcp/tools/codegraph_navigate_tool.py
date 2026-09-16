@@ -18,6 +18,7 @@ CodeGraph parity: equivalent to CodeGraph's unified "navigate symbol" view.
 
 from __future__ import annotations
 
+import sqlite3
 from collections import deque
 from typing import Any
 
@@ -180,7 +181,22 @@ class CodeGraphNavigateTool(BaseMCPTool):
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
+        if self.project_root:
+            from ...index_snapshot import certified_index_read
 
+            try:
+                with certified_index_read(self.project_root) as owner:
+                    if owner is not None:
+                        return await self._execute_bound(
+                            arguments, owner.query_cache(), owner.read_source
+                        )
+            except (OSError, ValueError, RuntimeError, sqlite3.DatabaseError):
+                pass
+        return await self._execute_bound(arguments, None, None)
+
+    async def _execute_bound(
+        self, arguments: dict[str, Any], bound_cache: Any, source_reader: Any
+    ) -> dict[str, Any]:
         symbol = arguments["symbol"]
         mode = arguments.get("mode", "full")
         file_path = arguments.get("file_path")
@@ -195,19 +211,23 @@ class CodeGraphNavigateTool(BaseMCPTool):
         }
 
         if mode in ("definition", "full"):
-            result["definition"] = self._resolve_definition(symbol, listed_cap)
+            result["definition"] = self._resolve_definition(
+                symbol, listed_cap, bound_cache
+            )
 
         if mode in ("references", "full"):
-            result["references"] = self._find_references(symbol, listed_cap)
+            result["references"] = self._find_references(
+                symbol, listed_cap, bound_cache
+            )
 
         if mode in ("hierarchy", "full"):
             result["hierarchy"] = self._call_hierarchy(
-                symbol, file_path, depth, listed_cap
+                symbol, file_path, depth, listed_cap, bound_cache
             )
 
         # P2: inline verbatim definition bodies so the agent answers from
         # content, not coordinates — no follow-up Read per file:line.
-        self._inline_definition_bodies(result)
+        self._inline_definition_bodies(result, bound_cache, source_reader)
 
         # Pain #16 (dogfood pass 3): codegraph_navigate emitted no verdict.
         # NOT_FOUND when nothing matched (definition/references/hierarchy
@@ -298,7 +318,9 @@ class CodeGraphNavigateTool(BaseMCPTool):
 
         return apply_output_format_to_response(result, output_format)
 
-    def _inline_definition_bodies(self, result: dict[str, Any]) -> None:
+    def _inline_definition_bodies(
+        self, result: dict[str, Any], bound_cache: Any = None, source_reader: Any = None
+    ) -> None:
         """P2: attach a verbatim source body to each definition record.
 
         Best-effort: any failure leaves the bare-coordinate response intact.
@@ -313,10 +335,12 @@ class CodeGraphNavigateTool(BaseMCPTool):
         try:
             from . import symbol_body_inline as sbi
 
-            cache = self.get_cache()
+            cache = bound_cache if bound_cache is not None else self.get_cache()
             if cache is None or not self.project_root:
                 return
-            new_defs = sbi.inline_symbol_bodies(self.project_root, cache, defs)
+            new_defs = sbi.inline_symbol_bodies(
+                self.project_root, cache, defs, source_reader=source_reader
+            )
             if any(isinstance(d, dict) and "body" in d for d in new_defs):
                 definition["definitions"] = new_defs
                 definition["bodied_count"] = sum(
@@ -327,8 +351,10 @@ class CodeGraphNavigateTool(BaseMCPTool):
         except Exception as exc:  # best-effort enrichment
             logger.debug(f"Definition body inlining failed: {exc}")
 
-    def _resolve_definition(self, symbol: str, listed_cap: int) -> dict[str, Any]:
-        cache = self.get_cache()
+    def _resolve_definition(
+        self, symbol: str, listed_cap: int, bound_cache: Any = None
+    ) -> dict[str, Any]:
+        cache = bound_cache if bound_cache is not None else self.get_cache()
         if cache is None:
             return {"found": False, "reason": "AST cache not available"}
         try:
@@ -345,12 +371,18 @@ class CodeGraphNavigateTool(BaseMCPTool):
                 "listed_cap": listed_cap,
                 "resolved_via": resolve_result.resolved_via,
             }
+        except sqlite3.Error:
+            if bound_cache is not None:
+                raise
+            return {"found": False, "reason": "SQLite definition lookup failed"}
         except Exception as exc:
             logger.debug(f"Definition lookup failed: {exc}")
             return {"found": False, "reason": str(exc)}
 
-    def _find_references(self, symbol: str, listed_cap: int) -> dict[str, Any]:
-        cache = self.get_cache()
+    def _find_references(
+        self, symbol: str, listed_cap: int, bound_cache: Any = None
+    ) -> dict[str, Any]:
+        cache = bound_cache if bound_cache is not None else self.get_cache()
         if cache is None:
             return {"found": False, "reason": "AST cache not available"}
         try:
@@ -367,6 +399,10 @@ class CodeGraphNavigateTool(BaseMCPTool):
                 "references_truncated": len(references) > listed_cap,
                 "listed_cap": listed_cap,
             }
+        except sqlite3.Error:
+            if bound_cache is not None:
+                raise
+            return {"found": False, "reason": "SQLite reference lookup failed"}
         except Exception as exc:
             logger.debug(f"Reference lookup failed: {exc}")
             return {"found": False, "reason": str(exc)}
@@ -377,8 +413,13 @@ class CodeGraphNavigateTool(BaseMCPTool):
         file_path: str | None,
         max_depth: int,
         listed_cap: int,
+        bound_cache: Any = None,
     ) -> dict[str, Any]:
-        graph = self.get_call_graph()
+        graph = (
+            CachedCallGraph(self.project_root or ".", cache=bound_cache, fallback=False)
+            if bound_cache is not None
+            else self.get_call_graph()
+        )
         try:
             graph.build()
         except Exception as exc:
