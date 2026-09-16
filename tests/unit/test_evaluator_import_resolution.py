@@ -342,6 +342,19 @@ def test_evaluator_callback_covers_python_import_materialization() -> None:
     assert calls == ["check"]
 
 
+def test_import_index_falls_back_when_evidence_table_is_missing() -> None:
+    """缺少导入证据表时保持兼容的保守回退。"""
+    from tree_sitter_analyzer.constraints.evaluator_import_resolution import (
+        _build_import_index,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    try:
+        assert _build_import_index(conn) is None
+    finally:
+        conn.close()
+
+
 def test_evaluator_bounds_python_import_materialization() -> None:
     from tree_sitter_analyzer.constraints.evaluator_import_resolution import (
         _build_import_index,
@@ -390,6 +403,107 @@ def test_evaluator_ignores_import_rows_outside_candidate_callers() -> None:
         conn.close()
 
     assert violations == []
+
+
+def test_evaluator_bounds_only_exact_candidate_callers() -> None:
+    """无字面前缀的规则不能让近似候选耗尽容量。"""
+    from tree_sitter_analyzer.constraints import Constraint, evaluate
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_imports(file_path TEXT, module_path TEXT)")
+    conn.execute(
+        "CREATE TABLE edges("
+        "kind TEXT, caller_name TEXT, file_path TEXT, caller_line INTEGER, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO edges VALUES ('calls', 'caller', ?, 7, 'target', 'blocked/target.py')",
+        [(f"src/unrelated_{index}.py",) for index in range(5)],
+    )
+    try:
+        violations = evaluate(
+            [Constraint("r", "warn", "forbid", "**/selected.py", "blocked/**", "test")],
+            conn,
+            capacity=2,
+        )
+    finally:
+        conn.close()
+
+    assert violations == []
+
+
+def test_evaluator_checks_deadline_while_scanning_duplicate_candidates() -> None:
+    """重复候选行的预扫描也必须持续检查截止时间。"""
+    from tree_sitter_analyzer.constraints import Constraint, evaluate
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_imports(file_path TEXT, module_path TEXT)")
+    conn.execute(
+        "CREATE TABLE edges("
+        "kind TEXT, caller_name TEXT, file_path TEXT, caller_line INTEGER, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO edges VALUES ('calls', 'caller', 'src/selected.py', ?, "
+        "'target', 'blocked/target.py')",
+        [(index,) for index in range(5)],
+    )
+    checks = 0
+
+    def check_deadline() -> None:
+        nonlocal checks
+        checks += 1
+        if checks == 3:
+            raise RuntimeError("deadline")
+
+    try:
+        with pytest.raises(RuntimeError, match="^deadline$"):
+            evaluate(
+                [
+                    Constraint(
+                        "r", "warn", "forbid", "**/selected.py", "blocked/**", "test"
+                    )
+                ],
+                conn,
+                check_callback=check_deadline,
+            )
+    finally:
+        conn.close()
+
+    assert checks == 3
+
+
+def test_evaluator_scans_edges_once_without_import_evidence() -> None:
+    """缺少导入表时不能为无效预扫描重复读取调用边。"""
+    from tree_sitter_analyzer.constraints import Constraint, evaluate
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE edges("
+        "kind TEXT, caller_name TEXT, file_path TEXT, caller_line INTEGER, "
+        "callee_name TEXT, callee_resolved_file TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO edges VALUES "
+        "('calls', 'caller', 'src/selected.py', 7, 'target', 'blocked/target.py')"
+    )
+    statements: list[str] = []
+    conn.set_trace_callback(statements.append)
+    try:
+        violations = evaluate(
+            [Constraint("r", "warn", "forbid", "src/**", "blocked/**", "test")],
+            conn,
+        )
+    finally:
+        conn.close()
+
+    edge_selects = [
+        statement
+        for statement in statements
+        if statement.startswith("SELECT caller_name")
+    ]
+    assert len(violations) == 1
+    assert len(edge_selects) == 1
 
 
 @pytest.mark.parametrize("row", [("", "missing.file"), ("caller.py", "")])

@@ -93,7 +93,8 @@ def test_iter_violations_checks_deadline_and_filters_scope_before_rules(
         def execute(self, _sql: str, _params: object):
             return iter(rows)
 
-    monkeypatch.setattr(evaluator_module, "_build_import_index", lambda *_a, **_k: None)
+    monkeypatch.setattr(evaluator_module, "_build_import_index", lambda *_a, **_k: {})
+    monkeypatch.setattr(evaluator_module, "_has_import_evidence", lambda *_a: True)
     monkeypatch.setattr(
         evaluator_module, "_build_select_query", lambda *_a: ("SELECT", ())
     )
@@ -113,7 +114,7 @@ def test_iter_violations_checks_deadline_and_filters_scope_before_rules(
     assert [(item.rule_id, item.callee_file, item.detected_at) for item in result] == [
         ("rule", "lib/b.py", 7)
     ]
-    assert callbacks == ["checked"] * 7
+    assert callbacks == ["checked"] * 8
 
 
 def test_iter_violations_accepts_optional_callbacks_and_scope(
@@ -128,6 +129,7 @@ def test_iter_violations_accepts_optional_callbacks_and_scope(
             return iter((("caller", "src/a.py", 4, "callee", "lib/b.py"),))
 
     monkeypatch.setattr(evaluator_module, "_build_import_index", lambda *_a, **_k: None)
+    monkeypatch.setattr(evaluator_module, "_has_import_evidence", lambda *_a: False)
     monkeypatch.setattr(
         evaluator_module, "_build_select_query", lambda *_a: ("SELECT", ())
     )

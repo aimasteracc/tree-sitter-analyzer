@@ -8,6 +8,15 @@ from collections.abc import Callable, Collection, Iterator
 _MAX_MATERIALIZED_ITEMS = 10_000
 
 
+def _has_import_evidence(db_conn: sqlite3.Connection) -> bool:
+    """判断当前索引是否提供导入关系证据。"""
+    try:
+        db_conn.execute("SELECT 1 FROM ast_imports LIMIT 0")
+    except sqlite3.OperationalError:
+        return False
+    return True
+
+
 def _build_import_index(
     db_conn: sqlite3.Connection,
     *,
@@ -16,9 +25,7 @@ def _build_import_index(
     capacity: int = _MAX_MATERIALIZED_ITEMS,
 ) -> dict[str, set[str]] | None:
     """只为候选调用方构建 ``{文件: 导入模块集合}``，并限制物化行数。"""
-    try:
-        db_conn.execute("SELECT 1 FROM ast_imports LIMIT 0")
-    except sqlite3.OperationalError:
+    if not _has_import_evidence(db_conn):
         # 测试夹具或新数据库可能尚未创建导入表，此时保持旧的保守行为。
         return None
     if file_paths is not None and not file_paths:
