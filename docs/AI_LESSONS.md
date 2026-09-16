@@ -393,3 +393,40 @@ that the score is unchanged is its
 `tests/unit/mcp/test_watch_push_bridge.py` 从真实 `make_on_sync_callback` 路径注入
 缓存构造、选择器解析和 Evaluator 求值失败，并固定失败后相同结果不通知、
 新结果产生 delta、成功空集产生删除以及缺少项目根不改写状态的契约。
+
+## 2026-09 — A historical qualification claim needs a reproducible receipt
+
+### Context
+
+The roadmap repeated a historical report of 429 passing tests and labeled it
+`LOCAL_GO`. The current workspace contains no reproducible selection command,
+exact collected and executed nodeids, or durable receipt for that run. The
+count may describe a run that happened, but it cannot reveal which semantics
+were exercised and therefore cannot serve as a semantic baseline or
+qualification evidence. The roadmap was corrected, and this lesson records the
+same correction so a later agent does not promote the orphaned count again.
+
+### Lessons learned
+
+1. **A published historical count is not a trusted baseline by itself.** A
+   qualification claim must carry enough identity to reproduce the same
+   selection against the same source, not only a total and a status label.
+2. **Exact nodeids define the tested semantics.** The selector command and the
+   complete nodeid manifest, including parameter IDs, distinguish the intended
+   suite from a similarly sized but different selection.
+3. **Evidence must outlive the workspace.** A durable receipt must bind the
+   source identity, selector, nodeids, and item results; a local terminal report
+   or remembered total cannot be upgraded later.
+4. **Correct the lesson with the roadmap.** When a published qualification
+   statement is withdrawn or narrowed, update the reusable lesson in the same
+   change so the stale claim does not return through future planning work.
+
+### Required guardrail
+
+Any qualification statement in `rfcs/ROADMAP-no1-agent-trust.md` must either
+link a durable receipt that binds the exact source identity, reproducible
+selector, exact nodeids, and item results, or explicitly state that it is not a
+semantic baseline or qualification evidence. The synchronized correction lives
+in `docs/AI_LESSONS.md`, and
+`tests/contracts/test_agent_docs_contract.py` pins the exact lesson-entry count
+and required structure.

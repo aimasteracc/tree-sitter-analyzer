@@ -267,8 +267,8 @@ def test_cli_codemap_flag_count_matches_the_real_parser() -> None:
 
 _LESSONS_PATH = PROJECT_ROOT / "docs" / "AI_LESSONS.md"
 
-#: 2026-09-15 实测条目数；新增教训时须明确更新。
-_LESSON_ENTRY_COUNT = 11
+#: 合并信任路线图教训后实测为 12 条；新增教训时必须同步更新。
+_LESSON_ENTRY_COUNT = 12
 
 _LESSON_SECTIONS = ("### Context", "### Lessons learned", "### Required guardrail")
 _LESSON_TITLE = re.compile(r"^## \d{4}-\d{2} — \S")
