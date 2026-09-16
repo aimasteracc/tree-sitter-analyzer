@@ -146,3 +146,56 @@ def test_iter_violations_accepts_optional_callbacks_and_scope(
     assert [(item.rule_id, item.caller_line, item.callee_file) for item in result] == [
         ("rule", 4, "lib/b.py")
     ]
+
+
+def test_candidate_caller_capacity_counts_only_exact_eligible_rows() -> None:
+    """每个精确资格分支都必须在容量计数前排除不相关调用方。"""
+    from tree_sitter_analyzer.constraints import Constraint
+    from tree_sitter_analyzer.constraints.evaluator import _candidate_caller_files
+    from tree_sitter_analyzer.constraints.parser import compile_constraints
+
+    rows = [
+        ("caller", "outside/caller.py", 1, "target", "blocked/a/target.py"),
+        ("caller", "src/a/unrelated.py", 2, "target", "blocked/a/target.py"),
+        ("caller", "src/a/selected.py", 3, "target", "allowed/a/target.py"),
+        ("caller", "src/a/selected.py", 4, "target", "blocked/a/unrelated.py"),
+        (
+            "caller",
+            "src/excepted/selected.py",
+            5,
+            "target",
+            "blocked/a/target.py",
+        ),
+        ("caller", "src/one/selected.py", 6, "target", "blocked/a/target.py"),
+        ("caller", "src/two/selected.py", 7, "target", "blocked/a/target.py"),
+        ("caller", "src/three/selected.py", 8, "target", "blocked/a/target.py"),
+    ]
+
+    class Connection:
+        def execute(self, _sql: str, _params: object):
+            return iter(rows)
+
+    compiled = compile_constraints(
+        [
+            Constraint(
+                "rule",
+                "warn",
+                "forbid",
+                "src/**/selected.py",
+                "blocked/**/target.py",
+                "boundary",
+                ("src/excepted/**",),
+            )
+        ]
+    )
+
+    with pytest.raises(RuntimeError, match="^CONSTRAINT_EVALUATION_CAPACITY$"):
+        _candidate_caller_files(
+            Connection(),
+            "SELECT",
+            (),
+            compiled,
+            scope_predicate=None,
+            check_callback=None,
+            capacity=2,
+        )
