@@ -36,14 +36,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 TOOLS_PACKAGE_DIR = PROJECT_ROOT / "tree_sitter_analyzer" / "mcp" / "tools"
 
-#: The six names §3.1 measured.  They are asserted to be *in the enumeration*
-#: below, so a broken walk cannot make this gate vacuously green.
+#: §3.1 测得且在 v2 删除到期弃用项后仍应出现在枚举中的工具类。
 _MEASURED_ORPHANS = (
     "CodeGraphPRReviewTool",
     "CodeGraphRefactorTool",
     "GetProjectSummaryTool",
     "MiddlewareDetectorTool",
-    "UniversalAnalyzeTool",
     "UnreachableCodeTool",
 )
 

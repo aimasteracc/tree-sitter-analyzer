@@ -19,7 +19,6 @@ from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
 )
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
 from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
-from tree_sitter_analyzer.mcp.tools.universal_analyze_tool import UniversalAnalyzeTool
 from tree_sitter_analyzer.security import SecurityValidator
 
 
@@ -98,19 +97,6 @@ class TestClass:
             Exception, match="Invalid file path|Directory traversal|Operation failed"
         ):
             await table_tool.execute({"file_path": "../../../etc/passwd"})
-
-        # Test UniversalAnalyzeTool
-        analyze_tool = UniversalAnalyzeTool(project_root)
-
-        # Valid file should work
-        result = await analyze_tool.execute({"file_path": self.test_file})
-        assert "error" not in result
-
-        # Invalid path should be rejected
-        with pytest.raises(
-            Exception, match="Invalid file path|Directory traversal|Operation failed"
-        ):
-            await analyze_tool.execute({"file_path": "../../../etc/passwd"})
 
     @pytest.mark.asyncio
     async def test_read_partial_tool_security(self):
@@ -234,12 +220,10 @@ class TestClass:
         project_root = str(Path(self.temp_dir).parent)
         engine = get_analysis_engine(project_root)
         table_tool = TableFormatTool(project_root)
-        analyze_tool = UniversalAnalyzeTool(project_root)
 
         # All should have security_validator attribute
         assert hasattr(engine, "_security_validator")
         assert hasattr(table_tool, "security_validator")
-        assert hasattr(analyze_tool, "security_validator")
 
         # All should reject the same malicious paths
         malicious_path = "../../../etc/passwd"
@@ -248,13 +232,9 @@ class TestClass:
         table_valid, _ = table_tool.security_validator.validate_file_path(
             malicious_path
         )
-        analyze_valid, _ = analyze_tool.security_validator.validate_file_path(
-            malicious_path
-        )
 
         assert not engine_valid
         assert not table_valid
-        assert not analyze_valid
 
     def test_input_sanitization_consistency(self):
         """Test that input sanitization is consistent across components."""

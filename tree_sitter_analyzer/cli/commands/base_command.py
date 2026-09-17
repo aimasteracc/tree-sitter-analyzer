@@ -74,16 +74,10 @@ class BaseCommand(ABC):
         return True
 
     def detect_language(self) -> str | None:
-        """Detect or validate the target language.
+        """检测或校验目标语言。
 
-        Q2 (round-33 dogfood): the previous implementation silently rewrote
-        the target to ``"java"`` whenever language detection produced an
-        unsupported value, *and* it printed the "trying Java" diagnostic
-        to ``stdout`` — which broke ``json.load()`` on the CLI output for
-        any caller piping it. We now emit a canonical error envelope
-        instead (matches MCP ``UniversalAnalyzeTool.execute`` at
-        ``mcp/tools/universal_analyze_tool.py:226-227`` which raises
-        ``ValueError`` for unsupported languages).
+        不支持的语言必须返回规范错误信封，不能静默改写成 Java，也不能向标准输出
+        写入会破坏 JSON 管道的诊断文本。
         """
         if hasattr(self.args, "language") and self.args.language:
             # Sanitize language input

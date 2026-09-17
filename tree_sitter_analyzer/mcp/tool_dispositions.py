@@ -1,34 +1,10 @@
 #!/usr/bin/env python3
-"""Orphan dispositions — RFC-0028 §3.1's mandatory disposition rule.
+"""RFC-0028 §3.1 的孤立工具处置登记。
 
-§3.1 measured six concrete ``BaseMCPTool`` subclasses reachable from nothing and
-then made a prediction about the implementer: *"an implementer facing six red
-rows will add an allowlist of six entries, tick the box, and thereby manufacture
-a new pinned-orphan-state test — the exact anti-pattern this item exists to
-kill."* So every orphan resolves into exactly one of three dispositions, and
-**an allowlist entry is not one of them**:
-
-``wire``
-    Register it in the facade it belongs to. Recorded here for the audit trail;
-    the route itself is the proof.
-``delete``
-    No consumer, no plan — remove the tool and its tests.
-``deprecate``
-    Keep it, mark it deprecated with a **named removal version**, and let the
-    invariant **fail once that version ships**. That last clause is what makes
-    this different from an allowlist: :func:`expired_dispositions` turns the
-    deadline into a test failure, so a deprecation cannot quietly become
-    permanent.
-
-This module is data plus one predicate. RFC-0028's reachability gate itself is
-deliberately NOT implemented here — it belongs to RFC-0028's own
-implementation, and would fail on merge by design until every disposition has
-landed. Dispositions first, gate second.
-
-Abstract bases (``FacadeTool``, ``MCPTool``, ``_CallTreeBase``) are absent on
-purpose: their exemption is **structural** — a class is exempt iff it is
-``abc``-abstract or has no concrete ``execute`` — and naming them here would be
-the allowlist pattern again.
+每个不可达工具只能选择接线、删除或带明确到期版本的弃用。这里保存已经落地的
+处置记录；实时可达性由独立契约验证。抽象类依靠结构特征豁免，不能通过名称白名单
+绕过检查。弃用到期后，:func:`expired_dispositions` 必须使契约失败，直到对应代码被
+真正接线或删除。
 """
 
 from __future__ import annotations
@@ -56,8 +32,7 @@ class Disposition:
             raise ValueError(f"remove_in applies only to deprecate, not {self.kind}")
 
 
-#: ``{class_name: Disposition}`` for every tool class RFC-0028 §3.1 measured as
-#: unreachable on 2026-08-19, plus the one the measurement got wrong.
+#: RFC-0028 §3.1 测得且仍需保留审计记录的工具类处置。
 TOOL_DISPOSITIONS: dict[str, Disposition] = {
     # ---- wired by this change (RFC-0027 §L7/§L8) -------------------------
     "GetProjectSummaryTool": Disposition(
@@ -92,7 +67,7 @@ TOOL_DISPOSITIONS: dict[str, Disposition] = {
             "or it will report this false positive forever."
         ),
     ),
-    # ---- deprecate with an expiry ----------------------------------------
+    # ---- 已接入健康门面的工具 ------------------------------------------
     "UnreachableCodeTool": Disposition(
         kind="wire",
         reason=(
@@ -109,34 +84,6 @@ TOOL_DISPOSITIONS: dict[str, Disposition] = {
             "Complements route discovery with middleware/interceptor chains; "
             "RFC-0027/0028 release integration records the existing public routes."
         ),
-    ),
-    "UniversalAnalyzeTool": Disposition(
-        kind="deprecate",
-        reason=(
-            "Superseded. It duplicates AnalyzeCodeStructureTool (structure "
-            "action=analyze) down to sharing "
-            "analyze_code_structure_helpers.convert_analysis_result_to_"
-            "structure_dict, and is instantiated on the server object without "
-            "ever being listed as a tool. Delete is the right end state, but "
-            "it still has live consumers in tests/unit/security/"
-            "test_security_integration.py and examples/"
-            "security_integration_demo.py, so removing it is its own change."
-        ),
-        remove_in="1.33.0",
-    ),
-    "MCPTool": Disposition(
-        kind="deprecate",
-        reason=(
-            "A backward-compatibility protocol base, not a route. Its own "
-            "docstring says 'deprecated, use BaseMCPTool instead', and it is "
-            "reachable from nothing because every concrete tool derives from "
-            "BaseMCPTool. Found by the RFC-0028 §3.1 reachability gate, which "
-            "enumerates classes rather than consulting a list: it is a seventh "
-            "orphan the 2026-08-19 manual measurement did not name. Removal is "
-            "its own change because it is a published import path for external "
-            "users, not an internal one."
-        ),
-        remove_in="1.33.0",
     ),
 }
 

@@ -1313,10 +1313,11 @@ def test_hierarchy_cache_open_error_releases_temporary_root_fd(tmp_path, monkeyp
     real_open = capability.os.open
 
     def fail_cache_open(path, flags, *args, **kwargs):
-        if kwargs.get("dir_fd") is not None:
+        if path == ".ast-cache" and kwargs.get("dir_fd") is not None:
             raise OSError("cache reopen failed")
         fd = real_open(path, flags, *args, **kwargs)
-        temporary.append(fd)
+        if os.fspath(path) == canonical:
+            temporary.append(fd)
         return fd
 
     monkeypatch.setattr(capability.os, "open", fail_cache_open)

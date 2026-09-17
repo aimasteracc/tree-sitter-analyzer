@@ -1,10 +1,14 @@
 # Changelog
 
 ## [Unreleased]
+
+## [2.0.0] - 2026-09-17
+
 ### Breaking changes
 
 - Complete the removal of external-search wrappers: `search.batch`, `project.files`, `project.tools`, `--batch-search`, `--batch-search-queries-json`, `--check-tools`, and the `list-files` console script are retired. The earlier `search.content`/`search.grep` removal remains in effect.
 - TSA no longer requires ripgrep or fd. Project discovery and live symbol verification run in process; symbol, graph, AST and semantic retrieval remain available.
+- Remove the expired `MCPTool` compatibility base and the unregistered `UniversalAnalyzeTool`. Extend `BaseMCPTool` for custom tools and use `structure action=analyze` or `AnalyzeCodeStructureTool` for structural analysis.
 
 ### Fixed
 

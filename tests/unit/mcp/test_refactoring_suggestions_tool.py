@@ -194,7 +194,8 @@ class TestRefactoringSuggestionsTool:
 
     def test_server_file_analysis(self, tool):
         result = _run(tool.execute({"file_path": SAMPLE_GENERIC}))
-        assert result["total_suggestions"] == 2
+        assert result["total_suggestions"] == 1
+        assert result["suggestions"][0]["name"] == "reduce_class_size"
 
     def test_default_no_skeleton(self, tool):
         result = _run(

@@ -23,7 +23,6 @@ async def analyze_code_scale(
     *,
     analysis_engine: Any,
     security_validator: Any,
-    universal_analyze_tool: Any | None = None,
     initialization_complete: bool = True,
     path_class: Any = PathClass,
 ) -> dict[str, Any]:
@@ -38,12 +37,6 @@ async def analyze_code_scale(
         raise MCPError("Server is still initializing")
 
     if "file_path" not in arguments:
-        if universal_analyze_tool is not None:
-            try:
-                universal_result = await universal_analyze_tool.execute(arguments)
-                return dict(universal_result)
-            except ValueError:
-                raise
         raise ValueError("file_path is required")
 
     file_path = arguments["file_path"]

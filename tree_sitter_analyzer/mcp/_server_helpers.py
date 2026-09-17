@@ -198,21 +198,6 @@ def attach_tool_aliases(
     ]
 
 
-def init_universal_tool(
-    project_root: str | None,
-    *,
-    universal_tool_available: bool,
-    universal_tool_cls: type[Any] | None,
-) -> Any:
-    """Initialize the optional universal analysis tool."""
-    if not universal_tool_available or universal_tool_cls is None:
-        return None
-    try:
-        return universal_tool_cls(project_root)
-    except Exception:
-        return None
-
-
 def detect_server_version(
     base_version: str,
     *,

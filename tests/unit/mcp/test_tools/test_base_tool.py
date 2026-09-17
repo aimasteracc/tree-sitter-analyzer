@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""
-Unit tests for base_tool module
-
-Tests the BaseMCPTool base class and MCPTool protocol.
-"""
+"""base_tool 模块的单元测试，覆盖 BaseMCPTool 基类。"""
 
 import tempfile
 from pathlib import Path
@@ -11,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tree_sitter_analyzer.mcp.tools.base_tool import BaseMCPTool, MCPTool
+from tree_sitter_analyzer.mcp.tools.base_tool import BaseMCPTool
 from tree_sitter_analyzer.mcp.utils.path_resolver import PathResolver
 from tree_sitter_analyzer.security import SecurityValidator
 
@@ -309,77 +305,6 @@ class TestAbstractMethods:
         """Test that validate_arguments is abstract"""
         with pytest.raises(TypeError):
             BaseMCPTool()  # type: ignore
-
-
-class TestMCPToolProtocol:
-    """Test MCPTool protocol class"""
-
-    def test_mcp_tool_get_tool_definition(self):
-        """Test MCPTool protocol get_tool_definition"""
-        tool = ConcreteMCPTool()
-        definition = tool.get_tool_definition()
-        assert definition["name"] == "concrete_tool"
-
-    @pytest.mark.asyncio
-    async def test_mcp_tool_execute(self):
-        """Test MCPTool protocol execute"""
-        tool = ConcreteMCPTool()
-        result = await tool.execute({"test": "value"})
-        assert result["result"] == "success"
-
-    def test_mcp_tool_validate_arguments(self):
-        """Test MCPTool protocol validate_arguments"""
-        tool = ConcreteMCPTool()
-        assert tool.validate_arguments({"file_path": "test"}) is True
-        assert tool.validate_arguments({}) is False
-
-    def test_mcp_tool_get_tool_definition_returns_dict(self):
-        tool = ConcreteMCPTool()
-        definition = tool.get_tool_definition()
-        assert isinstance(definition, dict)
-
-    def test_mcp_tool_execute_raises_not_implemented(self):
-        """Test that default execute raises NotImplementedError"""
-
-        # Create a minimal concrete implementation
-        class MinimalTool(MCPTool):
-            def get_tool_definition(self):
-                return {}
-
-            def validate_arguments(self, arguments):
-                return True
-
-        tool = MinimalTool()
-
-        # The execute method in MCPTool is not abstract, it raises NotImplementedError
-        # This test verifies the default behavior
-        with pytest.raises(
-            NotImplementedError, match="Subclasses must implement execute method"
-        ):
-            # Note: execute is async, so we need to check the coroutine behavior
-            # The NotImplementedError is raised when the coroutine is awaited
-            import asyncio
-
-            coro = tool.execute({})
-            asyncio.run(coro)
-
-    def test_mcp_tool_validate_arguments_raises_not_implemented(self):
-        """Test that default validate_arguments raises NotImplementedError"""
-
-        # Create a minimal concrete implementation
-        class MinimalTool(MCPTool):
-            def get_tool_definition(self):
-                return {}
-
-            async def execute(self, arguments):
-                return {}
-
-        tool = MinimalTool()
-
-        with pytest.raises(
-            NotImplementedError, match="must implement validate_arguments method"
-        ):
-            tool.validate_arguments({})
 
 
 class TestBaseToolIntegration:
