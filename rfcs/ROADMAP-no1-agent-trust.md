@@ -6,9 +6,9 @@
 - **North star:** Verified Change Success Rate (VCSR), not feature, language, tool, test, or edge count.
 - **Claim policy:** Public language is always bounded to named tools, versions, repositories, models, dates, and evidence levels. E0–E3 emit no quantitative competitive wording; E4 permits only the exact admitted bounded sentence, never an unqualified "No.1" claim.
 
-## 2026-09-16 交付状态：仓库内阻断已收敛，竞争证据仍受门控
+## 2026-09-17 交付状态：v2.0.0 已发布，竞争证据仍受门控
 
-本节以 `develop@b793dc827d220906bfdd260260c42d6179e50bba` 为基线。
+本节以 `develop@1088f42100a127c7388606f15d970eba10f8fb85` 为基线。
 [#1489](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1489) 至
 [#1505](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1505) 已全部合入
 `develop`；其中包括订阅失败隔离、认证源码正文、生命周期所有权、路由与
@@ -30,11 +30,11 @@ rerun，不能计为额外成功，也不能把历史 EMFILE 的唯一根因追�
 
 - RFC-0033 的仓库内实现、迁移、完整本地测试和跨平台 CI 验收已经完成；v2
   公开搜索 wrapper 退役不再有仓库内待办。
-- 本修复 #1505 已通过最终 PR CI 并合入 `develop`；`release/v2.0.0` 已从该
-  最终提交创建，并完成版本同步、focused/quick/patch coverage、构建、Twine、
-  Python 3.10 净环境安装及 CLI smoke 审计。release 分支推送会触发 PyPI
-  发布，仍须按 GITFLOW 完成 `release/v* → main`、标记版本、GitHub Release
-  及回合 `develop`。
+- v2.0.0 已发布到 PyPI；[#1508](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1508)
+  已合入 `main`，标签与 GitHub Release 均指向 `69f7568c1`；
+  [#1509](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1509) 已将 release
+  提交回合 `develop`，远程 release 分支已删除。发布矩阵的 10 个完整平台与
+  Python 轴全部通过，PyPI Python 3.10 净环境安装与 CLI 版本检查返回 `2.0.0`。
 - VCSR、外部维护者采用、模型裁判、生产 canary、签名证明以及 E2–E4 竞争性
   表述属于外部或人工证据门槛。它们仍未完成，不能用仓库测试代替；它们阻止
   “No.1”公开声明，但不伪装成尚可继续编码的本地功能清单。
@@ -42,13 +42,11 @@ rerun，不能计为额外成功，也不能把历史 EMFILE 的唯一根因追�
   维护队列，不是一次性发版故事；只有 TSA `safe-to-edit` 给出可验证收益时才取项，
   不能为清空列表而制造重构。
 
-发布动作已经获得授权。首次推送在全平台矩阵中一致命中 v2 到期契约：
-`MCPTool` 与未注册的 `UniversalAnalyzeTool` 仍留在源码中；构建和 PyPI 发布均未
-开始。release 分支已删除这两个兼容类、相关回退路径和专属测试，并补充迁移说明。
-下一步顺序固定为：通过本地完整门禁后重新推送；等待自动化测试、构建和 PyPI 发布；
-随后合入 `main`、标记版本、创建 GitHub Release，并将 release 提交回合
-`develop`。外部证据计划继续按 TRUST-C1 / TRUST-T1 / TRUST-I1 的门槛推进，
-失败、未知和未签名结果保留在分母中。
+首次发布尝试在全平台矩阵中一致命中 v2 到期契约，且在构建和 PyPI 发布前安全
+停止。最终 release 删除了 `MCPTool`、未注册的 `UniversalAnalyzeTool`、相关回退
+路径和专属测试，并补充迁移说明；本地完整门禁为 `24717 passed, 98 skipped,
+2 rerun`。v2.0.0 的仓库内发布工作已经关闭。后续工作转回外部证据计划，继续按
+TRUST-C1 / TRUST-T1 / TRUST-I1 的门槛推进；失败、未知和未签名结果保留在分母中。
 
 ## 2026-09-08 第二轮合入：内容新鲜度与健康评分
 
