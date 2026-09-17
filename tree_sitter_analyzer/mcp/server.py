@@ -52,7 +52,6 @@ from ._server_helpers import (
     attach_tool_aliases,
     build_initialization_options,
     detect_server_version,
-    init_universal_tool,
     resolve_project_root,
 )
 from ._server_helpers import (
@@ -67,15 +66,6 @@ from .server_utils.tool_registration import register_tools
 # PERF-3: tool classes imported lazily by _create_tool_registry() — saves ~316 ms cold start.
 from .utils.file_metrics import compute_file_metrics
 from .utils.shared_cache import get_shared_cache
-
-# Import UniversalAnalyzeTool at module level for test compatibility
-try:
-    from .tools.universal_analyze_tool import UniversalAnalyzeTool
-
-    UNIVERSAL_TOOL_AVAILABLE = True
-except ImportError:
-    UniversalAnalyzeTool = None  # type: ignore
-    UNIVERSAL_TOOL_AVAILABLE = False
 
 # Set up logging
 logger = setup_logger(__name__)
@@ -112,20 +102,10 @@ class TreeSitterAnalyzerMCPServer:
     """
 
     def __init__(self, project_root: str | None = None) -> None:
-        """Initialize the MCP server with analyzer components.
+        """初始化 MCP 服务器组件，并延迟构建较重的工具注册表。
 
-        Startup fix: the tool registry (``_create_tool_registry`` +
-        ``attach_tool_aliases`` + ``init_universal_tool``) costs ~54ms and is
-        NOT needed to answer the MCP ``initialize`` handshake — only the later
-        ``tools/list`` / ``tools/call`` requests touch it. Building it eagerly
-        here pushed spawn→initialize to the edge of the client's connect
-        window, so a loaded machine intermittently saw the server stuck at
-        ``status: pending``. We now defer that work to ``_ensure_components()``,
-        triggered lazily on first registry access (via the ``tools`` /
-        ``tool_instances`` properties or ``__getattr__`` for the legacy alias
-        attributes). ``register_tools`` only reads the registry inside its
-        handler bodies, so ``create_server()`` no longer materialises it and
-        ``initialize`` returns before the 54ms is paid.
+        注册表只在首次访问 ``tools``、``tool_instances`` 或旧别名属性时构建，
+        因此 MCP ``initialize`` 握手不承担约 54 毫秒的注册开销。
         """
         self.server: Server | None = None
         self._initialization_complete = False
@@ -139,24 +119,11 @@ class TreeSitterAnalyzerMCPServer:
 
         _log_safely(logger.info, "Starting MCP server initialization...")
 
-        # Eager components are all cheap (~7ms total): the analysis engine and
-        # security validator back legacy code-scale paths and the per-call
-        # security pre-check; the legacy alias tools and the optional universal
-        # tool are lightweight constructions that do NOT touch the AST index.
-        # The ONE expensive piece — ``_create_tool_registry`` (~54ms) — is the
-        # only thing deferred (see ``_ensure_registry``); it is needed solely
-        # for ``tools/list`` / ``tools/call``, never for the ``initialize``
-        # handshake. ``attach_tool_aliases`` does not read the registry, so it
-        # is safe to run before the registry exists.
+        # 这里仅初始化轻量组件；约 54 毫秒的注册表构建由 _ensure_registry 延迟执行。
         self.analysis_engine = get_analysis_engine(project_root)
         self.security_validator = SecurityValidator(project_root)
 
         attach_tool_aliases(self, {}, project_root)
-        self.universal_analyze_tool = init_universal_tool(
-            project_root,
-            universal_tool_available=UNIVERSAL_TOOL_AVAILABLE,
-            universal_tool_cls=UniversalAnalyzeTool,
-        )
 
         self.code_file_resource = CodeFileResource()
         self.project_stats_resource = ProjectStatsResource()
@@ -244,12 +211,10 @@ class TreeSitterAnalyzerMCPServer:
 
     async def _analyze_code_scale(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Legacy method for analyzing code scale. Delegates to code_scale_handler."""
-        _utool = getattr(self, "universal_analyze_tool", None)
         return await analyze_code_scale(
             arguments,
             analysis_engine=self.analysis_engine,
             security_validator=self.security_validator,
-            universal_analyze_tool=_utool,
             initialization_complete=self._initialization_complete,
             path_class=PathClass,
         )
@@ -319,9 +284,6 @@ class TreeSitterAnalyzerMCPServer:
         # ``read_partial_tool`` / ``table_format_tool`` bespoke paths + tests.
         for tool in getattr(self, "_legacy_alias_tools", []):
             tool.set_project_path(project_path)
-
-        if hasattr(self, "universal_analyze_tool") and self.universal_analyze_tool:
-            self.universal_analyze_tool.set_project_path(project_path)
 
         self.analysis_engine = get_analysis_engine(project_path)
         self.security_validator = SecurityValidator(project_path)

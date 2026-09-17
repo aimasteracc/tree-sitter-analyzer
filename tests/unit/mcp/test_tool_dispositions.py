@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for the RFC-0028 §3.1 orphan-disposition registry.
-
-The registry exists so the six measured orphans resolve into
-``wire`` / ``delete`` / ``deprecate-with-an-expiry`` instead of an allowlist.
-These tests are what make the distinction real: a deprecation whose deadline
-has arrived fails, and a ``wire`` disposition is checked against the live
-registry rather than taken on trust.
-"""
+"""验证 RFC-0028 §3.1 的孤立工具处置登记与到期约束。"""
 
 from __future__ import annotations
 
@@ -19,17 +12,13 @@ from tree_sitter_analyzer.mcp.tool_dispositions import (
     expired_dispositions,
 )
 
-#: The six names §3.1 measured on 2026-08-19, plus the one the §3.1
-#: reachability gate found afterwards. A new name here means a new orphan
-#: appeared and needs its own decision.
+#: §3.1 测得且在删除到期弃用项后仍需保留处置记录的工具类。
 _MEASURED_ORPHANS = {
     "CodeGraphPRReviewTool",
     "CodeGraphRefactorTool",
     "GetProjectSummaryTool",
     "MiddlewareDetectorTool",
-    "UniversalAnalyzeTool",
     "UnreachableCodeTool",
-    "MCPTool",
 }
 
 
@@ -43,28 +32,22 @@ def test_no_disposition_is_missing_a_reason() -> None:
 
 def test_deprecations_are_exactly_the_remaining_unwired_tools() -> None:
     deprecated = {n for n, d in TOOL_DISPOSITIONS.items() if d.kind == "deprecate"}
-    assert deprecated == {
-        "UniversalAnalyzeTool",
-        # Seventh orphan, found by the §3.1 reachability gate rather than by
-        # the 2026-08-19 manual measurement: a backward-compatibility base.
-        "MCPTool",
-    }
+    assert deprecated == set()
 
 
 def test_no_deprecation_has_expired() -> None:
-    """The clause that stops a deprecation becoming a permanent allowlist.
-
-    When this goes red, the named tools must be wired or deleted — bumping
-    ``remove_in`` to silence it is the anti-pattern RFC-0028 §3.1 forbids.
-    """
+    """发布版本不得包含已经到期的弃用项。"""
     assert expired_dispositions(__version__) == []
 
 
-def test_expiry_fires_once_the_removal_version_ships() -> None:
-    assert expired_dispositions("1.33.0") == [
-        "MCPTool",
-        "UniversalAnalyzeTool",
-    ]
+def test_expiry_fires_once_the_removal_version_ships(monkeypatch) -> None:
+    monkeypatch.setitem(
+        TOOL_DISPOSITIONS,
+        "LegacyTool",
+        Disposition(kind="deprecate", reason="测试到期边界", remove_in="1.33.0"),
+    )
+    assert expired_dispositions("1.32.9") == []
+    assert expired_dispositions("1.33.0") == ["LegacyTool"]
 
 
 def test_deprecate_without_remove_in_is_rejected() -> None:

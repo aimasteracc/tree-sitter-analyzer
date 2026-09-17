@@ -40,7 +40,6 @@ __all__ = [
     "_VERDICT_ALIASES",
     "_canonicalize_verdict",
     "BaseMCPTool",
-    "MCPTool",
     "mirror_summary_line",
     "format_summary_line",
     "detect_language_mismatch",
@@ -93,18 +92,11 @@ def mirror_summary_line(result: dict[str, Any]) -> dict[str, Any]:
 
 
 def format_summary_line(*parts: Any) -> str:
-    """Join non-empty segments with single spaces into a clean summary line.
+    """用单个空格拼接非空片段，生成没有尾随或重复空格的摘要行。
 
-    J5 (round-22 dogfood): four tools (universal_analyze_tool,
-    analyze_scale_helpers ×2, analyze_code_structure_tool) shipped
-    ``summary_line`` with a hard-coded ``"... lines  "`` (trailing double
-    space). Pol1 only fixed ``code_patterns_tool``. This helper closes
-    the door on the regression class entirely — future builders pass
-    parts as positional args, get a guaranteed-clean single-space join,
-    no matter how the parts are stitched. Empty/whitespace-only segments
-    are dropped so optional pieces don't reintroduce double spaces.
+    空字符串、纯空白片段和 ``None`` 会被忽略，因此可选字段不会重新引入双空格。
 
-    Examples:
+    示例：
         >>> format_summary_line("foo.py", "python", "42 lines",
         ...                      "classes=1", "methods=2")
         'foo.py python 42 lines classes=1 methods=2'
@@ -508,56 +500,3 @@ class BaseMCPTool(ABC):
             ValueError: If arguments are invalid
         """
         pass
-
-
-# Keep the protocol for backward compatibility
-class MCPTool(BaseMCPTool):
-    """
-    Protocol for MCP tools (deprecated, use BaseMCPTool instead).
-
-    All MCP tools must implement this protocol to ensure they have
-    the required methods for integration with the MCP server.
-    """
-
-    def get_tool_schema(self) -> dict[str, Any]:
-        """Return the JSON Schema for the tool's input parameters.
-
-        Deprecated stub — subclasses must override this.
-        """
-        raise NotImplementedError("Subclasses must implement get_tool_schema method")
-
-    def get_tool_definition(self) -> Any:
-        """
-        Get the MCP tool definition.
-
-        Returns:
-            Tool definition object compatible with MCP server
-        """
-        ...
-
-    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """
-        Execute the tool with the given arguments.
-
-        Args:
-            arguments: Tool arguments
-
-        Returns:
-            Dictionary containing execution results
-        """
-        raise NotImplementedError("Subclasses must implement execute method")
-
-    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        """
-        Validate tool arguments.
-
-        Args:
-            arguments: Arguments to validate
-
-        Returns:
-            True if arguments are valid
-
-        Raises:
-            ValueError: If arguments are invalid
-        """
-        raise NotImplementedError("Subclasses must implement validate_arguments method")

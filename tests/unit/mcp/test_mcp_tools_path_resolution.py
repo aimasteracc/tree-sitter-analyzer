@@ -14,7 +14,6 @@ from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
 from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
 from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
-from tree_sitter_analyzer.mcp.tools.universal_analyze_tool import UniversalAnalyzeTool
 
 
 class TestMCPToolsPathResolution:
@@ -36,7 +35,6 @@ class TestMCPToolsPathResolution:
         self.query_tool = QueryTool(self.project_root)
         self.read_partial_tool = ReadPartialTool(self.project_root)
         self.analyze_code_structure_tool = AnalyzeCodeStructureTool(self.project_root)
-        self.universal_analyze_tool = UniversalAnalyzeTool(self.project_root)
 
     def teardown_method(self):
         """Clean up test fixtures."""
@@ -82,16 +80,6 @@ class TestMCPToolsPathResolution:
         expected_root = str(Path(self.project_root).resolve())
         assert actual_root == expected_root
 
-    def test_universal_analyze_tool_uses_path_resolver(self):
-        """Test that UniversalAnalyzeTool uses PathResolver."""
-        assert self.universal_analyze_tool.path_resolver is not None
-        # Use Path.resolve() for proper normalization
-        actual_root = str(
-            Path(self.universal_analyze_tool.path_resolver.project_root).resolve()
-        )
-        expected_root = str(Path(self.project_root).resolve())
-        assert actual_root == expected_root
-
     def test_consistent_path_resolution_across_tools(self):
         """Test that all tools resolve paths consistently."""
         relative_path = "test_file.txt"
@@ -102,7 +90,6 @@ class TestMCPToolsPathResolution:
             self.query_tool.path_resolver.resolve(relative_path),
             self.read_partial_tool.path_resolver.resolve(relative_path),
             self.analyze_code_structure_tool.path_resolver.resolve(relative_path),
-            self.universal_analyze_tool.path_resolver.resolve(relative_path),
         ]
 
         # All resolved paths should be the same
@@ -189,7 +176,6 @@ public class Test {
             QueryTool(self.project_root),
             ReadPartialTool(self.project_root),
             AnalyzeCodeStructureTool(self.project_root),
-            UniversalAnalyzeTool(self.project_root),
         ]
 
         for tool in tools:

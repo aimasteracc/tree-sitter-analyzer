@@ -71,22 +71,11 @@ class TestMCPServerInitialization:
 
     @pytest.mark.asyncio
     async def test_analyze_code_scale_with_initialization_check(self):
-        """Test that analyze_code_scale checks initialization."""
+        """初始化完成后，缺少文件路径仍应由规模分析入口拒绝。"""
         with tempfile.TemporaryDirectory() as temp_dir:
             server = TreeSitterAnalyzerMCPServer(temp_dir)
-
-            # Mock the universal_analyze_tool to avoid actual analysis
-            server.universal_analyze_tool = Mock()
-            server.universal_analyze_tool.execute = AsyncMock(
-                return_value={"result": "test"}
-            )
-
-            # Should work when initialized
-            result = await server._analyze_code_scale({"test": "args"})
-            assert result == {"result": "test"}
-            server.universal_analyze_tool.execute.assert_called_once_with(
-                {"test": "args"}
-            )
+            with pytest.raises(ValueError, match="file_path is required"):
+                await server._analyze_code_scale({"test": "args"})
 
     @pytest.mark.asyncio
     async def test_analyze_code_scale_fails_when_not_initialized(self):
@@ -122,10 +111,6 @@ class TestMCPServerInitialization:
             assert (
                 server.read_partial_tool.get_tool_definition()["name"]
                 == "extract_code_section"
-            )
-            assert (
-                server.universal_analyze_tool.get_tool_definition()["name"]
-                == "analyze_code_universal"
             )
             assert (
                 server.table_format_tool.get_tool_definition()["name"]

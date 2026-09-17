@@ -12,6 +12,7 @@ This guide describes the breaking search-surface and encoding changes released i
 | Text-search wrappers | `search.content`, `search.grep`; legacy `search_content`, `find_and_grep`; `search-content`, `find-and-grep` commands | Removed; use the host's text/file search tools, or invoke a suitable text-search program directly |
 | External-tool wrappers | `search.batch`, `project.files`, `project.tools`, `list-files`, `--check-tools` | Removed; use indexed search/structure views, bounded native trace, or a host text-search tool according to the task |
 | Internal file discovery and live symbol tracing | External search processes | Native discovery and a bounded Python source-scanning worker |
+| Python MCP compatibility classes | `MCPTool`, `UniversalAnalyzeTool`, and `server.universal_analyze_tool` | Removed; extend `BaseMCPTool` and use `structure action=analyze` / `AnalyzeCodeStructureTool` |
 
 Indexed symbol search and AST queries serve code-intelligence tasks. They are not
 replacements for arbitrary text search in unindexed files. Likewise, indexed
