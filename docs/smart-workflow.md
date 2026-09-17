@@ -312,10 +312,10 @@ For files > 500 lines:
 | Workflow Step | Primary MCP Tool | CLI Equivalent |
 |---------------|------------------|----------------|
 | Set | `TREE_SITTER_PROJECT_ROOT` env var (server startup) | `--project-root /path` |
-| Map | `project action=files`, `search action=grep`, `project action=parser` | `list-files`, `find-and-grep`, `parser-readiness` |
+| Map | `structure action=sitemap`, `search action=symbol`, `project action=parser` | `--codegraph-sitemap`, `--symbol-search`, `parser-readiness` |
 | Analyze | `structure action=analyze`, `health action=scale`, `health action=file` | `--structure`, `--metrics-only`, `--file-health` |
 | Retrieve | `structure action=read`, `search action=query` | `--partial-read`, `--query-key` |
-| Trace | `search action=content`, `health action=deps`, `edit action=impact`, `edit action=safe` | `search-content`, `--dependencies`, `--change-impact`, `--safe-to-edit` |
+| Trace | `nav action=trace`, `health action=deps`, `edit action=impact`, `edit action=safe` | `--trace-impact`, `--dependencies`, `--change-impact`, `--safe-to-edit` |
 
 ## Troubleshooting
 
@@ -329,8 +329,8 @@ Use incremental approach:
 ### "Can't find the file"
 
 Use discovery tools:
-1. `list_files` with broad pattern
-2. CC Grep tool for content search (`find_and_grep` は廃止済み)
+1. Use the host agent's file search with a broad pattern
+2. Use the host agent's content search
 3. Check file extension and directory
 
 ### "Results are too verbose"

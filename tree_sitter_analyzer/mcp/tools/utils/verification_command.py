@@ -104,7 +104,28 @@ def _for_targets(default: DefaultTestCommand, targets: list[str]) -> DefaultTest
         and not targets_share_root_config(default.pytest_config_root, targets)
     ):
         return replace(default, pytest_marker=None, pytest_config_root=None)
-    return default
+    if default.runner != "pytest" or not default.pytest_marker:
+        return default
+    if not any(_is_claim_benchmark_target(target) for target in targets):
+        return default
+    terms = [term.strip() for term in default.pytest_marker.split(" and ")]
+    retained = [term for term in terms if term != "not benchmark"]
+    marker = " and ".join(retained) or None
+    return replace(
+        default,
+        pytest_marker=marker,
+        pytest_config_root=default.pytest_config_root if marker else None,
+    )
+
+
+def _is_claim_benchmark_target(target: str) -> bool:
+    """识别显式 claim 测试目标；它们虽带 benchmark 标记却不是计时夹具。"""
+    file_part = target.partition("::")[0].replace("\\", "/").strip("/")
+    parts = file_part.split("/")
+    return any(
+        parts[index : index + 3] == ["tests", "benchmarks", "claims"]
+        for index in range(max(0, len(parts) - 2))
+    )
 
 
 def _test_argv(default_command: DefaultTestCommand, targets: list[str]) -> list[str]:

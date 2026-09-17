@@ -1,24 +1,20 @@
 <!-- Generated: 2026-05-22; doc-code re-sync: 2026-08-19 -->
 # CLI Codemap
 
-Seven console-script entry points + flag-based dispatch through `cli_main.py`.
+Six installed console-script entry points; the main analyzer and its aliases dispatch through `cli_main.py`.
 
 ## Entry Points
 
-| Command | Module | Default format |
+| Command | Handler | Purpose |
 |---|---|---|
-| `tree-sitter-analyzer` | `cli_main.py` | `json` |
-| `tree-sitter-analyzer-mcp` | `mcp/server.py` (stdio) | `json` |
-| `tree-sitter-analyzer-doctor` | `cli_main.py:main_doctor` | text; `--doctor-json` for JSON |
-| `miswire-audit` | `miswire_audit.py` | text; `--card` adds Markdown |
-| `code-analyzer` | `cli_main.py` (alias) | `json` |
-| `java-analyzer` | `cli_main.py` (alias) | `json` |
-| `list-files` | `cli/commands/list_files_cli.py` | `json` |
+| `tree-sitter-analyzer` | `cli_main:main` | Main analysis CLI |
+| `tree-sitter-analyzer-mcp` | `mcp.server:main_sync` | MCP stdio server |
+| `tree-sitter-analyzer-doctor` | `cli_main:main_doctor` | Main CLI with `--doctor` |
+| `code-analyzer` | `cli_main:main` | Main CLI alias |
+| `java-analyzer` | `cli_main:main` | Main CLI alias |
+| `miswire-audit` | `miswire_audit:main` | Standalone terminal audit; optional Markdown card |
 
-MCP and CLI machine-readable envelopes use JSON. Human-readable CLI paths remain
-as documented below; TOON has been removed. The `search-content` and
-`find-and-grep` console scripts are removed on develop. `list-files`, batch search
-and external-tool checks remain available; see the [migration guide](../MIGRATION.md).
+The main analysis CLI and MCP use JSON; TOON has been removed. The standalone `miswire-audit` report is human-readable.
 
 ## Command Modules
 
@@ -32,7 +28,6 @@ cli/commands/
 ├── structure_command.py        ← --table full
 ├── summary_command.py          ← --summary
 ├── table_command.py            ← table rendering helpers
-├── list_files_cli.py           ← `list-files` subcommand
 ├── mcp_commands/               ← MCP-equivalent CLI flags (parity contract; package)
 └── codegraph_index_commands.py ← cache commands: autoindex / full-index / incremental-sync / metrics / knowledge graph index
 ```
@@ -81,16 +76,13 @@ Categories of CLI surface:
 
 ### Discovery
 - `--project-card` — the project card (RFC-0027 §L7): purpose from the README, top code languages, entry points, key config files, and per-module descriptions of the top-level structure. Persistent — built once into `.tree-sitter-cache/project-index.json` and recalled instantly. MCP twin: `project action=card`
-- `list-files` subcommand — fd wrapper
-- ~~`search-content` subcommand~~ — *(廃止済み: CC Grep tool を使用)*
-- ~~`find-and-grep` subcommand~~ — *(廃止済み: CC Glob + Grep tool を使用)*
 - `--detect-routes` — framework route detection
 
 ### Cache & Index
 - `--ast-cache --ast-cache-mode index|stats|lookup|search|sync|changes|watch_start|watch_stop|watch_status|invalidate` — AST cache ops (project index default cap: 20k files)
 - `--ast-cache-include-activation` — opt in to slower temporal git activation during project indexing
 - `--autoindex [--autoindex-mode status|warm|reset]` — transparent auto-index
-- `--full-index [--full-index-mode rebuild|stats|clear]` — one-shot complete index (default cap: 20k files)
+- `--full-index [--full-index-mode full|incremental]` — one-shot complete index (default cap: 20k files)
 - `--full-index-include-activation` — opt in to temporal git activation during full-index rebuilds
 - `--incremental-sync [--incremental-sync-mode sync|changes|status]` — content-hash diff re-index (SHA-256)
 - `--knowledge-graph-index [--knowledge-graph-index-mode build|update|status]` — refresh the canonical SQLite code+docs index and optionally materialize LadybugDB; `--knowledge-graph-backend auto|sqlite|ladybug` defaults to LadybugDB when installed and SQLite otherwise; update mode scans the full project safely; `--knowledge-graph-max-nodes 0 --knowledge-graph-max-edges 0` means uncapped materialization
@@ -102,7 +94,7 @@ Categories of CLI surface:
 
 ### CodeGraph parity (cross-file intelligence from pre-indexed AST cache)
 - `--codegraph-context TASK` — one-call architecture context: entry points, graph, and source blocks
-- `--callers SYMBOL` / `--callees SYMBOL` — bidirectional call tracking
+- `--callers SYMBOL` / `--callees SYMBOL` — bidirectional call tracking; add `--call-no-bodies` to return coordinates and metadata without inline source bodies
 - `--call-path FROM TO` — BFS path between two functions
 - `--symbol-resolve` — go-to-definition / find-all-references
 - `--ast-path FILE:LINE` — "what is at file:line?"
@@ -175,7 +167,7 @@ boundary.
 
 ## See Also
 
-- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (356 unique flags total — this codemap is intentionally categorical, not exhaustive)
+- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (354 unique flags total — this codemap is intentionally categorical, not exhaustive)
 - [`docs/CODEMAPS/mcp-tools.md`](./mcp-tools.md) — MCP-side counterpart
 - [`tests/unit/cli/test_mcp_commands.py`](../../tests/unit/cli/test_mcp_commands.py) — Parity contract tests
 - [`scripts/codemap-sync-check.sh`](../../scripts/codemap-sync-check.sh) — pre-commit gate that blocks a change to the CLI **flag surface** (any `cli/**/*.py`, compared as a set) without a `cli.md` update

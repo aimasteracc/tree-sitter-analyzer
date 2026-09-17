@@ -71,22 +71,11 @@ class TestMCPServerInitialization:
 
     @pytest.mark.asyncio
     async def test_analyze_code_scale_with_initialization_check(self):
-        """Test that analyze_code_scale checks initialization."""
+        """初始化完成后，缺少文件路径仍应由规模分析入口拒绝。"""
         with tempfile.TemporaryDirectory() as temp_dir:
             server = TreeSitterAnalyzerMCPServer(temp_dir)
-
-            # Mock the universal_analyze_tool to avoid actual analysis
-            server.universal_analyze_tool = Mock()
-            server.universal_analyze_tool.execute = AsyncMock(
-                return_value={"result": "test"}
-            )
-
-            # Should work when initialized
-            result = await server._analyze_code_scale({"test": "args"})
-            assert result == {"result": "test"}
-            server.universal_analyze_tool.execute.assert_called_once_with(
-                {"test": "args"}
-            )
+            with pytest.raises(ValueError, match="file_path is required"):
+                await server._analyze_code_scale({"test": "args"})
 
     @pytest.mark.asyncio
     async def test_analyze_code_scale_fails_when_not_initialized(self):
@@ -122,10 +111,6 @@ class TestMCPServerInitialization:
             assert (
                 server.read_partial_tool.get_tool_definition()["name"]
                 == "extract_code_section"
-            )
-            assert (
-                server.universal_analyze_tool.get_tool_definition()["name"]
-                == "analyze_code_universal"
             )
             assert (
                 server.table_format_tool.get_tool_definition()["name"]
@@ -377,8 +362,8 @@ def test_create_server_passes_detected_version_to_raw_sdk(monkeypatch, tmp_path)
     observed = {}
 
     class Raw:
-        def __init__(self, name, version=None):
-            observed.update(name=name, version=version)
+        def __init__(self, name, version=None, lifespan=None):
+            observed.update(name=name, version=version, lifespan=lifespan)
 
     monkeypatch.setattr(server_module, "Server", Raw)
     monkeypatch.setattr(server_module, "adapt_server", lambda raw: raw)
@@ -387,4 +372,38 @@ def test_create_server_passes_detected_version_to_raw_sdk(monkeypatch, tmp_path)
     monkeypatch.setattr(server_module, "register_prompts", lambda *args: None)
     server = TreeSitterAnalyzerMCPServer(str(tmp_path))
     server.create_server()
-    assert observed == {"name": server.name, "version": server.version}
+    assert observed == {
+        "name": server.name,
+        "version": server.version,
+        "lifespan": server.subscription_lifecycle.lifespan,
+    }
+    assert callable(observed["lifespan"])
+
+
+@pytest.mark.asyncio
+async def test_run_raises_shutdown_failure_after_successful_loop(tmp_path, monkeypatch):
+    """主循环正常返回时，application watcher 的关闭异常必须原样传播。"""
+    server = TreeSitterAnalyzerMCPServer(str(tmp_path))
+    failure = TimeoutError("shutdown failed")
+    monkeypatch.setattr(server, "create_server", lambda: object())
+    monkeypatch.setattr(server, "_run_server_loop", AsyncMock())
+    monkeypatch.setattr(
+        server, "_shutdown_application_watcher", Mock(side_effect=failure)
+    )
+
+    with pytest.raises(TimeoutError, match="shutdown failed") as caught:
+        await server.run()
+
+    assert caught.value is failure
+
+
+def test_shutdown_built_registry_without_cache_action_is_noop(tmp_path):
+    """registry 已构建但未注册 cache action 时，关闭不得物化或猜测工具。"""
+    server = TreeSitterAnalyzerMCPServer(str(tmp_path))
+    index = server.tools["index"]
+    index.action_map.pop("cache")
+
+    server._shutdown_application_watcher()
+
+    assert server._registry_built is True
+    assert "cache" not in index.action_map

@@ -12,7 +12,7 @@ For the project overview and install-and-go instructions, see the
 
 | Doc | What it covers |
 |---|---|
-| [installation.md](installation.md) | Install via pip/uv, system dependencies (fd, ripgrep) |
+| [installation.md](installation.md) | Install via pip/uv; Git is the only required system tool |
 | [cli-reference.md](cli-reference.md) | All CLI flags and commands |
 | [features.md](features.md) | Feature overview (languages, token optimisation, UML diagrams) |
 | [index-lifecycle.md](index-lifecycle.md) | Index operations: build / full / sync / auto, partial-cache trap, health check |

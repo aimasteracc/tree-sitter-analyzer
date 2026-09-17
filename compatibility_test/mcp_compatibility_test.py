@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""
-tree-sitter-analyzer MCP互換性テストスクリプト
-バージョン1.6.1.2と1.9.2の8つのMCPツールの互換性をテストします。
-"""
+"""比较 tree-sitter-analyzer 1.6.1.2 与 1.9.2 的五个 MCP 工具。"""
 
 import json
 import sys
@@ -10,14 +7,13 @@ import time
 from pathlib import Path
 from typing import Any
 
-# MCPツールのリスト (find_and_grep / search_content は廃止済み)
+# MCPツールのリスト（v2 で廃止された検索ラッパーは対象外）
 MCP_TOOLS = [
     "analyze_code_structure",
     "query_code",
     "check_code_scale",
     "extract_code_section",
     "set_project_path",
-    "list_files",
 ]
 
 # テスト対象バージョン
@@ -105,12 +101,11 @@ class MCPCompatibilityTester:
             # 基本的なテストケース
             basic_tests = {
                 "set_project_path": self.test_set_project_path(),
-                "list_files": self.test_list_files(),
                 "check_code_scale": self.test_check_code_scale(),
                 "analyze_code_structure": self.test_analyze_code_structure(),
                 "query_code": self.test_query_code(),
                 "extract_code_section": self.test_extract_code_section(),
-                # find_and_grep と search_content は廃止済み
+                # v2 で廃止された検索ラッパーは対象外
             }
 
             test_results["basic_tests"] = basic_tests
@@ -122,14 +117,6 @@ class MCPCompatibilityTester:
         return {
             "description": "プロジェクトパスの設定テスト",
             "expected": "プロジェクトルートパスが正常に設定される",
-            "status": "manual_verification_required",
-        }
-
-    def test_list_files(self) -> dict[str, Any]:
-        """list_filesツールのテスト"""
-        return {
-            "description": "ファイル一覧取得テスト",
-            "expected": "プロジェクト内のファイル一覧が取得される",
             "status": "manual_verification_required",
         }
 
@@ -184,10 +171,6 @@ class MCPCompatibilityTester:
             ],
             "status": "manual_verification_required",
         }
-
-    # test_find_and_grep と test_search_content は廃止済み:
-    # find_and_grep (FindAndGrepTool) と search_content (SearchContentTool) が削除されたため。
-    # テキスト検索には CC 組み込みの Grep tool を使用すること。
 
     def run_compatibility_test(self) -> dict[str, Any]:
         """互換性テストの実行"""

@@ -36,9 +36,6 @@ from tree_sitter_analyzer.mcp.tools.ast_diff_tool import ASTDiffTool  # noqa: F4
 from tree_sitter_analyzer.mcp.tools.ast_path_tool import (
     CodeGraphASTPathTool,  # noqa: F401
 )
-from tree_sitter_analyzer.mcp.tools.batch_search_tool import (
-    BatchSearchTool,  # noqa: F401
-)
 from tree_sitter_analyzer.mcp.tools.build_project_index_tool import (
     BuildProjectIndexTool,  # noqa: F401
 )
@@ -56,9 +53,6 @@ from tree_sitter_analyzer.mcp.tools.callers_tool import (
 )
 from tree_sitter_analyzer.mcp.tools.change_impact_tool import (
     ChangeImpactTool,  # noqa: F401
-)
-from tree_sitter_analyzer.mcp.tools.check_tools_tool import (
-    CheckToolsTool,  # noqa: F401
 )
 from tree_sitter_analyzer.mcp.tools.class_hierarchy_tool import (
     ClassHierarchyTool,  # noqa: F401
@@ -275,11 +269,9 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "ConstraintCheckTool",
         # consolidated-only tools ported during merge of feat/autonomous-dev
         "TraceImpactTool",
-        "CheckToolsTool",
         "BuildProjectIndexTool",
         "ModificationGuardTool",
         "DecisionJournalTool",
-        "BatchSearchTool",
         "DocSyncTool",
         "CodeGraphTestGapTool",
         # Nervous-system PR: Pulse API / TQL / semantic — re-wired as facade
@@ -330,8 +322,8 @@ def handle_mcp_commands(
     output_format = output_format_fn()
     fail_on_verdict = getattr(args, "change_impact_fail_on_risk", None)
     # #1003: build_tool_args runs BEFORE _run_tool's try/except. Builders
-    # that read files / parse JSON / validate paths (e.g. --batch-search,
-    # --partial-read) raise here, and an unwrapped raise escapes as a raw
+    # 参数构造阶段可能读取文件、解析 JSON 或验证路径（例如
+    # --partial-read），这里同样需要捕获异常，避免泄漏原始
     # Python traceback instead of a structured envelope. Wrap it so input
     # errors surface the same {success: False, verdict: "ERROR"} shape and a
     # non-zero exit code as runtime errors from execute().

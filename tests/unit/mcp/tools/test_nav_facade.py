@@ -432,6 +432,28 @@ def test_callees_scope_point_uses_callees_tool() -> None:
     mocks["callees_graph"].assert_not_called()
 
 
+@pytest.mark.parametrize(
+    ("action", "inner_name"),
+    [("callers", "callers_point"), ("callees", "callees_point")],
+)
+def test_point_scope_forwards_body_opt_out(action: str, inner_name: str) -> None:
+    """Issue #1450：点查询必须把正文选择传给底层工具。"""
+    facade, mocks = _build_facade_with_mock_inners()
+    asyncio.run(
+        facade.execute(
+            {
+                "action": action,
+                "symbol": "process",
+                "scope": "point",
+                "include_bodies": False,
+            }
+        )
+    )
+
+    call_args = mocks[inner_name].call_args[0][0]
+    assert call_args["include_bodies"] is False
+
+
 def test_callees_scope_graph_uses_call_graph_tool() -> None:
     facade, mocks = _build_facade_with_mock_inners()
     result = asyncio.run(
@@ -1323,3 +1345,56 @@ def test_snapshot_search_surface_queries_real_fts(
             "end_line": 3,
         }
     ]
+
+
+# ---------------------------------------------------------------------------
+# Wave E — progressive disclosure of the tool-definition surface
+# ---------------------------------------------------------------------------
+
+
+def test_facade_description_is_short_and_keeps_the_search_keyword() -> None:
+    """The always-sent description is one keyword-bearing sentence.
+
+    Measured 2026-09-13: the eight facades' descriptions were 23,084 of the
+    36,055 characters of tool-definition surface (~9,013 tokens) that every
+    request pays for before any work happens. The first sentence is kept because
+    it is not decoration — it carries the ``codegraph`` keyword a headless
+    agent's ToolSearch matches on; the per-action prose moves behind
+    ``action=help``.
+    """
+    facade = build_nav_facade(project_root=None)
+    description = facade.get_tool_definition()["description"]
+
+    assert "codegraph" in description.lower()
+    assert "help" in description.lower()
+    assert len(description) < 400, f"description is still {len(description)} chars"
+    assert "Params:" not in description, (
+        "per-action prose still on the always-sent surface"
+    )
+
+
+def test_every_facade_description_is_short() -> None:
+    """The diet applies to all eight facades, not just nav."""
+    from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
+
+    tools, _mapping = create_tool_registry(None)
+    over = []
+    for name, tool in tools:
+        description = tool.get_tool_definition().get("description", "")
+        if len(description) >= 400 or "codegraph" not in description.lower():
+            over.append((name, len(description)))
+    assert over == [], f"facades still carrying prose or missing the keyword: {over}"
+
+
+@pytest.mark.asyncio
+async def test_help_action_returns_the_per_action_prose() -> None:
+    """Nothing is lost — the prose is one call away, after the action is chosen."""
+    facade = build_nav_facade(project_root=None)
+    result = await facade.execute({"action": "help"})
+
+    assert result["facade"] == "nav"
+    assert "callers" in result["actions"]
+    # Exact equality, not a length bound: the contract is that `help` serves the
+    # prose verbatim, so that is what is asserted.
+    assert result["description"] == facade.full_description()
+    assert "Params:" in result["description"]

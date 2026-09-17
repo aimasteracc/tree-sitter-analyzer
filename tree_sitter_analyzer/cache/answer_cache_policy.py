@@ -160,8 +160,13 @@ def normalize_args(arguments: dict[str, Any], project_root: str) -> str:
 
     Keys sorted (so call-site ordering is irrelevant), the facade's ``action``
     control key dropped (it is already a key component), and path-shaped values
-    made project-relative. ``output_format`` is normalized to JSON because
-    JSON is the sole supported response encoding.
+    made project-relative.
+
+    ``output_format`` is deliberately kept. It selects the bytes the caller
+    receives, so two encodings are two answers; collapsing them here would serve
+    one encoding's payload for the other's request. This docstring previously
+    claimed the value was normalized to JSON, which the function has never done
+    and ``test_output_format_is_part_of_the_args_digest`` pins against.
     """
     normalized: dict[str, Any] = {}
     for key, value in arguments.items():

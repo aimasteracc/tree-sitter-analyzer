@@ -33,9 +33,10 @@ REAL_REGISTRY="tree_sitter_analyzer/mcp/_tool_registry.py"
 REAL_CLI_DIR="tree_sitter_analyzer/cli"
 REAL_ARG_GROUPS="$REAL_CLI_DIR/argument_groups"
 REAL_ARG_BUILDER="$REAL_CLI_DIR/argument_parser_builder.py"
-REAL_STANDALONE="$REAL_CLI_DIR/commands/list_files_cli.py"
+# 2026-09-09：旧独立搜索入口退役后，仍用真实命令模块验证整个 cli/** 监控范围。
+REAL_COMMAND="$REAL_CLI_DIR/commands/base_command.py"
 
-for p in "$REAL_REGISTRY" "$REAL_ARG_GROUPS" "$REAL_ARG_BUILDER" "$REAL_STANDALONE" "docs/CODEMAPS"; do
+for p in "$REAL_REGISTRY" "$REAL_ARG_GROUPS" "$REAL_ARG_BUILDER" "$REAL_COMMAND" "docs/CODEMAPS"; do
   if [[ ! -e "$REPO_ROOT/$p" ]]; then
     echo "FATAL: production path missing, fixture cannot be built from reality: $p" >&2
     exit 2
@@ -117,8 +118,7 @@ setup_repo() {
            docs/CODEMAPS
 
   cp "$REPO_ROOT/$REAL_REGISTRY" "$REAL_REGISTRY"
-  # The whole cli tree: the flag surface includes the find-and-grep / list-files /
-  # search-content console scripts, not just argument_groups.
+  # 复制整个真实 cli 树；未来在命令模块新增参数也必须受监控，不能只复制 argument_groups。
   cp -R "$REPO_ROOT/$REAL_CLI_DIR" "$REAL_CLI_DIR"
   find "$REAL_CLI_DIR" -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
   cp "$REPO_ROOT"/docs/CODEMAPS/*.md docs/CODEMAPS/
@@ -322,13 +322,12 @@ git add "$REAL_ARG_REL" >/dev/null 2>&1
 report "$CURRENT_TEST" 1 "$(run_hook_with_gitconfig '[diff]
 	mnemonicPrefix = true')"
 
-# --- Test 14: standalone console-script flags are watched ---------------
-# Reviewer P1-3: 82 of 405 add_argument calls lived in cli/commands/*_cli*.py —
-# documented console entry points in docs/CODEMAPS/cli.md — and were unwatched.
-CURRENT_TEST="14: CLI flag add in a standalone console script, no codemap"
+# --- 测试 14：argument_groups 之外的命令模块仍受监控 ----------------------
+# 原 P1-3 曾漏掉命令目录；旧入口删除不构成缩小监控范围的理由。
+CURRENT_TEST="14: CLI flag add in a command module, no codemap"
 init_repo
-printf '%s' "$FIXTURE_FLAG_SNIPPET" >> "$REAL_STANDALONE"
-git add "$REAL_STANDALONE" >/dev/null 2>&1
+printf '%s' "$FIXTURE_FLAG_SNIPPET" >> "$REAL_COMMAND"
+git add "$REAL_COMMAND" >/dev/null 2>&1
 report "$CURRENT_TEST" 1 "$(run_hook)"
 
 # --- Test 15: renaming a registry parameter is not a surface change ------

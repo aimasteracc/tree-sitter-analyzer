@@ -9,6 +9,7 @@ Simpler and more discoverable than the monolithic codegraph_call_graph tool.
 """
 
 import os
+import sqlite3
 from typing import Any
 
 from ...utils import setup_logger
@@ -26,6 +27,145 @@ from .index_rebuild_signal import (
 )
 
 logger = setup_logger(__name__)
+
+#: How many unresolved sites the response carries. The total is reported beside
+#: it, so a capped list is never mistaken for the whole set — the same
+#: honest-truncation pattern the caller list itself uses.
+_UNRESOLVED_SITES_CAP = 20
+
+#: How many sites the next_step names inline. Small on purpose: the hint is there
+#: to make the work bounded, not to duplicate the payload.
+_UNRESOLVED_SITES_NAMED = 3
+
+
+def _declaring_file_unresolved(
+    cache: Any,
+    func_name: str,
+    file_path: str | None,
+    limit: int | None = None,
+) -> list[dict[str, Any]] | None:
+    """Unresolved CALLS sites inside the files that declare ``func_name``.
+
+    The RFC-0028 §1.2 scope guard: a computed dispatch site records its own
+    source text as the callee, so no per-symbol lookup can see it, and the only
+    place it can be counted from is the file it sits in.  A symbol this project
+    does not declare contributes ``[]`` — there is no file scope to check, which
+    is different from a scope that could not be read.
+
+    ``file_path`` narrows the scope when the caller named one.  Without it, a
+    symbol declared in several files inherits every sibling's unresolved calls:
+    measured, `run` declared in a clean file and a noisy one answered `unknown`
+    for a query that named the clean file, contradicting §1.2's guard that a
+    symbol in a fully-resolved file answers ``complete``.
+
+    ``None`` means the question could not be answered — including a failed read of
+    the declaring files, which must never degrade to "nothing unresolved here".
+
+    This reads the cache directly and is therefore answerable on every data
+    source, not only the SQL one.  Gating it on ``data_source == "sql"`` returned
+    ``None`` for a query that took the in-memory graph path, which the caller then
+    reported as "its inbound edges could not be read" — a claim of ignorance where
+    the answer was available, and measured to mislabel a genuinely absent symbol
+    as an unreadable one.
+
+    RFC-0028 §1.3: this returns the sites, not a count of them.  The count is
+    ``len(...)`` at the call site, so the number the response reports and the
+    sites it names come from one derivation and cannot drift apart.
+    """
+    if cache is None:
+        return None
+    declaring = _declaring_files(cache, func_name, file_path)
+    if declaring is None:
+        return None
+    return _collect_sites(cache, declaring, "unresolved_call_sites_in_file", limit)
+
+
+def _declaring_file_excluded(
+    cache: Any,
+    func_name: str,
+    file_path: str | None,
+    limit: int | None = None,
+) -> list[dict[str, Any]] | None:
+    """Sites in the declaring files that were ruled out, and on what grounds.
+
+    The complement of :func:`_declaring_file_unresolved`, over the same scope.
+    RFC-0028 §1.3: a caller told only "this file is not a census" cannot tell a
+    file gated by one genuine dispatch site from one gated by three hundred
+    builtin attribute calls. Reporting the exclusions makes that checkable, and
+    the reasons are the raw material for widening the exclusion set with proofs
+    rather than with a bound.
+    """
+    if cache is None:
+        return None
+    declaring = _declaring_files(cache, func_name, file_path)
+    if declaring is None:
+        return None
+    return _collect_sites(cache, declaring, "excluded_call_sites_in_file", limit)
+
+
+def _declaring_files(
+    cache: Any,
+    func_name: str,
+    file_path: str | None,
+) -> tuple[str, ...] | None:
+    """The files declaring ``func_name``, narrowed to the one the caller named.
+
+    ``None`` when the read fails: a failed read is not an empty scope.  Computed
+    once and shared by the unresolved and excluded accessors, so the two lists a
+    response reports side by side always describe the same files.
+    """
+    declaring = cache.symbol_declaring_files(func_name)
+    if declaring is None:
+        return None
+    if file_path:
+        normalized = file_path.replace("\\", "/")
+        narrowed = tuple(
+            path for path in declaring if path.replace("\\", "/") == normalized
+        )
+        declaring = narrowed or declaring
+    return tuple(declaring)
+
+
+def _collect_sites(
+    cache: Any,
+    declaring: tuple[str, ...],
+    accessor: str,
+    limit: int | None,
+) -> list[dict[str, Any]] | None:
+    """Gather one kind of site across ``declaring``, ordered and optionally capped.
+
+    ``None`` from any file means the whole answer is unknown rather than partial:
+    a readable sibling must not stand in for an unreadable one.
+    """
+    sites: list[dict[str, Any]] = []
+    for path in declaring:
+        found = getattr(cache, accessor)(path)
+        if found is None:
+            return None
+        sites.extend(found)
+    sites.sort(key=lambda site: (site["file"], site["line"]))
+    return sites[:limit] if limit is not None else sites
+
+
+def _describe_sites(sites: list[dict[str, Any]] | None) -> str:
+    """Name the first few unresolved sites so the hint is actionable.
+
+    "3 unresolved calls sit in a file that declares X" leaves the caller to
+    re-read the file to find them.  Naming the sites, their lines and their
+    mechanisms makes the remaining work bounded — which is why the evidence is
+    carried at all (RFC-0028 §1.3).
+    """
+    if not sites:
+        return "none"
+    named = sites[:_UNRESOLVED_SITES_NAMED]
+    parts = [
+        f"{site['file']}:{site['line']} ({site['mechanism']} `{site['callee']}`)"
+        for site in named
+    ]
+    remaining = len(sites) - len(named)
+    if remaining > 0:
+        parts.append(f"and {remaining} more")
+    return "; ".join(parts)
 
 
 class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
@@ -93,6 +233,14 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                     ),
                     "default": False,
                 },
+                "include_bodies": {
+                    "type": "boolean",
+                    "description": (
+                        "When false, omit caller source bodies and return only "
+                        "call-graph coordinates and metadata."
+                    ),
+                    "default": True,
+                },
             },
             "required": ["function_name"],
             "additionalProperties": False,
@@ -105,11 +253,29 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
+        if is_index_rebuilding(self.project_root):
+            return await self._execute_bound(arguments, None, None)
+        if self.project_root:
+            from ...index_snapshot import certified_index_read
 
+            try:
+                with certified_index_read(self.project_root) as owner:
+                    if owner is not None:
+                        return await self._execute_bound(
+                            arguments, owner.query_cache(), owner.read_source
+                        )
+            except (OSError, ValueError, RuntimeError, sqlite3.DatabaseError):
+                pass
+        return await self._execute_bound(arguments, None, None)
+
+    async def _execute_bound(
+        self, arguments: dict[str, Any], bound_cache: Any, source_reader: Any
+    ) -> dict[str, Any]:
         func_name = arguments["function_name"]
         file_path = arguments.get("file_path")
         output_format = arguments.get("output_format", "json")
         include_activation = bool(arguments.get("include_activation", False))
+        include_bodies = bool(arguments.get("include_bodies", True))
         listed_cap = int(arguments.get("limit", 50))
 
         if is_index_rebuilding(self.project_root):
@@ -143,7 +309,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         )
 
         unattributed_call_sites = 0
-        cache = self._try_get_cache()
+        cache = bound_cache if bound_cache is not None else self._try_get_cache()
         call_graph_built = (
             self._cache_call_graph_built(cache) if cache is not None else False
         )
@@ -157,9 +323,18 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             data_source = "sql"
             has_any_call_edges = True  # SQL path only runs when edges exist
         else:
-            graph = self._get_call_graph()
+            graph: Any
+            if bound_cache is not None:
+                from ...call_graph import CachedCallGraph
+
+                graph = CachedCallGraph(
+                    self.project_root or ".", cache=bound_cache, fallback=False
+                )
+                data_source = "cache"
+            else:
+                graph = self._get_call_graph()
+                data_source = self._data_source
             callers = graph.callers_of(func_name, file_path)
-            data_source = self._data_source
             self._enrich_callers_with_resolution(callers)
             # #981 defense-in-depth: the built marker can be a false-negative
             # (e.g. cleared while the index actually holds 125K call edges).
@@ -168,6 +343,13 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             has_any_call_edges = call_graph_built or (
                 cache is not None and cache.has_call_edges()
             )
+
+        # A graph that holds no CALLS edges at all cannot support an absence
+        # claim: a zero read from it is indistinguishable from a graph that was
+        # never populated.  This is the counterpart of `has_any_call_edges`
+        # above, which trusts the marker; here the marker may be set over an
+        # empty table, so the edge probe itself is the evidence.
+        empty_evidence_base = cache is not None and not cache.has_call_edges()
 
         warnings_list: list[str] = []
         if _is_stale_resolution(callers):
@@ -179,9 +361,64 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         truncated = total_callers > listed_cap
         callers = callers[:listed_cap]
 
-        # P2: inline each caller's verbatim source body (top-N capped) so the
-        # agent answers from content, not coordinates — no Read per file:line.
-        next_step = self._inline_caller_bodies(cache, callers)
+        # 默认内联有上限的调用方源码；调用者可只请求坐标和元数据。
+        next_step = None
+        if include_bodies:
+            body_reader = (
+                source_reader if call_graph_indexed and not is_qualified else None
+            )
+            next_step = self._inline_caller_bodies(cache, callers, body_reader)
+
+        # RFC-0028 §1.1: declare the epistemic status of this list.  It is
+        # assembled from resolved CALLS edges, so an unresolved inbound edge
+        # makes it a lower bound rather than a census.  An unreadable count is
+        # unknown, never complete — a failed read is not evidence of absence.
+        unresolved_inbound = (
+            cache.count_unresolved_callers(func_name, file_path)
+            if cache is not None
+            else None
+        )
+        # RFC-0028 §1.2 scope guard.  A computed dispatch site is recorded under
+        # its source text (`HANDLERS[name]`, `getattr(self, name)`), so it names
+        # no symbol and the per-symbol count above cannot see it.  An unresolved
+        # call inside a file that declares this symbol could target it, so the
+        # claim is gated on the declaring files as well.  A symbol in a
+        # fully-resolved file still answers complete.
+        #
+        # RFC-0028 §1.3: the sites are carried into the response, not just their
+        # number.  A caller told only "3 unresolved calls sit in a file that
+        # declares this symbol" has to re-read the file to act; a caller given the
+        # sites and their mechanisms can go straight to them.
+        declaring_sites = _declaring_file_unresolved(cache, func_name, file_path)
+        unresolved_in_declaring_files = (
+            None if declaring_sites is None else len(declaring_sites)
+        )
+        # The complement of the sites above: what was ruled out, and on what
+        # grounds. Without it, "this file is not a census" cannot be checked
+        # against "this file is a browser asset full of builtin attribute calls".
+        excluded_sites = _declaring_file_excluded(cache, func_name, file_path)
+
+        if unresolved_inbound is None or unresolved_in_declaring_files is None:
+            completeness = "unknown"
+        elif unresolved_inbound + unresolved_in_declaring_files:
+            completeness = "incomplete" if total_callers else "unknown"
+        elif unattributed_call_sites:
+            # #638 counts module-level call sites instead of listing them, so a
+            # listed count of 0 is not a census: the symbol *is* called and this
+            # response cannot say by whom.  Certifying "complete" over that is the
+            # false zero RFC-0028 §1 exists to forbid — measured on a symbol with
+            # two resolved module-level callers, which reported `complete` with
+            # `caller_count: 0` and "not in the index".
+            completeness = "incomplete"
+        elif empty_evidence_base:
+            # Zero unresolved edges over a graph that holds no CALLS edges at all
+            # is not a fact about this symbol: the resolved-edge evidence base is
+            # empty, so a zero read from it cannot distinguish "nothing calls this"
+            # from "the graph was never populated".  A zero over a graph that holds
+            # edges elsewhere is a fact and still answers complete.
+            completeness = "unknown"
+        else:
+            completeness = "complete"
 
         result = build_response(
             verdict="INFO" if callers or total_callers else "NOT_FOUND",
@@ -192,8 +429,38 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             callers_listed=len(callers),
             listed_cap=listed_cap,
             truncated=truncated,
+            completeness=completeness,
+            unresolved_inbound=unresolved_inbound,
+            unresolved_in_declaring_files=unresolved_in_declaring_files,
             callers=callers,
         )
+        if declaring_sites is not None:
+            # The evidence behind `unresolved_in_declaring_files`: which sites,
+            # and what kind. Capped so the field stays bounded, with the total
+            # kept beside it so a capped list is never mistaken for the whole set.
+            result["unresolved_sites"] = declaring_sites[:_UNRESOLVED_SITES_CAP]
+            result["unresolved_sites_total"] = len(declaring_sites)
+            result["unresolved_sites_truncated"] = (
+                len(declaring_sites) > _UNRESOLVED_SITES_CAP
+            )
+        else:
+            result["unresolved_sites"] = None
+            result["unresolved_sites_total"] = None
+        if excluded_sites is not None:
+            # The negative space, auditable. `excluded_by_reason` is the summary a
+            # caller reads to decide whether "not a census" is alarming; the list
+            # is the detail behind it.
+            result["excluded_sites"] = excluded_sites[:_UNRESOLVED_SITES_CAP]
+            result["excluded_sites_total"] = len(excluded_sites)
+            by_reason: dict[str, int] = {}
+            for site in excluded_sites:
+                reason = str(site.get("reason_code") or "unspecified")
+                by_reason[reason] = by_reason.get(reason, 0) + 1
+            result["excluded_by_reason"] = by_reason
+        else:
+            result["excluded_sites"] = None
+            result["excluded_sites_total"] = None
+            result["excluded_by_reason"] = None
         if unattributed_call_sites:
             # #638: module-level call sites have no enclosing function — they
             # are counted here instead of being emitted as un-navigable ghost
@@ -219,6 +486,49 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                     "Call-graph index is empty or has not been built yet. "
                     "Run `tree-sitter-analyzer --full-index` first, then retry."
                 )
+            elif completeness != "complete":
+                # "Not in the index" may only describe a genuine absence.  Name
+                # the reason the list is not a census instead (RFC-0028 §1.1,
+                # §1.2).  A successfully-read 0 is not a failure to read, so the
+                # branches test `is None` rather than truthiness.
+                if unresolved_inbound:
+                    index_hint = (
+                        f"No resolved caller for {func_name!r}, and "
+                        f"{unresolved_inbound} call edge(s) into it are "
+                        "unresolved, so it may still be called. Read those call "
+                        "sites directly rather than treating this as absence."
+                    )
+                elif unattributed_call_sites:
+                    index_hint = (
+                        f"{unattributed_call_sites} module-level call site(s) "
+                        f"reach {func_name!r}. They have no enclosing function "
+                        "and are counted rather than listed, so this is not an "
+                        "empty result; read them directly."
+                    )
+                elif unresolved_in_declaring_files:
+                    index_hint = (
+                        f"{unresolved_in_declaring_files} unresolved call(s) sit "
+                        f"in a file that declares {func_name!r} and could target "
+                        f"it: {_describe_sites(declaring_sites)}. Read those "
+                        "sites directly rather than treating this as absence."
+                    )
+                elif empty_evidence_base:
+                    # #705: an index that was built over a project with no calls
+                    # must not be told to --full-index again.  The user already
+                    # indexed; the graph is simply empty.  What must not happen
+                    # is a confident absence, so the hint disclaims rather than
+                    # instructs.
+                    index_hint = (
+                        f"No resolved caller for {func_name!r}, and the call graph "
+                        "holds no call edges at all. An empty graph cannot "
+                        "distinguish 'nothing calls it' from 'never populated', "
+                        "so do not treat this as absence."
+                    )
+                else:
+                    index_hint = (
+                        f"No resolved caller for {func_name!r} and its inbound "
+                        "edges could not be read. Do not treat this as absence."
+                    )
             else:
                 index_hint = (
                     f"Symbol {func_name!r} not in the index. "
@@ -231,7 +541,21 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # #546 seam 3 / #577 leftover: uniform agent_summary across all nav actions.
         verdict = result.get("verdict", "NOT_FOUND")
         if verdict == "NOT_FOUND":
-            as_summary_line = f"callers: {func_name!r} has 0 caller(s)"
+            # A zero is a fact only when every inbound edge resolved *and* every
+            # caller could be listed; otherwise the summary must not restate the
+            # absence the verdict already implies (RFC-0028 §1.1, §1.2).
+            if completeness == "complete":
+                as_summary_line = f"callers: {func_name!r} has 0 caller(s)"
+            elif unattributed_call_sites:
+                as_summary_line = (
+                    f"callers: {func_name!r} has 0 listed caller(s) but "
+                    f"{unattributed_call_sites} module-level call site(s)"
+                )
+            else:
+                as_summary_line = (
+                    f"callers: {func_name!r} has 0 resolved caller(s); "
+                    "this is not evidence of absence"
+                )
             as_next_step = result.get("next_step") or (
                 f"No callers found for '{func_name}'. "
                 "Check spelling or run --full-index to build the call graph."
@@ -248,7 +572,15 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             "next_step": as_next_step,
         }
 
+        # RFC-0027 L6.2: this route's cold/warm cliff (24.8 s -> 16 ms in the
+        # L5 baseline) is the largest in the product, so a caller choosing
+        # between nav actions must see which tier it is about to pay for.
+        from ...cache.query_cost import cost_fields, query_cost
         from ..utils.format_helper import apply_output_format_to_response
+
+        result.update(
+            cost_fields(query_cost("nav", "callers", self.project_root, arguments))
+        )
 
         return apply_output_format_to_response(result, output_format)
 
@@ -256,6 +588,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         self,
         cache: Any,
         callers: list[dict[str, Any]],
+        source_reader: Any = None,
     ) -> str | None:
         """P2: attach a body to the top-N callers (in place). Returns deterrent.
 
@@ -270,7 +603,9 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             # cache may be None (graph-parse path with no index yet); the
             # helper only needs it for the end_line fallback, and records on
             # the graph path already carry end_line, so it degrades cleanly.
-            enriched = sbi.inline_neighbor_bodies(self.project_root, cache, callers)
+            enriched = sbi.inline_neighbor_bodies(
+                self.project_root, cache, callers, source_reader=source_reader
+            )
             if not any("body" in c for c in enriched):
                 return None
             callers[:] = enriched

@@ -26,6 +26,7 @@ from typing import Any
 
 def create_tool_registry(
     project_root: str | None,
+    lifecycle_manager: Any | None = None,
 ) -> tuple[list[tuple[str, Any]], dict[str, Any]]:
     """Instantiate and return the 8 facade tools.
 
@@ -48,13 +49,13 @@ def create_tool_registry(
     from .tools.viz_facade import build_viz_facade
 
     tool_instances: list[tuple[str, Any]] = [
-        ("search", build_search_facade(project_root)),
+        ("search", build_search_facade(project_root, lifecycle_manager)),
         ("nav", build_nav_facade(project_root)),
         ("structure", build_structure_facade(project_root)),
         ("health", build_health_facade(project_root)),
         ("edit", build_edit_facade(project_root)),
         ("project", build_project_facade(project_root)),
-        ("index", build_index_facade(project_root)),
+        ("index", build_index_facade(project_root, lifecycle_manager)),
         ("viz", build_viz_facade(project_root)),
     ]
     return tool_instances, dict(tool_instances)

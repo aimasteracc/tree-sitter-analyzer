@@ -57,7 +57,7 @@ class TestServerInit:
             server.analyze_scale_tool.get_tool_definition()["name"]
             == "check_code_scale"
         )
-        assert server.list_files_tool.get_tool_definition()["name"] == "list_files"
+        assert not hasattr(server, "list_files_tool")
         # search_content_tool (SearchContentTool) と find_and_grep_tool (FindAndGrepTool) は廃止済み
 
     def test_initialization_creates_resources(self, tmp_path):
@@ -265,12 +265,11 @@ class TestRegistryDeferral:
         """Cheap eager components must exist without triggering the build."""
         assert callable(server.analysis_engine.analyze_file)
         assert callable(server.security_validator.validate_file_path)
-        # Legacy alias tools + universal tool are eager (registry-independent).
+        # 旧别名工具无需构建注册表即可使用。
         assert (
             server.read_partial_tool.get_tool_definition()["name"]
             == "extract_code_section"
         )
-        assert hasattr(server, "universal_analyze_tool")
         assert server._registry_built is False
 
 
@@ -394,11 +393,6 @@ class TestToolDefinitions:
         definition = server.analyze_scale_tool.get_tool_definition()
         assert definition["name"] == "check_code_scale"
 
-    def test_list_files_tool_definition(self, server):
-        """Test list files tool has definition"""
-        definition = server.list_files_tool.get_tool_definition()
-        assert definition["name"] == "list_files"
-
     # test_search_content_tool_definition と test_find_and_grep_tool_definition は
     # 廃止済み (SearchContentTool / FindAndGrepTool が削除されたため)
 
@@ -416,22 +410,6 @@ class TestToolDefinitions:
         """Test parser readiness tool has definition"""
         definition = server.parser_readiness_tool.get_tool_definition()
         assert definition["name"] == "advise_parser_readiness"
-
-
-class TestUniversalTool:
-    """Test universal tool availability"""
-
-    @pytest.fixture
-    def server(self):
-        """Create server instance"""
-        with tempfile.TemporaryDirectory() as tmp:
-            return TreeSitterAnalyzerMCPServer(project_root=Path(tmp))
-
-    def test_universal_tool_available(self, server):
-        """Test universal tool is available if imported"""
-        # The tool may or may not be available depending on imports
-        # Just verify the attribute exists
-        assert hasattr(server, "universal_analyze_tool")
 
 
 class TestTableFormatTool:

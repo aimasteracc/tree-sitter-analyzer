@@ -6,6 +6,50 @@
 - **North star:** Verified Change Success Rate (VCSR), not feature, language, tool, test, or edge count.
 - **Claim policy:** Public language is always bounded to named tools, versions, repositories, models, dates, and evidence levels. E0–E3 emit no quantitative competitive wording; E4 permits only the exact admitted bounded sentence, never an unqualified "No.1" claim.
 
+## 2026-09-16 交付状态：仓库内阻断已收敛，竞争证据仍受门控
+
+本节以 `develop@b793dc827d220906bfdd260260c42d6179e50bba` 为基线。
+[#1489](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1489) 至
+[#1505](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1505) 已全部合入
+`develop`；其中包括订阅失败隔离、认证源码正文、生命周期所有权、路由与
+Decision Journal / ASTCache 的确定关闭、main→develop 对账，以及 v2 外部搜索
+wrapper 退役。#1504 的最终 head 已通过 Linux、macOS、Windows、Python
+3.10–3.13、MCP 黑盒、Native qualification、SQL 兼容、回归、Codecov patch
+和构建门禁。成功证据只支持这些具名范围，不自动升级 VCSR 或竞争性证据等级。
+
+本节同提交关闭 dogfood 暴露的两个发版前可信度缺口：`change-impact` 的
+`branch` 模式改为从 GitFlow 目标分支的 merge base 读取全部提交，不再只看
+`HEAD~1..HEAD`；测试侧 SQLite 读取 helper 在边界确定关闭连接。后者的限定
+重放从实际 FD `15 → 75 → 71`、DB FD 峰值 59 / 结束 56，降至
+`15 → 19 → 15`、DB FD 峰值 3 / 结束 0。随后普通 comprehensive run 为
+`24788 passed, 98 skipped, 1 rerun`，退出码 0；原 256-FD 低上限节点在 19 FD
+通过，worker 边界峰值从前次观测的 129 降至 69。一次既有 WAL 并发用例发生
+rerun，不能计为额外成功，也不能把历史 EMFILE 的唯一根因追溯为本 helper。
+
+### 发版裁决
+
+- RFC-0033 的仓库内实现、迁移、完整本地测试和跨平台 CI 验收已经完成；v2
+  公开搜索 wrapper 退役不再有仓库内待办。
+- 本修复 #1505 已通过最终 PR CI 并合入 `develop`；`release/v2.0.0` 已从该
+  最终提交创建，并完成版本同步、focused/quick/patch coverage、构建、Twine、
+  Python 3.10 净环境安装及 CLI smoke 审计。release 分支推送会触发 PyPI
+  发布，仍须按 GITFLOW 完成 `release/v* → main`、标记版本、GitHub Release
+  及回合 `develop`。
+- VCSR、外部维护者采用、模型裁判、生产 canary、签名证明以及 E2–E4 竞争性
+  表述属于外部或人工证据门槛。它们仍未完成，不能用仓库测试代替；它们阻止
+  “No.1”公开声明，但不伪装成尚可继续编码的本地功能清单。
+- [#1230](https://github.com/aimasteracc/tree-sitter-analyzer/issues/1230) 是每日重算的
+  维护队列，不是一次性发版故事；只有 TSA `safe-to-edit` 给出可验证收益时才取项，
+  不能为清空列表而制造重构。
+
+发布动作已经获得授权。首次推送在全平台矩阵中一致命中 v2 到期契约：
+`MCPTool` 与未注册的 `UniversalAnalyzeTool` 仍留在源码中；构建和 PyPI 发布均未
+开始。release 分支已删除这两个兼容类、相关回退路径和专属测试，并补充迁移说明。
+下一步顺序固定为：通过本地完整门禁后重新推送；等待自动化测试、构建和 PyPI 发布；
+随后合入 `main`、标记版本、创建 GitHub Release，并将 release 提交回合
+`develop`。外部证据计划继续按 TRUST-C1 / TRUST-T1 / TRUST-I1 的门槛推进，
+失败、未知和未签名结果保留在分母中。
+
 ## 2026-09-08 第二轮合入：内容新鲜度与健康评分
 
 当前合入基线为 `develop@9233bb49a26283e57d7d9435f9a7251b344f2b74`。
@@ -390,7 +434,7 @@ commit changes.
 ### Continue
 
 - Continue local-first operation, project-root security, MCP/CLI parity, JSON for both MCP and CLI, and fail-closed benchmarks.
-- Continue conservative resolution: a visible `unknown` is safer than a confident unsupported edge.
+- Continue conservative resolution: a visible `unknown` is safer than a confident unsupported edge. [RFC-0028 §1](0028-measuring-claimed-properties.md) is its executable form — a hand-checked undecidable corpus (`tests/benchmarks/claims/test_completeness_honesty_ratchet.py`) fails any answer that is a confident empty over an edge that genuinely exists, and the `completeness` field on the callers route is what carries the distinction to the caller.
 - Continue dogfooding before edits and following the emitted verification command after edits.
 - Continue exact behavioral tests, but prefer realistic corpus failures over coverage-only growth.
 

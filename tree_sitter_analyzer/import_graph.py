@@ -367,18 +367,20 @@ class ImportGraph:
             return _resolve_python_import(
                 import_text, source_file, self._project_files, self.project_root
             )
-        # Unknown/unmapped extension — fall back to the historical text sniff
-        # so languages without an entry in EXT_TO_LANG keep resolving.
+        # A mapped language that is neither JS/TS nor Python. Its extractor
+        # records import text in that language's own idiom, and some of those
+        # forms are Python-shaped: measured through `ImportGraph.build()`, Go's
+        # `import "x"` and Java's `import a.b;` both arrive here.
+        #
+        # The historical arm that sniffed `require(` / `from '` / `from "` for a
+        # JS-shaped statement is gone. It was unreachable: every file that can
+        # carry recorded imports has an extension in EXT_TO_LANG, so a JS/TS file
+        # is routed by language above, and no other extractor (measured across
+        # C, Go, Java, Rust, Lua, Ruby, PHP) emits those forms. A branch no
+        # public input can reach is what RFC-0028 §3.1 exists to delete rather
+        # than leave standing; its unit tests passed while it was dead.
         if import_text.startswith("from ") or import_text.startswith("import "):
             return _resolve_python_import(
-                import_text, source_file, self._project_files, self.project_root
-            )
-        if (
-            "require(" in import_text
-            or "from '" in import_text
-            or 'from "' in import_text
-        ):
-            return _resolve_js_import(
                 import_text, source_file, self._project_files, self.project_root
             )
         return None

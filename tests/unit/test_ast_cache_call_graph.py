@@ -9,10 +9,26 @@ from tree_sitter_analyzer.ast_cache import (
     ASTCache,
     _has_fts5,
 )
+from tree_sitter_analyzer.call_graph import CachedCallGraph
 
 tmp_project = _fixtures.tmp_project
 cache = _fixtures.cache
 method_project = _fixtures.method_project
+
+
+def test_strict_cached_graph_propagates_database_errors() -> None:
+    """认证缓存的数据库故障必须退出快照所有者，不能静默转为普通解析。"""
+
+    class StrictCache:
+        strict_sql_errors = True
+
+        @staticmethod
+        def get_call_edges():
+            raise sqlite3.DatabaseError("broken certified graph")
+
+    graph = CachedCallGraph(".", cache=StrictCache(), fallback=False)
+    with pytest.raises(sqlite3.DatabaseError, match="broken certified graph"):
+        graph.build()
 
 
 class TestSQLNativeCallGraph:

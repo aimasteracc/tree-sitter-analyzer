@@ -88,22 +88,15 @@ BespokeHandler = Callable[[dict[str, Any]], Awaitable[Any]]
 # whose meaning is action-scoped and whose legal set the inner validates.
 _FACADE_CONTROL_KEYS: frozenset[str] = frozenset({"action"})
 
-# Core high-frequency parameters surfaced explicitly on EVERY facade's public
-# inputSchema. Wave D (tool-def token diet): the facade no longer unions every
-# inner param verbatim into its public schema — that re-imported ~50 ripgrep
-# flags into ``search`` alone and blew the tool-def token budget. Instead the
-# public schema declares only these shared, cross-action params plus
-# ``additionalProperties: True``; any inner-specific param (e.g. an rg flag) is
-# accepted via additionalProperties and projected internally by ``_project_args``
-# against the inner's REAL schema whitelist (so F4 strict-param projection is
-# unaffected — it reads ``inner.get_tool_definition()``, never this public
-# schema). Per-action param discovery is carried in the facade ``description``
-# (description-as-discovery, à la Rhizome), not in the schema body.
+# 每个门面都在公共 inputSchema 中显式公开这些高频核心参数。Wave D 为缩减
+# 工具定义令牌，不再把每个内部工具的参数原样合并到公共模式中；旧做法会把
+# 大量已经退役的外部搜索参数重新带入 ``search``。公共模式只声明跨动作共享
+# 参数，并允许 ``additionalProperties: True``。内部工具专属参数仍可传入，再由
+# ``_project_args`` 按内部工具的真实模式白名单投影，因此 F4 严格参数投影不受
+# 影响。各动作的参数发现信息放在门面的 ``description`` 中，而不塞进模式主体。
 #
-# Descriptions are deliberately terse: per-action semantics live in the facade
-# ``description`` text (description-as-discovery), so repeating a long blurb on
-# every core param across all 8 facades is pure token waste. One short clause
-# each keeps the schema body small while still typing the common surface.
+# 参数描述有意保持简短：动作语义已在门面描述中呈现，在八个门面上重复长说明
+# 只会浪费令牌。每项使用一个短句即可保留类型信息和可发现性。
 _CORE_FACADE_PARAMS: dict[str, dict[str, Any]] = {
     "scope": {
         "type": "string",
@@ -119,7 +112,11 @@ _CORE_FACADE_PARAMS: dict[str, dict[str, Any]] = {
     "query": {"type": "string", "description": "Search query/pattern."},
     "language": {"type": "string", "description": "Language hint (usually auto)."},
     "limit": {"type": "integer", "description": "Max results."},
-    "output_format": {"type": "string", "enum": ["json"], "description": "Output format: JSON."},
+    "output_format": {
+        "type": "string",
+        "enum": ["json"],
+        "description": "Output format: JSON.",
+    },
 }
 
 
@@ -259,7 +256,20 @@ class FacadeTool(BaseMCPTool):
         cleaned = {k: v for k, v in args.items() if k not in _FACADE_CONTROL_KEYS}
         inner_props = self._inner_property_names(inner)
 
-        # R3 normalize — before the whitelist filter.
+        # R3 normalize — before the whitelist filter.  Inners disagree about
+        # which canonical name they read, so fill whichever one this inner
+        # declares from whichever one the caller used.  Only the
+        # ``symbol`` -> ``function_name`` direction existed, so an agent that
+        # learned ``function_name`` from ``callers`` and passed it to
+        # ``lineage`` got a bare ``KeyError: 'symbol'`` out of the tool instead
+        # of the alias the facade declares in its own schema.
+        if (
+            "symbol" in inner_props
+            and not cleaned.get("symbol")
+            and cleaned.get("function_name")
+        ):
+            cleaned["symbol"] = cleaned["function_name"]
+
         if (
             "function_name" in inner_props
             and not cleaned.get("function_name")
@@ -296,6 +306,8 @@ class FacadeTool(BaseMCPTool):
         if not cleaned.get("function_name") and cleaned.get("symbol"):
             # Defensive R3 copy; harmless for bespoke handlers that ignore it.
             cleaned["function_name"] = cleaned["symbol"]
+        if not cleaned.get("symbol") and cleaned.get("function_name"):
+            cleaned["symbol"] = cleaned["function_name"]
         return cleaned
 
     # -- error envelope ----------------------------------------------------
@@ -366,6 +378,23 @@ class FacadeTool(BaseMCPTool):
         if not action or not isinstance(action, str):
             return self._action_error("missing required parameter 'action'")
 
+        # Progressive disclosure (Wave E). The per-action parameter prose used to
+        # ride on every request's tool definition; it is answered here instead, so
+        # the always-sent description can stay one keyword-bearing sentence.
+        # `help` is deliberately NOT in the action enum: the enum is a pinned
+        # contract (tests assert it exactly), and the short description names
+        # this route instead.
+        if action == "help":
+            return {
+                "facade": self.facade_name,
+                "actions": self._available_actions(),
+                "description": self.full_description(),
+                "hint": (
+                    "Pass one of `actions` as `action`; the parameters each one "
+                    "accepts are listed above."
+                ),
+            }
+
         for parameter, allowed_actions in self._action_scoped_params.items():
             if parameter in arguments and action not in allowed_actions:
                 allowed = ", ".join(sorted(allowed_actions))
@@ -430,28 +459,20 @@ class FacadeTool(BaseMCPTool):
     # -- schema / definition ----------------------------------------------
 
     def get_tool_schema(self) -> dict[str, Any]:
-        """Slim public facade schema: ``action`` (required) + core shared params.
+        """返回精简的公共门面模式：必需的 ``action`` 加核心共享参数。
 
-        Wave D tool-def token diet. The public schema deliberately does NOT
-        union every inner tool's parameters. Unioning re-imported ~50 ripgrep
-        flags into the ``search`` facade alone and pushed the 8-facade tool-def
-        payload to only -56.6% vs the PRD's ~84% target. Instead:
+        Wave D 通过缩减工具定义控制令牌开销。公共模式不再合并全部内部工具参数，
+        而采用以下规则：
 
-        * ``action`` (required, enum of every routable action) selects the route.
-        * A curated set of high-frequency, cross-action params
-          (``_CORE_FACADE_PARAMS``: scope/mode/file_path/symbol/function_name/
-          query/language/limit/output_format) is declared explicitly so the
-          common surface stays typed and discoverable.
-        * ``additionalProperties: True`` accepts any inner-specific param
-          (e.g. an rg flag, ``mode``-driven sub-param) without listing it.
-        * Per-action parameter discovery lives in the facade ``description``
-          (description-as-discovery), not in the schema body.
+        * ``action`` 是包含全部可路由动作的必需枚举，用于选择路由。
+        * ``_CORE_FACADE_PARAMS`` 显式声明高频跨动作参数，使公共表面保持类型化且
+          可发现。
+        * ``additionalProperties: True`` 接受未列出的内部工具专属参数。
+        * 各动作的参数发现信息放在门面 ``description`` 中，而不放进模式主体。
 
-        F4 is unaffected: ``_project_args`` projects the caller's args against
-        ``inner.get_tool_definition()`` (the inner's REAL schema), never against
-        this public schema — so slimming the public surface cannot mis-project
-        or leak sibling-action params. The inner tools keep their own strict
-        schemas; per-action correctness is enforced there.
+        F4 不受影响：``_project_args`` 依据 ``inner.get_tool_definition()`` 返回的
+        真实内部模式投影调用参数，不依赖此公共模式。因此精简公共表面不会误投影
+        或泄漏同级动作参数；每个内部工具仍用自己的严格模式保证动作级正确性。
         """
         properties: dict[str, Any] = {
             "action": {
@@ -480,12 +501,112 @@ class FacadeTool(BaseMCPTool):
             "additionalProperties": True,
         }
 
+    def _expensive_route_details(self) -> str:
+        """The owning inner tool's prose for this facade's costly actions.
+
+        A facade replaces its inners, and the inner tools are not separately
+        registered, so prose that lives only on an inner tool is unreachable by
+        any caller. The budget table for ``health action=project`` sat in exactly
+        that position: "SLOW: ... ~4min on <3k" was written on
+        ``check_project_health``, which no client can read, while the call failed
+        at a default timeout.
+
+        ``action=help`` is on-demand, so carrying the detail here costs nothing
+        per request while making the always-sent description's pointer true.
+        """
+        from ...cache.query_cost import EXPENSIVE_ROUTES
+
+        blocks: list[str] = []
+        for (tool, action), _route in sorted(EXPENSIVE_ROUTES.items()):
+            if tool != self.facade_name:
+                continue
+            inner = self.action_map.get(action)
+            if inner is None:
+                continue
+            text = (inner.get_tool_definition().get("description") or "").strip()
+            if text:
+                blocks.append(f"## action={action} (declared expensive)\n{text}")
+        return "\n\n" + "\n\n".join(blocks) if blocks else ""
+
+    def full_description(self) -> str:
+        """The per-action prose, withheld from the tool definition (Wave E).
+
+        Still the single source of the documented-per-action contract: the tests
+        that pin "a documented parameter must exist in the inner schema" read
+        this, and ``action=help`` serves it, so the drift guard keeps working
+        while the always-sent surface stays one keyword-bearing sentence.
+        """
+        base = self._description or self._short_description()
+        return base + self._expensive_route_details()
+
+    def _expensive_action_note(self) -> str:
+        """Name this facade's costly actions, derived from the cost registry.
+
+        The inner tool that owns a slow route carries the full budget prose, but
+        a facade replaces it: an MCP client reads the facade description and
+        never the inner one, so a cost stated only there cannot be read before
+        the call. ``health action=project`` measured 202 s on a 268-package
+        monorepo while its inner description said "SLOW: ... ~4min on <3k" —
+        text no caller could see, and the call failed at the client's default
+        timeout instead.
+
+        Derived rather than restated so the route set has one home in
+        ``EXPENSIVE_ROUTES``. The suffix is a pointer: the bucket table and the
+        ``budget_seconds`` field stay with the route that owns them.
+        """
+        from ...cache.query_cost import EXPENSIVE_ROUTES
+
+        parts: list[str] = []
+        for (tool, action), route in sorted(EXPENSIVE_ROUTES.items()):
+            if tool != self.facade_name:
+                continue
+            note = f"action={action} is slow"
+            if route.cheaper_alternative:
+                note += f" (prefer {route.cheaper_alternative})"
+            parts.append(note)
+        if not parts:
+            return ""
+        return " Cost: " + "; ".join(parts) + "."
+
+    def _short_description(self) -> str:
+        """The keyword-bearing first sentence, with the per-action prose behind ``help``.
+
+        Wave E tool-def token diet. Wave D moved per-action params out of the
+        schema body and into the facade description; this moves the prose out of
+        the tool definition every request pays for and behind an explicit call.
+        Measured on the eight facades: their descriptions are 23,084 of the
+        36,055 characters of tool-definition surface (~9,013 tokens), and
+        collapsing them to this form reclaims 94% of the whole surface.
+
+        The first sentence is kept because it is not decoration. It carries the
+        ``codegraph`` keyword that a headless agent's ToolSearch matches on, and
+        a test pins that. Only the per-action parameter prose — which a caller
+        needs *after* choosing an action, never before — moves behind
+        ``action=help``, where it is still one call away and nothing is lost.
+        """
+        actions = ", ".join(self._available_actions())
+        text = (self._description or "").strip()
+        if not text:
+            return (
+                f"{self.facade_name}: {len(self._available_actions())} actions via "
+                f"'action' ({actions}). Pass action=help for per-action parameters."
+            )
+        head = text.split("\n", 1)[0]
+        first = head.split(". ")[0].rstrip()
+        if not first.endswith("."):
+            first += "."
+        if len(first) > 200:
+            first = first[:197].rstrip() + "..."
+        return (
+            f"{first} Actions: {actions}. "
+            "Pass action=help for per-action parameters and examples."
+            + self._expensive_action_note()
+        )
+
     def get_tool_definition(self) -> dict[str, Any]:
         definition: dict[str, Any] = {
             "name": self.facade_name,
-            "description": self._description
-            or f"Facade dispatching {len(self._available_actions())} actions "
-            f"via the 'action' parameter: {', '.join(self._available_actions())}.",
+            "description": self._short_description(),
             "inputSchema": self.get_tool_schema(),
         }
         if self._annotations is not None:

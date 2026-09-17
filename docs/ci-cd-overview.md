@@ -55,7 +55,7 @@ This document provides a comprehensive overview of the tree-sitter-analyzer proj
 **Purpose**: Defines the complete test suite that all branches must execute.
 
 **Key Features**:
-- Installs system dependencies (fd, ripgrep)
+- Verifies Git for history and change analysis
 - Sets up Python environment with uv
 - Installs all project dependencies using `--all-extras`
 - Runs pre-commit quality checks
@@ -99,11 +99,8 @@ upload-coverage: true    # Whether to upload coverage to Codecov
 **Purpose**: Consistent system dependency installation across all platforms.
 
 **Responsibilities**:
-- Installs fd and ripgrep on Linux (apt-get)
-- Installs fd and ripgrep on macOS (brew)
-- Installs fd and ripgrep on Windows (choco)
-- Creates symlinks where necessary (fdfind → fd on Ubuntu)
-- Verifies installation success
+- Verifies Git on every runner
+- Keeps the core test matrix independent of optional host search executables
 
 ## Branch-Specific Workflows
 
@@ -313,15 +310,7 @@ strategy:
 
 ### System Dependencies
 
-All workflows install the same system dependencies:
-
-- **fd**: Fast file finder (Rust-based)
-- **ripgrep**: Fast text search (Rust-based)
-
-Platform-specific installation:
-- **Linux**: `apt-get install fd-find ripgrep` + symlink creation
-- **macOS**: `brew install fd ripgrep`
-- **Windows**: `choco install fd ripgrep`
+All workflows verify Git. Core indexing, discovery, and source verification do not install or require fd/ripgrep.
 
 ### Quality Checks
 

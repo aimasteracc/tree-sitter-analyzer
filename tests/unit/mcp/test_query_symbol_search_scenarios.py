@@ -840,6 +840,9 @@ class TestRobustnessWave3:
                 captured.update(symbol=symbol, language=language, limit=limit)
                 return []
 
+            def close(self):
+                captured["closed"] = True
+
         monkeypatch.setattr(qss, "ASTCache", _FakeCache)
         qss._try_fts_ranked_search(tmp_path, "foo", "java")
         assert captured == {
@@ -847,6 +850,7 @@ class TestRobustnessWave3:
             "symbol": "foo",
             "language": "java",
             "limit": 500,
+            "closed": True,
         }
 
     def test_参数全量解析四元组(self):

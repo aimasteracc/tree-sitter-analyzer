@@ -1,337 +1,85 @@
-#!/usr/bin/env python3
-"""
-Integration tests for Intent Aliases with MCP Server.
-
-Tests that aliases work end-to-end through the MCP server:
-- Tool calls with alias names
-- Parameter passing
-- Result format consistency
-- Error handling with aliases
-"""
-
-import tempfile
-from pathlib import Path
+"""无外部搜索程序时，意图别名仍通过真实索引调用公开门面。"""
 
 import pytest
 
+from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
-from tree_sitter_analyzer.mcp.utils.error_handler import AnalysisError
 
 
-@pytest.fixture(scope="session")
-def server():
-    """
-    Session-scoped MCP server fixture.
+@pytest.fixture
+def server(tmp_path, monkeypatch):
+    import subprocess
 
-    Creates ONE server instance for the entire test session.
-    This prevents race conditions when tests run in parallel.
-    """
-    return TreeSitterAnalyzerMCPServer()
-
-
-@pytest.mark.requires_fd
-class TestIntentAliasIntegration:
-    """测试 Intent Alias 在 MCP Server 中的集成"""
-
-    @pytest.fixture
-    def temp_python_file(self):
-        """
-        Create a temporary Python file in an isolated directory.
-
-        Each test gets its own unique directory to prevent parallel
-        tests from finding each other's files.
-        """
-        # Create unique directory for this test
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmpdir_path = Path(tmpdir)
-            test_file = tmpdir_path / "test_example.py"
-
-            content = '''
-def example_function():
-    """Example function for testing"""
-    return "Hello, World!"
-
-class ExampleClass:
-    def method(self):
-        pass
-'''
-            test_file.write_text(content, encoding="utf-8")
-            yield test_file
-            # Cleanup automatic via TemporaryDirectory context manager
-
-    @pytest.mark.asyncio
-    @pytest.mark.requires_ripgrep
-    async def test_locate_usage_alias_calls_search(
-        self, server, temp_python_file
-    ):
-        """locate_usage alias 应该调用 search 工具并返回正确格式
-        (search_content は廃止済み; locate_usage は search action=batch にルーティング)"""
-        # Use alias name with batch action (works with unindexed temp dirs)
-        result = await server.call_tool(
-            "locate_usage",
-            arguments={
-                "action": "batch",
-                "queries": [
-                    {
-                        "pattern": "example_function",
-                        "roots": [str(temp_python_file.parent)],
-                        "label": "find_function",
-                    },
-                    {
-                        "pattern": "ExampleClass",
-                        "roots": [str(temp_python_file.parent)],
-                        "label": "find_class",
-                    },
-                ],
-                "output_format": "json",
-            },
-        )
-
-        # Should succeed and return batch results
-        assert result["success"] is True
-        assert "queries" in result
-        assert "total_matches" in result
-        # Verify the search actually found our function
-        all_matches = str(result["queries"])
-        assert "example_function" in all_matches, (
-            f"Should find 'example_function' in batch results: {result['queries']}"
-        )
-
-    @pytest.mark.asyncio
-    @pytest.mark.requires_ripgrep
-    async def test_map_structure_alias_calls_list_files(self, server, temp_python_file):
-        """map_structure alias 应该调用 list_files 工具并返回正确格式"""
-        result = await server.call_tool(
-            "map_structure",
-            arguments={
-                "roots": [str(temp_python_file.parent)],
-                "pattern": "*.py",
-                "glob": True,
-                "output_format": "json",
-            },
-        )
-
-        # Should succeed and return results in tool's native format
-        assert result["success"] is True
-        assert "count" in result
-        assert "results" in result
-        # Should find our temp Python file
-        found = any(temp_python_file.name in str(r) for r in result["results"])
-        assert found, f"Should find {temp_python_file.name} in results"
-
-    @pytest.mark.asyncio
-    async def test_extract_structure_alias_calls_analyze_code_structure(
-        self, server, temp_python_file
-    ):
-        """extract_structure alias 应该调用 analyze_code_structure 工具"""
-        result = await server.call_tool(
-            "extract_structure",
-            arguments={
-                "file_path": str(temp_python_file),
-                "language": "python",
-                "output_format": "json",
-            },
-        )
-
-        # Should succeed and return structure info in tool's native format
-        assert result["success"] is True
-        assert "format_type" in result
-        # Should contain our function and class
-        result_str = str(result)
-        assert "example_function" in result_str
-        assert "ExampleClass" in result_str
-
-    # test_original_tool_name_still_works は廃止済み:
-    # search_content は削除されたため、直接呼び出すと ValueError になる。
-    # locate_usage は現在 search (action=symbol) にルーティングされる。
+    path = tmp_path / "example.py"
+    path.write_text(
+        "def example_function():\n    return 1\n\nclass ExampleClass:\n    pass\n",
+        encoding="utf-8",
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_file(str(path))
+    finally:
+        cache.close()
+    instance = TreeSitterAnalyzerMCPServer()
+    instance.set_project_path(str(tmp_path))
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda *a, **kw: pytest.fail("意图检索不得启动外部程序")
+    )
+    return instance
 
 
-class TestIntentAliasErrorHandling:
-    """测试 Intent Alias 的错误处理"""
-
-    @pytest.mark.asyncio
-    async def test_unknown_alias_raises_error(self, server):
-        """未知的 alias 应该返回错误"""
-        with pytest.raises(ValueError, match="Unknown tool"):
-            await server.call_tool("invalid_alias_name", arguments={})
-
-    @pytest.mark.asyncio
-    async def test_alias_with_invalid_params_raises_error(self, server):
-        """Alias + 无效参数应该返回错误 (missing action → facade returns error dict)"""
-        # Without action the search facade returns an error dict (success=False),
-        # not a raised exception.  Accept either a raised error or an error dict.
-        try:
-            result = await server.call_tool(
-                "locate_usage", arguments={"invalid_param": "value"}
-            )
-            # Facade returned an error dict instead of raising.
-            assert result.get("success") is False or "error" in result
-        except (AnalysisError, ValueError):
-            pass  # raised form is also acceptable
+@pytest.mark.asyncio
+@pytest.mark.parametrize("alias", ["locate_usage", "find_usage"])
+async def test_symbol_alias_matches_public_search(server, alias):
+    arguments = {"action": "symbol", "query": "example_function", "limit": 1}
+    actual = await server.call_tool(alias, arguments=arguments)
+    expected = await server.call_tool("search", arguments=arguments)
+    assert actual["success"] is True
+    assert actual["results"] == expected["results"]
+    assert [m["name"] for m in actual["results"]] == ["example_function"]
 
 
-class TestMultipleAliasesForSameTool:
-    """测试同一工具的多个 alias"""
-
-    @pytest.fixture
-    def temp_dir(self):
-        """Create temporary directory with files"""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmpdir_path = Path(tmpdir)
-
-            # Create some test files
-            (tmpdir_path / "file1.py").write_text("# Python file 1")
-            (tmpdir_path / "file2.py").write_text("# Python file 2")
-            (tmpdir_path / "README.md").write_text("# Readme")
-
-            yield tmpdir_path
-
-    @pytest.mark.asyncio
-    async def test_map_structure_and_discover_files_same_result(self, server, temp_dir):
-        """map_structure 和 discover_files 应该返回相同结果"""
-        # Call with first alias
-        result1 = await server.call_tool(
-            "map_structure",
-            arguments={
-                "roots": [str(temp_dir)],
-                "pattern": "*.py",
-                "glob": True,
-                "output_format": "json",
-            },
-        )
-
-        # Call with second alias
-        result2 = await server.call_tool(
-            "discover_files",
-            arguments={
-                "roots": [str(temp_dir)],
-                "pattern": "*.py",
-                "glob": True,
-                "output_format": "json",
-            },
-        )
-
-        # Results should be identical (both map to same tool)
-        assert result1["success"] == result2["success"]
-        assert result1["count"] == result2["count"]
-        assert result1["results"] == result2["results"]
-
-    @pytest.mark.asyncio
-    @pytest.mark.requires_ripgrep
-    async def test_locate_usage_and_find_usage_same_result(self, server, temp_dir):
-        """locate_usage 和 find_usage 应该返回相同结果"""
-        # Create a test file with searchable content
-        test_file = temp_dir / "test.py"
-        test_file.write_text("def search_target():\n    pass")
-
-        batch_args = {
-            "action": "batch",
-            "queries": [
-                {
-                    "pattern": "search_target",
-                    "roots": [str(temp_dir)],
-                    "label": "q1",
-                },
-                {
-                    "pattern": "def ",
-                    "roots": [str(temp_dir)],
-                    "label": "q2",
-                },
-            ],
-            "output_format": "json",
-        }
-
-        # Call with first alias
-        result1 = await server.call_tool("locate_usage", arguments=batch_args)
-
-        # Call with second alias
-        result2 = await server.call_tool("find_usage", arguments=batch_args)
-
-        # Results should be identical (both map to same tool)
-        assert result1["success"] == result2["success"]
-        assert result1["total_matches"] == result2["total_matches"]
+@pytest.mark.asyncio
+@pytest.mark.parametrize("alias", ["map_structure", "discover_files"])
+async def test_structure_alias_matches_public_sitemap(server, alias):
+    arguments = {"mode": "flat", "language": "python"}
+    actual = await server.call_tool(alias, arguments=arguments)
+    expected = await server.call_tool(
+        "structure", arguments={"action": "sitemap", **arguments}
+    )
+    assert actual["success"] is True
+    assert actual["file_count"] == 1
+    assert actual["symbols_by_kind"] == expected["symbols_by_kind"]
 
 
-@pytest.mark.requires_ripgrep
-@pytest.mark.requires_fd
-class TestAliasWithAllToolParameters:
-    """测试 Alias 支持原始工具的所有参数"""
+@pytest.mark.asyncio
+async def test_unknown_alias_raises_error(server):
+    with pytest.raises(ValueError, match="Unknown tool"):
+        await server.call_tool("invalid_alias_name", arguments={})
 
-    @pytest.fixture
-    def temp_dir_with_files(self):
-        """Create temp directory with multiple files"""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmpdir_path = Path(tmpdir)
 
-            # Create test files
-            (tmpdir_path / "app.py").write_text(
-                "def target(): pass\nclass TargetClass: pass"
-            )
-            (tmpdir_path / "utils.py").write_text("def helper(): pass")
-            (tmpdir_path / "test.py").write_text("import target\ntarget()")
+@pytest.mark.asyncio
+async def test_alias_requires_action(server):
+    result = await server.call_tool("locate_usage", arguments={})
+    assert result["success"] is False
 
-            yield tmpdir_path
 
-    @pytest.mark.asyncio
-    async def test_locate_usage_supports_search_params(
-        self, server, temp_dir_with_files
-    ):
-        """locate_usage 应该支持 search ツールのパラメータ
-        (search_content は廃止済み; locate_usage は search action=batch にルーティング)"""
-        result = await server.call_tool(
-            "locate_usage",
-            arguments={
-                "action": "batch",
-                "queries": [
-                    {
-                        "pattern": "target",
-                        "roots": [str(temp_dir_with_files)],
-                        "include_globs": ["*.py"],
-                        "label": "find_target",
-                    },
-                    {
-                        "pattern": "helper",
-                        "roots": [str(temp_dir_with_files)],
-                        "include_globs": ["*.py"],
-                        "label": "find_helper",
-                    },
-                ],
-                "output_format": "json",
-            },
-        )
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["content", "grep", "batch"])
+async def test_retired_search_action_is_rejected(server, action):
+    result = await server.call_tool("locate_usage", arguments={"action": action})
+    assert result["success"] is False
+    assert action not in result["available_actions"]
 
-        # Should succeed and respect all parameters
-        assert result["success"] is True
-        assert "queries" in result
-        # Verify the target pattern found matches (target appears in multiple files)
-        target_q = next(
-            (q for q in result["queries"] if q["label"] == "find_target"), None
-        )
-        assert target_q is not None
-        assert target_q["matches"]  # non-empty: ripgrep found "target" in temp files
 
-    @pytest.mark.asyncio
-    async def test_map_structure_supports_all_list_files_params(
-        self, server, temp_dir_with_files
-    ):
-        """map_structure 应该支持 list_files 的所有参数"""
-        result = await server.call_tool(
-            "map_structure",
-            arguments={
-                "roots": [str(temp_dir_with_files)],
-                "pattern": "*.py",
-                "glob": True,
-                # list_files no longer accepts max_depth — only min_depth.
-                "exclude": ["test*.py"],
-                "output_format": "json",
-            },
-        )
-
-        # Should succeed and respect all parameters
-        assert result["success"] is True
-        assert "results" in result
-        # Should exclude test.py
-        result_str = str(result["results"])
-        assert "test.py" not in result_str
-        # Should include app.py and utils.py
-        assert "app.py" in result_str or "utils.py" in result_str
+@pytest.mark.asyncio
+async def test_extract_structure_alias_calls_analyze_code_structure(server, tmp_path):
+    # 2026-09-09：检索接口迁移不能删除未退役的结构分析别名职责。
+    result = await server.call_tool(
+        "extract_structure",
+        arguments={"file_path": str(tmp_path / "example.py"), "output_format": "json"},
+    )
+    assert result["success"] is True
+    assert "format_type" in result
+    assert "example_function" in str(result)
+    assert "ExampleClass" in str(result)

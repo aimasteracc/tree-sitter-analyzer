@@ -26,7 +26,6 @@ CALLABILITY RATCHET PRINCIPLE (Codex P2 — issue #496):
 
 from __future__ import annotations
 
-import inspect
 import re
 
 import pytest
@@ -128,7 +127,7 @@ class TestToolRoutingFacadeNames:
             "project_health",
             "edit_risk",
             "find_symbol",
-            "find_files",
+            "indexed_structure",
             "call_graph",
             "agent_workflow",
         ]
@@ -207,35 +206,31 @@ class TestSmartWorkflowHint:
 
 
 class TestErrorRecoverySuggestedTool:
-    def test_file_not_found_suggested_tool_is_facade(self) -> None:
-        """file_not_found recovery hint must suggest a facade name, not list_files."""
+    def test_file_not_found_suggests_live_host_search(self) -> None:
+        """缺失文件应引导到宿主实时搜索，并说明索引结构的前置条件。"""
         from tree_sitter_analyzer.mcp.server_utils.error_recovery import (
             build_agent_friendly_error,
         )
 
         err = FileNotFoundError("file not found at /tmp/missing.py")
         result = build_agent_friendly_error("analyze_file", err)
-        # Must have a suggested_tool
-        assert "suggested_tool" in result
-        tool = result["suggested_tool"]
-        # Must be a facade name or facade action= form (not a raw legacy name)
-        assert tool not in _FORBIDDEN, (
-            f"suggested_tool={tool!r} is a legacy name; must be facade form"
+        assert "suggested_tool" not in result
+        assert "host agent's live file-search capability" in result["recovery_hint"]
+        assert (
+            "Rebuild the index before using structure action=sitemap"
+            in result["recovery_hint"]
         )
 
-    def test_no_such_file_suggested_tool_is_facade(self) -> None:
-        """'no such file' recovery hint must suggest a facade name."""
+    def test_no_such_file_suggests_live_host_search(self) -> None:
+        """另一种缺失文件错误也必须使用相同的实时恢复路径。"""
         from tree_sitter_analyzer.mcp.server_utils.error_recovery import (
             build_agent_friendly_error,
         )
 
         err = FileNotFoundError("no such file or directory: /tmp/missing.py")
         result = build_agent_friendly_error("analyze_file", err)
-        assert "suggested_tool" in result
-        tool = result["suggested_tool"]
-        assert tool not in _FORBIDDEN, (
-            f"suggested_tool={tool!r} is a legacy name; must be facade form"
-        )
+        assert "suggested_tool" not in result
+        assert "host agent's live file-search capability" in result["recovery_hint"]
 
     def test_error_recovery_hint_texts_no_legacy_names(self) -> None:
         """All recovery hint text strings in _ERROR_RECOVERY_HINTS must be clean."""
@@ -284,19 +279,38 @@ class TestSearchSymbolNextStep:
                 f"symbol search next_step does not use facade form: {next_step!r}"
             )
 
-    def test_symbol_search_next_step_exact_facade_form(self) -> None:
-        """The next_step builder must produce the facade call form string."""
-        # Inspect the source of execute() to confirm the legacy name is gone.
-        # The next_step is constructed inline at the call site (not a constant),
-        # so we verify via source inspection that the legacy name is absent.
-        source = inspect.getsource(CodeGraphSymbolSearchTool.execute)
-        # Must NOT contain the legacy name
-        assert "codegraph_explore" not in source, (
-            "CodeGraphSymbolSearchTool.execute still references legacy 'codegraph_explore'"
+    def test_symbol_search_next_step_exact_facade_form(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """公开搜索边界必须返回精确的 facade 下一步提示。"""
+        import asyncio
+        from types import SimpleNamespace
+
+        tool = CodeGraphSymbolSearchTool(project_root=str(tmp_path))
+        cache = SimpleNamespace(fts5_available=False)
+        monkeypatch.setattr(tool, "_get_cache", lambda: cache)
+        monkeypatch.setattr(
+            tool,
+            "_search",
+            lambda *_args: [
+                {
+                    "name": "needle",
+                    "kind": "function",
+                    "file": "sample.py",
+                    "line": 1,
+                    "end_line": 2,
+                    "language": "python",
+                }
+            ],
         )
-        # Must reference the facade form
-        assert "structure" in source, (
-            "CodeGraphSymbolSearchTool.execute does not reference the 'structure' facade"
+        # incident1491：固定“有结果但无正文”的公开边界，避免检查实现源码。
+        monkeypatch.setattr(tool, "_inline_match_bodies", lambda *_args: None)
+
+        result = asyncio.run(tool.execute({"query": "needle", "output_format": "json"}))
+
+        assert result["next_step"] == (
+            "Run structure action=explore query='needle' before raw grep/read to "
+            "bulk-fetch related symbols and concept matches."
         )
 
 

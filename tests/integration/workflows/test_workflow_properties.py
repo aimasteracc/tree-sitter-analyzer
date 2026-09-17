@@ -182,9 +182,11 @@ class TestWorkflowProperties:
     def test_property_7_system_dependencies(
         self, reusable_test_workflow: dict[str, Any]
     ):
-        """Property 7: System dependencies (fd, ripgrep) must be handled."""
+        """属性7：核心工作流只验证 Git，不安装外部搜索程序。"""
         content = yaml.dump(reusable_test_workflow)
-        assert "setup-system" in content or ("fd" in content and "ripgrep" in content)
+        assert "setup-system" in content
+        assert "ripgrep" not in content
+        assert "fd-find" not in content
 
     def test_property_11_reusable_workflow_structure(
         self,

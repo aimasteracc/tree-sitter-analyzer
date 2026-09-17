@@ -614,7 +614,7 @@ class TestListFilesCommand:
         )
         
         # Act
-        with patch('module.ListFilesTool') as mock_tool:
+        with patch('module.QueryTool') as mock_tool:
             mock_tool.return_value.execute = AsyncMock(return_value={})
             result = await _run(args)
         

@@ -34,8 +34,7 @@ class TestMCPCapabilities:
                 patch("tree_sitter_analyzer.mcp.server.ReadPartialTool"),
                 patch("tree_sitter_analyzer.mcp.server.AnalyzeCodeStructureTool"),
                 patch("tree_sitter_analyzer.mcp.server.AnalyzeScaleTool"),
-                patch("tree_sitter_analyzer.mcp.server.ListFilesTool"),
-                # SearchContentTool と FindAndGrepTool は廃止済み。パッチ不要。
+                # v2 で廃止された検索ラッパーはパッチ不要。
             ):
                 server = TreeSitterAnalyzerMCPServer()
 

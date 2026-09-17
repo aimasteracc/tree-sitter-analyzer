@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import sqlite3
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from tests.unit._navigation_test_support import assert_sqlite_deadline_falls_back
 from tree_sitter_analyzer.mcp.tools.codegraph_navigate_tool import (
     CodeGraphNavigateTool,
     _transitive_callees,
@@ -53,6 +56,104 @@ class TestValidateArguments:
 
 class TestExecuteDefinition:
     @pytest.mark.asyncio
+    async def test_sqlite_deadline_falls_back_to_coordinate_query(
+        self, tmp_path, monkeypatch
+    ):
+        await assert_sqlite_deadline_falls_back(
+            tmp_path,
+            monkeypatch,
+            CodeGraphNavigateTool(str(tmp_path)),
+            {"symbol": "target"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_certified_sql_error_reaches_coordinate_fallback(
+        self, tmp_path, monkeypatch
+    ):
+        """认证查询的数据库错误必须退出 owner 并重试普通坐标查询。"""
+        import tree_sitter_analyzer.index_snapshot as snapshot_owner
+
+        bound_cache = object()
+        owner = MagicMock()
+        owner.query_cache.return_value = bound_cache
+        owner.read_source = MagicMock()
+
+        @contextmanager
+        def certified(_project_root):
+            yield owner
+
+        calls: list[tuple[object | None, object | None]] = []
+
+        async def execute_bound(_arguments, cache, source_reader):
+            calls.append((cache, source_reader))
+            if cache is bound_cache:
+                raise sqlite3.DatabaseError("corrupt certified lookup")
+            return {"success": True, "fallback": True}
+
+        tool = CodeGraphNavigateTool(str(tmp_path))
+        monkeypatch.setattr(snapshot_owner, "certified_index_read", certified)
+        monkeypatch.setattr(tool, "_execute_bound", execute_bound)
+
+        result = await tool.execute({"symbol": "target"})
+
+        assert result == {"success": True, "fallback": True}
+        assert calls == [(bound_cache, owner.read_source), (None, None)]
+
+    def test_bound_definition_sql_error_is_not_converted_to_not_found(self, tool):
+        """严格认证缓存的 SQL 故障不能伪装成坐标不存在。"""
+
+        class StrictCache:
+            strict_sql_errors = True
+            _fts5_available = False
+
+            @staticmethod
+            def get_conn():
+                connection = MagicMock()
+                connection.execute.side_effect = sqlite3.DatabaseError("broken")
+                return connection
+
+        for lookup in (tool._resolve_definition, tool._find_references):
+            with pytest.raises(sqlite3.DatabaseError, match="broken"):
+                lookup("target", 50, StrictCache())
+
+    def test_unbound_sql_errors_remain_explanatory_results(self, tool):
+        """普通坐标查询的数据库故障仍返回可诊断结果。"""
+        with (
+            patch.object(tool, "get_cache", return_value=MagicMock()),
+            patch(
+                "tree_sitter_analyzer.symbol_resolver.SymbolResolver",
+                side_effect=sqlite3.DatabaseError("broken"),
+            ),
+        ):
+            definition = tool._resolve_definition("target", 50)
+            references = tool._find_references("target", 50)
+
+        assert definition == {
+            "found": False,
+            "reason": "SQLite definition lookup failed",
+        }
+        assert references == {
+            "found": False,
+            "reason": "SQLite reference lookup failed",
+        }
+
+    def test_non_database_lookup_failures_remain_explanatory_results(self, tool):
+        """普通解析故障仍返回可诊断的坐标查询结果。"""
+        cache = MagicMock()
+        with (
+            patch.object(tool, "get_cache", return_value=cache),
+            patch(
+                "tree_sitter_analyzer.symbol_resolver.SymbolResolver",
+                side_effect=RuntimeError("resolver failed"),
+            ),
+        ):
+            definition = tool._resolve_definition("target", 50)
+            references = tool._find_references("target", 50)
+
+        assert definition == {"found": False, "reason": "resolver failed"}
+        assert references == {"found": False, "reason": "resolver failed"}
+
+    @pytest.mark.asyncio
     async def test_definition_no_cache(self, tool):
         with patch.object(tool, "get_cache", return_value=None):
             result = await tool.execute(
@@ -87,8 +188,52 @@ class TestExecuteDefinition:
         assert result["success"] is True
         assert "definition" in result
 
+    def test_definition_body_inlining_without_cache_keeps_coordinates(
+        self, tool_with_root
+    ):
+        # PR #1491：认证 cache 不可用时只保留坐标，不得触发普通文件读取。
+        result = {
+            "definition": {
+                "found": True,
+                "definitions": [{"name": "target", "file": "sample.py", "line": 1}],
+            }
+        }
+        with patch.object(tool_with_root, "get_cache", return_value=None):
+            tool_with_root._inline_definition_bodies(result)
+        assert result["definition"]["definitions"] == [
+            {"name": "target", "file": "sample.py", "line": 1}
+        ]
+
 
 class TestExecuteHierarchy:
+    def test_bound_hierarchy_never_parses_live_files(self, tool, monkeypatch):
+        """认证缓存为空时也不能退回实时文件解析。"""
+        from tree_sitter_analyzer.call_graph import CallGraph
+
+        class EmptyCache:
+            @staticmethod
+            def get_call_edges():
+                return []
+
+            @staticmethod
+            def get_functions():
+                return []
+
+            @staticmethod
+            def get_imports():
+                return {}
+
+        monkeypatch.setattr(
+            CallGraph,
+            "build",
+            lambda _self: pytest.fail("认证层级查询不能解析实时文件"),
+        )
+
+        result = tool._call_hierarchy("target", None, 1, 50, EmptyCache())
+
+        assert result["callers"] == []
+        assert result["callees"] == []
+
     @pytest.mark.asyncio
     async def test_hierarchy_no_graph(self, tool):
         mock_graph = MagicMock()
@@ -334,14 +479,283 @@ class TestDefinitionBodyInlining:
         return str(tmp_path)
 
     @pytest.mark.asyncio
-    async def test_definition_inlines_body(self, indexed):
+    async def test_uncertified_definition_stays_coordinate_only(self, indexed):
         tool = CodeGraphNavigateTool(indexed)
         result = await tool.execute(
             {"symbol": "_find", "mode": "definition", "output_format": "json"}
         )
         assert result["definition"]["found"] is True
         defs = result["definition"]["definitions"]
-        bodied = [d for d in defs if "body" in d]
-        assert bodied, "definition must carry an inlined body"
-        assert "FOUND_MARKER" in bodied[0]["body"]["content"]
-        assert "no Read needed" in result["next_step"]
+        assert all("body" not in definition for definition in defs)
+        assert "no Read needed" not in result.get("next_step", "")
+
+    @pytest.mark.asyncio
+    async def test_certified_definition_restores_indexed_body(self, tmp_path):
+        from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+            CodeGraphFullIndexTool,
+        )
+
+        (tmp_path / "svc.py").write_text(
+            "def target():\n    return 'CERTIFIED_NAV_BODY'\n", encoding="utf-8"
+        )
+        indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
+            {"mode": "full", "max_files": 10}
+        )
+        assert indexed["published"] is True
+        result = await CodeGraphNavigateTool(str(tmp_path)).execute(
+            {"symbol": "target", "mode": "definition", "output_format": "json"}
+        )
+        body = result["definition"]["definitions"][0]["body"]["content"]
+        assert "CERTIFIED_NAV_BODY" in body
+
+    @pytest.mark.asyncio
+    async def test_definition_move_after_bound_query_drops_body(
+        self, tmp_path, monkeypatch
+    ):
+        from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+            CodeGraphFullIndexTool,
+        )
+        from tree_sitter_analyzer.symbol_resolver import SymbolResolver
+
+        source = tmp_path / "svc.py"
+        source.write_text("def target():\n    return 'INDEXED_NAV'\n", encoding="utf-8")
+        assert (
+            await CodeGraphFullIndexTool(str(tmp_path)).execute(
+                {"mode": "full", "max_files": 10}
+            )
+        )["published"] is True
+        original = SymbolResolver.resolve
+
+        def resolve_then_move(self, symbol):
+            found = original(self, symbol)
+            source.write_text(
+                "\n\ndef target():\n    return 'MOVED_NAV'\n", encoding="utf-8"
+            )
+            return found
+
+        monkeypatch.setattr(SymbolResolver, "resolve", resolve_then_move)
+        result = await CodeGraphNavigateTool(str(tmp_path)).execute(
+            {"symbol": "target", "mode": "definition", "output_format": "json"}
+        )
+        assert all("body" not in row for row in result["definition"]["definitions"])
+        assert "no Read needed" not in result.get("next_step", "")
+
+
+def _definition_stub(count):
+    record = MagicMock()
+    record.to_dict.return_value = {"name": "f", "file": f"m{count}.py", "line": 1}
+    return record
+
+
+class TestLimitContract:
+    """``limit`` bounds both listings; counts stay complete."""
+
+    def test_schema_declares_limit(self, tool):
+        prop = tool.get_tool_schema()["properties"]["limit"]
+        assert prop["type"] == "integer"
+        assert prop["default"] == 50
+        assert prop["minimum"] == 1
+
+    @pytest.mark.asyncio
+    async def test_references_are_capped_and_reported(self, tool_with_root):
+        refs = [MagicMock() for _ in range(120)]
+        for i, r in enumerate(refs):
+            r.to_dict.return_value = {"file": f"m{i}.py", "line": i + 1}
+        ref_result = MagicMock()
+        ref_result.references = refs
+        ref_result.definitions = []
+
+        mock_resolver = MagicMock()
+        mock_resolver.find_references.return_value = ref_result
+
+        with (
+            patch.object(tool_with_root, "get_cache", return_value=MagicMock()),
+            patch.object(tool_with_root, "_inline_definition_bodies"),
+            patch(
+                "tree_sitter_analyzer.symbol_resolver.SymbolResolver",
+                return_value=mock_resolver,
+            ),
+        ):
+            result = await tool_with_root.execute(
+                {
+                    "symbol": "f",
+                    "mode": "references",
+                    "limit": 10,
+                    "output_format": "json",
+                }
+            )
+
+        references = result["references"]
+        assert len(references["references"]) == 10
+        assert references["reference_count"] == 120, "the count must stay complete"
+        assert references["references_truncated"] is True
+        assert references["listed_cap"] == 10
+        assert result["truncated"] is True
+
+    @pytest.mark.asyncio
+    async def test_definitions_are_capped_and_reported(self, tool_with_root):
+        resolve_result = MagicMock()
+        resolve_result.definitions = [_definition_stub(i) for i in range(80)]
+        resolve_result.resolved_via = "fts"
+
+        mock_resolver = MagicMock()
+        mock_resolver.resolve.return_value = resolve_result
+
+        with (
+            patch.object(tool_with_root, "get_cache", return_value=MagicMock()),
+            patch.object(tool_with_root, "_inline_definition_bodies"),
+            patch(
+                "tree_sitter_analyzer.symbol_resolver.SymbolResolver",
+                return_value=mock_resolver,
+            ),
+        ):
+            result = await tool_with_root.execute(
+                {
+                    "symbol": "f",
+                    "mode": "definition",
+                    "limit": 5,
+                    "output_format": "json",
+                }
+            )
+
+        definition = result["definition"]
+        assert len(definition["definitions"]) == 5
+        assert definition["count"] == 80, "the count must stay complete"
+        assert definition["definitions_truncated"] is True
+        assert result["truncated"] is True
+
+    @pytest.mark.asyncio
+    async def test_within_limit_is_not_reported_as_truncated(self, tool_with_root):
+        resolve_result = MagicMock()
+        resolve_result.definitions = [_definition_stub(i) for i in range(3)]
+        resolve_result.resolved_via = "fts"
+        mock_resolver = MagicMock()
+        mock_resolver.resolve.return_value = resolve_result
+
+        with (
+            patch.object(tool_with_root, "get_cache", return_value=MagicMock()),
+            patch.object(tool_with_root, "_inline_definition_bodies"),
+            patch(
+                "tree_sitter_analyzer.symbol_resolver.SymbolResolver",
+                return_value=mock_resolver,
+            ),
+        ):
+            result = await tool_with_root.execute(
+                {"symbol": "f", "mode": "definition", "output_format": "json"}
+            )
+
+        assert result["truncated"] is False
+        assert result["definition"]["definitions_truncated"] is False
+        assert "listing" not in result["agent_summary"]["summary_line"]
+
+    @pytest.mark.asyncio
+    async def test_truncated_summary_tells_the_agent_to_raise_limit(
+        self, tool_with_root
+    ):
+        refs = [MagicMock() for _ in range(60)]
+        for i, r in enumerate(refs):
+            r.to_dict.return_value = {"file": f"m{i}.py", "line": i + 1}
+        ref_result = MagicMock()
+        ref_result.references = refs
+        ref_result.definitions = []
+        mock_resolver = MagicMock()
+        mock_resolver.find_references.return_value = ref_result
+
+        with (
+            patch.object(tool_with_root, "get_cache", return_value=MagicMock()),
+            patch.object(tool_with_root, "_inline_definition_bodies"),
+            patch(
+                "tree_sitter_analyzer.symbol_resolver.SymbolResolver",
+                return_value=mock_resolver,
+            ),
+        ):
+            result = await tool_with_root.execute(
+                {
+                    "symbol": "f",
+                    "mode": "references",
+                    "limit": 25,
+                    "output_format": "json",
+                }
+            )
+
+        summary = result["agent_summary"]
+        assert "60 refs" in summary["summary_line"]
+        assert "25/60 refs" in summary["summary_line"]
+        assert "limit=25" in summary["next_step"]
+        assert "raise limit" in summary["next_step"]
+
+    @pytest.mark.asyncio
+    async def test_limit_below_one_is_clamped_rather_than_empty(self, tool_with_root):
+        resolve_result = MagicMock()
+        resolve_result.definitions = [_definition_stub(i) for i in range(3)]
+        resolve_result.resolved_via = "fts"
+        mock_resolver = MagicMock()
+        mock_resolver.resolve.return_value = resolve_result
+
+        with (
+            patch.object(tool_with_root, "get_cache", return_value=MagicMock()),
+            patch.object(tool_with_root, "_inline_definition_bodies"),
+            patch(
+                "tree_sitter_analyzer.symbol_resolver.SymbolResolver",
+                return_value=mock_resolver,
+            ),
+        ):
+            result = await tool_with_root.execute(
+                {
+                    "symbol": "f",
+                    "mode": "definition",
+                    "limit": 0,
+                    "output_format": "json",
+                }
+            )
+
+        assert len(result["definition"]["definitions"]) == 1
+        assert result["listed_cap"] == 1
+
+
+class TestBodyInliningDegrades:
+    """When no body resolves, the response stays coordinate-only."""
+
+    @pytest.fixture
+    def indexed(self, tmp_path):
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        (tmp_path / "svc.py").write_text(
+            "def present():\n    return 1\n", encoding="utf-8"
+        )
+        cache = ASTCache(str(tmp_path))
+        cache.index_project(max_files=100)
+        cache.close()
+        return str(tmp_path)
+
+    def test_unresolvable_body_leaves_coordinates_and_no_deterrent(self, indexed):
+        tool = CodeGraphNavigateTool(indexed)
+        record = {"name": "ghost", "file": "absent.py", "line": 1}
+        result = {"definition": {"found": True, "definitions": [record]}}
+
+        tool._inline_definition_bodies(result)
+
+        definition = result["definition"]
+        assert "body" not in definition["definitions"][0]
+        assert "bodied_count" not in definition
+        assert "body_cap" not in definition
+        assert "next_step" not in result, (
+            "the 'no Read needed' deterrent must only appear when content was given"
+        )
+
+    def test_unbound_body_helper_does_not_report_bodied_count(self, indexed):
+        tool = CodeGraphNavigateTool(indexed)
+        result = {
+            "definition": {
+                "found": True,
+                "definitions": [
+                    {"name": "present", "file": "svc.py", "line": 1, "end_line": 2}
+                ],
+            }
+        }
+
+        tool._inline_definition_bodies(result)
+
+        definition = result["definition"]
+        assert "bodied_count" not in definition
+        assert "body_cap" not in definition

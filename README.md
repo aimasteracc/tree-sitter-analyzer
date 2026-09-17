@@ -9,45 +9,11 @@
 TSA indexes your codebase with tree-sitter and serves correct call graphs, symbol search, and structural queries to AI coding agents — locally, with no telemetry.
 
 **Why it's different:**
-* **Cross-language correctness is the moat.** Language-family gates prevent name-only cross-language bindings.
+* **Cross-language bindings are gated by language family.** A name match alone does not create a cross-language edge, and the gates that enforce this are executable tests rather than a convention.
 * **Built agent-native.** 8 MCP tools provide structured JSON output and verdict envelopes, with CLI access and curated workflows.
 * **Broad and correctly classified.** The [generated support-depth inventory](#supported-languages) distinguishes pipeline evidence from unverified cross-file behavior.
 
 > Upgrading from v1.x? See [docs/MIGRATION.md](docs/MIGRATION.md).
-
-### Nervous-System Boundaries (Pulse / TQL / Semantic Query)
-
-TQL temporal selectors compare modification timestamps, not modification counts.
-The `tql_schema` action documents the window and the shared default for bare
-`:hot` and `:recently_modified`. Depth queries retain exact definition identity
-and fail explicitly when traversal limits are exceeded.
-
-Pulse requests return snapshot-bound context. SQL reads for identity,
-relationships, reverse-import context and optional cached LSP enrichment share
-a savepoint without ending a caller-owned transaction. This is not a SQL
-round-trip or latency guarantee.
-
-Pulse's Python reverse-import context uses the existing module resolver; this
-is not a claim of complete cross-language module resolution. Comment context
-requires an index rebuilt with comment extraction. Old indexes and languages
-without comment extraction return `COMMENTS_NOT_INDEXED`, rather than an empty
-success; explicitly omit comment context with the documented `max_comments`
-setting when it is not needed. Missing legacy commit-message projections become
-`pending` for lazy refresh; `disabled` activation is preserved. Legacy NULL
-activation states also become pending, without clearing old messages or counts.
-Enabled cached indexing cycles continue bounded activation refresh. Pulse exposes
-unavailable activation as `null`, while temporal queries reject incomplete
-activation evidence. Refresh reads real Git history through bounded batches;
-failed message reads retain pending work rather than claiming completion.
-
-Semantic queries require a known stored embedding model and a consistent
-dimension. Mixed or unknown models are errors, with no provider fallback.
-Offline tests use model doubles; they do not certify live-provider quality.
-
-Pulse batches retain successful entries but report failure if a target fails.
-TQL treats missing or unreadable indexes as errors, distinct from a ready index
-with no matches. Public request validation rejects invalid types and limits
-before opening the index or invoking an embedding provider.
 
 ---
 
@@ -100,9 +66,6 @@ CLI equivalent (no agent needed): `tree-sitter-analyzer --codegraph-status`
 curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
 
-# fd + ripgrep (required for `search action=batch` multi-query text search; symbol search uses SQLite FTS5 and needs neither)
-brew install fd ripgrep                                # macOS
-winget install sharkdp.fd BurntSushi.ripgrep.MSVC      # Windows
 ```
 
 #### 2. Install Tree-sitter Analyzer
@@ -133,7 +96,7 @@ See **[Supported Agents](#supported-agents)**. Most clients want this MCP server
 After restart: *"Run the `index` tool with action=status."*
 CLI equivalent (no agent needed): `tree-sitter-analyzer --codegraph-status`
 
-**See the correctness edge on your own repo** — no install, no CodeGraph (it re-indexes first):
+**Check resolver behavior on your own repository** — no install required:
 
 ```bash
 uvx --from tree-sitter-analyzer miswire-audit .
@@ -150,26 +113,31 @@ It reports possible cross-language name collisions so you can inspect resolver b
 * **Project health grading (A–F).** TSA grades projects across size, complexity, coverage, duplication, dependencies, structure, and git hotspots.
 * **Curated workflows (Skills).** Pre-baked tool subsets for "find symbol", "trace call chain", "assess health", "safe-to-edit before refactor", "PR review", etc.
 * **Layered safety.** `edit action=safe` + `edit action=guard` + constraint DSL + `edit action=impact` + verdict envelopes — designed so agents *know* before they touch.
-* **CLI/MCP parity and a unified query DSL.** The same analysis primitives are available to agents and shell users.
+* **Agents and shells share a query surface.** The analysis primitives and the unified query DSL are available to both.
 
 ---
 
 ## Key Features
 
-### Pre-indexed code intelligence (CodeGraph parity + superset)
+### Pre-indexed code intelligence
 
-| Capability | TSA tool | Status |
+An agent's cost is dominated by turns, not by the size of each reply: every extra
+tool call re-sends the whole conversation. TSA is built so that a question is
+answered by a call whose response already carries the evidence needed to stop
+asking.
+
+| Question | TSA tool | What the response carries |
 |---|---|---|
-| Symbol search (FTS5 + **BM25 ranked**) | `search` action=symbol | **ahead** — results sorted by relevance score, not file path |
-| Go-to-def / find-refs / call hierarchy in a combined request | `nav` action=navigate | PRIMARY entry point |
-| Bulk-fetch N related symbols + relationship map | `structure` action=explore | parity |
-| Function-level blast radius + risk score | `nav` action=impact | parity + risk score |
-| Who-calls-X / what-X-calls | `nav` action=callers / action=callees | parity |
-| Index health at-a-glance (+ edge count) | `index` action=status | **ahead** — reports `total_edges` for graph density signal |
-| Pre-built call graph cache | `index` action=auto / action=full / action=sync | parity |
-| Tests affected by a change (CLI) | `--affected FILE...` | parity |
+| Where is this symbol, and what refers to it? | `nav` action=navigate | definition site, references, and call hierarchy together |
+| What breaks if I change this? | `nav` action=impact | transitive dependents with a risk verdict |
+| Who calls this, and what does it call? | `nav` action=callers / action=callees | resolved call sites, and the sites resolution could not resolve |
+| Find a symbol by name | `search` action=symbol | relevance-ranked matches (FTS5 + BM25) |
+| Fetch related symbols with their relationship map | `structure` action=explore | the requested symbols and how they connect |
+| Is the index usable right now? | `index` action=status | coverage, staleness, and edge count |
+| Build or refresh the call graph | `index` action=auto / action=full / action=sync | index state after the run |
+| Which tests does this change touch? | `--affected FILE...` (CLI) | transitively affected tests |
 
-### Tree-sitter Analyzer exclusive
+### Capabilities beyond code navigation
 
 | Capability | TSA tool | Note |
 |---|---|---|
@@ -185,15 +153,15 @@ It reports possible cross-language name collisions so you can inspect resolver b
 | **Dependency matrix** | `health` action=matrix | module-coupling matrix |
 | **Dead code** | `health` action=dead | transitive unreachable analysis |
 | **Complexity heatmap** | `health` action=heatmap | per-fn cyclomatic + project view |
-| **AST-structural clone detection** | `viz` action=similarity | beyond text similarity |
+| **AST-structural clone detection** | `viz` action=similarity | structural clones rather than text matches |
 | **Mermaid call-graph export** | `viz` action=graph | paste-ready in docs |
 | **UML Mermaid export** | `viz` action=uml | class / package / component / sequence diagrams |
 | **PR review** | `edit` action=pr | AST-diff + semantic classify + blast radius |
 | **agent_summary** | every response | next-step hint baked into the envelope |
-| **Synapse cross-file resolver** | internal | import-aware, beats regex guessing |
+| **Synapse cross-file resolver** | internal | import-aware name resolution across files |
 | **Temporal activation** | `nav` action=lineage | per-symbol git-modification frequency |
 | **File orientation** | `project` action=smart | health + exports + deps + edit-risk in a combined response |
-| **Architectural decision journal** | `project` action=journal | persists reasoning across sessions — uncommon among code-intel tools |
+| **Architectural decision journal** | `project` action=journal | persists reasoning across sessions |
 
 ### Skills
 
@@ -203,9 +171,9 @@ TSA ships curated workflows under `.claude/skills/tsa-*/`:
 
 Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 8 tools on every question.
 
-### 356 CLI flags
+### 354 CLI flags
 
-Superset of CodeGraph's CLI surface. Highlights:
+Highlights:
 
 ```bash
 tree-sitter-analyzer --table full <file>          # method/signature/complexity table
@@ -222,11 +190,7 @@ tree-sitter-analyzer --safe-to-edit <file>        # refuse if risky
 tree-sitter-analyzer --uml class                  # Mermaid UML class diagram
 ```
 
-The package retains the standalone file-listing helper:
-
-```bash
-list-files <dir>          # fd-style file discovery
-```
+TSA performs indexed code search and live source verification in process. No ripgrep or fd installation is required.
 
 `search-content` and `find-and-grep` have been removed on develop. See the
 [migration guide](docs/MIGRATION.md) and [`CLI codemap`](docs/CODEMAPS/cli.md).
@@ -393,37 +357,13 @@ Mostly nothing. The defaults are designed so you can hook it into your agent and
 * **Cache location**: `<project>/.ast-cache/`. Safe to delete — auto-rebuilds.
 * **Optional**: `TREE_SITTER_OUTPUT_PATH` for large-output write target.
 
-### Platform Scope Of Snapshot Evidence
-
-Ordinary file analysis, index creation/update, and legacy index-backed queries are
-separate from certified snapshot access. Their existing Windows operational paths
-do not require the new private WAL snapshot kernel. They may create or update the
-cache; certified read-only access has a separate contract.
-
-The snapshot implementation adds **POSIX-only private database/WAL evidence capture**, requiring
-descriptor-relative operations, `O_NOFOLLOW`, a safe external temporary directory,
-and successful source/manifest/projection checks. It does **not** deliver Windows
-read-only snapshot parity or extend the existing qualification gate for explicit
-`access_mode="read_existing"` consumers.
-
-Windows snapshot certification was already unavailable in the develop baseline
-(`SECURE_FD_SNAPSHOT_UNSUPPORTED`). It remains unavailable in this implementation
-(`WAL_PRIVATE_SNAPSHOT_UNSUPPORTED`, `completeness="unknown"`, no snapshot token).
-This is not a statement that the physical index is empty or that ordinary queries
-are disabled. Native Windows qualification for the new capture path has not been
-performed; a local capability test is not a substitute for it.
-
-The per-file `certified_at` state is not a replacement for full snapshot authority.
-`partial_at` persistent history is **not implemented or included in this PR**.
-An incomplete or unverifiable projection cannot authorize a certified consumer.
-
 ---
 
 ## Quality & Testing
 
 | Metric | Value |
 |---|---|
-| Tests passed | Comprehensive test suite ✅ |
+| Test suite | `uv run pytest tests/` — the count is whatever the current tree collects; CI owns the signal |
 | Coverage | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | Type safety | mypy |
 | Platforms | macOS · Linux · Windows for ordinary operations; snapshot evidence has the narrower scope above |
@@ -462,6 +402,78 @@ uv run pytest -q                                # quick gate (bounded)
 ```
 
 See **[`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)** for the development guide.
+
+---
+
+## Boundaries and Known Limits
+
+Scope statements that would otherwise read as marketing. They are collected here so the install path above is not interrupted by them.
+
+### Response Size And Parameter Names
+
+`nav action=navigate` inlines the body of every definition it matches and reports no truncation. A symbol name shared by classes in multiple files therefore returns the entire reference set in the same response. Use `search action=symbol` to disambiguate first, or `nav action=callers` / `action=callees`, which honor `limit` and set `truncated`.
+
+`symbol` and `function_name` are both accepted by `callers`, `callees`, and `impact`. `navigate` and `lineage` require `symbol`; passing `function_name` to them raises instead of returning a verdict envelope.
+
+### Platform Scope Of Snapshot Evidence
+
+Ordinary file analysis, index creation/update, and legacy index-backed queries are
+separate from certified snapshot access. Their existing Windows operational paths
+do not require the new private WAL snapshot kernel. They may create or update the
+cache; certified read-only access has a separate contract.
+
+The snapshot implementation adds **POSIX-only private database/WAL evidence capture**, requiring
+descriptor-relative operations, `O_NOFOLLOW`, a safe external temporary directory,
+and successful source/manifest/projection checks. It does **not** deliver Windows
+read-only snapshot parity or extend the existing qualification gate for explicit
+`access_mode="read_existing"` consumers.
+
+Windows snapshot certification was already unavailable in the develop baseline
+(`SECURE_FD_SNAPSHOT_UNSUPPORTED`). It remains unavailable in this implementation
+(`WAL_PRIVATE_SNAPSHOT_UNSUPPORTED`, `completeness="unknown"`, no snapshot token).
+This is not a statement that the physical index is empty or that ordinary queries
+are disabled. Native Windows qualification for the new capture path has not been
+performed; a local capability test is not a substitute for it.
+
+The per-file `certified_at` state is not a replacement for full snapshot authority.
+`partial_at` persistent history is **not implemented or included in this PR**.
+An incomplete or unverifiable projection cannot authorize a certified consumer.
+
+### Pulse / TQL / Semantic Query
+
+These subsystems back `nav` actions and the internal API; they are not part of the tool surface an agent configures. Their limits are stated rather than implied:
+
+TQL temporal selectors compare modification timestamps, not modification counts.
+The `tql_schema` action documents the window and the shared default for bare
+`:hot` and `:recently_modified`. Depth queries retain exact definition identity
+and fail explicitly when traversal limits are exceeded.
+
+Pulse requests return snapshot-bound context. SQL reads for identity,
+relationships, reverse-import context and optional cached LSP enrichment share
+a savepoint without ending a caller-owned transaction. This is not a SQL
+round-trip or latency guarantee.
+
+Pulse's Python reverse-import context uses the existing module resolver; this
+is not a claim of complete cross-language module resolution. Comment context
+requires an index rebuilt with comment extraction. Old indexes and languages
+without comment extraction return `COMMENTS_NOT_INDEXED`, rather than an empty
+success; explicitly omit comment context with the documented `max_comments`
+setting when it is not needed. Missing legacy commit-message projections become
+`pending` for lazy refresh; `disabled` activation is preserved. Legacy NULL
+activation states also become pending, without clearing old messages or counts.
+Enabled cached indexing cycles continue bounded activation refresh. Pulse exposes
+unavailable activation as `null`, while temporal queries reject incomplete
+activation evidence. Refresh reads real Git history through bounded batches;
+failed message reads retain pending work rather than claiming completion.
+
+Semantic queries require a known stored embedding model and a consistent
+dimension. Mixed or unknown models are errors, with no provider fallback.
+Offline tests use model doubles; they do not certify live-provider quality.
+
+Pulse batches retain successful entries but report failure if a target fails.
+TQL treats missing or unreadable indexes as errors, distinct from a ready index
+with no matches. Public request validation rejects invalid types and limits
+before opening the index or invoking an embedding provider.
 
 ---
 

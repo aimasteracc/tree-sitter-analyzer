@@ -542,3 +542,58 @@ class TestPluginFallbackLanguages:
         assert heatmap["total_functions"] == 0
         # Must NOT be silently clean — must carry a warning/note field
         assert "note" in heatmap or "warning" in heatmap
+
+
+class TestPluginDiscoveryIsNotPerFile:
+    """Discovery describes the environment, so it must not scale with files.
+
+    Regression: ``_extractor_complexity_by_line`` built a fresh
+    ``PluginManager()`` per file, and every construction re-ran
+    ``importlib.metadata.entry_points()`` plus the languages-directory scan.
+    On this repository one ``health action=project`` performed 2,262 rescans
+    and 350,350 distribution-metadata reads, which is 17.6 s of a 48.8 s cold
+    call spent rediscovering a constant.
+    """
+
+    def test_the_manager_is_shared(self, monkeypatch):
+        from tree_sitter_analyzer import complexity_heatmap as heatmap
+
+        monkeypatch.setattr(heatmap, "_plugin_manager", None)
+        assert heatmap._shared_plugin_manager() is heatmap._shared_plugin_manager()
+
+    def test_discovery_does_not_repeat_as_files_accumulate(self, monkeypatch, tmp_path):
+        """Driven through the per-file path, not the shared helper.
+
+        Asserting on `_shared_plugin_manager()` alone passes while the caller
+        keeps building a `PluginManager()` of its own, which is the shape the
+        regression had.
+        """
+        import importlib.metadata
+
+        from tree_sitter_analyzer import complexity_heatmap as heatmap
+        from tree_sitter_analyzer.core.parser import Parser
+
+        monkeypatch.setattr(heatmap, "_plugin_manager", None)
+        real_entry_points = importlib.metadata.entry_points
+        calls: list[int] = []
+
+        def counting(*args, **kwargs):
+            calls.append(1)
+            return real_entry_points(*args, **kwargs)
+
+        monkeypatch.setattr(importlib.metadata, "entry_points", counting)
+
+        source = "def branchy(x):\n    if x:\n        return 1\n    return 0\n"
+        path = tmp_path / "sample.py"
+        path.write_text(source, encoding="utf-8")
+        parsed = Parser().parse_file(str(path), "python")
+        assert parsed.success and parsed.tree is not None
+
+        for _ in range(20):
+            heatmap._extractor_complexity_by_line(parsed.tree, source, "python")
+
+        assert len(calls) == 1, (
+            f"extracting complexity for twenty files performed {len(calls)} "
+            "entry-point scans; discovery is a property of the environment and "
+            "must happen once per process"
+        )

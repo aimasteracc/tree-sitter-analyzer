@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import sqlite3
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -46,11 +48,15 @@ def test_sqlite_upgrade_witnesses_are_not_posix_only():
 # ---------------------------------------------------------------------------
 
 
-def _open_db(cache: ASTCache) -> sqlite3.Connection:
-    """Fresh SQLite handle separate from the WAL-mode cache connection."""
+@contextmanager
+def _open_db(cache: ASTCache) -> Iterator[sqlite3.Connection]:
+    """提供独立 SQLite 连接，并在测试边界确定关闭。"""
     conn = sqlite3.connect(cache.db_path)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def _column_names(conn: sqlite3.Connection, table: str) -> set[str]:

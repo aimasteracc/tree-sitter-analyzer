@@ -127,16 +127,16 @@ python compatibility_test/scripts/analyze_differences.py \
 
 ## 📊 テスト対象ツール
 
-以下の8つの主要MCPツールがテスト対象です：
+以下の5つの主要MCPツールがテスト対象です：
 
 1. **analyze_code_structure** - コード構造の詳細分析
 2. **query_code** - tree-sitterクエリによるコード要素抽出
 3. **check_code_scale** - コードスケールと複雑度分析
 4. **extract_code_section** - 指定範囲のコード抽出
 5. **set_project_path** - プロジェクトルートパスの設定
-6. **list_files** - ファイル一覧の取得
-~~7. **find_and_grep** - ファイル検索とコンテンツ検索の組み合わせ~~ *(廃止済み — CC Glob + Grep tool を使用)*
-~~8. **search_content** - コンテンツ内検索~~ *(廃止済み — CC Grep tool を使用)*
+
+v2 では `list_files`、`find_and_grep`、`search_content` を互換性対象から削除しました。
+ファイル探索と本文検索にはホストエージェントの検索機能を使用します。
 
 ## 🔍 差分分析の評価基準
 
@@ -164,7 +164,7 @@ python compatibility_test/scripts/analyze_differences.py \
 
 本テストプロセスでは、結果の信頼性を確保するために、テスト実行前にキャッシュを自動的にクリアする仕組みを備えています。
 
-- **キャッシュクリア**: `compatibility_test/utils/cache_manager.py` が、`UnifiedAnalysisEngine`のキャッシュをクリアします (SearchContentTool は廃止済みのためスキップ)。
+- **キャッシュクリア**: `compatibility_test/utils/cache_manager.py` が、`UnifiedAnalysisEngine`のキャッシュをクリアします。
 - **状態レポート**: `compatibility_test/utils/cache_reporter.py` は、キャッシュの状態を分析し、レポートを生成します。
 
 テストが予期せぬ動作をした場合は、まずキャッシュが正しくクリアされているか確認してください。手動でキャッシュをクリアするには、以下のコマンドを実行します。

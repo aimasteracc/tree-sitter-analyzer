@@ -156,28 +156,6 @@ def _check_uvx() -> CheckResult:
     )
 
 
-def _check_fd() -> CheckResult:
-    path = shutil.which("fd")
-    if path:
-        return CheckResult("fd", "PASS", path)
-    return CheckResult(
-        "fd",
-        "WARN",
-        "not found — required for text search (brew install fd / apt install fd-find)",
-    )
-
-
-def _check_rg() -> CheckResult:
-    path = shutil.which("rg")
-    if path:
-        return CheckResult("rg (ripgrep)", "PASS", path)
-    return CheckResult(
-        "rg (ripgrep)",
-        "WARN",
-        "not found — required for text search (brew install ripgrep / apt install ripgrep)",
-    )
-
-
 def _check_project_root() -> CheckResult:
     value = os.environ.get("TREE_SITTER_PROJECT_ROOT")
     if not value:
@@ -351,8 +329,6 @@ def run_doctor(json_output: bool = False) -> int:
     results: list[CheckResult] = [
         _check_uv(),
         _check_uvx(),
-        _check_fd(),
-        _check_rg(),
         _check_project_root(),
         *_check_agent_configs(),
     ]

@@ -31,15 +31,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-# --- watched surface (single source of truth, consumed by the shell gate) ----
+# --- 受监视的表面（单一事实源，由 shell 门禁使用）--------------------------
 MCP_REGISTRY = "tree_sitter_analyzer/mcp/_tool_registry.py"
 
-# The CLI flag surface is *all* of tree_sitter_analyzer/cli/**. Narrowing this to
-# argument_groups/ would leave the find-and-grep / list-files / search-content
-# console scripts — documented entry points in docs/CODEMAPS/cli.md — unwatched.
+# CLI 参数表面覆盖 tree_sitter_analyzer/cli/** 的全部内容。若缩小到
+# argument_groups/，独立控制台入口中的参数会脱离监视。
 CLI_PREFIX = "tree_sitter_analyzer/cli/"
 
-# argparse synthesises these; no source line defines them.
+# 这些参数由 argparse 自动生成，源码中没有对应定义行。
 ARGPARSE_IMPLICIT_FLAGS = frozenset({"-h", "--help"})
 
 WORKTREE = "WORKTREE"

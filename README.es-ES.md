@@ -9,54 +9,11 @@
 TSA indexa tu base de código con tree-sitter y sirve gráficos de llamadas correctos, búsqueda de símbolos y consultas estructurales a agentes de código IA — localmente, sin telemetría.
 
 **Por qué es diferente:**
-* **La corrección entre lenguajes es la ventaja.** Las puertas por familia de lenguaje impiden vinculaciones cruzadas basadas solo en el nombre.
+* **Los vínculos entre lenguajes están controlados por familia.** Una coincidencia de nombre no crea por sí sola una arista entre lenguajes; las puertas que lo imponen son pruebas ejecutables, no una convención.
 * **Diseñado nativo para agentes.** 8 herramientas MCP con salida JSON estructurada y sobres de veredicto, más acceso por CLI y flujos de trabajo curados.
 * **Amplio y correctamente clasificado.** El [inventario de profundidad de soporte generado](#lenguajes-soportados) distingue la evidencia de pipeline del comportamiento entre archivos aún no verificado.
 
 > ¿Actualizando desde v1.x? Consulta [docs/MIGRATION.md](docs/MIGRATION.md).
-
-### Límites del sistema nervioso (Pulse / TQL / Semantic Query)
-
-Los selectores temporales de TQL comparan marcas de tiempo de modificación, no
-recuentos de modificación. La acción `tql_schema` documenta la ventana y el
-valor por defecto compartido para `:hot` y `:recently_modified` sin
-calificar. Las consultas de profundidad conservan la identidad exacta de la
-definición y fallan explícitamente cuando se superan los límites de
-recorrido.
-
-Las solicitudes de Pulse devuelven contexto vinculado a una instantánea. Las
-lecturas SQL para identidad, relaciones, contexto de importación inversa y
-el enriquecimiento LSP en caché opcional comparten un punto de guardado
-(*savepoint*) sin terminar una transacción propiedad del llamador. Esto no
-es un round-trip de SQL ni una garantía de latencia.
-
-El contexto de importación inversa de Python en Pulse usa el resolutor de
-módulos existente; esto no es una afirmación de resolución completa de
-módulos entre lenguajes. El contexto de comentarios requiere un índice
-reconstruido con extracción de comentarios. Los índices antiguos y los
-lenguajes sin extracción de comentarios devuelven `COMMENTS_NOT_INDEXED`, en
-lugar de un éxito vacío; omite explícitamente el contexto de comentarios con
-el ajuste documentado `max_comments` cuando no se necesita. Las
-proyecciones de mensajes de commit heredadas que faltan pasan a `pending`
-para actualización perezosa; se conserva la activación `disabled`. Los
-estados de activación NULL heredados también pasan a pending, sin borrar
-mensajes o conteos antiguos. Los ciclos de indexación en caché habilitados
-continúan con actualización de activación acotada. Pulse expone la
-activación no disponible como `null`, mientras que las consultas temporales
-rechazan evidencia de activación incompleta. La actualización lee historial
-real de Git mediante lotes acotados; las lecturas de mensajes fallidas
-conservan el trabajo pendiente en lugar de reclamar finalización.
-
-Las consultas semánticas requieren un modelo de embedding almacenado
-conocido y una dimensión consistente. Modelos mixtos o desconocidos son
-errores, sin resolución alternativa de proveedor. Las pruebas offline usan
-dobles de modelo; no certifican la calidad de un proveedor en vivo.
-
-Los lotes de Pulse conservan las entradas exitosas pero reportan fallo si
-un objetivo falla. TQL trata los índices faltantes o ilegibles como
-errores, distintos de un índice listo sin coincidencias. La validación de
-solicitudes públicas rechaza tipos y límites inválidos antes de abrir el
-índice o invocar un proveedor de embeddings.
 
 ---
 
@@ -108,9 +65,6 @@ Equivalente en CLI (sin agente): `tree-sitter-analyzer --codegraph-status`
 curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
 
-# fd + ripgrep (required for `search action=batch` multi-query text search; symbol search uses SQLite FTS5 and needs neither)
-brew install fd ripgrep                                # macOS
-winget install sharkdp.fd BurntSushi.ripgrep.MSVC      # Windows
 ```
 
 #### 2. Instalar Tree-sitter Analyzer
@@ -158,26 +112,28 @@ Reporta posibles colisiones de nombres entre lenguajes para que puedas inspeccio
 * **Clasificación de salud del proyecto (A–F).** TSA clasifica proyectos según tamaño, complejidad, cobertura, duplicación, dependencias, estructura y puntos calientes de git.
 * **Flujos de trabajo curados (Skills).** Subconjuntos de herramientas preconfigurados para "encontrar símbolo", "rastrear cadena de llamadas", "evaluar salud", "seguro para editar antes de refactorizar", "revisión de PR", etc.
 * **Seguridad por capas.** `edit action=safe` + `edit action=guard` + DSL de restricciones + `edit action=impact` + sobres de veredicto — diseñado para que los agentes *sepan* antes de tocar.
-* **Paridad CLI/MCP y un DSL de consulta unificado.** Las mismas primitivas de análisis están disponibles tanto para agentes como para usuarios de shell.
+* **Una superficie de consulta compartida.** Las primitivas de análisis y el DSL de consulta unificado están disponibles tanto para agentes como para shells.
 
 ---
 
 ## Características clave
 
-### Inteligencia de código pre-indexada (paridad con CodeGraph + superset)
+### Inteligencia de código pre-indexada
 
-| Capacidad | Herramienta TSA | Estado |
+El coste de un agente lo dominan los turnos, no el tamaño de cada respuesta: cada llamada extra a una herramienta reenvía la conversación completa. TSA está construido para que una llamada devuelva la evidencia necesaria para dejar de preguntar.
+
+| Pregunta | Herramienta TSA | Qué incluye la respuesta |
 |---|---|---|
-| Búsqueda de símbolos (FTS5 + **clasificado por BM25**) | `search` action=symbol | **ventaja** — resultados ordenados por puntuación de relevancia, no por ruta de archivo |
-| Ir-a-definición / buscar-referencias / jerarquía de llamadas en una sola solicitud combinada | `nav` action=navigate | punto de entrada PRINCIPAL |
-| Obtención masiva de N símbolos relacionados + mapa de relaciones | `structure` action=explore | paridad |
-| Radio de impacto a nivel de función + puntuación de riesgo | `nav` action=impact | paridad + puntuación de riesgo |
-| Quién-llama-a-X / a-qué-llama-X | `nav` action=callers / action=callees | paridad |
-| Salud del índice de un vistazo (+ conteo de bordes) | `index` action=status | **ventaja** — informa `total_edges` como señal de densidad del gráfico |
-| Caché de gráfico de llamadas pre-construido | `index` action=auto / action=full / action=sync | paridad |
-| Pruebas afectadas por un cambio (CLI) | `--affected FILE...` | paridad |
+| Dónde está este símbolo y quién lo referencia | `nav` action=navigate | ubicación de definición, referencias y jerarquía de llamadas juntas |
+| Qué se rompe si lo cambio | `nav` action=impact | dependientes transitivos con veredicto de riesgo |
+| Quién llama a esto y a qué llama | `nav` action=callers / action=callees | puntos de llamada resueltos y los que no se pudieron resolver |
+| Buscar un símbolo por nombre | `search` action=symbol | coincidencias ordenadas por relevancia (FTS5 + BM25) |
+| Obtener símbolos relacionados con su mapa de relaciones | `structure` action=explore | los símbolos solicitados y cómo se conectan |
+| ¿El índice es utilizable ahora mismo? | `index` action=status | cobertura, antigüedad y número de bordes |
+| Construir o refrescar el gráfico de llamadas | `index` action=auto / action=full / action=sync | estado del índice tras la ejecución |
+| Qué pruebas toca este cambio | `--affected FILE...` (CLI) | pruebas afectadas de forma transitiva |
 
-### Exclusivo de Tree-sitter Analyzer
+### Capacidades más allá de la navegación de código
 
 | Capacidad | Herramienta TSA | Nota |
 |---|---|---|
@@ -211,9 +167,9 @@ TSA envía flujos de trabajo curados bajo `.claude/skills/tsa-*/`:
 
 Cada skill incluye un subconjunto de `allowed-tools` + receta de procedimiento + esquema de superficie de decisión, para que el agente no tenga que clasificar entre 8 herramientas en cada pregunta.
 
-### 356 banderas de CLI
+### 354 banderas de CLI
 
-Superset de la superficie CLI de CodeGraph. Destacados:
+Destacados:
 
 ```bash
 tree-sitter-analyzer --table full <file>          # method/signature/complexity table
@@ -230,11 +186,7 @@ tree-sitter-analyzer --safe-to-edit <file>        # refuse if risky
 tree-sitter-analyzer --uml class                  # Mermaid UML class diagram
 ```
 
-El paquete conserva la utilidad independiente para listar archivos:
-
-```bash
-list-files <dir>          # fd-style file discovery
-```
+TSA realiza la búsqueda indexada y la verificación de código fuente en el mismo proceso, sin instalar ripgrep ni fd.
 
 `search-content` y `find-and-grep` se han eliminado en develop. Consulta la
 [guía de migración](docs/MIGRATION.md) y el [`mapa de CLI`](docs/CODEMAPS/cli.md).
@@ -402,31 +354,6 @@ Casi nada. Los valores predeterminados están diseñados para que puedas conecta
 * **Ubicación de la caché**: `<project>/.ast-cache/`. Segura de eliminar — se reconstruye automáticamente.
 * **Opcional**: `TREE_SITTER_OUTPUT_PATH` como destino de escritura para salidas grandes.
 
-### Alcance de la evidencia de instantáneas por plataforma
-
-El análisis de archivos ordinario, la creación/actualización del índice, y las consultas
-heredadas respaldadas por índice son independientes del acceso certificado a instantáneas
-(snapshots). Sus rutas operativas existentes en Windows no requieren el nuevo núcleo
-privado de instantáneas WAL. Pueden crear o actualizar la caché; el acceso certificado de
-solo lectura tiene un contrato separado.
-
-La implementación de instantáneas añade **captura de evidencia de base de datos/WAL privada
-exclusiva de POSIX**, que requiere operaciones relativas a descriptores, `O_NOFOLLOW`, un
-directorio temporal externo seguro, y comprobaciones exitosas de origen/manifiesto/proyección.
-**No** aporta paridad de instantáneas de solo lectura en Windows ni extiende la puerta de
-calificación existente para consumidores explícitos con `access_mode="read_existing"`.
-
-La certificación de instantáneas en Windows ya no estaba disponible en la línea base de
-develop (`SECURE_FD_SNAPSHOT_UNSUPPORTED`). Sigue sin estar disponible en esta implementación
-(`WAL_PRIVATE_SNAPSHOT_UNSUPPORTED`, `completeness="unknown"`, sin token de instantánea). Esto
-no es una afirmación de que el índice físico esté vacío ni de que las consultas ordinarias
-estén deshabilitadas. No se ha realizado la calificación nativa de Windows para la nueva ruta
-de captura; una prueba local de capacidad no la sustituye.
-
-El estado `certified_at` por archivo no reemplaza la autoridad completa de instantáneas. El
-historial persistente `partial_at` **no está implementado ni incluido en este PR**. Una
-proyección incompleta o no verificable no puede autorizar a un consumidor certificado.
-
 ---
 
 ## Calidad y pruebas
@@ -472,6 +399,88 @@ uv run pytest -q                                # quick gate (bounded)
 ```
 
 Consulta **[`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md)** para la guía de desarrollo.
+
+---
+
+## Límites y alcance conocido
+
+Afirmaciones de alcance que, leídas sueltas, parecerían marketing. Se reúnen aquí para no interrumpir la ruta de instalación de arriba.
+
+### Tamaño de respuesta y nombres de parámetros
+
+`nav action=navigate` inserta el cuerpo de cada definición que coincide y no informa truncamiento. Cuando varias clases de archivos distintos comparten un nombre de símbolo, el conjunto completo de referencias se devuelve en la misma respuesta. Usa `search action=symbol` para acotar primero, o `nav action=callers` / `action=callees`, que respetan `limit` y activan `truncated`.
+
+`symbol` y `function_name` se aceptan en `callers`, `callees` e `impact`. `navigate` y `lineage` requieren `symbol`; pasarles `function_name` lanza una excepción en lugar de devolver un sobre de veredicto.
+
+### Alcance de la evidencia de instantáneas por plataforma
+
+El análisis de archivos ordinario, la creación/actualización del índice, y las consultas
+heredadas respaldadas por índice son independientes del acceso certificado a instantáneas
+(snapshots). Sus rutas operativas existentes en Windows no requieren el nuevo núcleo
+privado de instantáneas WAL. Pueden crear o actualizar la caché; el acceso certificado de
+solo lectura tiene un contrato separado.
+
+La implementación de instantáneas añade **captura de evidencia de base de datos/WAL privada
+exclusiva de POSIX**, que requiere operaciones relativas a descriptores, `O_NOFOLLOW`, un
+directorio temporal externo seguro, y comprobaciones exitosas de origen/manifiesto/proyección.
+**No** aporta paridad de instantáneas de solo lectura en Windows ni extiende la puerta de
+calificación existente para consumidores explícitos con `access_mode="read_existing"`.
+
+La certificación de instantáneas en Windows ya no estaba disponible en la línea base de
+develop (`SECURE_FD_SNAPSHOT_UNSUPPORTED`). Sigue sin estar disponible en esta implementación
+(`WAL_PRIVATE_SNAPSHOT_UNSUPPORTED`, `completeness="unknown"`, sin token de instantánea). Esto
+no es una afirmación de que el índice físico esté vacío ni de que las consultas ordinarias
+estén deshabilitadas. No se ha realizado la calificación nativa de Windows para la nueva ruta
+de captura; una prueba local de capacidad no la sustituye.
+
+El estado `certified_at` por archivo no reemplaza la autoridad completa de instantáneas. El
+historial persistente `partial_at` **no está implementado ni incluido en este PR**. Una
+proyección incompleta o no verificable no puede autorizar a un consumidor certificado.
+
+### Pulse / TQL / Semantic Query
+
+Estos subsistemas sostienen acciones de `nav` y la API interna; no forman parte de la superficie de herramientas que un agente configura. Sus límites se declaran en lugar de insinuarse.
+
+Los selectores temporales de TQL comparan marcas de tiempo de modificación, no
+recuentos de modificación. La acción `tql_schema` documenta la ventana y el
+valor por defecto compartido para `:hot` y `:recently_modified` sin
+calificar. Las consultas de profundidad conservan la identidad exacta de la
+definición y fallan explícitamente cuando se superan los límites de
+recorrido.
+
+Las solicitudes de Pulse devuelven contexto vinculado a una instantánea. Las
+lecturas SQL para identidad, relaciones, contexto de importación inversa y
+el enriquecimiento LSP en caché opcional comparten un punto de guardado
+(*savepoint*) sin terminar una transacción propiedad del llamador. Esto no
+es un round-trip de SQL ni una garantía de latencia.
+
+El contexto de importación inversa de Python en Pulse usa el resolutor de
+módulos existente; esto no es una afirmación de resolución completa de
+módulos entre lenguajes. El contexto de comentarios requiere un índice
+reconstruido con extracción de comentarios. Los índices antiguos y los
+lenguajes sin extracción de comentarios devuelven `COMMENTS_NOT_INDEXED`, en
+lugar de un éxito vacío; omite explícitamente el contexto de comentarios con
+el ajuste documentado `max_comments` cuando no se necesita. Las
+proyecciones de mensajes de commit heredadas que faltan pasan a `pending`
+para actualización perezosa; se conserva la activación `disabled`. Los
+estados de activación NULL heredados también pasan a pending, sin borrar
+mensajes o conteos antiguos. Los ciclos de indexación en caché habilitados
+continúan con actualización de activación acotada. Pulse expone la
+activación no disponible como `null`, mientras que las consultas temporales
+rechazan evidencia de activación incompleta. La actualización lee historial
+real de Git mediante lotes acotados; las lecturas de mensajes fallidas
+conservan el trabajo pendiente en lugar de reclamar finalización.
+
+Las consultas semánticas requieren un modelo de embedding almacenado
+conocido y una dimensión consistente. Modelos mixtos o desconocidos son
+errores, sin resolución alternativa de proveedor. Las pruebas offline usan
+dobles de modelo; no certifican la calidad de un proveedor en vivo.
+
+Los lotes de Pulse conservan las entradas exitosas pero reportan fallo si
+un objetivo falla. TQL trata los índices faltantes o ilegibles como
+errores, distintos de un índice listo sin coincidencias. La validación de
+solicitudes públicas rechaza tipos y límites inválidos antes de abrir el
+índice o invocar un proveedor de embeddings.
 
 ---
 

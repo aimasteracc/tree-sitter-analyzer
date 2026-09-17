@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -12,6 +13,7 @@ from tree_sitter_analyzer.mcp.tools.change_impact_frozen import (
     build_frozen_scope_result,
 )
 from tree_sitter_analyzer.mcp.tools.utils.change_impact_git import (
+    _branch_diff_range,
     _get_changed_files,
     _get_diff_stat,
     _get_untracked_files,
@@ -121,6 +123,62 @@ class TestGetChangedFiles:
         mock_git.return_value = (0, "branch.py\n")
         files = _get_changed_files("branch", "/src", None)
         assert "branch.py" in files
+
+    def test_branch_mode_uses_merge_base_for_every_commit(self, tmp_path):
+        def git(*args: str) -> str:
+            return subprocess.check_output(
+                ["git", *args], cwd=tmp_path, text=True
+            ).strip()
+
+        git("init", "-q", "-b", "develop")
+        git("config", "user.email", "tsa@example.invalid")
+        git("config", "user.name", "TSA Test")
+        (tmp_path / "base.py").write_text("BASE = 1\n", encoding="utf-8")
+        git("add", "base.py")
+        git("commit", "-q", "-m", "base")
+        git("switch", "-q", "-c", "feature/multiple-commits")
+        (tmp_path / "first.py").write_text("FIRST = 1\n", encoding="utf-8")
+        git("add", "first.py")
+        git("commit", "-q", "-m", "first")
+        (tmp_path / "second.py").write_text("SECOND = 1\n", encoding="utf-8")
+        git("add", "second.py")
+        git("commit", "-q", "-m", "second")
+
+        files = _get_changed_files("branch", str(tmp_path), None)
+        stat = _get_diff_stat("branch", str(tmp_path), None)
+
+        assert files == ["first.py", "second.py"]
+        assert "first.py" in stat
+        assert "second.py" in stat
+
+    @pytest.mark.parametrize(
+        ("branch", "expected_ref"),
+        [
+            ("main", "origin/main"),
+            ("hotfix/urgent", "origin/main"),
+            ("release/v2.0.0", "origin/main"),
+            ("fix/ordinary", "origin/develop"),
+        ],
+    )
+    @patch("tree_sitter_analyzer.mcp.tools.utils.change_impact_git._run_git")
+    def test_branch_uses_gitflow_target(self, mock_git, branch, expected_ref):
+        def run(args, cwd=None):
+            del cwd
+            if args == ["branch", "--show-current"]:
+                return 0, branch
+            if args[-1] == expected_ref:
+                return 0, expected_ref
+            return 1, ""
+
+        mock_git.side_effect = run
+
+        assert _branch_diff_range("/src") == f"{expected_ref}...HEAD"
+
+    @patch("tree_sitter_analyzer.mcp.tools.utils.change_impact_git._run_git")
+    def test_branch_without_known_base_uses_latest_commit(self, mock_git):
+        mock_git.side_effect = [(0, "detached"), *[(1, "")] * 4]
+
+        assert _branch_diff_range("/src") == "HEAD~1..HEAD"
 
 
 class TestGetDiffStat:

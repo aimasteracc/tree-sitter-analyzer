@@ -219,6 +219,20 @@ class RouteDetector:
             base["enabled"] = False
         return base
 
+    def close(self) -> None:
+        """释放检测器拥有的持久化路由缓存连接。"""
+        if self._cache is None:
+            return
+        self._cache.close()
+        self._cache = None
+
+    def __del__(self) -> None:
+        """在调用方遗漏显式关闭时提供进程内资源兜底。"""
+        try:
+            self.close()
+        except Exception:
+            pass
+
     def detect_all(self) -> list[RouteInfo]:
         if self._routes is not None:
             return self._routes

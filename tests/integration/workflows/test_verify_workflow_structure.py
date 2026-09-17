@@ -21,3 +21,14 @@ def test_verify_workflow_structure_main_succeeds(capsys) -> None:
 
     output = capsys.readouterr().out
     assert "All workflow structures are correct" in output
+
+
+def test_system_setup_requires_unconditional_git_verification() -> None:
+    """统一 Git 检查不能因条件分支而漏掉某个平台。"""
+    from _verify_workflow_structure_helpers import composite_action_errors
+
+    content = load_yaml(workflow_path("actions", "setup-system", "action.yml"))
+    content["runs"]["steps"][0]["if"] = "runner.os == 'Linux'"
+    assert composite_action_errors(content) == [
+        "Missing unconditional Git verification step"
+    ]

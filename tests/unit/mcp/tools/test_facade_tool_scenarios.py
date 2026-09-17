@@ -277,9 +277,10 @@ class TestPublicSchema:
         f = FacadeTool("demo", {"alpha": _RecordingInner(), "beta": _RecordingInner()})
         d = f.get_tool_definition()
         assert d["name"] == "demo"
-        assert d["description"] == (
-            "Facade dispatching 2 actions via the 'action' parameter: alpha, beta."
-        )
+        # Wave E: the always-sent line is short but still carries the action
+        # count and the full list, which is what this test is about.
+        assert "2 actions" in d["description"]
+        assert "alpha, beta" in d["description"]
         assert d["inputSchema"]["required"] == ["action"]
 
     def test_工具定义_自定义描述与注解透传(self):
@@ -290,8 +291,10 @@ class TestPublicSchema:
             annotations={"readOnlyHint": False},
         )
         d = f.get_tool_definition()
-        assert d["description"] == "my facade"
         assert d["annotations"] == {"readOnlyHint": False}
+        # Wave E: a custom description is passed through verbatim, but served by
+        # action=help rather than riding on every request's tool definition.
+        assert f.full_description() == "my facade"
 
 
 # ---------- 场景：validate_arguments ----------
@@ -337,3 +340,25 @@ class TestRootRebindPropagation:
         inner.rebound_roots.clear()
         f.set_project_path(None)
         assert inner.rebound_roots == []
+
+
+class TestWaveEShortDescription:
+    """Wave E: the always-sent line is derived and bounded."""
+
+    def test_long_first_sentence_is_capped(self):
+        # The cap applies to the first *sentence*, so the fixture needs a long
+        # run with no ". " in it — otherwise the split lands early and the
+        # branch under test is never reached.
+        prose = "Codegraph " + "x" * 260 + ". Then the per-action prose."
+        f = FacadeTool("demo", {"alpha": _RecordingInner()}, description=prose)
+
+        short = f.get_tool_definition()["description"]
+        assert "..." in short
+        assert len(short) < 300
+        assert "Pass action=help" in short
+        # The full text is untouched and still served by help.
+        assert f.full_description() == prose
+
+    def test_full_description_falls_back_to_the_short_form(self):
+        f = FacadeTool("demo", {"alpha": _RecordingInner()})
+        assert f.full_description() == f.get_tool_definition()["description"]

@@ -1,42 +1,34 @@
 #!/usr/bin/env python3
-"""``project`` facade — Wave B consolidation, 10-action project intelligence hub.
+"""``project`` 门面：聚合九个项目级智能动作。
 
-Folds project-level capabilities behind one ``action`` parameter:
+项目级能力统一通过 ``action`` 参数选择：
 
 =============  ==========================================  ==========================
-action         inner / route                               when to use
+action         内部路由                                    用途
 =============  ==========================================  ==========================
-overview       ``get_project_overview``                    high-level project summary
-files          ``list_files``                              enumerate source files
-smart          ``smart_context``                           S2 task-focused context
-parser         ``advise_parser_readiness``                 check tree-sitter support
-tools          ``check_tools``                             verify tool availability
-metrics        ``codegraph_metrics``                       graph-level statistics
-skills         ``list_agent_skills``                       enumerate agent skills
-workflow       ``get_agent_workflow``                      suggested agent workflow
-journal        ``decision_journal``                        read/write decision log
-doc_sync       ``doc_sync``                               sync docs to code state
-card           ``get_project_summary``                     "what is this project?"
+overview       ``get_project_overview``                    项目概览
+smart          ``smart_context``                           面向任务的上下文
+parser         ``advise_parser_readiness``                 解析器就绪检查
+metrics        ``codegraph_metrics``                       图统计
+skills         ``list_agent_skills``                       代理技能清单
+workflow       ``get_agent_workflow``                      建议工作流
+journal        ``decision_journal``                        读写决策日志
+doc_sync       ``doc_sync``                                同步文档与代码状态
+card           ``get_project_summary``                     项目名片
 =============  ==========================================  ==========================
 
-RFC-0027 §L7: ``card`` wires the previously unreachable
-``GetProjectSummaryTool`` — built, tested, and registered nowhere. It is the
-project card: purpose, top languages, entry points, and per-module
-descriptions, derived from facts TSA already computes (no LLM client).
+RFC-0027 §L7：``card`` 接入此前无法访问的 ``GetProjectSummaryTool``，根据
+TSA 已计算的事实生成项目用途、主要语言、入口和模块说明，无需 LLM 客户端。
 
-Index lifecycle actions (``status`` / ``build`` / ``full`` / ``auto`` /
-``sync`` / ``cache``) have been extracted to the dedicated ``index`` facade
-(``build_index_facade``). See ``index_facade.py``.
+索引生命周期动作（``status`` / ``build`` / ``full`` / ``auto`` / ``sync`` /
+``cache``）由独立的 ``index`` 门面（``build_index_facade``）负责。
 
-Annotation note (spec §6 / review §8 F-extra-3):
-    ``journal`` and ``doc_sync`` carry mutating intent. A facade spanning
-    read + mutating actions CANNOT honestly declare ``readOnlyHint=True``. We
-    therefore set ``readOnlyHint=False, destructiveHint=False``. Read-only
-    actions (overview, files, smart, parser, tools, metrics, skills, workflow)
-    lose the read-safe signal — accepted tradeoff per PRD §4.
+注解说明（spec §6 / review §8 F-extra-3）：
+    ``journal`` 和 ``doc_sync`` 可能写入。混合读写动作的门面不能声明
+    ``readOnlyHint=True``，因此使用 ``readOnlyHint=False`` 与
+    ``destructiveHint=False``。只读动作会失去只读提示，这是 PRD §4 接受的取舍。
 
-    At P0 this facade is NOT registered in ``_tool_registry.py`` (Wave C cutover
-    handles registration). The annotation is set correctly now so Wave C is clean.
+    P0 阶段该门面尚未在 ``_tool_registry.py`` 注册；Wave C 完成注册切换。
 """
 
 from __future__ import annotations
@@ -56,15 +48,13 @@ _PROJECT_ANNOTATIONS: dict[str, Any] = {
 _PROJECT_DESCRIPTION = (
     "Code-intelligence (codegraph-compatible) project-intelligence hub. "
     "Covers codegraph_metrics (graph-level stats), project overview, "
-    "file enumeration, smart task-focused context, parser readiness, "
+    "smart task-focused context, parser readiness, "
     "agent skills/workflow, decision journal, and doc sync in one tool. "
     "Pick a capability via `action`:\n"
     "\n"
     "PROJECT INFO (read-only):\n"
     "- action=overview — high-level summary of languages, entry points, and "
     "architecture. Best first call on an unfamiliar repo. Params: format.\n"
-    "- action=files — enumerate source files with filtering. "
-    "Params: path, extensions, limit, format.\n"
     "- action=smart — one-shot orientation for a single file: file_health "
     "grade, exported symbols (the file's public API), upstream/downstream "
     "dependencies, associated test files, and edit-risk in one envelope "
@@ -72,8 +62,6 @@ _PROJECT_DESCRIPTION = (
     "Params: file_path.\n"
     "- action=parser — check tree-sitter parser readiness for the project "
     "languages. Params: format.\n"
-    "- action=tools — verify availability of CLI tools (ripgrep, fd, etc.). "
-    "Params: (none).\n"
     "- action=metrics — codegraph graph-level statistics (node/edge counts, "
     "top hubs, codegraph_metrics equivalent). Params: format.\n"
     "- action=skills — enumerate available agent skills for this project. "
@@ -112,12 +100,10 @@ def build_project_facade(project_root: str | None = None) -> FacadeTool:
     """
     from .agent_skills_tool import AgentSkillsTool
     from .agent_workflow_tool import AgentWorkflowTool
-    from .check_tools_tool import CheckToolsTool
     from .codegraph_metrics_tool import CodeGraphMetricsTool
     from .decision_journal_tool import DecisionJournalTool
     from .doc_sync_tool import DocSyncTool
     from .get_project_summary_tool import GetProjectSummaryTool
-    from .list_files_tool import ListFilesTool
     from .parser_readiness_tool import ParserReadinessTool
     from .project_overview_tool import ProjectOverviewTool
     from .smart_context_tool import SmartContextTool
@@ -127,10 +113,8 @@ def build_project_facade(project_root: str | None = None) -> FacadeTool:
         action_map={
             # -- project info (read-only) -----------------------------------
             "overview": ProjectOverviewTool(project_root),
-            "files": ListFilesTool(project_root),
             "smart": SmartContextTool(project_root),  # S2 agentic highlight
             "parser": ParserReadinessTool(project_root),
-            "tools": CheckToolsTool(project_root),
             "metrics": CodeGraphMetricsTool(project_root),
             "skills": AgentSkillsTool(project_root),
             "workflow": AgentWorkflowTool(project_root),
@@ -140,7 +124,7 @@ def build_project_facade(project_root: str | None = None) -> FacadeTool:
             "journal": DecisionJournalTool(project_root),
             "doc_sync": DocSyncTool(project_root),
         },
-        bespoke_map={},  # all 10 actions are clean action_map delegates
+        bespoke_map={},  # 九个动作都直接委托给 action_map
         description=_PROJECT_DESCRIPTION,
         annotations=_PROJECT_ANNOTATIONS,
         project_root=project_root,

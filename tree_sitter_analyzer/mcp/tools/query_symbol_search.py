@@ -1,6 +1,7 @@
 """Symbol search helpers extracted from query_tool.py."""
 
 import fnmatch
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -292,8 +293,8 @@ def _try_fts_ranked_search(
 ) -> list[dict[str, Any]]:
     """Try the FTS5 BM25 fast path. Returns [] on any failure or miss."""
     try:
-        cache = ASTCache(str(root))
-        rows = cache.fts_search_ranked(symbol, language=language, limit=500)
+        with closing(ASTCache(str(root))) as cache:
+            rows = cache.fts_search_ranked(symbol, language=language, limit=500)
         return [_fts_symbol_to_match(r, root) for r in rows]
     except Exception:
         return []

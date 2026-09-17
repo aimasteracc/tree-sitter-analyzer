@@ -49,6 +49,13 @@ from pathlib import Path
 TEXT_METHODS = frozenset({"read_text", "write_text"})
 TESTS_DIR = "tests"
 
+#: Anchor the scanned surface to this file's repository, never to the caller's
+#: cwd.  Measured before the fix: run from `scripts/`, this gate printed
+#: "0 across 0 files" and exited 0 — an empty scan is indistinguishable from a
+#: clean one.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+TESTS_PATH = REPO_ROOT / TESTS_DIR
+
 
 @dataclass(frozen=True)
 class Violation:
@@ -170,6 +177,48 @@ def baseline_violations(tests_dir: Path) -> list[Violation]:
     return found
 
 
+def _live_surface(tests_path: Path) -> list[Path]:
+    """Every Python file under ``tests_path`` — the surface this gate watches."""
+    return sorted(tests_path.rglob("*.py"))
+
+
+def self_check() -> int:
+    """Assert the scan still reaches the whole live test surface."""
+    problems: list[str] = []
+
+    # The scan base is the repository's own tests/; a cwd-relative base is what
+    # made this gate pass while watching nothing.
+    anchored = REPO_ROOT / TESTS_DIR
+    if TESTS_PATH.resolve() != anchored.resolve():
+        problems.append(f"scan base {TESTS_PATH} is not {anchored}")
+
+    live = _live_surface(anchored)
+    if not live:
+        problems.append(f"{anchored} holds no Python files; the scan is empty")
+
+    # Every live file must parse, or it contributes nothing to the scan while
+    # still counting as covered.
+    unparsable: list[str] = []
+    for path in live:
+        try:
+            ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+        except SyntaxError as exc:
+            unparsable.append(f"{path.relative_to(REPO_ROOT).as_posix()}: {exc.msg}")
+    if unparsable:
+        problems.append(f"{len(unparsable)} live files do not parse: {unparsable[:3]}")
+
+    if problems:
+        print("check_test_encoding --self-check FAILED:", file=sys.stderr)
+        for problem in problems:
+            print(f"  {problem}", file=sys.stderr)
+        return 1
+    print(
+        f"check_test_encoding --self-check: {len(live)} live files under "
+        f"{TESTS_DIR}/, all parsed, scan base anchored to {REPO_ROOT}"
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     group = parser.add_mutually_exclusive_group(required=True)
@@ -178,10 +227,18 @@ def main(argv: list[str] | None = None) -> int:
     group.add_argument(
         "--baseline", action="store_true", help="report the grandfathered count"
     )
+    group.add_argument(
+        "--self-check",
+        action="store_true",
+        help="assert the scan covers the live test surface exactly (cwd-independent)",
+    )
     args = parser.parse_args(argv)
 
+    if args.self_check:
+        return self_check()
+
     if args.baseline:
-        violations = baseline_violations(Path(TESTS_DIR))
+        violations = baseline_violations(TESTS_PATH)
         files = {violation.path for violation in violations}
         print(
             f"encoding-unsafe text calls in {TESTS_DIR}/: "

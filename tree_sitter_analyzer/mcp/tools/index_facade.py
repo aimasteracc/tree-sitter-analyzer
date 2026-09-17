@@ -69,8 +69,10 @@ _INDEX_DESCRIPTION = (
     "when index is absent or corrupt. Params: force.\n"
     "- action=full — force a complete full reindex "
     "(codegraph_full_index equivalent). Params: (none).\n"
-    "- action=auto — enable/configure background auto-indexing "
-    "(codegraph_autoindex equivalent). Params: enable, watch.\n"
+    "- action=auto — background auto-index control (codegraph_autoindex "
+    "equivalent). Params: mode (status|warm|reset), max_files. A bare call "
+    "defaults to mode=status and only reports index state; pass mode=warm to "
+    "build the index.\n"
     "- action=sync — run one incremental sync pass (fast; use after "
     "editing files, codegraph_incremental_sync equivalent). Params: paths.\n"
     "- action=knowledge — build/update/status for the code+docs knowledge "
@@ -79,7 +81,9 @@ _INDEX_DESCRIPTION = (
 )
 
 
-def build_index_facade(project_root: str | None = None) -> FacadeTool:
+def build_index_facade(
+    project_root: str | None = None, lifecycle_manager: Any | None = None
+) -> FacadeTool:
     """Construct the ``index`` facade wired to live inner tool instances.
 
     Imports are inlined to keep cold-start cost off the import path for callers
@@ -100,7 +104,7 @@ def build_index_facade(project_root: str | None = None) -> FacadeTool:
         action_map={
             # -- read-only -------------------------------------------------
             "status": CodeGraphStatusTool(project_root, read_existing_default=True),
-            "cache": ASTCacheTool(project_root),
+            "cache": ASTCacheTool(project_root, lifecycle_manager),
             "schema": GetProjectSchemaTool(project_root),
             # -- writes on-disk index --------------------------------------
             "build": BuildProjectIndexTool(project_root),

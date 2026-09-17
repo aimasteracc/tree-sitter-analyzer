@@ -178,6 +178,94 @@ class ASTCacheGraphMixin(ASTCacheSurface):
         except sqlite3.OperationalError:
             return False
 
+    def count_unresolved_callers(
+        self,
+        callee_name: str,
+        callee_file: str | None = None,
+    ) -> int | None:
+        """Count in-scope CALLS edges into ``callee_name`` not known resolved.
+
+        Returns ``None`` when the count cannot be read.  ``None`` is not ``0``:
+        a failed read must not become a confident "every edge is resolved", so
+        callers treat it as unknown rather than complete.
+        """
+        try:
+            from .graph.edge_store import EdgeStore
+
+            return EdgeStore(
+                self._get_conn(), ensure_schema=False
+            ).count_unresolved_callers(callee_name, callee_file)
+        except sqlite3.OperationalError:
+            return None
+
+    def count_unresolved_calls_in_file(self, file_path: str) -> int | None:
+        """Count unresolved CALLS edges originating in ``file_path``.
+
+        Returns ``None`` when the count cannot be read, for the same reason
+        :meth:`count_unresolved_callers` does: a failed read must not read as
+        "no unresolved call here".
+        """
+        sites = self.unresolved_call_sites_in_file(file_path)
+        return None if sites is None else len(sites)
+
+    def unresolved_call_sites_in_file(
+        self, file_path: str
+    ) -> list[dict[str, object]] | None:
+        """The unresolved CALLS sites in ``file_path``, each with its mechanism.
+
+        The evidence behind :meth:`count_unresolved_calls_in_file`, and the same
+        derivation it uses, so a response's count and the sites it names cannot
+        disagree. Returns ``None`` when the read fails, for the same reason the
+        count does: a failed read must not read as "nothing unresolved here".
+        """
+        try:
+            from .graph.edge_store import EdgeStore
+
+            return EdgeStore(
+                self._get_conn(), ensure_schema=False
+            ).unresolved_call_sites_in_file(file_path)
+        except sqlite3.OperationalError:
+            return None
+
+    def excluded_call_sites_in_file(
+        self, file_path: str
+    ) -> list[dict[str, object]] | None:
+        """The CALLS sites in ``file_path`` that were ruled out, and why.
+
+        The complement of :meth:`unresolved_call_sites_in_file`, from the same
+        scan. Returns ``None`` when the read fails, matching the other accessors:
+        a failed read must not read as "nothing was excluded here".
+        """
+        try:
+            from .graph.edge_store import EdgeStore
+
+            return EdgeStore(
+                self._get_conn(), ensure_schema=False
+            ).excluded_call_sites_in_file(file_path)
+        except sqlite3.OperationalError:
+            return None
+
+    def symbol_declaring_files(self, name: str) -> tuple[str, ...] | None:
+        """Return the files declaring ``name``, or ``None`` when unreadable.
+
+        Empty is the honest answer for a name this project does not define — a
+        stdlib or framework symbol such as ``SystemExit``.  ``None`` is a failed
+        read, and the two must not collapse: a caller reading a failure as an
+        empty scope turns "I could not check" into "nothing unresolved here".
+        """
+        try:
+            rows = (
+                self._get_conn()
+                .execute(
+                    "SELECT DISTINCT file_path FROM ast_symbol_rows WHERE name = ?",
+                    (name,),
+                )
+                .fetchall()
+            )
+        except sqlite3.OperationalError:
+            return None
+        return tuple(str(row[0]) for row in rows if row[0])
+
     def call_graph_built(self) -> bool:
         """Return whether a completed call-graph build is recorded."""
         return _call_graph_built(self._get_conn())

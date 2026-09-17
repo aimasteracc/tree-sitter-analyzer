@@ -32,17 +32,22 @@ class ClassHierarchyTool(BaseMCPTool):
 
     def __init__(self, project_root: str | None = None) -> None:
         self._hierarchy: ClassHierarchy | None = None
+        self._cache: ASTCache | None = None
         super().__init__(project_root)
 
     def _on_project_root_changed(self, project_root: str | None) -> None:
+        cache = self._cache
+        self._cache = None
         self._hierarchy = None
+        if cache is not None:
+            cache.close()
 
     def _get_hierarchy(self) -> ClassHierarchy:
         if self._hierarchy is None:
             if not self.project_root:
                 raise ValueError("Project root not set. Call set_project_path first.")
-            cache = ASTCache(self.project_root)
-            self._hierarchy = ClassHierarchy(cache)
+            self._cache = ASTCache(self.project_root)
+            self._hierarchy = ClassHierarchy(self._cache)
         return self._hierarchy
 
     def get_tool_definition(self) -> dict[str, Any]:

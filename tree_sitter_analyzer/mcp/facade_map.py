@@ -49,6 +49,19 @@ FACADE_NAMES: tuple[str, ...] = (
     "viz",
 )
 
+# 破坏性删除不会写入 LEGACY_TOOL_MAP，也不存在可用路由。这里保留标识符，
+# 让契约测试能够识别仍然引导代理调用已删除能力的 ``next_step``。
+# 来源：CHANGELOG 1.30.0 与 RFC-0033。只列出可能作为词法标记出现的形式。
+REMOVED_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "search_content",
+        "find_and_grep",
+        "batch_search",
+        "list_files",
+        "check_tools",
+    }
+)
+
 # ---------------------------------------------------------------------------
 # legacy old-tool-name -> (facade, action) crosswalk (β shim source of truth)
 #
@@ -59,7 +72,6 @@ LEGACY_TOOL_MAP: dict[str, tuple[str, str]] = {
     # -- search ------------------------------------------------------------
     "codegraph_symbol_search": ("search", "symbol"),
     "query_code": ("search", "query"),  # F3: tree-sitter .scm DSL (NOT symbol)
-    "batch_search": ("search", "batch"),
     "codegraph_query": ("search", "chain"),
     # -- nav ---------------------------------------------------------------
     "codegraph_navigate": ("nav", "navigate"),
@@ -113,10 +125,8 @@ LEGACY_TOOL_MAP: dict[str, tuple[str, str]] = {
     "ast_diff": ("edit", "ast_diff"),
     # -- project -----------------------------------------------------------
     "get_project_overview": ("project", "overview"),
-    "list_files": ("project", "files"),
     "smart_context": ("project", "smart"),
     "advise_parser_readiness": ("project", "parser"),
-    "check_tools": ("project", "tools"),
     "codegraph_metrics": ("project", "metrics"),
     "list_agent_skills": ("project", "skills"),
     "get_agent_workflow": ("project", "workflow"),

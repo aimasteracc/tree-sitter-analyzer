@@ -952,7 +952,7 @@ def test_project_health_restores_graph_scope_after_failure(
     hotspot_token = health._PROJECT_HOTSPOT_SCORES.set(outer_hotspots)
     (tmp_path / "probe.py").write_text("value=1\n", encoding="utf-8")
 
-    def fail(_path):
+    def fail(_path, context=None):
         raise RuntimeError("operation failed")
 
     if failure_phase == "enumeration":
@@ -1188,7 +1188,7 @@ def test_project_health_prefetches_git_scores_with_four_workers(tmp_path, monkey
     lock = threading.Lock()
     active = maximum = 0
 
-    def git_score(path, low, high):
+    def git_score(path, low, high, *, context=None):
         nonlocal active, maximum
         with lock:
             active += 1
@@ -1228,7 +1228,7 @@ def test_project_git_prefetch_preserves_warm_hits_and_resets_scope(
     calls = []
     value = [90.0]
 
-    def git_score(path, low, high):
+    def git_score(path, low, high, *, context=None):
         calls.append(path)
         return value[0]
 
@@ -1284,7 +1284,7 @@ def test_project_git_prefetch_cancels_queued_queries_on_interrupt(
             release.set()
             super().shutdown(wait=wait, cancel_futures=cancel_futures)
 
-    def query(*args):
+    def query(*args, **kwargs):
         nonlocal calls
         with lock:
             calls += 1
@@ -1337,7 +1337,7 @@ def test_project_health_stores_ready_scores_before_remaining_git_queries_finish(
             stored.set()
         return result
 
-    def query(path, low, high):
+    def query(path, low, high, *, context=None):
         if path != str(files[ready_index]):
             observed.append(stored.wait(timeout=3))
         return 100.0
@@ -1368,7 +1368,7 @@ def test_project_git_fallback_shares_four_workers_after_dependency_invalidation(
     )
     warm = tmp_path / "warm.py"
     warm.write_text("value=1\n", encoding="utf-8")
-    monkeypatch.setattr(health, "calculate_git_hotspot", lambda *_: 90.0)
+    monkeypatch.setattr(health, "calculate_git_hotspot", lambda *_, **__: 90.0)
     for index in range(2):
         (tmp_path / f"existing{index}.py").write_text("import warm\n", encoding="utf-8")
     scorer = health.HealthScorer()
@@ -1402,7 +1402,7 @@ def test_project_git_fallback_shares_four_workers_after_dependency_invalidation(
                 release.set()
             return future
 
-    def query(path, low, high):
+    def query(path, low, high, *, context=None):
         nonlocal active, maximum
         if path == str(warm):
             assert all_started.wait(timeout=3)

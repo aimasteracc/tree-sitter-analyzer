@@ -95,6 +95,28 @@ class TestExecute:
         assert result["success"] is True
         assert "indexed" in result
 
+    async def test_status_closes_owned_cache(self, monkeypatch, tmp_path):
+        # #1402（2026-09-16）：短期 status 读取结束后不得保留连接。
+        closed = []
+
+        class Cache:
+            def __init__(self, _root):
+                pass
+
+            def get_stats(self):
+                return {"total_files": 0}
+
+            def close(self):
+                closed.append(True)
+
+        monkeypatch.setattr("tree_sitter_analyzer.ast_cache.ASTCache", Cache)
+        result = await CodeGraphAutoIndexTool(str(tmp_path)).execute(
+            {"mode": "status", "output_format": "json"}
+        )
+
+        assert result["success"] is True
+        assert closed == [True]
+
     async def test_reset_mode_runs_without_error(self, tool_with_root):
         result = await tool_with_root.execute(
             {"mode": "reset", "output_format": "json"}

@@ -350,8 +350,8 @@ def start_here_score(f: FileFacts) -> float:
    `tree_sitter_analyzer/` with exact-value tests. A formula that lives only in
    a prompt is a formula with no regression protection.
 3. **Fix the two wrong-signal verdicts.**
-   `modification_guard_tool.py:485` ranks symbol-level edit risk on **ripgrep
-   occurrence counts** while the AST caller count is fetched at `:484` and left
+   `modification_guard_tool.py` ranks symbol-level edit risk on **source text
+   occurrence counts** while the AST caller count is fetched and left
    unused; `test_gap_analyzer.py:652` (`who_should_test`) uses basename matching
    while the graph-correct `test_map` (`nav_facade.py:466`) exists. Both are
    heuristic answers presented with an authoritative label. Switch both to the
@@ -683,7 +683,7 @@ and emits a calibration report with non-placeholder numbers.
 - [x] L6.1 the harness drives the prescribed route pair **interleaved** and
       records `served_from` per call, so a 0% real-workflow hit rate cannot hide
       behind a grouped-repeat speedup
-- [ ] L6.2 `QueryCost` returned by the three most expensive routes;
+- [x] L6.2 `QueryCost` returned by the three most expensive routes;
       `estimated_ms` is `None` until observed
 - [ ] L6.3 canonical full id always present; abbreviation unique within the
       project index; `SYMBOL_ID_AMBIGUOUS` fail-closed on an ambiguous

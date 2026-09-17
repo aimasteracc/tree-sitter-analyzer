@@ -7,7 +7,7 @@ This document provides a comprehensive overview of the features and language sup
 | Feature Category | Key Capabilities | Core Benefits |
 |------------------|------------------|---------------|
 | **🤖 Deep AI Integration** | MCP Protocol Support, SMART Workflow, Token Limitation Breaking | Native support for Claude Desktop, Cursor, Roo Code |
-| **🔍 Powerful Search** | Intelligent File Discovery, Precise Content Search, Two-Stage Search | fd + ripgrep based high-performance search |
+| **🔍 Evidence-backed retrieval** | Indexed symbol/graph/AST discovery plus bounded live-source verification | Fresh, structured evidence without required external search executables |
 | **📊 Intelligent Analysis** | Fast Structure Analysis, Precise Code Extraction, Complexity Analysis | Enterprise-grade parsing without full file reading |
 
 ## Enterprise Capabilities

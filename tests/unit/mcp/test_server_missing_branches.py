@@ -43,7 +43,7 @@ class TestParseMcpArgs:
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# _handle_analyze_code – universal tool + analysis failure + RuntimeError
+# _handle_analyze_code：缺少路径、分析失败与运行时错误
 # ---------------------------------------------------------------------------
 
 
@@ -54,39 +54,12 @@ class TestHandleAnalyzeCode:
             yield Path(td)
 
     @pytest.mark.asyncio
-    async def test_missing_file_path_uses_universal_tool(self, tmp_path):
-        """no file_path, universal tool available, succeeds"""
+    async def test_missing_file_path_raises(self, tmp_path):
+        """缺少 file_path 时必须直接拒绝请求。"""
         from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
 
         server = TreeSitterAnalyzerMCPServer(project_root=str(tmp_path))
-        server.universal_analyze_tool = AsyncMock()
-        server.universal_analyze_tool.execute = AsyncMock(
-            return_value={"universal": "result"}
-        )
-        result = await server._analyze_code_scale({})
-        assert result["universal"] == "result"
-
-    @pytest.mark.asyncio
-    async def test_missing_file_path_no_universal_raises(self, tmp_path):
-        """no file_path and no universal tool"""
-        from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
-
-        server = TreeSitterAnalyzerMCPServer(project_root=str(tmp_path))
-        server.universal_analyze_tool = None
         with pytest.raises(ValueError, match="file_path is required"):
-            await server._analyze_code_scale({})
-
-    @pytest.mark.asyncio
-    async def test_universal_tool_raises_valueerror(self, tmp_path):
-        """Universal tool re-raises ValueError"""
-        from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
-
-        server = TreeSitterAnalyzerMCPServer(project_root=str(tmp_path))
-        server.universal_analyze_tool = AsyncMock()
-        server.universal_analyze_tool.execute = AsyncMock(
-            side_effect=ValueError("bad input")
-        )
-        with pytest.raises(ValueError, match="bad input"):
             await server._analyze_code_scale({})
 
     @pytest.mark.asyncio

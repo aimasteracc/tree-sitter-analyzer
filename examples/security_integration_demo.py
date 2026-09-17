@@ -12,7 +12,6 @@ from pathlib import Path
 
 from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
 from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
-from tree_sitter_analyzer.mcp.tools.universal_analyze_tool import UniversalAnalyzeTool
 from tree_sitter_analyzer.security import SecurityValidator
 
 
@@ -92,21 +91,6 @@ class MathUtils:
         print("❌ TableFormatTool path traversal: NOT BLOCKED (SECURITY ISSUE!)")
     except ValueError:
         print("✅ TableFormatTool path traversal: BLOCKED")
-
-    # Test UniversalAnalyzeTool
-    analyze_tool = UniversalAnalyzeTool(str(project_root))
-
-    try:
-        result = await analyze_tool.execute({"file_path": str(test_file)})
-        print("✅ UniversalAnalyzeTool valid file: SUCCESS")
-    except Exception as e:
-        print(f"❌ UniversalAnalyzeTool valid file: FAILED - {e}")
-
-    try:
-        await analyze_tool.execute({"file_path": "../../../etc/passwd"})
-        print("❌ UniversalAnalyzeTool path traversal: NOT BLOCKED (SECURITY ISSUE!)")
-    except Exception:  # Catch broader exception types
-        print("✅ UniversalAnalyzeTool path traversal: BLOCKED")
 
     print()
 

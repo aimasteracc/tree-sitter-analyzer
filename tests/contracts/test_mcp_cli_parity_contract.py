@@ -108,7 +108,6 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "get_code_outline": ("main", "--outline"),
         "extract_code_section": ("main", "--partial-read"),
         "query_code": ("main", "--query-key"),
-        "list_files": ("script", "list-files"),
         # "search_content" と "find_and_grep" は廃止済み
         "list_agent_skills": ("main", "--agent-skills"),
         "get_agent_workflow": ("main", "--agent-workflow"),
@@ -173,9 +172,7 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "codegraph_incremental_sync": ("main", "--incremental-sync"),
         "trace_impact": ("main", "--trace-impact"),
         "modification_guard": ("main", "--modification-guard"),
-        "batch_search": ("main", "--batch-search"),
         "build_project_index": ("main", "--build-project-index"),
-        "check_tools": ("main", "--check-tools"),
         "decision_journal": ("main", "--decision-journal"),
         "doc_sync": ("main", "--doc-sync"),
         "codegraph_test_gap": ("main", "--test-gap"),
@@ -346,7 +343,6 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("search", "symbol"): "CodeGraphSymbolSearchTool",
         ("search", "query"): "QueryTool",
         # ("search", "grep"): "FindAndGrepTool",  # 廃止済み
-        ("search", "batch"): "BatchSearchTool",
         ("search", "chain"): "CodeGraphQueryTool",
         ("search", "select"): "HyphaeSelectTool",
         ("search", "subscribe"): "HyphaeSubscribeTool",
@@ -422,10 +418,8 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         # RFC-0029: mutation probe — does this test constrain this code?
         ("edit", "mutation_probe"): "MutationProbeTool",
         ("project", "overview"): "ProjectOverviewTool",
-        ("project", "files"): "ListFilesTool",
         ("project", "smart"): "SmartContextTool",
         ("project", "parser"): "ParserReadinessTool",
-        ("project", "tools"): "CheckToolsTool",
         ("project", "metrics"): "CodeGraphMetricsTool",
         ("project", "skills"): "AgentSkillsTool",
         ("project", "workflow"): "AgentWorkflowTool",
