@@ -256,7 +256,7 @@ TSA 的公共依赖。性能测试记录端到端 wall time，索引认证和恢
 - [x] direct route 的未知、拼错和 sibling 参数均在执行前失败并给出合法字段；
 - [x] 8 facade / 84 business action 的工具数量不因 core profile 增长；
 - [x] 五个核心 action 有机器可读的逐 action schema 与稳定恢复提示；
-- [ ] search、resolve、pulse 对 stale/missing/unknown/fresh 使用同一证据模型；
+- [x] search、resolve、pulse 对 stale/missing/unknown/fresh 使用同一证据模型；
 - [ ] 位置、正文和 target ID 均绑定同一代源码；
 - [ ] 默认响应无重复正文，截断与未知总量不混淆；
 - [ ] 无 `rg` / `fd` 环境通过同一正确性 corpus；可选后端通过差分测试；

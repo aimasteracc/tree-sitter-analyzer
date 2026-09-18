@@ -12,6 +12,17 @@ from ..read_existing_access import _stable_consumer_code
 
 _STALE_REASONS = frozenset({"SOURCE_INDEX_MISMATCH", "SOURCE_GENERATION_MISMATCH"})
 _MISSING_REASONS = frozenset({"MISSING_INDEX", "MISSING_PROJECT_ROOT"})
+_COORDINATE_FALLBACK_REASONS = frozenset(
+    {
+        "CALL_GRAPH_INCOMPLETE",
+        "INDEX_SNAPSHOT_FAILED",
+        "INDEX_SNAPSHOT_INCOMPLETE",
+        "INDEX_SNAPSHOT_UNKNOWN",
+        "MISSING_INDEX",
+        "NO_EXACT_FULL_INDEX_MANIFEST",
+        "SOURCE_SCOPE_DESCRIPTOR_MISSING",
+    }
+)
 
 
 class PulseSourceError(ValueError):
@@ -28,19 +39,53 @@ class PulseSourceError(ValueError):
             else "unknown"
         )
 
-    def to_response(self) -> dict[str, Any]:
+    def evidence(self) -> dict[str, Any]:
+        """返回不携带未认证版本身份的统一源码证据。"""
+        return {
+            "freshness": self.freshness,
+            "snapshot_id": None,
+            "source_generation": None,
+            "reason": self.reason,
+        }
+
+    def allows_coordinate_fallback(self) -> bool:
+        """仅允许旧式或缺失索引降级；并发、过期和损坏必须失败。"""
+        return self.reason in _COORDINATE_FALLBACK_REASONS
+
+    def to_response(self, operation: str = "Pulse") -> dict[str, Any]:
         """错误响应不携带候选结果或未经认证的版本身份。"""
         return {
             "success": False,
             "error_code": "SOURCE_EVIDENCE_UNAVAILABLE",
-            "error": f"Pulse source evidence unavailable: {self.reason}",
-            "source_evidence": {
-                "freshness": self.freshness,
-                "snapshot_id": None,
-                "source_generation": None,
-                "reason": self.reason,
-            },
+            "error": f"{operation} source evidence unavailable: {self.reason}",
+            "source_evidence": self.evidence(),
         }
+
+
+@contextmanager
+def certified_source_read(
+    project_root: str | None,
+) -> Iterator[tuple[Any, dict[str, Any]]]:
+    """为搜索与解析提供同一个认证索引 owner 和 Pulse 证据模型。"""
+    if not project_root:
+        raise PulseSourceError("MISSING_PROJECT_ROOT")
+    try:
+        with index_snapshot.certified_index_read(project_root) as owner:
+            if owner is None:
+                with index_snapshot.lease_existing_snapshot(project_root) as snapshot:
+                    raise PulseSourceError(snapshot.reason or "INDEX_SNAPSHOT_UNKNOWN")
+            evidence: dict[str, Any] = {
+                "freshness": "unknown",
+                "snapshot_id": owner.snapshot.snapshot_id,
+                "source_generation": owner.snapshot.source_generation,
+                "reason": "SOURCE_REVALIDATION_PENDING",
+            }
+            yield owner, evidence
+    except PulseSourceError:
+        raise
+    except (ValueError, RuntimeError, OSError, sqlite3.DatabaseError) as exc:
+        raise _source_failure(exc) from exc
+    evidence.update(freshness="fresh", reason=None)
 
 
 @contextmanager
@@ -93,5 +138,9 @@ def _source_failure(exc: Exception) -> PulseSourceError:
     """沿用既有认证错误分类，不把操作系统异常原文当作稳定协议字段。"""
     code = _stable_consumer_code(exc)
     if code == "INDEX_SNAPSHOT_FAILED":
-        code = "INDEX_SNAPSHOT_UNKNOWN"
+        code = (
+            "CORRUPT_INDEX"
+            if isinstance(exc, sqlite3.DatabaseError)
+            else "INDEX_SNAPSHOT_UNKNOWN"
+        )
     return PulseSourceError(code)

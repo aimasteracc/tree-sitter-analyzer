@@ -136,6 +136,8 @@ conformance 而没有证明 Agent 任务价值的假绿。
 1. [x] 合入 direct route 参数严格性第一切片。
 2. [x] 清理 agent envelope 中退役的 TOON 描述。
 3. [x] 给五个核心 action 提供按需 schema 响应，不增加顶层工具或业务动作。
-4. [ ] 让 symbol search/resolve 复用 Pulse 的源码认证。
+4. [x] 让 symbol search/resolve 复用 Pulse 的源码认证与 freshness 错误模型；认证命中
+   绑定同一个 snapshot owner，未认证空结果不能宣称 `NOT_FOUND`，stale/concurrent
+   路径 fail closed。
 5. [ ] 建立第一条 NO1-010B transcript harness，再扩展代表性 corpus。
 6. [ ] 在正确性稳定后优化索引冷启动、热查询和保存恢复。

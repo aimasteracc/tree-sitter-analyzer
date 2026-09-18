@@ -159,7 +159,7 @@ All tools return:
 - [`docs/smart-workflow.md`](../smart-workflow.md) — SMART methodology
 - [`docs/CODEMAPS/cli.md`](./cli.md) — CLI counterpart map
 
-### Pulse 源码证据
+### 搜索、解析与 Pulse 源码证据
 
 `nav action=pulse` / `pulse_batch`（CLI `--pulse` / `--pulse-batch`）
 通过 `api/pulse_evidence.py` 共用索引所有者的认证连接；批次只获取一次。
@@ -167,6 +167,13 @@ All tools return:
 不受内容预算影响。源码过期、缺失或未认证时不返回缓存结果，需先构建或同步索引。
 `api.pulse.query_pulse(conn, ...)` 自身只保证 SQL 读取一致，不证明磁盘源码当前。
 当前实现使用每次调用的认证后备路径，常驻认证与规模热路径仍未验收（RFC-0030）。
+
+`search action=symbol` 和 `nav action=resolve` 使用同一 `PulseSourceError` 分类与
+`source_evidence` 形状。认证路径把查询连接、返回位置和源码正文绑定到同一个
+snapshot owner；有结果时逐个认证实际返回的文件，无结果时执行全 scope 再验证后
+才允许 `NOT_FOUND`。等长改写并恢复 mtime 仍由内容摘要识别为 `stale`；并发、过期、
+容量或损坏错误 fail closed，不发布缓存坐标。旧式无认证 manifest 的索引暂时只返回
+`WARN` 坐标和恢复提示，不能宣称 fresh 或 `NOT_FOUND`。
 
 ## v1.29.5 release integration
 

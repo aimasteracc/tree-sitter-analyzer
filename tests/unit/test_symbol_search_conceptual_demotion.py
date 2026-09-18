@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from tests.unit._navigation_test_support import published_search
+from tests.unit._navigation_test_support import assert_source_failure, published_search
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.mcp.tools.symbol_search_tool import CodeGraphSymbolSearchTool
 
@@ -119,10 +119,10 @@ def test_source_demotion_preserves_non_body_guidance() -> None:
     ("failure_stage", "query"),
     [("fts", "absent term"), ("like", "arget"), ("fuzzy", "targte")],
 )
-async def test_public_search_sql_failure_falls_back_without_source(
+async def test_public_search_sql_failure_rejects_uncertified_coordinates(
     tmp_path, monkeypatch, failure_stage: str, query: str
 ) -> None:
-    """认证查询失败必须重试普通坐标路径，不能伪装成认证空集。"""
+    """认证查询损坏必须 fail closed，不能回退发布普通缓存坐标。"""
     from tree_sitter_analyzer.cache import query as cache_query
     from tree_sitter_analyzer.cache import search as cache_search
 
@@ -165,10 +165,8 @@ async def test_public_search_sql_failure_falls_back_without_source(
         result = await facade.execute(
             {"action": "symbol", "query": query, "output_format": "json"}
         )
-        assert result["success"] is True
-        assert legacy_calls == 1
-        assert all("code" not in row and "body" not in row for row in result["results"])
-        assert "no Read needed" not in result.get("next_step", "")
+        assert_source_failure(result, "Symbol search", "CORRUPT_INDEX", "unknown")
+        assert legacy_calls == 0
     finally:
         legacy_cache.close()
 
@@ -189,5 +187,29 @@ async def test_certified_plain_fts_special_characters_remain_compatible(
             {"action": "symbol", "query": query, "output_format": "json"}
         )
         assert result["success"] is True
+    finally:
+        symbol._cache.close()
+
+
+@pytest.mark.asyncio
+async def test_base_database_error_fails_closed(tmp_path, monkeypatch) -> None:
+    """基础 DatabaseError 也必须归类为索引损坏，禁止坐标降级。"""
+    from contextlib import contextmanager
+
+    from tree_sitter_analyzer import index_snapshot
+
+    _source, facade, symbol = await published_search(tmp_path)
+
+    @contextmanager
+    def corrupt(_project_root):
+        raise sqlite3.DatabaseError("database disk image is malformed")
+        yield None
+
+    monkeypatch.setattr(index_snapshot, "certified_index_read", corrupt)
+    try:
+        result = await facade.execute(
+            {"action": "symbol", "query": "target", "output_format": "json"}
+        )
+        assert_source_failure(result, "Symbol search", "CORRUPT_INDEX", "unknown")
     finally:
         symbol._cache.close()
