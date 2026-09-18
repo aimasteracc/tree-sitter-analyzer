@@ -207,12 +207,7 @@ def test_edit_facade_guard_description_marks_modification_type_required() -> Non
 
 
 def test_action_pr_without_mode_or_pr_url_fails_loudly() -> None:
-    """Codex P1 (#483): facade action=pr with NO explicit mode must not
-    fall back to the inner's diff default and return empty success.
-
-    ``edit({"action": "pr", "query": "<url>"})`` (typoed param) previously
-    reached the inner without mode → diff mode → success "No changed files".
-    The facade pr route now implies mode=pr, so the pr_url guard fires."""
+    """拼错的 PR URL 参数必须在进入内部工具前明确失败。"""
     import asyncio
 
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
@@ -222,7 +217,9 @@ def test_action_pr_without_mode_or_pr_url_fails_loudly() -> None:
         facade.execute({"action": "pr", "query": "https://github.com/o/r/pull/1"})
     )
     assert result["success"] is False
-    assert "pr_url" in result["error"]
+    assert result["error_code"] == "INVALID_ARGUMENT"
+    assert result["invalid_arguments"] == ["query"]
+    assert "pr_url" in result["allowed_arguments"]
 
 
 def test_action_pr_explicit_diff_mode_still_reaches_diff() -> None:

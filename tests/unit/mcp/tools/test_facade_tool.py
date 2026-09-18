@@ -190,28 +190,86 @@ def test_arg_projection_strips_action_control_key() -> None:
     assert inner.last_args == {"query": "Foo", "limit": 5}
 
 
-def test_arg_projection_drops_sibling_params() -> None:
-    """A param belonging to a sibling action (function_name) must not reach the
-    symbol inner tool — projection is to the inner's own schema whitelist."""
+def test_response_control_is_accepted_without_inner_schema_support() -> None:
+    """JSON 输出控制字段可以由门面消费，不能被误判为业务参数。"""
     facade = _make_facade()
     inner = facade.action_map["symbol"]
-    asyncio.run(
+
+    result = asyncio.run(
+        facade.execute({"action": "symbol", "query": "Foo", "output_format": "json"})
+    )
+
+    assert result["success"] is True
+    assert inner.last_args == {"query": "Foo"}
+
+
+@pytest.mark.parametrize("invalid_format", ["yaml", 123])
+def test_response_control_rejects_non_json_before_dispatch(invalid_format: Any) -> None:
+    """响应控制字段合法，但非 JSON 值必须在分派前失败。"""
+    facade = _make_facade()
+    inner = facade.action_map["symbol"]
+
+    result = asyncio.run(
+        facade.execute(
+            {
+                "action": "symbol",
+                "query": "Foo",
+                "output_format": invalid_format,
+            }
+        )
+    )
+
+    assert result["success"] is False
+    assert result["error_code"] == "INVALID_ARGUMENT"
+    assert result["invalid_arguments"] == ["output_format"]
+    assert result["allowed_values"] == {"output_format": ["json"]}
+    assert result["suggestions"] == {}
+    assert inner.last_args is None
+
+
+def test_action_rejects_sibling_params_before_dispatch() -> None:
+    """属于其他动作的参数必须显式失败，不能静默改变调用语义。"""
+    facade = _make_facade()
+    inner = facade.action_map["symbol"]
+    result = asyncio.run(
         facade.execute({"action": "symbol", "query": "Foo", "function_name": "bar"})
     )
-    assert inner.last_args is not None
-    assert "function_name" not in inner.last_args
+    assert result["success"] is False
+    assert result["error_code"] == "INVALID_ARGUMENT"
+    assert result["invalid_arguments"] == ["function_name"]
+    assert result["action"] == "symbol"
+    assert inner.last_args is None
 
 
-def test_facade_does_not_raise_on_control_keys() -> None:
-    """The facade's own strict-param guard must allow action/scope/mode."""
+def test_action_rejects_typo_with_machine_readable_suggestion() -> None:
+    """参数拼写错误必须给出稳定纠错信息，并且不得执行内部工具。"""
     facade = _make_facade()
-    # scope + mode are free control keys; must not raise.
+    inner = facade.action_map["symbol"]
+
+    result = asyncio.run(
+        facade.execute({"action": "symbol", "query": "Foo", "limt": 5})
+    )
+
+    assert result["success"] is False
+    assert result["error_code"] == "INVALID_ARGUMENT"
+    assert result["invalid_arguments"] == ["limt"]
+    assert result["suggestions"] == {"limt": "limit"}
+    assert result["allowed_arguments"] == ["action", "limit", "output_format", "query"]
+    assert "limit" in result["agent_summary"]["next_step"]
+    assert inner.last_args is None
+
+
+def test_action_rejects_irrelevant_scope_and_mode() -> None:
+    """公共模式参数也必须由所选动作声明，否则不得静默忽略。"""
+    facade = _make_facade()
     result = asyncio.run(
         facade.execute(
             {"action": "symbol", "query": "Foo", "scope": "point", "mode": "x"}
         )
     )
-    assert result["success"] is True
+    assert result["success"] is False
+    assert result["error_code"] == "INVALID_ARGUMENT"
+    assert result["invalid_arguments"] == ["mode", "scope"]
 
 
 # --------------------------------------------------------------------------
@@ -543,6 +601,20 @@ def test_search_facade_symbol_action_does_not_raise_strict(tmp_path: Any) -> Non
     assert "success" in result
 
 
+def test_search_facade_symbol_action_rejects_typo_before_query(tmp_path: Any) -> None:
+    """真实 search.symbol 路由必须在访问索引前拒绝拼错参数。"""
+    from tree_sitter_analyzer.mcp.tools.search_facade import build_search_facade
+
+    facade = build_search_facade(project_root=str(tmp_path))
+    result = asyncio.run(
+        facade.execute({"action": "symbol", "query": "build_search_facade", "limt": 2})
+    )
+
+    assert result["success"] is False
+    assert result["error_code"] == "INVALID_ARGUMENT"
+    assert result["suggestions"] == {"limt": "limit"}
+
+
 def test_search_facade_schema_declares_kind_with_enum() -> None:
     """#640: ``kind`` worked at runtime (additionalProperties) but was absent
     from the search facade's public inputSchema — schema-reading agents could
@@ -586,12 +658,39 @@ if __name__ == "__main__":
 
 
 def test_action_scoped_parameter_rejected_for_other_action() -> None:
-    # PR #1253: scoped facade controls fail with a stable actionable envelope.
+    # PR #1253：动作范围参数必须返回稳定、可自动修复的错误信封。
     facade = _make_facade(action_scoped_params={"depth": frozenset({"func"})})
 
     result = asyncio.run(facade.execute({"action": "symbol", "depth": 2}))
 
-    assert result["error"] == "parameter 'depth' applies only to action(s): func"
+    assert result["error_code"] == "INVALID_ARGUMENT"
+    assert result["invalid_arguments"] == ["depth"]
+    assert result["allowed_arguments"] == ["action", "limit", "output_format", "query"]
+    assert result["supported_actions"] == {"depth": ["func"]}
+    assert result["suggestions"] == {}
+    assert "func" in result["agent_summary"]["next_step"]
+
+
+def test_bespoke_action_scoped_parameter_keeps_compatibility_error() -> None:
+    """尚无动作模式的 bespoke 路由保留旧错误，并且不得执行处理器。"""
+    calls: list[dict[str, Any]] = []
+
+    async def _bespoke(args: dict[str, Any]) -> dict[str, Any]:
+        calls.append(args)
+        return {"success": True, "verdict": "INFO"}
+
+    facade = FacadeTool(
+        facade_name="test_facade",
+        action_map={"symbol": _FakeSymbolTool()},
+        bespoke_map={"content": _bespoke},
+        action_scoped_params={"depth": frozenset({"symbol"})},
+    )
+
+    result = asyncio.run(facade.execute({"action": "content", "depth": 2}))
+
+    assert result["success"] is False
+    assert result["error"] == "parameter 'depth' applies only to action(s): symbol"
+    assert calls == []
 
 
 class _AliasProbe(BaseMCPTool):

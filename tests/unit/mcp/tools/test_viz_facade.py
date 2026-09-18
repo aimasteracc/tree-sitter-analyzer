@@ -188,32 +188,32 @@ def test_similarity_action_routes_and_strips_action_key() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_sibling_param_does_not_reach_uml_inner() -> None:
-    """Param for action=graph (depth) must not leak to uml inner."""
+def test_sibling_param_is_rejected_for_uml_inner() -> None:
+    """属于 graph 的参数传给 uml 时必须拒绝。"""
     facade = build_viz_facade(project_root=None)
     inner = facade.action_map["uml"]
     with patch.object(inner, "execute", new_callable=AsyncMock) as mock_exec:
         mock_exec.return_value = {"success": True, "verdict": "INFO"}
-        asyncio.run(facade.execute({"action": "uml", "diagram": "class", "depth": 3}))
-        called_args = mock_exec.call_args[0][0]
-        # depth is NOT in CodeGraphUMLTool's schema => must be dropped
-        assert "depth" not in called_args
-        assert called_args.get("diagram") == "class"
+        result = asyncio.run(
+            facade.execute({"action": "uml", "diagram": "class", "depth": 3})
+        )
+        assert result["error_code"] == "INVALID_ARGUMENT"
+        assert result["invalid_arguments"] == ["depth"]
+        mock_exec.assert_not_called()
 
 
-def test_sibling_param_does_not_reach_similarity_inner() -> None:
-    """Param for action=uml (source) must not leak to similarity inner."""
+def test_sibling_param_is_rejected_for_similarity_inner() -> None:
+    """属于 uml 的参数传给 similarity 时必须拒绝。"""
     facade = build_viz_facade(project_root=None)
     inner = facade.action_map["similarity"]
     with patch.object(inner, "execute", new_callable=AsyncMock) as mock_exec:
         mock_exec.return_value = {"success": True, "verdict": "INFO"}
-        asyncio.run(
+        result = asyncio.run(
             facade.execute({"action": "similarity", "min_lines": 5, "source": "Foo"})
         )
-        called_args = mock_exec.call_args[0][0]
-        # source is NOT in CodeGraphSimilarityTool's schema => must be dropped
-        assert "source" not in called_args
-        assert called_args.get("min_lines") == 5
+        assert result["error_code"] == "INVALID_ARGUMENT"
+        assert result["invalid_arguments"] == ["source"]
+        mock_exec.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
