@@ -16,7 +16,7 @@ TSA 的优势不是替代所有 grep 或文件编辑。Agent 已知一个代码�
 
 | Signal | Observed baseline | Product implication |
 |---|---:|---|
-| MCP surface | 8 facades / 87 actions | 能力足够，优先降低选择成本 |
+| MCP surface | 8 facades / 84 business actions | 能力足够，优先降低选择成本 |
 | CLI surface | 356 flags | 不能要求 Agent 记住整个表面 |
 | Tool definitions | 36,469 JSON bytes | 需要按 action 渐进发现 |
 | Full native index | 31.33 s, ~98 KiB response | 构建必须后台化且默认只给摘要 |
@@ -41,7 +41,7 @@ TSA 的优势不是替代所有 grep 或文件编辑。Agent 已知一个代码�
 
 ## Milestone 1 — Learn five moves
 
-**Outcome:** Agent 不加载 87 个 action 的完整说明即可完成常见编辑。
+**Outcome:** Agent 不加载 84 个业务 action 的完整说明即可完成常见编辑。
 
 - 发布五步 core profile：symbol → outline → pulse → impact → verify；
 - 单 action schema 可按需机器读取；
@@ -133,9 +133,9 @@ conformance 而没有证明 Agent 任务价值的假绿。
 
 ## Immediate queue
 
-1. 合入 direct route 参数严格性第一切片。
-2. 清理 agent envelope 中退役的 TOON 描述。
-3. 给五个核心 action 设计按需 schema 响应，不增加顶层工具。
-4. 让 symbol search/resolve 复用 Pulse 的源码认证。
-5. 建立第一条 NO1-010B transcript harness，再扩展代表性 corpus。
-6. 在正确性稳定后优化索引冷启动、热查询和保存恢复。
+1. [x] 合入 direct route 参数严格性第一切片。
+2. [x] 清理 agent envelope 中退役的 TOON 描述。
+3. [x] 给五个核心 action 提供按需 schema 响应，不增加顶层工具或业务动作。
+4. [ ] 让 symbol search/resolve 复用 Pulse 的源码认证。
+5. [ ] 建立第一条 NO1-010B transcript harness，再扩展代表性 corpus。
+6. [ ] 在正确性稳定后优化索引冷启动、热查询和保存恢复。

@@ -63,6 +63,7 @@ from ...cache.answer_cache import get_answer_cache
 from ...cache.answer_cache_policy import build_answer_key, provenance_block
 from ...latency import get_latency_recorder
 from .base_tool import BaseMCPTool
+from .facade_discovery import build_help_response
 
 
 def _with_provenance(result: Any, key: Any, served_from: str) -> Any:
@@ -123,6 +124,10 @@ _CORE_FACADE_PARAMS: dict[str, dict[str, Any]] = {
         "type": "string",
         "enum": ["json"],
         "description": "Output format: JSON.",
+    },
+    "target_action": {
+        "type": "string",
+        "description": "Business action to describe when action is help.",
     },
 }
 
@@ -505,22 +510,18 @@ class FacadeTool(BaseMCPTool):
         if not action or not isinstance(action, str):
             return self._action_error("missing required parameter 'action'")
 
-        # Progressive disclosure (Wave E). The per-action parameter prose used to
-        # ride on every request's tool definition; it is answered here instead, so
-        # the always-sent description can stay one keyword-bearing sentence.
-        # `help` is deliberately NOT in the action enum: the enum is a pinned
-        # contract (tests assert it exactly), and the short description names
-        # this route instead.
+        # 渐进发现入口不进入业务 action 枚举，因此不会扩大公开动作数量。无目标时
+        # 返回精简工作流；指定 target_action 时从真实 inner schema 生成调用契约。
         if action == "help":
-            return {
-                "facade": self.facade_name,
-                "actions": self._available_actions(),
-                "description": self.full_description(),
-                "hint": (
-                    "Pass one of `actions` as `action`; the parameters each one "
-                    "accepts are listed above."
-                ),
-            }
+            return build_help_response(
+                facade_name=self.facade_name,
+                available_actions=self._available_actions(),
+                full_description=self.full_description(),
+                action_map=self.action_map,
+                bespoke_actions=set(self.bespoke_map),
+                arguments=arguments,
+                target_action=arguments.get("target_action"),
+            )
 
         if (
             (action in self.action_map or action in self.bespoke_map)
@@ -625,13 +626,14 @@ class FacadeTool(BaseMCPTool):
         真实内部模式投影调用参数，不依赖此公共模式。因此精简公共表面不会误投影
         或泄漏同级动作参数；每个内部工具仍用自己的严格模式保证动作级正确性。
         """
+        schema_actions = sorted({*self._available_actions(), "help"})
         properties: dict[str, Any] = {
             "action": {
                 "type": "string",
-                "enum": self._available_actions(),
+                "enum": schema_actions,
                 "description": (
-                    "Which capability to invoke. One of: "
-                    + ", ".join(self._available_actions())
+                    "Which business capability to invoke, or help for discovery. "
+                    "One of: " + ", ".join(schema_actions)
                 ),
             },
         }
@@ -740,7 +742,8 @@ class FacadeTool(BaseMCPTool):
         if not text:
             return (
                 f"{self.facade_name}: {len(self._available_actions())} actions via "
-                f"'action' ({actions}). Pass action=help for per-action parameters."
+                f"'action' ({actions}). Pass action=help with target_action for "
+                "an exact action schema."
             )
         head = text.split("\n", 1)[0]
         first = head.split(". ")[0].rstrip()
@@ -750,7 +753,7 @@ class FacadeTool(BaseMCPTool):
             first = first[:197].rstrip() + "..."
         return (
             f"{first} Actions: {actions}. "
-            "Pass action=help for per-action parameters and examples."
+            "Pass action=help with target_action for an exact action schema."
             + self._expensive_action_note()
         )
 
@@ -770,6 +773,8 @@ class FacadeTool(BaseMCPTool):
         action = arguments.get("action")
         if not action or not isinstance(action, str):
             raise ValueError("missing required parameter 'action'")
+        if action == "help":
+            return True
         if action not in self.action_map and action not in self.bespoke_map:
             raise ValueError(
                 f"unknown action {action!r}; expected one of "

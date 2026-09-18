@@ -35,7 +35,7 @@ facade 和高级 action，建立五步核心工作流：
 
 2026-09-18 在本仓库隔离工作树上的单次诊断得到：
 
-- 运行时暴露 8 个 facade、87 个 action、356 个 CLI flag；8 份 tool definition
+- 运行时暴露 8 个 facade、84 个业务 action、356 个 CLI flag；8 份 tool definition
   合计 36,469 JSON bytes，均只要求 `action` 且允许额外属性。
 - 完整原生索引约 31.33 秒，结果正文约 98 KiB；随后一次
   `codegraph-context` 约 2.35 秒并返回约 15 KiB。这些是单机探针，不是 p95。
@@ -114,6 +114,19 @@ query
   "agent_summary": {"next_step": "..."}
 }
 ```
+
+动作 schema 通过现有渐进发现控制动作读取，不新增顶层工具或业务 action：
+
+```json
+{"action": "help", "target_action": "symbol"}
+```
+
+无 `target_action` 时返回 `agent-core/v1` 五步 profile、业务动作清单和文本帮助；
+指定 direct action 时返回 `action_schema`，其中 `action` 使用固定值，inner 的必填
+参数、JSON-only 输出控制和 facade 的 `symbol` / `function_name` / `class_name` 别名
+共同组成可直接执行的 JSON Schema。bespoke route 在获得权威 schema 前返回
+`ACTION_SCHEMA_UNAVAILABLE`，不能用手写的近似 schema 冒充可执行契约。`help` 是
+发现控制动作，不计入 84 个业务 action。
 
 ### Target identity
 
@@ -240,9 +253,9 @@ TSA 的公共依赖。性能测试记录端到端 wall time，索引认证和恢
 
 ## Acceptance criteria
 
-- [ ] direct route 的未知、拼错和 sibling 参数均在执行前失败并给出合法字段；
-- [ ] 8 facade / 87 action 的工具数量不因 core profile 增长；
-- [ ] 五个核心 action 有机器可读的逐 action schema 与稳定恢复提示；
+- [x] direct route 的未知、拼错和 sibling 参数均在执行前失败并给出合法字段；
+- [x] 8 facade / 84 business action 的工具数量不因 core profile 增长；
+- [x] 五个核心 action 有机器可读的逐 action schema 与稳定恢复提示；
 - [ ] search、resolve、pulse 对 stale/missing/unknown/fresh 使用同一证据模型；
 - [ ] 位置、正文和 target ID 均绑定同一代源码；
 - [ ] 默认响应无重复正文，截断与未知总量不混淆；
@@ -253,7 +266,7 @@ TSA 的公共依赖。性能测试记录端到端 wall time，索引认证和恢
 ## Open questions
 
 1. stable target ID 是否作为不透明字符串，还是公开可校验的版本化对象？
-2. action schema 通过现有 `action=help` 返回，还是新增 facade 内部的 `describe`
-   动作？两者都不得增加顶层工具。
+2. **已裁决**：使用现有 `action=help`，以可选 `target_action` 返回精确 schema；
+   `help` 显式进入 facade input schema，但不计入业务 action，也不新增顶层工具。
 3. bespoke route 如何声明 schema，才能在不复制参数定义的前提下获得同样的严格性？
 4. Agent corpus 的默认资格阈值需在采样前预注册，不能看完结果后调整。

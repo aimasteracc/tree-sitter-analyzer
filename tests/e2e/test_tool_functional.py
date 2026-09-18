@@ -124,6 +124,38 @@ def _assert_agent_wire_envelope(payload: dict, facade_name: str) -> None:
 
 
 class TestFacadeWireContract:
+    def test_action_schema_is_available_over_stdio(self, mcp_server: MCPClient) -> None:
+        """真实 MCP 客户端应能按需读取 action schema 与五步 profile。"""
+        client = initialized(mcp_server)
+        search_tool = next(
+            tool for tool in client.list_tools() if tool["name"] == "search"
+        )
+        public_schema = search_tool["inputSchema"]
+        assert "help" in public_schema["properties"]["action"]["enum"]
+        assert public_schema["properties"]["target_action"]["type"] == "string"
+
+        payload = _json_text_payload(
+            client.call(
+                "search",
+                {"action": "help", "target_action": "symbol"},
+            )
+        )
+
+        _assert_agent_wire_envelope(payload, "search")
+        assert payload["schema_status"] == "available"
+        assert payload["action_schema"]["properties"]["action"]["const"] == "symbol"
+        assert payload["action_schema"]["required"] == ["action", "query"]
+        assert [
+            (step["facade"], step["action"])
+            for step in payload["core_profile"]["steps"]
+        ] == [
+            ("search", "symbol"),
+            ("structure", "outline"),
+            ("nav", "pulse"),
+            ("edit", "impact"),
+            ("edit", "verify"),
+        ]
+
     @pytest.mark.timeout(60)
     @pytest.mark.parametrize(
         ("facade_name", "arguments"),
