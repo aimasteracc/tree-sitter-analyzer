@@ -215,7 +215,7 @@ Python 变更按仓库契约运行 focused coverage 和 patch gate；随后执�
 - [x] native-only 首期与 rg/fd 非依赖固定
 - [x] 不恢复退役包装层或外部程序参数转发
 - [x] zvec-grep 可借鉴与不采用的边界固定
-- [ ] native engine、MCP action 与 CLI twin 实现
-- [ ] no-index / no-rg / no-fd 的真实调用通过
-- [ ] MCP↔CLI canonical parity、codemap 自检、patch coverage 与 quick gate 通过
+- [x] native engine、MCP action 与 CLI twin 实现
+- [x] no-index / no-rg / no-fd 的真实调用通过
+- [x] MCP↔CLI canonical parity、codemap 自检、patch coverage 与 quick gate 通过
 - [ ] RFC-0034 资格门通过前无生产 rg 后端
