@@ -35,6 +35,46 @@ def descriptor(response, field="verification_command"):
     return decode_request(shlex.split(response[field])[-1])
 
 
+def test_short_plan_exposes_bound_request_for_edit_verify(tmp_path):
+    """普通计划也必须能进入 edit.verify，不能只返回展示命令。"""
+    request, response = make_plan(tmp_path, count=1)
+
+    value = decode_request(response["verification_request"])
+
+    assert value["stage"] == "verification"
+    assert value["changed"] == digest(request.changed_files)
+    assert value["request"] == {
+        "mode": "diff",
+        "scope_paths": [],
+        "include_tests": True,
+        "resource_profile": "default",
+        "pr_url": "",
+    }
+
+
+def test_short_pr_plan_preserves_analysis_when_checkout_cannot_bind(
+    tmp_path, monkeypatch
+):
+    """PR checkout 无法绑定时保留分析结果，超长命令仍由失败关闭保护。"""
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.verification_plan.pr_identity",
+        lambda *args: (_ for _ in ()).throw(
+            ValueError("VERIFICATION_PR_CHECKOUT_MISMATCH")
+        ),
+    )
+
+    _, response = make_plan(
+        tmp_path,
+        count=1,
+        mode="pr",
+        pr_url="https://github.com/example/project/pull/1",
+    )
+
+    assert response["success"] is True
+    assert response["verification_command"]
+    assert "verification_request" not in response
+
+
 @pytest.mark.parametrize("mode", ["diff", "staged", "branch"])
 @pytest.mark.parametrize("profile", ["default", "local_low_impact"])
 def test_thousand_targets_rebuild_without_inline_target_list(

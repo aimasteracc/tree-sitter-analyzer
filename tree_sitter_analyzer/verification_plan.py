@@ -156,8 +156,37 @@ def request_binding(context: Any) -> dict[str, Any]:
     }
 
 
+def _encode_request(
+    *,
+    root: str,
+    request: dict[str, Any],
+    changed: list[str],
+    stages: dict[str, list[dict[str, Any]]],
+    stage: str,
+    identity: dict[str, str] | None,
+) -> str:
+    """把一次分析及指定阶段绑定为 edit.verify 可消费的描述符。"""
+    descriptor = {
+        "version": 1,
+        "root": digest(root),
+        "request": request,
+        "changed": digest(changed),
+        "plan": digest(stages[stage]),
+        "stage": stage,
+        "pr_identity": identity,
+        "timeout": 900,
+    }
+    token = base64.urlsafe_b64encode(
+        json.dumps(descriptor, sort_keys=True, separators=(",", ":")).encode()
+    ).decode()
+    command = "uv run python -m tree_sitter_analyzer --verify-plan " + token
+    if len(token) > 5800 or not within_budget(command):
+        raise ValueError("VERIFICATION_REQUEST_TOO_LARGE")
+    return token
+
+
 def attach_commands(response: dict[str, Any], context: Any) -> dict[str, Any]:
-    """仅过长命令使用间接入口；分析不写清单也不启动测试。"""
+    """为可重放分析附加绑定请求；分析本身不写清单也不启动测试。"""
     captured = _CAPTURE.get()
     if captured is not None:
         captured.update(
@@ -178,35 +207,50 @@ def attach_commands(response: dict[str, Any], context: Any) -> dict[str, Any]:
         for key, stage in fields.items()
         if response.get(key) and not within_budget(response[key])
     }
-    if not oversized:
+    request_context = context.request
+    read_only = bool(getattr(request_context, "read_only", False))
+    binding_fields = (
+        "mode",
+        "changed_files",
+        "project_root",
+        "include_tests",
+        "scope_paths",
+        "resource_profile",
+        "pr_url",
+    )
+    if not oversized and (
+        read_only
+        or any(not hasattr(request_context, field) for field in binding_fields)
+    ):
         return response
-    root = str(Path(context.request.project_root or ".").resolve())
+    root = str(Path(getattr(request_context, "project_root", None) or ".").resolve())
     try:
-        if context.request.read_only:
+        if read_only:
             raise ValueError("VERIFICATION_SNAPSHOT_NOT_REPLAYABLE")
         stages = compile_stages(context)
         request = request_binding(context)
         identity = (
             pr_identity(root, request["pr_url"]) if request["mode"] == "pr" else None
         )
+        response["verification_request"] = _encode_request(
+            root=root,
+            request=request,
+            changed=context.request.changed_files,
+            stages=stages,
+            stage="verification",
+            identity=identity,
+        )
         replacements = {}
         for key, stage in oversized.items():
-            descriptor = {
-                "version": 1,
-                "root": digest(root),
-                "request": request,
-                "changed": digest(context.request.changed_files),
-                "plan": digest(stages[stage]),
-                "stage": stage,
-                "pr_identity": identity,
-                "timeout": 900,
-            }
-            token = base64.urlsafe_b64encode(
-                json.dumps(descriptor, sort_keys=True, separators=(",", ":")).encode()
-            ).decode()
+            token = _encode_request(
+                root=root,
+                request=request,
+                changed=context.request.changed_files,
+                stages=stages,
+                stage=stage,
+                identity=identity,
+            )
             command = "uv run python -m tree_sitter_analyzer --verify-plan " + token
-            if len(token) > 5800 or not within_budget(command):
-                raise ValueError("VERIFICATION_REQUEST_TOO_LARGE")
             replacements[response[key]] = command
 
         def replace(value: Any) -> Any:
@@ -223,7 +267,10 @@ def attach_commands(response: dict[str, Any], context: Any) -> dict[str, Any]:
             return value
 
         return cast(dict[str, Any], replace(response))
-    except (ValueError, OSError, subprocess.SubprocessError) as exc:
+    except (AttributeError, ValueError, OSError, subprocess.SubprocessError) as exc:
+        if not oversized:
+            response.pop("verification_request", None)
+            return response
         # 错误响应保留全部结构化步骤，但绝不继续推荐无法启动的总命令。
         for key in fields:
             if key in response:

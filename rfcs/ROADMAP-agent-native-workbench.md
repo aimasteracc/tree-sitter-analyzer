@@ -139,5 +139,11 @@ conformance 而没有证明 Agent 任务价值的假绿。
 4. [x] 让 symbol search/resolve 复用 Pulse 的源码认证与 freshness 错误模型；认证命中
    绑定同一个 snapshot owner，未认证空结果不能宣称 `NOT_FOUND`，stale/concurrent
    路径 fail closed。
-5. [ ] 建立第一条 NO1-010B transcript harness，再扩展代表性 corpus。
-6. [ ] 在正确性稳定后优化索引冷启动、热查询和保存恢复。
+5. [x] 建立第一条 NO1-010B E0 reference transcript harness：真实执行
+   `index.full → search.symbol → structure.outline → edit.safe → host edit →`
+   `edit.impact → edit.verify → registered verification → oracle`，并验证非 allowed
+   文件摘要不变。运行命令：
+   `uv run python -m tree_sitter_analyzer.no1_010b --corpus benchmarks/no1_010b/corpus.jsonl --reference-transcript-task no1-010b/0001-bugfix-dispatch-unknown-route`。
+6. [ ] 把 transcript 扩展到 refactor、migration、test-selection 和失败场景；完成
+   RFC-0026 B1 沙箱前保持 `E0 / REFERENCE_ONLY`，不发布 VCSR 或默认工具声明。
+7. [ ] 在正确性稳定后优化索引冷启动、热查询和保存恢复。

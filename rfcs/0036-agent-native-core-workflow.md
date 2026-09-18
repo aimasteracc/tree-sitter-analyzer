@@ -236,6 +236,19 @@ RFC-0013 的 `ignored_params` 方案被本 RFC supersede：对编辑决策工具
    `0001-bugfix-dispatch-unknown-route`；记录完整调用序列、allowed paths、oracle、
    verification command 和终态 verdict。
 
+### P4 首条纵向切片（2026-09-18）
+
+首条 E0 reference transcript 已按上述测试策略实现。普通规模的 `edit.impact` 现在也
+返回绑定当前 root、changed set、阶段计划和分析请求的 `verification_request`，所以
+`edit.verify` 在常见任务上可直接调用；diff 或计划变化仍由既有
+`VERIFICATION_PLAN_CHANGED` 契约拒绝。
+
+参考链实际调用现有 facade，并在临时 Git 副本应用仓库自带的固定修复。输出固定标记
+`evidence_level=E0`、`qualification=REFERENCE_ONLY`、`model_executed=false` 和
+`public_claim=null`；它同时运行注册的完整 verification argv、oracle，并比较非 allowed
+文件摘要。该切片证明工作流可达，不具备 RFC-0026 B1 沙箱、正式 VCSR 或默认工具声明
+资格。
+
 差分 oracle 使用 `rg` / `fd` / 直接文件切片 / `git diff`，但不把这些实现泄漏为
 TSA 的公共依赖。性能测试记录端到端 wall time，索引认证和恢复时间都进入总成本。
 
