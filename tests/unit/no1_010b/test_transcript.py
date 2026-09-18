@@ -15,8 +15,13 @@ from tree_sitter_analyzer.no1_010b.record import ExpectedTerminal
 from tree_sitter_analyzer.no1_010b.transcript import (
     ReferenceTranscriptError,
     _apply_reference_edit,
+    _record_bound_verification,
+    _record_terminal_evidence,
+    _reference_spec,
+    _reported_test_paths,
     _require_tool_success,
     _run_git,
+    _test_selection_evidence,
     _touched_paths,
     _tree_digest,
     run_reference_transcript,
@@ -25,17 +30,16 @@ from tree_sitter_analyzer.no1_010b.transcript import (
 CORPUS = Path("benchmarks/no1_010b/corpus.jsonl")
 
 
-def test_reference_transcript_reaches_registered_pass(capsys) -> None:
-    exit_code = main(
-        [
-            "--corpus",
-            str(CORPUS),
-            "--reference-transcript-task",
-            "no1-010b/0001-bugfix-dispatch-unknown-route",
-        ]
-    )
+def _run_reference_task(capsys, task_id: str):
+    exit_code = main(["--corpus", str(CORPUS), "--reference-transcript-task", task_id])
     captured = capsys.readouterr()
-    transcript = json.loads(captured.out)
+    return exit_code, captured, json.loads(captured.out)
+
+
+def test_reference_transcript_reaches_registered_pass(capsys) -> None:
+    exit_code, captured, transcript = _run_reference_task(
+        capsys, "no1-010b/0001-bugfix-dispatch-unknown-route"
+    )
 
     assert exit_code == 0
     assert captured.err == ""
@@ -93,6 +97,78 @@ def test_reference_transcript_reaches_registered_pass(capsys) -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("task_id", "task_class", "changed_paths", "target"),
+    [
+        (
+            "no1-010b/0003-refactor-extract-route-registry",
+            "refactor",
+            ["src/dispatch.py", "src/registry.py"],
+            ("dispatch", "src/dispatch.py"),
+        ),
+        (
+            "no1-010b/0004-test-selection-dispatch-version",
+            "test_selection",
+            ["src/dispatch.py"],
+            ("dispatch", "src/dispatch.py"),
+        ),
+        (
+            "no1-010b/0007-migration-drop-legacy-total",
+            "migration",
+            ["src/orders.py"],
+            ("place", "src/orders.py"),
+        ),
+    ],
+)
+def test_reference_transcript_covers_representative_success_scenarios(
+    capsys, task_id, task_class, changed_paths, target
+) -> None:
+    exit_code, captured, transcript = _run_reference_task(capsys, task_id)
+
+    assert exit_code == 0
+    assert transcript["task_id"] == task_id
+    assert transcript["task_class"] == task_class
+    assert transcript["patch"]["changed_paths"] == changed_paths
+    assert transcript["calls"][1]["evidence"]["target"]["name"] == target[0]
+    assert transcript["calls"][1]["evidence"]["target"]["file"] == target[1]
+    assert transcript["verification"]["passed"] is True
+    assert transcript["terminal"] == {"verdict": "PASS", "reason_code": None}
+
+    if task_class == "test_selection":
+        assert transcript["test_selection"] == {
+            "expected": ["tests/test_dispatch.py"],
+            "reported": ["tests/test_dispatch.py"],
+            "matched": True,
+        }
+        impact = next(
+            call for call in transcript["calls"] if call["action"] == "impact"
+        )
+        assert impact["evidence"]["verification_command"] == (
+            "uv run pytest tests/test_dispatch.py -q"
+        )
+    else:
+        assert transcript["test_selection"] is None
+
+
+def test_reference_transcript_preserves_registered_verification_failure(capsys) -> None:
+    task_id = "no1-010b/0006-bugfix-cancel-unknown-order"
+    exit_code, captured, transcript = _run_reference_task(capsys, task_id)
+
+    assert exit_code == 0
+    assert captured.err == ""
+    assert transcript["task_id"] == task_id
+    verify = next(call for call in transcript["calls"] if call["action"] == "verify")
+    assert verify["success"] is False
+    assert verify["evidence"]["status"] == "failed"
+    assert transcript["verification"]["passed"] is False
+    assert transcript["oracle"]["status"] == "PASS"
+    assert transcript["terminal"] == {
+        "verdict": "FAIL",
+        "reason_code": "VERIFICATION_FAILED",
+    }
+    assert transcript["non_allowed_tree"]["unchanged"] is True
+
+
 def test_non_allowed_digest_tracks_only_protected_files(tmp_path: Path) -> None:
     source = tmp_path / "src"
     tests = tmp_path / "tests"
@@ -134,6 +210,11 @@ def test_touched_paths_includes_added_allowed_file() -> None:
     )
 
     assert _touched_paths(patch) == ["src/dispatch.py", "tests/test_unknown.py"]
+
+
+@pytest.mark.parametrize("command", [None, 'uv run pytest "tests/test_dispatch.py'])
+def test_reported_test_paths_rejects_invalid_command(command) -> None:
+    assert _reported_test_paths(command) == []
 
 
 def test_reference_transcript_cli_rejects_unknown_task(capsys) -> None:
@@ -196,7 +277,7 @@ def test_reference_helpers_reject_failed_git_edit_and_tool_result(tmp_path) -> N
             {"expected_terminal": ExpectedTerminal("FAIL", "ORACLE_FAILED")},
             "must register terminal PASS",
         ),
-        ({"repo": "fixtures/missing"}, "fixture or oracle is missing"),
+        ({"repo": "fixtures/missing"}, "repo does not match its spec"),
     ],
 )
 def test_reference_transcript_rejects_unregistered_inputs(
@@ -206,6 +287,70 @@ def test_reference_transcript_rejects_unregistered_inputs(
 
     with pytest.raises(ReferenceTranscriptError, match=message):
         asyncio.run(run_reference_transcript(record, CORPUS.parent))
+
+
+def test_reference_transcript_rejects_missing_registered_fixture(
+    committed_records, tmp_path
+) -> None:
+    with pytest.raises(
+        ReferenceTranscriptError,
+        match="fixture or oracle is missing",
+    ):
+        asyncio.run(run_reference_transcript(committed_records[0], tmp_path))
+
+
+@pytest.mark.parametrize(
+    ("record_change", "field"),
+    [
+        ({"task_class": "refactor"}, "class"),
+        ({"repo": "fixtures/orders_service"}, "repo"),
+        ({"allowed_paths": ("src/",)}, "allowed_paths"),
+        ({"oracle": "oracles/0002.py"}, "oracle"),
+        (
+            {"oracle_baseline_reason": "trailing-slash-not-normalized"},
+            "oracle_baseline_reason",
+        ),
+        (
+            {"verification_argv": ("python", "-c", "raise SystemExit(0)")},
+            "verification_argv",
+        ),
+    ],
+)
+def test_reference_spec_rejects_registered_record_field_drift(
+    committed_records, record_change, field
+) -> None:
+    record = committed_records[0]
+    with pytest.raises(
+        ReferenceTranscriptError,
+        match=f"reference task {field} does not match its spec",
+    ):
+        _reference_spec(replace(record, **record_change))
+
+
+def test_reference_spec_rejects_expected_failure_terminal_drift(
+    committed_records,
+) -> None:
+    record = committed_records[5]
+    with pytest.raises(
+        ReferenceTranscriptError,
+        match="reference task terminal does not match its spec",
+    ):
+        changed = replace(record, expected_terminal=ExpectedTerminal("PASS", None))
+        _reference_spec(changed)
+
+
+def test_reference_spec_rejects_selected_test_drift(committed_records) -> None:
+    changed = replace(committed_records[3], selected_tests=("tests/test_registry.py",))
+    with pytest.raises(ReferenceTranscriptError, match="selected_tests"):
+        _reference_spec(changed)
+
+
+def test_test_selection_rejects_unregistered_test_path(committed_records) -> None:
+    record = committed_records[3]
+    with pytest.raises(
+        ReferenceTranscriptError, match="did not report the registered selected tests"
+    ):
+        _test_selection_evidence(record, "uv run pytest tests/test_registry.py -q")
 
 
 class _TranscriptFacade:
@@ -235,6 +380,37 @@ class _TranscriptFacade:
 
     async def execute(self, arguments):
         return self.responses[arguments["action"]]
+
+
+@pytest.mark.parametrize(
+    ("response", "expects_failure", "message"),
+    [
+        (None, False, "edit.verify failed: None"),
+        ({"success": True, "status": "passed"}, True, "expected failure"),
+        ({"success": True, "status": "failed"}, True, "contradicts its status"),
+    ],
+)
+def test_bound_verification_rejects_inconsistent_response(
+    response, expects_failure, message
+) -> None:
+    facade = _TranscriptFacade()
+    facade.responses["verify"] = response
+    with pytest.raises(ReferenceTranscriptError, match=message):
+        asyncio.run(_record_bound_verification(facade, "request", expects_failure, []))
+
+
+def test_terminal_evidence_preserves_expected_verification_failure(
+    committed_records, tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.no1_010b.transcript._run_registered_verification",
+        lambda *args: {"passed": True},
+    )
+    record = committed_records[5]
+    with pytest.raises(
+        ReferenceTranscriptError, match="did not preserve the expected failure"
+    ):
+        _record_terminal_evidence(tmp_path, record, tmp_path / "oracle.py", False, [])
 
 
 @pytest.fixture

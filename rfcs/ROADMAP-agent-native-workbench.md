@@ -144,6 +144,8 @@ conformance 而没有证明 Agent 任务价值的假绿。
    `edit.impact → edit.verify → registered verification → oracle`，并验证非 allowed
    文件摘要不变。运行命令：
    `uv run python -m tree_sitter_analyzer.no1_010b --corpus benchmarks/no1_010b/corpus.jsonl --reference-transcript-task no1-010b/0001-bugfix-dispatch-unknown-route`。
-6. [ ] 把 transcript 扩展到 refactor、migration、test-selection 和失败场景；完成
-   RFC-0026 B1 沙箱前保持 `E0 / REFERENCE_ONLY`，不发布 VCSR 或默认工具声明。
+6. [x] 把 transcript 扩展到 refactor、migration、test-selection 和失败场景：0003
+   验证跨文件重构，0004 精确匹配 `selected_tests`，0007 验证废弃调用迁移，0006
+   保留 `FAIL / VERIFICATION_FAILED`。完成 RFC-0026 B1 沙箱前保持
+   `E0 / REFERENCE_ONLY`，不发布 VCSR 或默认工具声明。
 7. [ ] 在正确性稳定后优化索引冷启动、热查询和保存恢复。
