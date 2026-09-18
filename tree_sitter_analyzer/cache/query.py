@@ -36,7 +36,8 @@ _SQL_COUNT_CROSS_FILE_EDGES = (
 _SQL_UPDATE_CALLEE_RESOLVED = (
     "UPDATE edges SET callee_resolved_file = ? "
     "WHERE kind = 'calls' AND file_path = ? AND caller_line = ? "
-    "AND caller_name = ? AND callee_line = ?"
+    "AND caller_name = ? AND callee_line = ? "
+    "AND callee_resolution = 'unknown' AND callee_symbol_id IS NULL"
 )
 
 
@@ -93,9 +94,7 @@ def fts_search(
     limit: int = 100,
 ) -> list[dict[str, Any]]:
     """FTS5-backed symbol search. Returns list of symbol dicts."""
-    fts_query = (
-        " OR ".join(f'"{term}"' for term in query.split() if term) or f'"{query}"'
-    )
+    fts_query = _fts_phrase_query(query)
     join_sql = (
         "SELECT r.name, r.kind, r.file_path, r.language, r.line, r.end_line "
         "FROM ast_symbols_fts f JOIN ast_symbol_rows r ON f.rowid = r.id "
@@ -167,6 +166,20 @@ _DEMOTION_OVERFETCH_FACTOR = 4
 _DEMOTION_OVERFETCH_FLOOR = 50
 
 
+def _fts_phrase_query(query: str) -> str:
+    """把用户词项编码为 FTS5 短语，双写引号避免语法注入。"""
+    terms = [term.replace('"', '""') for term in query.split() if term]
+    if not terms:
+        terms = [query.replace('"', '""')]
+    return " OR ".join(f'"{term}"' for term in terms)
+
+
+def _fts_prefix_query(query: str) -> str:
+    """把用户词项编码为 FTS5 前缀短语，并安全处理内嵌引号。"""
+    terms = [term.replace('"', '""') for term in query.split() if term]
+    return " OR ".join(f'"{term}"*' for term in terms)
+
+
 def fts_search_ranked(
     conn: sqlite3.Connection,
     query: str,
@@ -193,9 +206,7 @@ def fts_search_ranked(
     """
     if len(query) < 2:
         return []
-    fts_query = (
-        " OR ".join(f'"{term}"' for term in query.split() if term) or f'"{query}"'
-    )
+    fts_query = _fts_phrase_query(query)
     # Column weights: name (10x) >> file_path (0.5x), kind (0.5x), language (0.1x).
     # Heavily favours exact function/class name matches over imports that happen
     # to contain the token in their import-path or file-path text.
@@ -419,7 +430,7 @@ def backfill_cross_file_edges(cache: Any, conn: sqlite3.Connection) -> dict[str,
                 edge.caller_file,
                 edge.caller_line,
                 edge.caller_name,
-                edge.caller_line,
+                edge.callee_line,
             )
             try:
                 cursor = conn.execute(_SQL_UPDATE_CALLEE_RESOLVED, params)

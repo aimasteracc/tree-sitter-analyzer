@@ -1,5 +1,6 @@
 """导航测试的共享项目构造器，避免测试主页重复膨胀。"""
 
+import os
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -111,6 +112,80 @@ async def published_search(tmp_path: Path) -> tuple[Path, Any, Any]:
     assert indexed["published"] is True
     facade = build_search_facade(str(tmp_path))
     return source, facade, facade.action_map["symbol"]
+
+
+def assert_source_failure(
+    result: dict[str, Any], operation: str, reason: str, freshness: str
+) -> None:
+    """精确断言认证失败不会泄漏任何缓存坐标。"""
+    assert result == {
+        "success": False,
+        "error_code": "SOURCE_EVIDENCE_UNAVAILABLE",
+        "error": f"{operation} source evidence unavailable: {reason}",
+        "source_evidence": {
+            "freshness": freshness,
+            "snapshot_id": None,
+            "source_generation": None,
+            "reason": reason,
+        },
+        "verdict": "ERROR",
+        "results": [],
+    }
+
+
+async def verify_certified_search_evidence(tmp_path: Path) -> None:
+    """认证搜索必须发布非空 owner 身份和 fresh 证据。"""
+    _source, facade, symbol = await published_search(tmp_path)
+    result = await facade.execute({"action": "symbol", "query": "target"})
+    evidence = result["source_evidence"]
+    assert evidence == {
+        "freshness": "fresh",
+        "snapshot_id": evidence["snapshot_id"],
+        "source_generation": evidence["source_generation"],
+        "reason": None,
+    }
+    assert (evidence["snapshot_id"] is None, evidence["source_generation"] is None) == (
+        False,
+        False,
+    )
+    symbol._cache.close()
+
+
+async def verify_uncertified_search_not_found(project: Path) -> None:
+    """未认证空结果只能是 WARN，不能冒充 fresh NOT_FOUND。"""
+    from tree_sitter_analyzer.mcp.tools.symbol_search_tool import (
+        CodeGraphSymbolSearchTool,
+    )
+
+    tool = CodeGraphSymbolSearchTool(str(project))
+    result = await tool.execute({"query": "missing"})
+    assert (result["success"], result["verdict"], result["results"]) == (
+        True,
+        "WARN",
+        [],
+    )
+    assert result["source_evidence"] == {
+        "freshness": "unknown",
+        "snapshot_id": None,
+        "source_generation": None,
+        "reason": "SOURCE_SCOPE_DESCRIPTOR_MISSING",
+    }
+    tool._cache.close()
+
+
+async def verify_equal_length_search_rewrite_is_stale(tmp_path: Path) -> None:
+    """内容摘要必须识别等长且恢复 mtime 的改写。"""
+    source, facade, symbol = await published_search(tmp_path)
+    before = source.stat()
+    replacement = INDEXED_SOURCE.replace("target", "moved_").replace(
+        "INDEXED", "CURRENT"
+    )
+    assert len(replacement) == len(INDEXED_SOURCE)
+    source.write_text(replacement, encoding="utf-8")
+    os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns))
+    result = await facade.execute({"action": "symbol", "query": "target"})
+    assert_source_failure(result, "Symbol search", "SOURCE_INDEX_MISMATCH", "stale")
+    symbol._cache.close()
 
 
 def assert_no_mixed_source(result: dict[str, Any]) -> None:

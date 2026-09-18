@@ -193,8 +193,8 @@ def test_arg_projection_strips_action_key() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_sibling_param_not_forwarded() -> None:
-    """class_name (for class_tree/class_detail) must not reach outline inner."""
+def test_sibling_param_rejected() -> None:
+    """属于 class_tree/class_detail 的参数传给 outline 时必须拒绝。"""
     facade = build_structure_facade(project_root=None)
     inner = facade.action_map["outline"]
     captured: list[dict[str, Any]] = []
@@ -204,13 +204,14 @@ def test_sibling_param_not_forwarded() -> None:
         return {"success": True, "verdict": "INFO", "agent_summary": {}}
 
     inner.execute = spy_execute  # type: ignore[method-assign]
-    asyncio.run(
+    result = asyncio.run(
         facade.execute(
             {"action": "outline", "file_path": "foo.py", "class_name": "SiblingLeak"}
         )
     )
-    assert captured
-    assert "class_name" not in captured[0]
+    assert result["error_code"] == "INVALID_ARGUMENT"
+    assert result["invalid_arguments"] == ["class_name"]
+    assert captured == []
 
 
 # ---------------------------------------------------------------------------

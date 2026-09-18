@@ -493,7 +493,7 @@ def _choose_candidate(
     # same-dir so an explicit local/imported test target still wins.
     caller_is_source = not is_test_file(source_file)
 
-    def score(item: dict[str, Any]) -> tuple[int, int, int, int, int, str, int]:
+    def semantic_score(item: dict[str, Any]) -> tuple[int, int, int, int, int]:
         file_path = str(item["file_path"])
         imported = 0 if _matches_import_hint(file_path, import_hints) else 1
         same_file = 0 if file_path == source_file else 1
@@ -506,11 +506,19 @@ def _choose_candidate(
             same_dir,
             is_test,
             exact,
-            file_path,
+        )
+
+    def stable_score(item: dict[str, Any]) -> tuple[int, int, int, int, int, str, int]:
+        return (
+            *semantic_score(item),
+            str(item["file_path"]),
             int(item["line"]),
         )
 
-    return sorted(eligible, key=score)[0]
+    ranked = sorted(eligible, key=stable_score)
+    if len(ranked) > 1 and semantic_score(ranked[0]) == semantic_score(ranked[1]):
+        return None
+    return ranked[0]
 
 
 def _resolved_edge(

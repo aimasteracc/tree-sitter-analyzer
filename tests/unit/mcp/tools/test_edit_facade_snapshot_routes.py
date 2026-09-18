@@ -323,7 +323,7 @@ async def test_edit_read_existing_returns_exact_access_evidence(
 
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
-    (tmp_path / "inside.py").write_text("value = 1\n")
+    (tmp_path / "inside.py").write_text("value = 1\n", encoding="utf-8")
     result = await build_edit_facade(str(tmp_path)).execute(
         {
             "action": action,
@@ -567,12 +567,6 @@ async def test_edit_impact_read_existing_producer_publishes_snapshot(
             "include_node_bodies must have JSON type boolean",
         ),
         ("classify", "hunk_cap", "2", "hunk_cap must have JSON type integer"),
-        (
-            "constraints",
-            "output_format",
-            "yaml",
-            "output_format must be one of ['json']",
-        ),
     ],
 )
 async def test_edit_read_existing_rejects_malformed_action_schema_before_success(
@@ -593,6 +587,28 @@ async def test_edit_read_existing_rejects_malformed_action_schema_before_success
         await build_edit_facade(str(tmp_path)).execute({"action": action, **arguments})
 
     assert str(error.value) == message
+
+
+@pytest.mark.asyncio
+async def test_edit_read_existing_rejects_non_json_at_facade_boundary(
+    tmp_path: Path,
+) -> None:
+    """公共输出控制字段必须在进入动作适配器前拒绝非 JSON 值。"""
+    from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
+
+    (tmp_path / "inside.py").write_text("value = 1\n", encoding="utf-8")
+    arguments = {
+        **_READ_EXISTING_ROUTE_ARGS["constraints"],
+        "output_format": "yaml",
+    }
+
+    result = await build_edit_facade(str(tmp_path)).execute(
+        {"action": "constraints", **arguments}
+    )
+
+    assert result["success"] is False
+    assert result["error_code"] == "INVALID_ARGUMENT"
+    assert result["allowed_values"] == {"output_format": ["json"]}
 
 
 def test_edit_constraints_snapshot_parameters_are_schema_discoverable() -> None:
@@ -646,11 +662,15 @@ async def test_edit_rejects_sibling_access_mode_before_backend(monkeypatch) -> N
     monkeypatch.setattr(facade.action_map["guard"], "execute", poison)
     result = await facade.execute({"action": "guard", "access_mode": "read_existing"})
 
-    assert (result["success"], result["verdict"], result["error"]) == (
+    assert (result["success"], result["verdict"], result["error_code"]) == (
         False,
         "ERROR",
-        "parameter 'access_mode' applies only to action(s): ast_diff, classify, constraints, impact, safe",
+        "INVALID_ARGUMENT",
     )
+    assert result["invalid_arguments"] == ["access_mode"]
+    assert result["supported_actions"] == {
+        "access_mode": ["ast_diff", "classify", "constraints", "impact", "safe"]
+    }
 
 
 @pytest.mark.asyncio
@@ -677,11 +697,13 @@ async def test_edit_action_controls_are_rejected_outside_supported_actions(
         {"action": "safe", "file_path": "src/a.py", parameter: value}
     )
 
-    assert (result["success"], result["verdict"], result["error"]) == (
+    assert (result["success"], result["verdict"], result["error_code"]) == (
         False,
         "ERROR",
-        f"parameter {parameter!r} applies only to action(s): {allowed}",
+        "INVALID_ARGUMENT",
     )
+    assert result["invalid_arguments"] == [parameter]
+    assert result["supported_actions"] == {parameter: allowed.split(", ")}
 
 
 @pytest.mark.asyncio

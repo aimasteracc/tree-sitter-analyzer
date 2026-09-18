@@ -225,6 +225,7 @@ class CrossFileResolver:
             caller_line = edge["caller_line"]
             callee_name = edge["callee_name"]
             callee_line = edge.get("callee_line", 0)
+            callee_full = str(edge.get("callee_full") or "")
 
             if not caller_name:
                 caller_name, caller_line = self.find_caller_function(
@@ -237,6 +238,15 @@ class CrossFileResolver:
                         caller_line = cl
 
             callee_candidates = self.resolve_callee(callee_name, caller_file)
+            # 低置信度全局同名回退只适用于唯一的裸调用；带接收者的调用交给
+            # Synapse 的类型、内建对象和唯一方法规则，避免把 str.format
+            # 之类的调用误连到项目中的同名定义。
+            if (
+                callee_candidates
+                and callee_candidates[0][1] <= 0.5
+                and ("." in callee_full or len(callee_candidates) != 1)
+            ):
+                callee_candidates = []
             callee_resolved = callee_candidates[0][0] if callee_candidates else ""
 
             confidence = 1.0

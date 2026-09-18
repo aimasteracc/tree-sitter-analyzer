@@ -113,12 +113,12 @@ def test_no_next_step_names_a_removed_tool() -> None:
 def test_the_harvest_is_not_vacuous() -> None:
     """使用精确计数，确保 RFC-0028 §3.2 的采集器没有静默退化。
 
-    2026-09-16 实测：146 个常量、16 个路由名标记。合法改变词汇或文案时必须
+    2026-09-18 实测：165 个常量、16 个路由名标记。合法改变词汇或文案时必须
     明确更新计数；宽松下界会让采集范围大幅缩水后仍然通过。
     """
     harvest = _next_step_strings()
-    assert len(harvest) == 146, (
-        f"expected 146 next_step string constants, harvested {len(harvest)}; "
+    assert len(harvest) == 165, (
+        f"expected 165 next_step string constants, harvested {len(harvest)}; "
         "update this constant if the phrasing changed, otherwise the AST walk is "
         "no longer matching how next_step is assigned"
     )

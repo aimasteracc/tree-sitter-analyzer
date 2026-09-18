@@ -248,8 +248,8 @@ def test_arg_projection_strips_action_from_impact() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_sibling_param_not_forwarded_to_navigate() -> None:
-    """source_function (call_path param) must not reach navigate inner."""
+def test_sibling_param_rejected_for_navigate() -> None:
+    """属于 call_path 的参数传给 navigate 时必须拒绝。"""
     facade = build_nav_facade(project_root=None)
     inner = facade.action_map["navigate"]
     received: list[dict[str, Any]] = []
@@ -259,7 +259,7 @@ def test_sibling_param_not_forwarded_to_navigate() -> None:
         return {"success": True, "verdict": "INFO", "agent_summary": {}}
 
     with patch.object(inner, "execute", new=_spy):
-        asyncio.run(
+        result = asyncio.run(
             facade.execute(
                 {
                     "action": "navigate",
@@ -269,11 +269,13 @@ def test_sibling_param_not_forwarded_to_navigate() -> None:
             )
         )
 
-    assert received and "source_function" not in received[0]
+    assert result["error_code"] == "INVALID_ARGUMENT"
+    assert result["invalid_arguments"] == ["source_function"]
+    assert received == []
 
 
-def test_sibling_param_not_forwarded_to_trace() -> None:
-    """function_names (impact param) must not reach trace inner."""
+def test_sibling_param_rejected_for_trace() -> None:
+    """属于 impact 的参数传给 trace 时必须拒绝。"""
     facade = build_nav_facade(project_root=None)
     inner = facade.action_map["trace"]
     received: list[dict[str, Any]] = []
@@ -283,7 +285,7 @@ def test_sibling_param_not_forwarded_to_trace() -> None:
         return {"success": True, "verdict": "INFO", "agent_summary": {}}
 
     with patch.object(inner, "execute", new=_spy):
-        asyncio.run(
+        result = asyncio.run(
             facade.execute(
                 {
                     "action": "trace",
@@ -293,7 +295,9 @@ def test_sibling_param_not_forwarded_to_trace() -> None:
             )
         )
 
-    assert received and "function_names" not in received[0]
+    assert result["error_code"] == "INVALID_ARGUMENT"
+    assert result["invalid_arguments"] == ["function_names"]
+    assert received == []
 
 
 # ---------------------------------------------------------------------------
@@ -709,6 +713,8 @@ def test_nav_facade_schema_action_enum_complete() -> None:
         # Nervous-system PR: re-wired from top-level pulse/pulse_batch tools.
         "pulse",
         "pulse_batch",
+        # 渐进发现控制动作，不计入业务 action 集合。
+        "help",
     }
     assert expected == enum
 
@@ -1009,17 +1015,14 @@ def test_navigate_rejects_context_only_access_mode() -> None:
         )
 
     poison.assert_not_awaited()
-    assert (
-        result["success"],
-        result["verdict"],
-        result["error_type"],
-        result["error"],
-    ) == (
+    assert (result["success"], result["verdict"], result["error_type"]) == (
         False,
         "ERROR",
         "validation",
-        "parameter 'access_mode' applies only to action(s): context",
     )
+    assert result["error_code"] == "INVALID_ARGUMENT"
+    assert result["invalid_arguments"] == ["access_mode"]
+    assert result["supported_actions"] == {"access_mode": ["context"]}
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 # RFC-0013: Facade dropped-parameter visibility (no silent scope/filter drops)
 
-- **Status**: draft
+- **Status**: superseded by [RFC-0036](0036-agent-native-core-workflow.md)
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-06-09
 - **Last updated**: 2026-06-10 (adversarial review round 1 — opencode fallback)

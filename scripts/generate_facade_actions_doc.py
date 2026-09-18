@@ -395,6 +395,11 @@ def generate_markdown() -> str:
         "",
         "Reading the tables:",
         "",
+        "Runtime discovery: call a facade with `action=help` for its business "
+        "action list and `agent-core/v1` profile, or add `target_action=<name>` "
+        "to receive that direct action's executable `action_schema`. `help` is "
+        "a discovery control and is excluded from the business-action count above.",
+        "",
         "- **Params** — accepted top-level parameters; `*` marks required ones. "
         "Facades mechanically alias the canonical `symbol` onto inner "
         "`function_name`/`class_name` params (noted inline). Every facade also "

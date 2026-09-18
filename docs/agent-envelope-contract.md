@@ -2,16 +2,15 @@
 
 One page for agents and MCP-client authors: what every tree-sitter-analyzer
 (TSA) MCP response envelope guarantees, what each `verdict` obliges you to do,
-how honest truncation works, and which fields survive `compact_only`
-compaction. Everything here is backed by source constants and protected
+how honest truncation works, and how JSON control fields support recovery.
+Everything here is backed by source constants and protected
 against drift by
 [`tests/integration/docs/test_agent_envelope_contract_doc.py`](../tests/integration/docs/test_agent_envelope_contract_doc.py),
 which imports the live constants and fails when this page and the code
 disagree.
 
-For TOON *syntax* (the format inside `toon_content`), see the
-[TOON Format Guide](toon-format-guide.md). For the tool surface itself, see
-the [MCP Tools Codemap](CODEMAPS/mcp-tools.md).
+JSON is the only public wire format. For the tool surface itself, see the
+[MCP Tools Codemap](CODEMAPS/mcp-tools.md).
 
 ## The minimum envelope
 
@@ -23,10 +22,10 @@ Every tool response is a JSON object. The typed contract lives in
 - `error` (str) — present **iff** `success` is `false`. Human-readable;
   error envelopes usually also carry `error_type` and a recovery `hint`.
 - `verdict` (str) — when present, it is EXACTLY one of the canonical strings
-  below. On TOON/JSON success paths a missing verdict is back-filled with
-  `INFO` by the safety net in
-  [`tree_sitter_analyzer/mcp/utils/format_helper.py`](../tree_sitter_analyzer/mcp/utils/format_helper.py)
-  (`apply_toon_format_to_response`), so agents can always branch on it.
+  below. On JSON success paths a missing verdict is back-filled with `INFO`
+  by the safety net in
+  [`tree_sitter_analyzer/mcp/utils/format_helper.py`](../tree_sitter_analyzer/mcp/utils/format_helper.py),
+  so agents can always branch on it.
 - `agent_summary` (object) — token-lean triage block:
   `summary_line` + `verdict` + `next_step`. `summary_line` is also mirrored
   to the top level.
@@ -90,66 +89,23 @@ count + cap, interpolated `next_step` — is the contract.
 - Treat it as the default next call when you have no better plan; it is
   advisory, not binding.
 
-## Control surface (`compact_only`, RFC-0012)
+## JSON control fields
 
-TOON responses (`output_format: "toon"`, the MCP default) are **disjoint**
-(#1321): the top level carries the branchable scalar metadata, and
-`toon_content` carries **everything the top level does not** — never both.
-Read a field from the top level when it is there, and parse `toon_content`
-for the rest; nothing is shipped twice.
+Every public response is one JSON object. Agents branch on `success`, `verdict`,
+`error_code` / `error_type`, `summary_line`, and `agent_summary.next_step` when
+those fields apply. Tool-specific payload remains at the top level; there is no
+secondary blob to decode. Evidence fields such as `source_evidence`,
+`completeness`, `provenance`, and `action_version` must remain visible when the
+corresponding action provides them.
 
-**`toon_content` can legitimately be `""`.** A response made entirely of
-scalars is carried entirely at the top level, so the blob has nothing left to
-encode — `index action=status` on an unindexed project is exactly this shape.
-Do NOT treat an empty blob as an error or as an empty result: read the
-top-level fields. A client that branches on `if format == "toon": parse(blob)`
-and ignores the siblings will see nothing on those routes.
-
-Passing `compact_only: true` trades that disjointness for minimality: the top
-level shrinks to the **control surface** — the only keys an agent may branch on
-without parsing the TOON blob — and `toon_content` becomes the *complete*
-payload so every dropped key stays recoverable. Source of truth:
-`TOON_CONTROL_SURFACE` in
-[`tree_sitter_analyzer/mcp/utils/format_helper.py`](../tree_sitter_analyzer/mcp/utils/format_helper.py);
-the reduction (`reduce_to_control_surface`) is idempotent and is re-applied at
-the MCP boundary
-([`tree_sitter_analyzer/mcp/server_utils/tool_registration.py`](../tree_sitter_analyzer/mcp/server_utils/tool_registration.py))
-*after* canonical-envelope normalization re-adds `summary_line`. That
-re-application only runs on an envelope the tool had **already** reduced —
-reducing a default (disjoint) envelope would delete keys that `toon_content`
-no longer carries. So a tool that accepts `compact_only` at the facade but
-never forwards it to its inner tool returns the default envelope, which after
-#1321 is already smaller than the old compacted one.
-
-<!-- drift:control-surface:start -->
-| Field | Why it survives compaction |
-|---|---|
-| `success` | The one mandatory branch: did the call work at all. |
-| `format` | `"toon"` marker — tells the client the payload is in `toon_content`. |
-| `toon_content` | The TOON-encoded payload. Under `compact_only` it is the *complete* payload, so everything the reduction dropped is recoverable here. |
-| `verdict` | Canonical branching verdict (table above). |
-| `error` | Failure description on `success: false`. |
-| `error_type` | Machine-stable error category for programmatic handling. |
-| `output_format` | Echo of the requested format. |
-| `summary_line` | Highest-value one-line triage signal; re-populated at the boundary on every success anyway. |
-| `access_mode` | RFC-0022 capability-access mode selected by the caller. |
-| `access_state` | Primary RFC-0022 capability branch (`available`, `missing`, `unknown`, or `not_applicable`). |
-| `access_reason` | Stable primitive-owned reason whenever capability access is not available. |
-| `action_version` | RFC-0022 P0.5 wire-owner version echo — which adapter contract produced the fragment. |
-| `hint` | Recovery hint on error envelopes — the sharpest edge an agent must not have to dig out of the blob. |
-| `file_path` | Echo of the call's subject file. |
-| `pr_url` | Echo of the PR a review-tool call targeted. |
-| `pr_number` | Echo of the PR number, same rationale. |
-| `deprecation` | Legacy-name shim migration warning — the shim's only in-band signal, injected after `toon_content` is built, so it must survive. |
-| `provenance` | RFC-0027 L6.1 answer-cache visibility: `served_from` is exactly `"cache"` or `"computed"`, plus every key component. Attached after `toon_content` is built, so it is not recoverable from the blob — and a cache that lies about freshness is worse than no cache. |
-<!-- drift:control-surface:end -->
-
-Everything else at the top level of a TOON response is dropped under
-`compact_only`; parse `toon_content` when you need it.
+For direct inner routes, unknown or action-inapplicable parameters return
+`INVALID_ARGUMENT` before the inner tool runs. The response includes `invalid_arguments`,
+`allowed_arguments`, and typo `suggestions`, so an Agent can repair the next
+call without parsing prose.
 
 ## Worked examples (paste-real)
 
-All three were produced by running the tool classes' `execute()` directly
+Both examples were produced by running the tool classes' `execute()` directly
 against this repository (commit on `develop`, 2026-06-13). Long fields are
 trimmed and marked.
 
@@ -242,53 +198,10 @@ EOF
 `agent_summary`, and more.) The obligation on `SAFE` is exactly what
 `agent_summary.next_step` says: run the verification command, edit, re-run.
 
-### Example 3 — control surface (`health action=file`, TOON + `compact_only`)
-
-```bash
-uv run python - <<'EOF'
-import asyncio, json
-from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
-
-async def main():
-    tool = FileHealthTool(".")
-    r = await tool.execute({
-        "file_path": "tree_sitter_analyzer/mcp/utils/format_helper.py",
-        "output_format": "toon",
-        "compact_only": True,
-    })
-    print("top-level keys:", sorted(r.keys()))
-    print(json.dumps(r, indent=2))
-
-asyncio.run(main())
-EOF
-```
-
-```text
-top-level keys: ['file_path', 'format', 'success', 'summary_line', 'toon_content', 'verdict']
-```
-
-```json
-{
-  "format": "toon",
-  "toon_content": "success: true\nfile_path: tree_sitter_analyzer/mcp/utils/format_helper.py\ngrade: B\nverdict: SAFE\ntotal_score: 89.5\n...<trimmed — full payload lives here>",
-  "success": true,
-  "file_path": "tree_sitter_analyzer/mcp/utils/format_helper.py",
-  "verdict": "SAFE",
-  "summary_line": "tree_sitter_analyzer/mcp/utils/format_helper.py grade=B score=89.5 smells=1 weakest=dependencies"
-}
-```
-
-Every top-level key is a member of `TOON_CONTROL_SURFACE` (control-surface
-keys that this particular call has no value for — `error`, `hint`,
-`pr_url`… — are simply absent). The agent branches on
-`success`/`verdict`/`summary_line` and only parses `toon_content` when it
-needs the dimensions/smells detail.
-
 ## Drift protection
 
-The verdict table and the control-surface table above sit between
-`<!-- drift:…:start/end -->` markers.
+The verdict table above sits between `<!-- drift:…:start/end -->` markers.
 [`tests/integration/docs/test_agent_envelope_contract_doc.py`](../tests/integration/docs/test_agent_envelope_contract_doc.py)
-imports `CANONICAL_VERDICTS` and `TOON_CONTROL_SURFACE` and asserts exact set
-equality with the documented rows — adding/removing a verdict or a
-control-surface field without updating this page turns CI red.
+imports `CANONICAL_VERDICTS` and asserts exact set equality with the
+documented rows — adding or removing a verdict without updating this page turns
+CI red.

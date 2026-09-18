@@ -420,7 +420,8 @@ class SymbolResolver:
                         )
                     )
         except sqlite3.OperationalError:
-            pass
+            if getattr(self._cache, "strict_sql_errors", False):
+                raise
         import_refs = self._find_import_references(short_name)
         for ref in import_refs:
             key = (ref.file, ref.line)
