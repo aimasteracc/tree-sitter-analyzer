@@ -216,6 +216,33 @@ def test_understand_delegates_task_route_after_index_oracle(monkeypatch) -> None
     assert outcome.verdict == "INFO"
 
 
+def test_understand_delegates_index_oracle_before_task_route(monkeypatch) -> None:
+    import tree_sitter_analyzer.task._router_index as index_router_module
+    import tree_sitter_analyzer.task._router_task as task_router_module
+
+    observed: list[str] = []
+
+    async def capture_index_oracle(session) -> None:
+        observed.append("index")
+        session.snapshots.index_snapshot_id = "idx_snap_1"
+        session.snapshots.index_source_generation = "gen_1"
+        session.snapshots.index_complete = True
+        session.snapshots.oracle_fresh = True
+
+    async def capture_task_route(*, session, operation: str, task: str) -> None:
+        observed.append(f"task:{operation}:{task}")
+
+    monkeypatch.setattr(index_router_module, "run_index_oracle", capture_index_oracle)
+    monkeypatch.setattr(task_router_module, "run_task_route", capture_task_route)
+    executor = FakeExecutor()
+
+    outcome = _run(understand(UnderstandRequest(task="trace dispatch"), executor))
+
+    assert observed == ["index", "task:understand:trace dispatch"]
+    assert executor.calls == []
+    assert outcome.task == "understand"
+
+
 def test_understand_compact_profile_lowers_cell_values() -> None:
     executor = FakeExecutor()
     outcome = _run(
