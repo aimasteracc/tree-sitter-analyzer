@@ -93,6 +93,8 @@ def test_edit_facade_schema_includes_action_and_required() -> None:
         # RFC-0029: mutation probe — does this test constrain this code?
         "mutation_probe",
         "verify",
+        # 渐进发现控制动作，不计入业务 action 集合。
+        "help",
     }
     assert expected == enum_vals
 

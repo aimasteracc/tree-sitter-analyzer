@@ -713,6 +713,8 @@ def test_nav_facade_schema_action_enum_complete() -> None:
         # Nervous-system PR: re-wired from top-level pulse/pulse_batch tools.
         "pulse",
         "pulse_batch",
+        # 渐进发现控制动作，不计入业务 action 集合。
+        "help",
     }
     assert expected == enum
 
