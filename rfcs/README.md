@@ -94,6 +94,7 @@ number; if two RFCs collide on a number in flight, the later-merged one renames.
 | [0034](0034-optional-search-backend-qualification.md) | Optional search backend qualification | draft |
 | [0035](0035-trusted-reactive-feedback.md) | Trusted reactive feedback | draft |
 | [0036](0036-agent-native-core-workflow.md) | Agent-native core workflow | draft |
+| [0037](0037-live-text-search-action.md) | Live text search action | accepted |
 
 ## Roadmap
 
