@@ -243,13 +243,13 @@ def test_arg_projection_passes_known_params() -> None:
     facade, inners = _make_fake_facade()
     asyncio.run(
         facade.execute(
-            {"action": "classify", "symbol": "MyClass", "output_format": "toon"}
+            {"action": "classify", "symbol": "MyClass", "output_format": "json"}
         )
     )
     inner = inners["classify"]
     assert inner.last_args is not None
     assert inner.last_args.get("symbol") == "MyClass"
-    assert inner.last_args.get("output_format") == "toon"
+    assert inner.last_args.get("output_format") == "json"
     assert "action" not in inner.last_args
 
 
@@ -468,16 +468,19 @@ def test_constraints_action_does_not_leak_action_to_inner(tmp_path: Any) -> None
 
 
 def test_scope_paths_is_rejected_outside_impact_and_constraints() -> None:
-    # PR #1254 review 3769281322: explicit facade scope must never be dropped.
+    # PR #1254 review 3769281322：显式门面范围不得被静默丢弃。
     from tree_sitter_analyzer.mcp.tools.edit_facade import build_edit_facade
 
     facade = build_edit_facade(project_root=None)
-    result = asyncio.run(facade.execute({"action": "safe", "scope_paths": ["src"]}))
+    result = asyncio.run(facade.execute({"action": "classify", "scope_paths": ["src"]}))
 
     assert result["success"] is False
-    assert result["error"] == (
-        "parameter 'scope_paths' applies only to action(s): constraints, impact"
-    )
+    assert result["error_code"] == "INVALID_ARGUMENT"
+    assert result["invalid_arguments"] == ["scope_paths"]
+    assert result["supported_actions"] == {"scope_paths": ["constraints", "impact"]}
+    assert result["suggestions"] == {}
+    assert "constraints, impact" in result["agent_summary"]["next_step"]
+    assert "scope_paths' -> 'file_path" not in result["agent_summary"]["next_step"]
 
 
 # ---------------------------------------------------------------------------

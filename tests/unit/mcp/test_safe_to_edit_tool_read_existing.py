@@ -1,7 +1,6 @@
 """#1376：test_safe_to_edit_tool_read_existing 行为组；测试主体保留，中文文档和 UTF-8 修正单独校验。"""
 
 import sqlite3
-import sys
 from pathlib import Path
 
 import pytest
@@ -18,9 +17,10 @@ _close_index_snapshot_registry = _fixtures._close_index_snapshot_registry
 
 
 @pytest.mark.asyncio
-async def test_edit_safe_explicit_read_existing_honors_compact_only(
+async def test_edit_safe_rejects_retired_compact_only(
     tmp_path,
 ) -> None:
+    """JSON-only 门面必须拒绝已退役的 ``compact_only``，不能静默忽略。"""
     file_path = tmp_path / "inside.py"
     file_path.write_text("value = 1\n", encoding="utf-8")
     result = await build_edit_facade(str(tmp_path)).execute(
@@ -35,67 +35,10 @@ async def test_edit_safe_explicit_read_existing_honors_compact_only(
         }
     )
 
-    if sys.platform.startswith("linux"):
-        # RFC-0022 P0.4: 认证后端实际运行并分类处理
-        # 缺失快照。分类后的失败仍保留控制字段，
-        # 以及 wire-owner 回显。
-        assert {
-            key: result[key]
-            for key in (
-                "success",
-                "verdict",
-                "access_mode",
-                "access_state",
-                "access_reason",
-                "output_format",
-                "action_version",
-            )
-        } == {
-            "success": False,
-            "verdict": "ERROR",
-            "access_mode": "read_existing",
-            "access_state": "unknown",
-            "access_reason": "INDEX_SNAPSHOT_UNKNOWN",
-            "output_format": "json",
-            "action_version": "edit.safe/v1",
-        }
-        return
-
-    # RFC-0022 P0.4/P0.5: 控制字段必须位于顶层。
-    # RFC-0027 L6.1: provenance 仅位于顶层。
-    provenance = result.pop("provenance")
-    assert provenance["served_from"] == "computed"
-    assert set(provenance) == {
-        "served_from",
-        "tool",
-        "action",
-        "normalized_args",
-        "generation",
-        "producer_version",
-        "extra_inputs",
-    }
-
-    assert {
-        key: result[key]
-        for key in (
-            "success",
-            "verdict",
-            "access_mode",
-            "access_state",
-            "access_reason",
-            "output_format",
-            "action_version",
-        )
-    } == {
-        "success": True,
-        "verdict": "WARN",
-        "access_mode": "read_existing",
-        "access_state": "unknown",
-        "access_reason": "READ_EXISTING_AUTHORITY_UNCERTIFIED",
-        "output_format": "json",
-        # RFC-0022 P0.5: envelope 中包含 wire owner 回显。
-        "action_version": "edit.safe/v1",
-    }
+    assert result["success"] is False
+    assert result["error_code"] == "INVALID_ARGUMENT"
+    assert result["invalid_arguments"] == ["compact_only"]
+    assert "compact_only" not in result["allowed_arguments"]
 
 
 @pytest.mark.asyncio

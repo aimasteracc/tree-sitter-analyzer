@@ -69,7 +69,7 @@ number; if two RFCs collide on a number in flight, the later-merged one renames.
 | [0010](0010-resolver-language-registry.md) | Resolver language registry — scale the correctness moat to N languages | implemented (foundation #345; first wave go/js/ts/cpp/rust #346-#350) |
 | [0011](0011-miswire-audit.md) | Mis-Wire Audit — the run-on-your-repo correctness demo | accepted (console entrypoint shipped; CLI subcommand + pre-seed + README surgery tracked) |
 | [0012](0012-toon-json-dedup.md) | Eliminate TOON/JSON metadata duplication in MCP responses | accepted (Phase 1 implemented; Phase 2 deferred) |
-| [0013](0013-facade-dropped-param-visibility.md) | Facade dropped-parameter visibility — `ignored_params` surface | accepted |
+| [0013](0013-facade-dropped-param-visibility.md) | Facade dropped-parameter visibility — `ignored_params` surface | superseded by RFC-0036 |
 | [0014](0014-instant-edit-safety.md) | Instant edit safety — test-noise partition, test-map, and co-change | accepted (Phase A #461; Phase B #463; Phase C #466; integration test + DF-16 dogfood deferred) |
 | [0015](0015-instant-uml-family.md) | Instant UML family — scoping fixes + activity/state diagrams | implemented (Phase 1 #462; P2-A #472; P2-B #475; v1.23.0) |
 | [0016](0016-semantic-symbol-search.md) | Semantic symbol search via sqlite-vec in `.ast-cache` | rejected (data-driven; pilot NO-GO at deployment scale, #517) |
@@ -92,8 +92,11 @@ number; if two RFCs collide on a number in flight, the later-merged one renames.
 | [0032](0032-index-writer-ownership.md) | Index writer ownership and obsolete-candidate fencing | draft |
 | [0033](0033-native-search-independence.md) | Native search independence | accepted |
 | [0034](0034-optional-search-backend-qualification.md) | Optional search backend qualification | draft |
+| [0035](0035-trusted-reactive-feedback.md) | Trusted reactive feedback | draft |
+| [0036](0036-agent-native-core-workflow.md) | Agent-native core workflow | draft |
 
 ## Roadmap
 
 - [ROADMAP-no1-agent-trust.md](ROADMAP-no1-agent-trust.md) — active No.1 program: trusted Agent change intelligence, evidence gates, team topology, and 90-day task ledger. Its real production canary remains bounded E0; E1 is a separate qualification and E0–E3 emit no public claim.
 - [ROADMAP-beyond-codegraph.md](ROADMAP-beyond-codegraph.md) — historical strategy and completed correctness-moat work.
+- [ROADMAP-agent-native-workbench.md](ROADMAP-agent-native-workbench.md) — five-step Agent core workflow, trust-first milestones, and executable qualification gates.

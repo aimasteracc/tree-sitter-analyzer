@@ -158,7 +158,7 @@ def test_arg_projection_strips_action_key() -> None:
 
     inner = facade.action_map["overview"]
     inner.execute = _capture  # type: ignore[method-assign]
-    asyncio.run(facade.execute({"action": "overview", "format": "json"}))
+    asyncio.run(facade.execute({"action": "overview"}))
     assert received, "inner.execute was never called"
     assert "action" not in received[0], (
         "F4 regression: 'action' was forwarded to the inner strict-param guard"
@@ -170,9 +170,8 @@ def test_arg_projection_strips_action_key() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_sibling_param_dropped_between_actions() -> None:
-    """A ``query`` param belonging to the ``cache`` action must not reach the
-    ``overview`` inner (which doesn't declare ``query`` in its schema)."""
+def test_sibling_param_rejected_between_actions() -> None:
+    """属于其他动作的参数必须在分派给 ``overview`` 前失败。"""
     facade = build_project_facade(project_root=None)
     received: list[dict[str, Any]] = []
 
@@ -182,11 +181,12 @@ def test_sibling_param_dropped_between_actions() -> None:
 
     inner = facade.action_map["overview"]
     inner.execute = _capture  # type: ignore[method-assign]
-    asyncio.run(facade.execute({"action": "overview", "query": "leaked_param"}))
-    assert received, "inner.execute was never called"
-    assert "query" not in received[0], (
-        "Sibling param 'query' (belongs to 'cache' action) leaked into 'overview' inner"
+    result = asyncio.run(
+        facade.execute({"action": "overview", "query": "leaked_param"})
     )
+    assert result["error_code"] == "INVALID_ARGUMENT"
+    assert result["invalid_arguments"] == ["query"]
+    assert received == []
 
 
 # ---------------------------------------------------------------------------

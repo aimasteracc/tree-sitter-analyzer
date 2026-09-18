@@ -285,30 +285,29 @@ def test_deps_mode_file_deps() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_sibling_param_does_not_reach_project_inner() -> None:
-    """A param for action=file (file_path) must not leak to project inner."""
+def test_sibling_param_is_rejected_for_project_inner() -> None:
+    """属于 file 动作的参数传给 project 时必须拒绝。"""
     facade = build_health_facade(project_root=None)
     inner = facade.action_map["project"]
     with patch.object(inner, "execute", new_callable=AsyncMock) as mock_exec:
         mock_exec.return_value = {"success": True, "verdict": "INFO"}
-        asyncio.run(
+        result = asyncio.run(
             facade.execute(
                 {"action": "project", "file_path": "src/foo.py", "min_grade": "A"}
             )
         )
-        called_args = mock_exec.call_args[0][0]
-        # file_path is NOT in ProjectHealthTool's schema => must be dropped
-        assert "file_path" not in called_args
-        assert called_args.get("min_grade") == "A"
+        assert result["error_code"] == "INVALID_ARGUMENT"
+        assert result["invalid_arguments"] == ["file_path"]
+        mock_exec.assert_not_called()
 
 
-def test_sibling_param_does_not_reach_scale_inner() -> None:
-    """Param for action=dead (include_test_files) must not leak to scale inner."""
+def test_sibling_param_is_rejected_for_scale_inner() -> None:
+    """属于 dead 动作的参数传给 scale 时必须拒绝。"""
     facade = build_health_facade(project_root=None)
     inner = facade.action_map["scale"]
     with patch.object(inner, "execute", new_callable=AsyncMock) as mock_exec:
         mock_exec.return_value = {"success": True, "verdict": "INFO"}
-        asyncio.run(
+        result = asyncio.run(
             facade.execute(
                 {
                     "action": "scale",
@@ -317,8 +316,9 @@ def test_sibling_param_does_not_reach_scale_inner() -> None:
                 }
             )
         )
-        called_args = mock_exec.call_args[0][0]
-        assert "include_test_files" not in called_args
+        assert result["error_code"] == "INVALID_ARGUMENT"
+        assert result["invalid_arguments"] == ["include_test_files"]
+        mock_exec.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

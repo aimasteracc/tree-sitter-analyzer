@@ -162,14 +162,51 @@ def test_arg_projection_strips_action_key() -> None:
     )
 
 
+def test_cache_accepts_facade_output_format_without_forwarding_it() -> None:
+    """真实 index.cache 路由应接受 JSON 响应控制字段。"""
+    facade = build_index_facade(project_root=None)
+    received: list[dict[str, Any]] = []
+
+    async def _capture(args: dict[str, Any]) -> dict[str, Any]:
+        received.append(dict(args))
+        return {"success": True, "verdict": "INFO", "agent_summary": {}}
+
+    facade.action_map["cache"].execute = _capture  # type: ignore[method-assign]
+    result = asyncio.run(
+        facade.execute({"action": "cache", "mode": "index", "output_format": "json"})
+    )
+
+    assert result["success"] is True
+    assert received == [{"mode": "index"}]
+
+
+def test_cache_rejects_non_json_output_format_before_dispatch() -> None:
+    """真实 index.cache 路由不得静默忽略不支持的输出格式。"""
+    facade = build_index_facade(project_root=None)
+    received: list[dict[str, Any]] = []
+
+    async def _capture(args: dict[str, Any]) -> dict[str, Any]:
+        received.append(dict(args))
+        return {"success": True, "verdict": "INFO", "agent_summary": {}}
+
+    facade.action_map["cache"].execute = _capture  # type: ignore[method-assign]
+    result = asyncio.run(
+        facade.execute({"action": "cache", "mode": "index", "output_format": "yaml"})
+    )
+
+    assert result["success"] is False
+    assert result["error_code"] == "INVALID_ARGUMENT"
+    assert result["allowed_values"] == {"output_format": ["json"]}
+    assert received == []
+
+
 # ---------------------------------------------------------------------------
 # Case 4: sibling-param drop — a param for action A must not reach action B
 # ---------------------------------------------------------------------------
 
 
-def test_sibling_param_dropped_between_actions() -> None:
-    """A ``query`` param belonging to the ``cache`` action must not reach the
-    ``status`` inner (which doesn't declare ``query`` in its schema)."""
+def test_sibling_param_rejected_between_actions() -> None:
+    """属于 ``cache`` 的参数传给 ``status`` 时必须在分派前失败。"""
     facade = build_index_facade(project_root=None)
     received: list[dict[str, Any]] = []
 
@@ -179,11 +216,10 @@ def test_sibling_param_dropped_between_actions() -> None:
 
     inner = facade.action_map["status"]
     inner.execute = _capture  # type: ignore[method-assign]
-    asyncio.run(facade.execute({"action": "status", "query": "leaked_param"}))
-    assert received, "inner.execute was never called"
-    assert "query" not in received[0], (
-        "Sibling param 'query' (belongs to 'cache' action) leaked into 'status' inner"
-    )
+    result = asyncio.run(facade.execute({"action": "status", "query": "leaked_param"}))
+    assert result["error_code"] == "INVALID_ARGUMENT"
+    assert result["invalid_arguments"] == ["query"]
+    assert received == []
 
 
 # ---------------------------------------------------------------------------
@@ -339,9 +375,9 @@ def test_mutating_action_rejects_status_access_mode() -> None:
     result = asyncio.run(
         facade.execute({"action": "full", "access_mode": "read_existing"})
     )
-    assert result["error"] == (
-        "parameter 'access_mode' applies only to action(s): status"
-    )
+    assert result["error_code"] == "INVALID_ARGUMENT"
+    assert result["invalid_arguments"] == ["access_mode"]
+    assert result["supported_actions"] == {"access_mode": ["status"]}
 
 
 def test_schema_includes_action_and_union_params() -> None:

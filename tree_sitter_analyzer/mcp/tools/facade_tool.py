@@ -20,6 +20,9 @@ F4 (Landmine A) — strict-param projection
     ``scope`` / ``mode`` when the inner doesn't declare them) AND drop
     sibling-action params.
 
+    公开门面保持渐进式 schema；选定动作后先按内部 schema 校验。未知字段、拼写
+    错误和同级动作字段必须返回 ``INVALID_ARGUMENT``，不能依靠后续投影静默丢弃。
+
 F5 — bespoke routing
     Three production routes bypass ``registry[name].execute()``:
     ``analyze_code_structure`` -> ``table_format_tool``,
@@ -87,6 +90,10 @@ BespokeHandler = Callable[[dict[str, Any]], Awaitable[Any]]
 # route; ``scope`` / ``mode`` are facade-level discriminators (PRD R2/R4/R5)
 # whose meaning is action-scoped and whose legal set the inner validates.
 _FACADE_CONTROL_KEYS: frozenset[str] = frozenset({"action"})
+
+# 响应层控制字段由门面或公共边界消费；即使某个内部动作不声明，也不是业务参数
+# 拼写错误。投影仍按内部 schema 决定是否转发。
+_FACADE_RESPONSE_CONTROL_KEYS: frozenset[str] = frozenset({"output_format"})
 
 # 每个门面都在公共 inputSchema 中显式公开这些高频核心参数。Wave D 为缩减
 # 工具定义令牌，不再把每个内部工具的参数原样合并到公共模式中；旧做法会把
@@ -295,6 +302,25 @@ class FacadeTool(BaseMCPTool):
             return cleaned
         return {k: v for k, v in cleaned.items() if k in inner_props}
 
+    def _accepted_argument_names(self, inner: BaseMCPTool) -> set[str]:
+        """返回所选动作真正接受的调用参数，包括门面声明的符号别名。"""
+        inner_props = self._inner_property_names(inner)
+        accepted = (
+            set(inner_props) | _FACADE_CONTROL_KEYS | _FACADE_RESPONSE_CONTROL_KEYS
+        )
+        if "symbol" in inner_props:
+            accepted.add("function_name")
+        if "function_name" in inner_props or "class_name" in inner_props:
+            accepted.add("symbol")
+        return accepted
+
+    def _invalid_arguments(
+        self, inner: BaseMCPTool, arguments: dict[str, Any]
+    ) -> list[str]:
+        """找出会被动作投影静默丢弃的调用参数。"""
+        accepted = self._accepted_argument_names(inner)
+        return sorted(key for key in arguments if key not in accepted)
+
     @staticmethod
     def _clean_bespoke_args(args: dict[str, Any]) -> dict[str, Any]:
         """Strip facade control keys for a bespoke route (no schema projection).
@@ -365,6 +391,107 @@ class FacadeTool(BaseMCPTool):
             },
         }
 
+    def _argument_error(
+        self,
+        action: str,
+        inner: BaseMCPTool,
+        invalid: list[str],
+        *,
+        supported_actions: dict[str, list[str]] | None = None,
+    ) -> dict[str, Any]:
+        """返回可由 Agent 自动修复的动作级参数错误。"""
+        allowed = sorted(self._accepted_argument_names(inner))
+        suggestions: dict[str, str] = {}
+        for name in invalid:
+            if supported_actions and name in supported_actions:
+                continue
+            matches = difflib.get_close_matches(name, allowed, n=1, cutoff=0.6)
+            if matches:
+                suggestions[name] = matches[0]
+
+        correction = "; ".join(
+            f"{name!r} -> {suggestions[name]!r}"
+            for name in invalid
+            if name in suggestions
+        )
+        next_step = (
+            f"Use only arguments supported by action {action!r}: {', '.join(allowed)}."
+        )
+        if correction:
+            next_step = f"Correct these arguments: {correction}. {next_step}"
+        if supported_actions:
+            scoped_guidance = "; ".join(
+                f"{name!r} is supported by actions: {', '.join(actions)}"
+                for name, actions in supported_actions.items()
+            )
+            next_step = (
+                f"Remove the action-inapplicable argument or use it with its "
+                f"supported action. {scoped_guidance}. {next_step}"
+            )
+        summary_line = (
+            f"{self.facade_name}.{action}: unsupported arguments: {', '.join(invalid)}"
+        )
+        response: dict[str, Any] = {
+            "success": False,
+            "verdict": "ERROR",
+            "error_type": "validation",
+            "error_code": "INVALID_ARGUMENT",
+            "error": summary_line,
+            "facade": self.facade_name,
+            "action": action,
+            "invalid_arguments": invalid,
+            "allowed_arguments": allowed,
+            "suggestions": suggestions,
+            "summary_line": summary_line,
+            "agent_summary": {
+                "verdict": "ERROR",
+                "summary_line": summary_line,
+                "next_step": next_step,
+            },
+        }
+        if supported_actions:
+            response["supported_actions"] = supported_actions
+        return response
+
+    def _argument_value_error(
+        self, action: str, argument: str, value: Any, allowed_values: list[Any]
+    ) -> dict[str, Any]:
+        """返回门面公共控制字段的值校验错误。"""
+        if action in self.action_map:
+            allowed_arguments = sorted(
+                self._accepted_argument_names(self.action_map[action])
+            )
+        else:
+            allowed_arguments = sorted(self.get_tool_schema()["properties"])
+        summary_line = (
+            f"{self.facade_name}.{action}: invalid value for {argument!r}: {value!r}"
+        )
+        next_step = (
+            f"Set {argument!r} to one of: "
+            + ", ".join(repr(item) for item in allowed_values)
+            + "."
+        )
+        return {
+            "success": False,
+            "verdict": "ERROR",
+            "error_type": "validation",
+            "error_code": "INVALID_ARGUMENT",
+            "error": summary_line,
+            "facade": self.facade_name,
+            "action": action,
+            "invalid_arguments": [argument],
+            "invalid_values": {argument: value},
+            "allowed_arguments": allowed_arguments,
+            "allowed_values": {argument: allowed_values},
+            "suggestions": {},
+            "summary_line": summary_line,
+            "agent_summary": {
+                "verdict": "ERROR",
+                "summary_line": summary_line,
+                "next_step": next_step,
+            },
+        }
+
     # -- dispatch ----------------------------------------------------------
 
     async def execute(self, arguments: dict[str, Any]) -> Any:
@@ -395,12 +522,33 @@ class FacadeTool(BaseMCPTool):
                 ),
             }
 
-        for parameter, allowed_actions in self._action_scoped_params.items():
-            if parameter in arguments and action not in allowed_actions:
-                allowed = ", ".join(sorted(allowed_actions))
-                return self._action_error(
-                    f"parameter {parameter!r} applies only to action(s): {allowed}"
+        if (
+            (action in self.action_map or action in self.bespoke_map)
+            and "output_format" in arguments
+            and arguments["output_format"] != "json"
+        ):
+            return self._argument_value_error(
+                action, "output_format", arguments["output_format"], ["json"]
+            )
+
+        scoped_invalid = {
+            parameter: sorted(allowed_actions)
+            for parameter, allowed_actions in self._action_scoped_params.items()
+            if parameter in arguments and action not in allowed_actions
+        }
+        if scoped_invalid:
+            if action in self.action_map:
+                return self._argument_error(
+                    action,
+                    self.action_map[action],
+                    sorted(scoped_invalid),
+                    supported_actions=scoped_invalid,
                 )
+            parameter = sorted(scoped_invalid)[0]
+            allowed = ", ".join(scoped_invalid[parameter])
+            return self._action_error(
+                f"parameter {parameter!r} applies only to action(s): {allowed}"
+            )
 
         # RFC-0025 Layer 5: the facade is the public (tool, action) surface, so
         # it is the one seam where a latency observation is unambiguous —
@@ -419,6 +567,9 @@ class FacadeTool(BaseMCPTool):
 
         if action in self.action_map:
             inner = self.action_map[action]
+            invalid = self._invalid_arguments(inner, arguments)
+            if invalid:
+                return self._argument_error(action, inner, invalid)
             projected = self._project_args(inner, arguments)
             # RFC-0027 L6.1: the answer cache sits on the same seam as the
             # latency recorder, for the same reason — the facade is the public
