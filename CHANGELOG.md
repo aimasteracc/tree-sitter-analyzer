@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- `search action=text` and `--text-search` provide bounded, no-index literal
+  search over current project files with deterministic source coordinates,
+  complete counts, ignore/glob handling, and fail-closed scan evidence. The
+  native engine requires neither ripgrep nor fd.
+
 ## [2.1.0] - 2026-09-18
 
 ### Added

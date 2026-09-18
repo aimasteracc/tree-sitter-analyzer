@@ -8,6 +8,9 @@ from ....mcp.tools._call_tree import DEFAULT_MAX_NODES as _DEFAULT_TREE_MAX_NODE
 from ....mcp.tools.symbol_search_tool import (
     DEFAULT_SYMBOL_SEARCH_LIMIT as _DEFAULT_SYMBOL_SEARCH_LIMIT,
 )
+from ....mcp.tools.text_search_tool import (
+    DEFAULT_TEXT_SEARCH_LIMIT as _DEFAULT_TEXT_SEARCH_LIMIT,
+)
 from ._builders import (
     _build_change_impact_tool_args,
     _build_dependency_tool_args,
@@ -22,6 +25,23 @@ from ._builders import (
 from ._read_existing_bridge import _forward_read_existing_controls
 
 _CORE_SPECS: tuple[McpCommandSpec, ...] = (
+    McpCommandSpec(
+        flag_name="text_search",
+        tool_attr="TextSearchTool",
+        label="Live literal text search",
+        value_arg_name="text_search",
+        required_value_error="--text-search requires a non-empty query string",
+        build_tool_args=lambda args, output_format: {
+            "query": getattr(args, "text_search", "") or "",
+            "root": getattr(args, "text_search_root", ".") or ".",
+            "case_mode": getattr(args, "text_search_case", "smart") or "smart",
+            "word_match": bool(getattr(args, "text_search_word", False)),
+            "include_globs": list(getattr(args, "text_search_include", []) or []),
+            "exclude_globs": list(getattr(args, "text_search_exclude", []) or []),
+            "limit": getattr(args, "text_search_limit", _DEFAULT_TEXT_SEARCH_LIMIT),
+            "output_format": output_format,
+        },
+    ),
     McpCommandSpec(
         flag_name="verify_plan",
         tool_attr="VerificationTool",

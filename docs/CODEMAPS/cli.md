@@ -48,6 +48,7 @@ Categories of CLI surface:
 - `--query-key methods|classes|imports|...` — predefined queries
 - `--filter "public=true"` — field filter
 - `--query-string "(method_declaration) @m"` — raw tree-sitter query
+- `--text-search QUERY` — bounded no-index live literal search; scope with `--text-search-root`, choose case mode or whole-word matching, and filter paths with repeatable include/exclude globs. MCP twin: `search action=text`
 
 ### Project-Level
 - `--overview` — snapshot
@@ -167,7 +168,7 @@ boundary.
 
 ## See Also
 
-- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (354 unique flags total — this codemap is intentionally categorical, not exhaustive)
+- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (361 unique flags total — this codemap is intentionally categorical, not exhaustive)
 - [`docs/CODEMAPS/mcp-tools.md`](./mcp-tools.md) — MCP-side counterpart
 - [`tests/unit/cli/test_mcp_commands.py`](../../tests/unit/cli/test_mcp_commands.py) — Parity contract tests
 - [`scripts/codemap-sync-check.sh`](../../scripts/codemap-sync-check.sh) — pre-commit gate that blocks a change to the CLI **flag surface** (any `cli/**/*.py`, compared as a set) without a `cli.md` update

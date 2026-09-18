@@ -26,6 +26,7 @@ tree_sitter_analyzer/
 ├── constraints/      ← architectural-constraints.yml evaluator/parser/schema
 ├── hyphae/           ← Hyphae selector DSL (lexer/parser/ast/evaluator) — RFC-0001 reactive push
 ├── source_lines.py ← 原生文件发现、忽略规则与实时符号文本核验
+├── text_search.py  ← 有界无索引的实时字面量文本检索 worker
 ├── verification_plan.py ← 有界描述符、完整 argv 计划与阶段摘要
 ├── verification_runner.py ← 重新分析校验、顺序执行、日志预算与进程回收
 ├── skills/           ← 13 bundled tsa-* agent skills
