@@ -1,8 +1,8 @@
 ---
 name: tsa-find
-version: 3.0.0
+version: 3.1.0
 description: |
-  Locate code with TSA symbol, graph, AST and optional semantic indexes, then verify bounded live source. Works with OpenCode and other MCP hosts without requiring ripgrep or fd.
+  Locate code with TSA live text, symbol, graph, AST and optional semantic search, then verify bounded source. Works with OpenCode and other MCP hosts without requiring ripgrep or fd.
 allowed-tools:
   - mcp__tree-sitter-analyzer__search
   - mcp__tree-sitter-analyzer__nav
@@ -15,12 +15,12 @@ allowed-tools:
 
 # tsa-find — locate, rank, verify
 
-Use indexed retrieval to narrow the candidate set before reading or scanning files.
-TSA does not require external ripgrep or fd executables. A host's optional text-search
-feature is separate from TSA and may have its own implementation requirements.
+Use live literal search or indexed retrieval to narrow the candidate set before reading files.
+TSA does not require external ripgrep or fd executables.
 
 | Need | TSA action |
 |---|---|
+| Exact text in current files | `search action=text query="literal"` |
 | Known identifier | `search action=symbol query="Name"` |
 | Unknown entry point / concept | `nav action=context task="Describe the task"` |
 | Meaning-based retrieval, when embeddings are ready | `search action=semantic query="Describe behavior"` |
@@ -35,16 +35,17 @@ feature is separate from TSA and may have its own implementation requirements.
    not proof of a call relationship; use graph navigation and live source to confirm it.
 3. Check index status and freshness. Refresh when needed; do not treat a missing/stale index
    as proof that a symbol or file does not exist. Missing embeddings are not a lexical miss.
-4. Use live symbol verification only after narrowing the scope when possible. Its Python
-   scanner preserves complete counts before display truncation and reports budget failures;
-   it does not promise ripgrep's whole-repository scan speed.
-5. For arbitrary prose or regular expressions, use the host's text-search tool if available,
-   or a bounded Python standard-library search over the already selected files.
+4. Use `search action=text` for arbitrary literal prose in current files. Narrow `root`,
+   `include_globs`, or `exclude_globs` when possible. The bounded native scanner preserves
+   complete counts before display truncation and fails closed on budget or consistency errors.
+5. Literal search is deliberately distinct from regular expressions. For regex-only tasks,
+   use a host search tool or a bounded standard-library search over selected files.
 
 CLI examples:
 
 ```bash
 uv run tree-sitter-analyzer --symbol-search Name
+uv run tree-sitter-analyzer --text-search "exact literal" --text-search-root src --format json
 uv run tree-sitter-analyzer --codegraph-context "Describe the task"
 uv run tree-sitter-analyzer --trace-impact --trace-impact-symbol Name
 uv run tree-sitter-analyzer path/to/file.py --partial-read --start-line 10 --end-line 30

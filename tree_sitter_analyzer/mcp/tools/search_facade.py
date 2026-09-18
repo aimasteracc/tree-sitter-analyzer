@@ -1,22 +1,21 @@
 #!/usr/bin/env python3
-"""``search`` facade — PoC for the FacadeTool framework (P0 geode layer).
+"""把实时文本、索引检索和 AST 查询统一到 ``search`` 门面。
 
-Folds three search capabilities behind one ``action`` parameter:
+门面通过 ``action`` 参数分派多种搜索能力：
 
 ==========  ====================================  ==================================
-action      inner / route                         engine
+动作        内部路由                              引擎
 ==========  ====================================  ==================================
-symbol      ``codegraph_symbol_search``           BM25 FTS5 symbol lookup
-query       ``query_code`` (QueryTool)            tree-sitter ``.scm`` query DSL  (F3)
+text        ``text_search``                       原生实时字面量扫描
+symbol      ``codegraph_symbol_search``           BM25 FTS5 符号检索
+query       ``query_code`` (QueryTool)            tree-sitter ``.scm`` 查询 DSL  (F3)
 ==========  ====================================  ==================================
 
-F3 (PRD §0): ``query`` (tree-sitter ``.scm`` DSL) and ``symbol`` (BM25 FTS)
-are DISTINCT actions with zero shared params and different engines — they must
-NOT be merged. Folding ``query_code`` into ``symbol`` would silently delete the
-tree-sitter query capability.
+F3（PRD §0）：``query``（tree-sitter ``.scm`` DSL）与 ``symbol``（BM25 FTS）
+使用不同参数和引擎，必须保持独立；把 ``query_code`` 合入 ``symbol`` 会静默删除
+tree-sitter 查询能力。
 
-This facade is registered ALONGSIDE the legacy tools during Wave C cutover; at
-P0 it coexists with the existing 62 tools and changes none of their behaviour.
+Wave C 切换期间该门面与 legacy 路由共存，不改变后者行为。
 """
 
 from __future__ import annotations
@@ -37,9 +36,12 @@ _SEARCH_ANNOTATIONS: dict[str, Any] = {
 
 _SEARCH_DESCRIPTION = (
     "Code-intelligence (codegraph-compatible) search facade. "
-    "Covers codegraph_symbol_search (BM25), codegraph_query (tree-sitter AST), "
+    "Covers live text, codegraph_symbol_search (BM25), codegraph_query (tree-sitter AST), "
     "codegraph_query chain DSL, TQL, and semantic symbol retrieval. "
     "Pick a capability via `action`:\n"
+    "- action=text — complete literal line search over admitted live project files; "
+    "no AST index or ripgrep required. Params: query, root, case_mode, word_match, "
+    "include_globs, exclude_globs, limit.\n"
     "- action=symbol — BM25 FTS lookup of a symbol by name (fast 'where is X "
     "defined', codegraph_symbol_search equivalent). "
     "Params: query, language, kind, limit.\n"
@@ -93,11 +95,13 @@ def build_search_facade(
     from .query_tool import QueryTool
     from .semantic_tool import SemanticNeighborsTool
     from .symbol_search_tool import SYMBOL_SEARCH_KINDS, CodeGraphSymbolSearchTool
+    from .text_search_tool import TextSearchTool
     from .tql_tool import TqlExecuteTool, TqlSchemaTool
 
     facade = FacadeTool(
         facade_name="search",
         action_map={
+            "text": TextSearchTool(project_root),
             "symbol": CodeGraphSymbolSearchTool(project_root),  # BM25 FTS
             "query": QueryTool(project_root),  # F3: tree-sitter .scm DSL
             # jQuery-style graph chain DSL (search().explore().callees()...),

@@ -167,7 +167,7 @@ TSA envía flujos de trabajo curados bajo `.claude/skills/tsa-*/`:
 
 Cada skill incluye un subconjunto de `allowed-tools` + receta de procedimiento + esquema de superficie de decisión, para que el agente no tenga que clasificar entre 8 herramientas en cada pregunta.
 
-### 354 banderas de CLI
+### 361 banderas de CLI
 
 Destacados:
 

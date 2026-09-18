@@ -186,6 +186,7 @@ from tree_sitter_analyzer.mcp.tools.symbol_search_tool import (
 from tree_sitter_analyzer.mcp.tools.test_gap_tool import (
     CodeGraphTestGapTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.text_search_tool import TextSearchTool  # noqa: F401
 from tree_sitter_analyzer.mcp.tools.tql_tool import (
     TqlExecuteTool,  # noqa: F401
     TqlSchemaTool,  # noqa: F401
@@ -242,6 +243,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "UnreachableCodeTool",
         "MiddlewareDetectorTool",
         "CodeGraphSymbolSearchTool",
+        "TextSearchTool",
         "CodeGraphSymbolResolveTool",
         "CodeGraphImpactTool",
         "CodeGraphASTPathTool",

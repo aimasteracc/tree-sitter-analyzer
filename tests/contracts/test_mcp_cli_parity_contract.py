@@ -340,6 +340,7 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
     # action_map entry. This table is the human-readable mirror of
     # facade_map.LEGACY_TOOL_MAP keyed by route.
     expected_inner: dict[tuple[str, str], str] = {
+        ("search", "text"): "TextSearchTool",
         ("search", "symbol"): "CodeGraphSymbolSearchTool",
         ("search", "query"): "QueryTool",
         # ("search", "grep"): "FindAndGrepTool",  # 廃止済み

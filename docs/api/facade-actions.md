@@ -3,7 +3,7 @@
 > **AUTO-GENERATED — do not edit by hand.** Regenerate with `uv run python scripts/generate_facade_actions_doc.py`.
 > Drift-gated by `tests/unit/docs/test_facade_actions_doc_drift.py` (regenerates in-memory and diffs).
 
-The MCP server exposes **8 facade tools** routing **84 actions** via the `action` parameter. This reference is generated from the live facade registry (`tree_sitter_analyzer/mcp/_tool_registry.py`) and each inner tool's `inputSchema` — the same schema the runtime strict-parameter guard enforces, so a wrong param guess in this table would fail at runtime too (and vice versa).
+The MCP server exposes **8 facade tools** routing **85 actions** via the `action` parameter. This reference is generated from the live facade registry (`tree_sitter_analyzer/mcp/_tool_registry.py`) and each inner tool's `inputSchema` — the same schema the runtime strict-parameter guard enforces, so a wrong param guess in this table would fail at runtime too (and vice versa).
 
 Reading the tables:
 
@@ -14,7 +14,7 @@ Runtime discovery: call a facade with `action=help` for its business action list
 - **CLI twin** — the CLI flag (or console script) covering the same capability, from the CLI-parity contract. 4 actions have no authoritative CLI mapping and show — (honest gap, not an omission).
 - *Bespoke routes* (closures with hand-rolled arg handling, e.g. `nav action=test_map`) have their params pinned in the generator with source provenance; the generator fails if the live route set drifts from those pins.
 
-## `search` — 9 actions
+## `search` — 10 actions
 
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
@@ -24,6 +24,7 @@ Runtime discovery: call a facade with `action=help` for its business action list
 | `semantic` | `query`*, `kind`, `language`, `min_similarity`, `top_k`, `use_combined_score` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--semantic-neighbors` |
 | `subscribe` | `selector`*, `min_interval`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | — |
 | `symbol` | `query`*, `kind`, `language`, `limit`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--symbol-search` |
+| `text` | `query`*, `case_mode`, `exclude_globs`, `include_globs`, `limit`, `output_format`, `root`, `word_match` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--text-search` |
 | `tql_execute` | `selector`*, `max_results` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--tql` |
 | `tql_schema` | (none) | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--tql-schema` |
 | `unsubscribe` | `output_format`, `selector`, `sub_id` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | — |
