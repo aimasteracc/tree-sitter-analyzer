@@ -1,52 +1,53 @@
 # Roadmap — Trusted Agent Change Intelligence No.1 Program
 
 - **Status:** active
-- **Branch:** `docs/tsa-trust-consolidation`
+- **Branch:** `develop`
 - **Mission:** Become the most trusted local code-change intelligence layer for AI coding agents.
 - **North star:** Verified Change Success Rate (VCSR), not feature, language, tool, test, or edge count.
 - **Claim policy:** Public language is always bounded to named tools, versions, repositories, models, dates, and evidence levels. E0–E3 emit no quantitative competitive wording; E4 permits only the exact admitted bounded sentence, never an unqualified "No.1" claim.
 
-## 2026-09-17 交付状态：v2.0.0 已发布，竞争证据仍受门控
+## 2026-09-18 交付状态：v2.1.0 已发布，agent-native 可信接口与索引恢复已落地
 
-本节以 `develop@1088f42100a127c7388606f15d970eba10f8fb85` 为基线。
-[#1489](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1489) 至
-[#1505](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1505) 已全部合入
-`develop`；其中包括订阅失败隔离、认证源码正文、生命周期所有权、路由与
-Decision Journal / ASTCache 的确定关闭、main→develop 对账，以及 v2 外部搜索
-wrapper 退役。#1504 的最终 head 已通过 Linux、macOS、Windows、Python
-3.10–3.13、MCP 黑盒、Native qualification、SQL 兼容、回归、Codecov patch
-和构建门禁。成功证据只支持这些具名范围，不自动升级 VCSR 或竞争性证据等级。
+本节以 `develop@1fc47f64b6302174c715d1acad1caa9badb86ebf` 为发布回合基线。
+[#1511](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1511) 至
+[#1516](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1516) 已全部合入
+`develop`：facade 参数改为 fail closed，直接 action 提供权威 schema，符号搜索与
+解析返回绑定单一索引所有者的认证源码证据，change-impact 提供可重放验证描述符与
+五条 E0 参考 transcript；全量和增量索引统一维护项目级唯一方法表，并在保存、删除、
+恢复与歧义变化时重新绑定，避免弱跨文件猜测覆盖强证据。
 
-本节同提交关闭 dogfood 暴露的两个发版前可信度缺口：`change-impact` 的
-`branch` 模式改为从 GitFlow 目标分支的 merge base 读取全部提交，不再只看
-`HEAD~1..HEAD`；测试侧 SQLite 读取 helper 在边界确定关闭连接。后者的限定
-重放从实际 FD `15 → 75 → 71`、DB FD 峰值 59 / 结束 56，降至
-`15 → 19 → 15`、DB FD 峰值 3 / 结束 0。随后普通 comprehensive run 为
-`24788 passed, 98 skipped, 1 rerun`，退出码 0；原 256-FD 低上限节点在 19 FD
-通过，worker 边界峰值从前次观测的 129 降至 69。一次既有 WAL 并发用例发生
-rerun，不能计为额外成功，也不能把历史 EMFILE 的唯一根因追溯为本 helper。
+发布前 dogfood 以 TSA 自身完成影响面选择、结构查询、索引性能对比和保存恢复验证。
+限定在本仓库、同一 macOS 主机与同一命令的 E0 观测中，冷索引从 35.450 秒降至
+28.073 秒，AST 阶段从 30.781 秒降至 23.182 秒；已发布索引的 5 次独立进程
+`resolve_callee` 查询中位数为 0.151 秒。该证据只描述这组输入与环境，不构成跨平台
+SLA、VCSR 提升或竞争性声明。
 
 ### 发版裁决
 
-- RFC-0033 的仓库内实现、迁移、完整本地测试和跨平台 CI 验收已经完成；v2
-  公开搜索 wrapper 退役不再有仓库内待办。
-- v2.0.0 已发布到 PyPI；[#1508](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1508)
-  已合入 `main`，标签与 GitHub Release 均指向 `69f7568c1`；
-  [#1509](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1509) 已将 release
-  提交回合 `develop`，远程 release 分支已删除。发布矩阵的 10 个完整平台与
-  Python 轴全部通过，PyPI Python 3.10 净环境安装与 CLI 版本检查返回 `2.0.0`。
+- v2.1.0 已发布到 PyPI；[#1517](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1517)
+  已合入 `main@1fe474631da73091021a658f186f4617a86bae7e`，注释标签与
+  [GitHub Release](https://github.com/aimasteracc/tree-sitter-analyzer/releases/tag/v2.1.0)
+  均指向该主线合并；[#1518](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1518)
+  已把 release 提交回合 `develop`，远程 release 分支已删除。
+- Release Automation 的 10 个完整 Linux、Windows、macOS 与 Python 3.10–3.13
+  适用轴全部通过，wheel 与 sdist 发布成功；净环境 `uvx --from
+  tree-sitter-analyzer==2.1.0 tree-sitter-analyzer --version` 返回 `2.1.0`。
+  重复的普通 CI 也在 Windows 3.11 重跑后完成全矩阵、构建与 SQL 兼容性下游。
+- 普通 CI 首轮在 99% 处暴露两个相同的 Windows 完成等待超时：23,607 项通过，
+  两个参数都已越过并发事件门槛，但高负载索引完成耗时约 14–15 秒，超过测试的
+  3 秒 Future 等待。[#1519](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1519)
+  保留 3 秒事件顺序门槛，仅把完成等待扩大到 20 秒；本地完整目标文件为
+  `127 passed`，失败轴重跑通过。
 - VCSR、外部维护者采用、模型裁判、生产 canary、签名证明以及 E2–E4 竞争性
-  表述属于外部或人工证据门槛。它们仍未完成，不能用仓库测试代替；它们阻止
-  “No.1”公开声明，但不伪装成尚可继续编码的本地功能清单。
-- [#1230](https://github.com/aimasteracc/tree-sitter-analyzer/issues/1230) 是每日重算的
+  表述仍属于外部或人工证据门槛。仓库内实现和发布不能替代这些证据，也不授权
+  无限定的“No.1”声明。
+- [#1230](https://github.com/aimasteracc/tree-sitter-analyzer/issues/1230) 仍是每日重算的
   维护队列，不是一次性发版故事；只有 TSA `safe-to-edit` 给出可验证收益时才取项，
   不能为清空列表而制造重构。
 
-首次发布尝试在全平台矩阵中一致命中 v2 到期契约，且在构建和 PyPI 发布前安全
-停止。最终 release 删除了 `MCPTool`、未注册的 `UniversalAnalyzeTool`、相关回退
-路径和专属测试，并补充迁移说明；本地完整门禁为 `24717 passed, 98 skipped,
-2 rerun`。v2.0.0 的仓库内发布工作已经关闭。后续工作转回外部证据计划，继续按
-TRUST-C1 / TRUST-T1 / TRUST-I1 的门槛推进；失败、未知和未签名结果保留在分母中。
+v2.1.0 的仓库内发布工作已经关闭。后续继续按 TRUST-C1 / TRUST-T1 / TRUST-I1
+推进外部证据，并把失败、未知和未签名结果保留在分母中；agent-native 工作台的
+新增能力继续先以 E0 transcript 和具名环境证据验证，再申请更高证据等级。
 
 ## 2026-09-08 第二轮合入：内容新鲜度与健康评分
 
