@@ -186,6 +186,36 @@ def test_understand_runs_exact_route_and_parameters() -> None:
     }
 
 
+def test_understand_delegates_task_route_after_index_oracle(monkeypatch) -> None:
+    import tree_sitter_analyzer.task._router_task as task_router_module
+
+    observed: dict[str, Any] = {}
+
+    async def capture_task_route(*, session, operation: str, task: str) -> None:
+        observed["operation"] = operation
+        observed["task"] = task
+        observed["calls"] = list(session.executor.calls)
+
+    monkeypatch.setattr(task_router_module, "run_task_route", capture_task_route)
+    executor = FakeExecutor()
+
+    outcome = _run(understand(UnderstandRequest(task="trace dispatch"), executor))
+
+    assert observed == {
+        "operation": "understand",
+        "task": "trace dispatch",
+        "calls": [
+            (
+                "index",
+                "status",
+                {"access_mode": "read_existing", "output_format": "json"},
+            )
+        ],
+    }
+    assert outcome.status == "complete"
+    assert outcome.verdict == "INFO"
+
+
 def test_understand_compact_profile_lowers_cell_values() -> None:
     executor = FakeExecutor()
     outcome = _run(
@@ -1063,6 +1093,23 @@ def test_internal_error_guard_freezes_internal_error_outcome(monkeypatch) -> Non
     outcome = _run(
         plan_change(PlanChangeRequest(diff=DiffInput("workspace")), executor)
     )
+    assert outcome.success is False
+    assert outcome.verdict == "ERROR"
+    assert "INTERNAL_ERROR" in outcome.errors
+
+
+def test_task_route_projection_stays_in_router_internal_error_guard(
+    monkeypatch,
+) -> None:
+    import tree_sitter_analyzer.task.router as router_module
+
+    def boom(fragments):
+        raise RuntimeError("router bug")
+
+    monkeypatch.setattr(router_module, "project_plan_steps", boom)
+    executor = FakeExecutor()
+    outcome = _run(plan_change(PlanChangeRequest(task="refactor dispatch"), executor))
+
     assert outcome.success is False
     assert outcome.verdict == "ERROR"
     assert "INTERNAL_ERROR" in outcome.errors
