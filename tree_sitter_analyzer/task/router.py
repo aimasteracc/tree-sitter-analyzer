@@ -33,7 +33,7 @@ import time
 from collections.abc import Callable
 from typing import Any, Protocol
 
-from . import _router_index, _router_task, _router_wire
+from . import _router_impact, _router_index, _router_task, _router_wire
 from ._router_session import (
     RouteSession,
     degraded_unknown,
@@ -230,209 +230,14 @@ async def _run_route(
         if not session.stopped and diff_request:
             # --- Diff route: impact -> constraints -> fan-out. ---
             assert request_diff is not None
-            impact_arguments = {
-                "mode": "diff" if diff_source == "workspace" else "staged",
-                "scope_paths": list(request_diff.scope_paths),
-                "include_tests": True,
-                "resource_profile": "local_low_impact",
-                "access_mode": "read_existing",
-                "output_format": "json",
-            }
-            impact_response = await call(
-                "diff:edit.impact", "edit", "impact", impact_arguments
+            impact_result = await _router_impact.run_impact_stage(
+                session=session, diff=request_diff
             )
-            if impact_response is None:
-                record_not_called("diff:edit.impact", "edit", "impact")
-                session.stopped = True
-            else:
-                impact_success = impact_response.get("success") is True
-                snapshot_state.diff_snapshot_id = impact_response.get(
-                    "diff_snapshot_id"
-                )
-                snapshot_state.route_lease_id = impact_response.get("route_lease_id")
-                snapshot_state.impact_source_generation = impact_response.get(
-                    "source_generation"
-                )
-                changed_records = impact_response.get("changed_records")
-                raw_assessed_scope_paths = impact_response.get("assessed_scope_paths")
-                if (
-                    not isinstance(snapshot_state.diff_snapshot_id, str)
-                    or not snapshot_state.diff_snapshot_id
-                ):
-                    snapshot_state.diff_snapshot_id = None
-                if (
-                    not isinstance(snapshot_state.route_lease_id, str)
-                    or not snapshot_state.route_lease_id
-                ):
-                    snapshot_state.route_lease_id = None
-                if (
-                    not isinstance(snapshot_state.impact_source_generation, str)
-                    or not snapshot_state.impact_source_generation
-                ):
-                    snapshot_state.impact_source_generation = None
-                if not isinstance(changed_records, list):
-                    changed_records = None
-                assessed_valid = isinstance(raw_assessed_scope_paths, list)
-                if assessed_valid:
-                    assert raw_assessed_scope_paths is not None
-                    assessed_scope_paths = [
-                        str(path)
-                        for path in raw_assessed_scope_paths
-                        if isinstance(path, str)
-                    ]
-                for record in changed_records or []:
-                    if isinstance(record, dict) and isinstance(record.get("path"), str):
-                        changed_paths.append(record["path"])
-                snapshots = current_snapshots()
-                missing_fields = (
-                    snapshot_state.diff_snapshot_id is None
-                    or snapshot_state.route_lease_id is None
-                    or snapshot_state.impact_source_generation is None
-                    or changed_records is None
-                    or not assessed_valid
-                )
-                access_unavailable = _router_wire.access_unavailable(impact_response)
-                if access_unavailable is not None:
-                    contribution = contribute(
-                        row="diff:edit.impact",
-                        state="failed",
-                        kind="generic",
-                        finding="malformed",
-                        freshness=UNKNOWN,
-                        truncated=False,
-                    )
-                    record_contribution(
-                        contribution,
-                        facade="edit",
-                        action="impact",
-                        response=impact_response,
-                        request_hash=_request_hash(impact_arguments),
-                        evidence_ids=[],
-                        snapshots=snapshots,
-                        success=True,
-                    )
-                    add_unknown(
-                        "diff:edit.impact", f"ACCESS_UNAVAILABLE:{access_unavailable}"
-                    )
-                    session.stopped = True
-                elif not impact_success:
-                    contribution = contribute(
-                        row="diff:edit.impact",
-                        state="failed",
-                        kind="generic",
-                        finding="malformed",
-                        freshness=UNKNOWN,
-                        truncated=False,
-                    )
-                    record_contribution(
-                        contribution,
-                        facade="edit",
-                        action="impact",
-                        response=impact_response,
-                        request_hash=_request_hash(impact_arguments),
-                        evidence_ids=[],
-                        snapshots=snapshots,
-                        success=False,
-                    )
-                    add_unknown("diff:edit.impact", "PRIMITIVE_FAILURE")
-                    session.stopped = True
-                elif missing_fields:
-                    contribution = contribute(
-                        row="diff:edit.impact",
-                        state="failed",
-                        kind="generic",
-                        finding="malformed",
-                        freshness=UNKNOWN,
-                        truncated=False,
-                    )
-                    record_contribution(
-                        contribution,
-                        facade="edit",
-                        action="impact",
-                        response=impact_response,
-                        request_hash=_request_hash(impact_arguments),
-                        evidence_ids=[],
-                        snapshots=snapshots,
-                        success=True,
-                    )
-                    add_unknown("diff:edit.impact", "MISSING_SNAPSHOT_FIELDS")
-                    session.stopped = True
-                elif (
-                    snapshot_state.index_source_generation is not None
-                    and snapshot_state.impact_source_generation
-                    != snapshot_state.index_source_generation
-                ):
-                    contribution = contribute(
-                        row="diff:edit.impact",
-                        state="failed",
-                        kind="generic",
-                        finding="malformed",
-                        freshness=UNKNOWN,
-                        truncated=False,
-                    )
-                    record_contribution(
-                        contribution,
-                        facade="edit",
-                        action="impact",
-                        response=impact_response,
-                        request_hash=_request_hash(impact_arguments),
-                        evidence_ids=[],
-                        snapshots=snapshots,
-                        success=True,
-                    )
-                    add_unknown("diff:edit.impact", SOURCE_GENERATION_MISMATCH)
-                    session.stopped = True
-                else:
-                    freshness = FRESH if snapshot_state.oracle_fresh else UNKNOWN
-                    impact_verdict = impact_response.get("verdict")
-                    impact_truncated = impact_response.get("truncated") is True
-                    contribution = contribute(
-                        row="diff:edit.impact",
-                        state="succeeded",
-                        kind="generic",
-                        finding=_router_wire.finding_from_verdict(impact_verdict),
-                        freshness=freshness,
-                        truncated=impact_truncated,
-                        primitive_verdict=_router_wire.primitive_verdict(
-                            impact_verdict
-                        ),
-                    )
-                    impact_evidence_id, impact_evidence_code = mint_evidence(
-                        "diff:edit.impact",
-                        "edit",
-                        "impact",
-                        impact_response,
-                        None,
-                    )
-                    if impact_evidence_code == "action_version_missing":
-                        contribution = degraded_unknown(contribution)
-                    else:
-                        contribution = with_evidence(contribution, impact_evidence_id)
-                    record_contribution(
-                        contribution,
-                        facade="edit",
-                        action="impact",
-                        response=impact_response,
-                        request_hash=_request_hash(impact_arguments),
-                        evidence_ids=(
-                            [impact_evidence_id] if impact_evidence_id else []
-                        ),
-                        snapshots=snapshots,
-                        success=True,
-                    )
-                    for record in changed_records or []:
-                        if isinstance(record, dict) and isinstance(
-                            record.get("path"), str
-                        ):
-                            step_fragments.append(
-                                StepFragment(
-                                    route="edit.impact",
-                                    path=record["path"],
-                                    symbol=None,
-                                    locator=record["path"],
-                                    evidence_id=impact_evidence_id,
-                                )
-                            )
+            diff_source = impact_result.diff_source
+            changed_paths = list(impact_result.changed_paths)
+            assessed_scope_paths = list(impact_result.assessed_scope_paths)
+            changed_records = list(impact_result.changed_records)
+            if not session.stopped:
                 if (
                     snapshot_state.diff_snapshot_id
                     and snapshot_state.route_lease_id

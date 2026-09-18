@@ -243,6 +243,69 @@ def test_understand_delegates_index_oracle_before_task_route(monkeypatch) -> Non
     assert outcome.task == "understand"
 
 
+def test_assess_change_delegates_exact_diff_input_to_impact_stage(monkeypatch) -> None:
+    import tree_sitter_analyzer.task._router_impact as impact_router_module
+
+    diff = DiffInput("staged", scope_paths=("scope/only.py",))
+    observed: dict[str, Any] = {}
+
+    async def capture_impact(*, session, diff: DiffInput):
+        observed["diff"] = diff
+        session.snapshots.diff_snapshot_id = "ds_1"
+        session.snapshots.route_lease_id = "lease_1"
+        session.snapshots.impact_source_generation = "gen_1"
+        return impact_router_module.ImpactResult(
+            diff_source="staged",
+            changed_paths=("src/a.py",),
+            assessed_scope_paths=("scope/only.py",),
+            changed_records=({"path": "src/a.py", "status": "modified"},),
+        )
+
+    monkeypatch.setattr(impact_router_module, "run_impact_stage", capture_impact)
+    executor = FakeExecutor()
+
+    outcome = _run(assess_change(AssessChangeRequest(diff=diff), executor))
+
+    assert observed["diff"] is diff
+    assert ("edit", "impact") not in [(f, a) for f, a, _ in executor.calls]
+    constraints_call = next(
+        args for f, a, args in executor.calls if (f, a) == ("edit", "constraints")
+    )
+    assert constraints_call["scope_paths"] == ["scope/only.py"]
+    assert outcome.subject == {
+        "diff": {
+            "source": "staged",
+            "snapshot_id": "ds_1",
+            "changed_paths": ["src/a.py"],
+        }
+    }
+
+
+def test_impact_stage_exception_after_lease_write_still_releases_snapshot(
+    monkeypatch,
+) -> None:
+    import tree_sitter_analyzer.task._router_impact as impact_router_module
+
+    async def explode_after_lease(*, session, diff: DiffInput):
+        session.snapshots.diff_snapshot_id = "ds_1"
+        session.snapshots.route_lease_id = "lease_1"
+        session.snapshots.impact_source_generation = "gen_1"
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(impact_router_module, "run_impact_stage", explode_after_lease)
+    executor = FakeExecutor()
+
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+
+    assert outcome.error == "INTERNAL_ERROR"
+    assert [(f, a) for f, a, _ in executor.calls] == [
+        ("index", "status"),
+        ("edit", "release_snapshot"),
+    ]
+
+
 def test_understand_compact_profile_lowers_cell_values() -> None:
     executor = FakeExecutor()
     outcome = _run(
