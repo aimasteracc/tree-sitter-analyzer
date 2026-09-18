@@ -15,6 +15,7 @@ from tree_sitter_analyzer.no1_010b.record import ExpectedTerminal
 from tree_sitter_analyzer.no1_010b.transcript import (
     ReferenceTranscriptError,
     _apply_reference_edit,
+    _reference_spec,
     _require_tool_success,
     _run_git,
     _touched_paths,
@@ -91,6 +92,101 @@ def test_reference_transcript_reaches_registered_pass(capsys) -> None:
         "candidate execution is not protected by the RFC-0026 B1 sandbox",
         "result cannot support a public VCSR or default-tool claim",
     ]
+
+
+@pytest.mark.parametrize(
+    ("task_id", "task_class", "changed_paths", "target"),
+    [
+        (
+            "no1-010b/0003-refactor-extract-route-registry",
+            "refactor",
+            ["src/dispatch.py", "src/registry.py"],
+            ("dispatch", "src/dispatch.py"),
+        ),
+        (
+            "no1-010b/0004-test-selection-dispatch-version",
+            "test_selection",
+            ["src/dispatch.py"],
+            ("dispatch", "src/dispatch.py"),
+        ),
+        (
+            "no1-010b/0007-migration-drop-legacy-total",
+            "migration",
+            ["src/orders.py"],
+            ("place", "src/orders.py"),
+        ),
+    ],
+)
+def test_reference_transcript_covers_representative_success_scenarios(
+    capsys, task_id, task_class, changed_paths, target
+) -> None:
+    exit_code = main(
+        [
+            "--corpus",
+            str(CORPUS),
+            "--reference-transcript-task",
+            task_id,
+        ]
+    )
+    captured = capsys.readouterr()
+    transcript = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert captured.err == ""
+    assert transcript["task_id"] == task_id
+    assert transcript["task_class"] == task_class
+    assert transcript["patch"]["changed_paths"] == changed_paths
+    assert transcript["calls"][1]["evidence"]["target"]["name"] == target[0]
+    assert transcript["calls"][1]["evidence"]["target"]["file"] == target[1]
+    assert transcript["verification"]["passed"] is True
+    assert transcript["oracle"]["status"] == "PASS"
+    assert transcript["terminal"] == {"verdict": "PASS", "reason_code": None}
+    assert transcript["non_allowed_tree"]["unchanged"] is True
+
+    if task_class == "test_selection":
+        assert transcript["test_selection"] == {
+            "expected": ["tests/test_dispatch.py"],
+            "reported": ["tests/test_dispatch.py"],
+            "matched": True,
+        }
+        impact = next(
+            call for call in transcript["calls"] if call["action"] == "impact"
+        )
+        assert impact["evidence"]["verification_command"] == (
+            "uv run pytest tests/test_dispatch.py -q"
+        )
+    else:
+        assert transcript["test_selection"] is None
+
+
+def test_reference_transcript_preserves_registered_verification_failure(capsys) -> None:
+    task_id = "no1-010b/0006-bugfix-cancel-unknown-order"
+    exit_code = main(
+        [
+            "--corpus",
+            str(CORPUS),
+            "--reference-transcript-task",
+            task_id,
+        ]
+    )
+    captured = capsys.readouterr()
+    transcript = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert captured.err == ""
+    assert transcript["task_id"] == task_id
+    assert transcript["task_class"] == "bugfix"
+    assert transcript["patch"]["changed_paths"] == ["src/orders.py"]
+    verify = next(call for call in transcript["calls"] if call["action"] == "verify")
+    assert verify["success"] is False
+    assert verify["evidence"]["status"] == "failed"
+    assert transcript["verification"]["passed"] is False
+    assert transcript["oracle"]["status"] == "PASS"
+    assert transcript["terminal"] == {
+        "verdict": "FAIL",
+        "reason_code": "VERIFICATION_FAILED",
+    }
+    assert transcript["non_allowed_tree"]["unchanged"] is True
 
 
 def test_non_allowed_digest_tracks_only_protected_files(tmp_path: Path) -> None:
@@ -196,7 +292,7 @@ def test_reference_helpers_reject_failed_git_edit_and_tool_result(tmp_path) -> N
             {"expected_terminal": ExpectedTerminal("FAIL", "ORACLE_FAILED")},
             "must register terminal PASS",
         ),
-        ({"repo": "fixtures/missing"}, "fixture or oracle is missing"),
+        ({"repo": "fixtures/missing"}, "repo does not match its spec"),
     ],
 )
 def test_reference_transcript_rejects_unregistered_inputs(
@@ -206,6 +302,63 @@ def test_reference_transcript_rejects_unregistered_inputs(
 
     with pytest.raises(ReferenceTranscriptError, match=message):
         asyncio.run(run_reference_transcript(record, CORPUS.parent))
+
+
+def test_reference_transcript_rejects_missing_registered_fixture(
+    committed_records, tmp_path
+) -> None:
+    with pytest.raises(
+        ReferenceTranscriptError,
+        match="fixture or oracle is missing",
+    ):
+        asyncio.run(run_reference_transcript(committed_records[0], tmp_path))
+
+
+@pytest.mark.parametrize(
+    ("task_id", "record_change", "field"),
+    [
+        (
+            "no1-010b/0001-bugfix-dispatch-unknown-route",
+            {"repo": "fixtures/orders_service"},
+            "repo",
+        ),
+        (
+            "no1-010b/0001-bugfix-dispatch-unknown-route",
+            {"allowed_paths": ("src/",)},
+            "allowed_paths",
+        ),
+        (
+            "no1-010b/0001-bugfix-dispatch-unknown-route",
+            {"oracle": "oracles/0002.py"},
+            "oracle",
+        ),
+        (
+            "no1-010b/0001-bugfix-dispatch-unknown-route",
+            {"oracle_baseline_reason": "trailing-slash-not-normalized"},
+            "oracle_baseline_reason",
+        ),
+        (
+            "no1-010b/0001-bugfix-dispatch-unknown-route",
+            {"verification_argv": ("python", "-c", "raise SystemExit(0)")},
+            "verification_argv",
+        ),
+        (
+            "no1-010b/0004-test-selection-dispatch-version",
+            {"selected_tests": ("tests/test_registry.py",)},
+            "selected_tests",
+        ),
+    ],
+)
+def test_reference_spec_rejects_registered_record_field_drift(
+    committed_records, task_id, record_change, field
+) -> None:
+    record = next(item for item in committed_records if item.id == task_id)
+
+    with pytest.raises(
+        ReferenceTranscriptError,
+        match=f"reference task {field} does not match its spec",
+    ):
+        _reference_spec(replace(record, **record_change))
 
 
 class _TranscriptFacade:

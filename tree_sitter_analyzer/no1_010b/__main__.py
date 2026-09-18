@@ -4,9 +4,9 @@
 运行测量基础设施。默认路径执行 RFC-0026 §4 预检并输出 B2 报告形状；由于 B1
 沙箱仍未完成，预检继续以零次 attempt 拒绝正式 benchmark。
 
-``--reference-transcript-task`` 只运行仓库自带的固定参考改动，用来验证第一条
-TSA→宿主编辑→验证→oracle 纵向链路。其结果始终是 E0/REFERENCE_ONLY，不调用模型，
-也不取得 VCSR、B1 或公开默认工具声明资格。
+``--reference-transcript-task`` 只运行仓库自带的固定参考改动，用来验证代表性的
+TSA→宿主编辑→验证→oracle 纵向链路，包括成功任务与预注册的验证失败任务。其结果
+始终是 E0/REFERENCE_ONLY，不调用模型，也不取得 VCSR、B1 或公开默认工具声明资格。
 
 provenance 同时记录 analyzer commit 与工作树状态，避免把脏树摘要误称为可复现来源。
 """
@@ -106,7 +106,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--reference-transcript-task",
         default=None,
-        help="Run one internal E0 reference transcript and exit.",
+        help="Run one registered internal E0 reference transcript and exit.",
     )
     return parser
 

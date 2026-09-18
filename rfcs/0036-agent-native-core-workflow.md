@@ -249,6 +249,29 @@ RFC-0013 的 `ignored_params` 方案被本 RFC supersede：对编辑决策工具
 文件摘要。该切片证明工作流可达，不具备 RFC-0026 B1 沙箱、正式 VCSR 或默认工具声明
 资格。
 
+### P4 代表性 transcript 扩展（2026-09-18）
+
+同一 harness 现以预注册规格驱动四类代表性任务，不为每类复制另一套协议：
+
+- `0003-refactor-extract-route-registry` 验证跨文件、行为保持的重构；
+- `0004-test-selection-dispatch-version` 要求 `edit.impact` 报告的 pytest 文件与
+  corpus 的 `selected_tests` 精确相等，再由绑定请求执行选中测试；
+- `0007-migration-drop-legacy-total` 验证调用点从废弃入口迁移到当前入口；
+- `0006-bugfix-cancel-unknown-order` 使用预注册的错误参考补丁，要求 oracle 已满足，
+  同时 `edit.verify` 与完整注册验证都失败，终态固定为
+  `FAIL / VERIFICATION_FAILED`。
+
+每条任务仍先索引，再以任务规格绑定的 symbol 和 file 取得新鲜目标，随后执行
+`structure.outline`、`edit.safe`、宿主编辑、`edit.impact`、`edit.verify`、完整注册验证
+和 oracle。参考改动必须唯一命中固定 anchor；完整 Git 补丁必须通过 parser、allowed
+paths 和精确 changed-path 检查；非 allowed 文件摘要必须保持不变。成功与预期失败都
+只有在实际终态和 corpus 注册值一致时才生成 transcript。该扩展仍是 E0，未改变 B1、
+VCSR 或公开默认工具资格。
+
+固定规格同时绑定 `repo`、`allowed_paths`、oracle 路径与 reason、完整
+`verification_argv` 及 `selected_tests`。同一 task ID 的任一字段漂移都会在复制夹具或
+启动命令前失败，不能借已注册身份替换可执行验证或放宽写入边界。
+
 差分 oracle 使用 `rg` / `fd` / 直接文件切片 / `git diff`，但不把这些实现泄漏为
 TSA 的公共依赖。性能测试记录端到端 wall time，索引认证和恢复时间都进入总成本。
 
