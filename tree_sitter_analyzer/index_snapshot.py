@@ -10,6 +10,7 @@ import threading
 import time
 from collections.abc import Iterator
 from contextlib import ExitStack, closing, contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, cast
 from urllib.parse import quote
@@ -85,6 +86,9 @@ _SOURCE_TOTAL_BYTE_LIMIT = 128 * 1024 * 1024
 _SOURCE_FILE_COUNT_LIMIT = 1024
 _BACKUP_BYTE_BUDGET = _MAX_CHARGED_BYTES - _SNAPSHOT_OVERHEAD_BYTES
 _clock = time.monotonic
+_CERTIFIED_INDEX_REASON: ContextVar[str | None] = ContextVar(
+    "certified_index_reason", default=None
+)
 
 
 def _require_capture_budget(deadline: float) -> None:
@@ -876,8 +880,10 @@ def _read_certified_query_scope(
 
 
 @contextmanager
-def certified_index_read(project_root: str) -> Iterator[CertifiedIndexRead | None]:
-    """复用认证索引 owner，并只认证本次响应实际返回的源码。"""
+def _certified_index_read_status(
+    project_root: str,
+) -> Iterator[tuple[CertifiedIndexRead | None, IndexSnapshot]]:
+    """在同一租约中返回认证 owner 与已发布的快照状态。"""
     deadline = _clock() + _CAPTURE_DEADLINE_SECONDS
     with _lease_certified_query_snapshot(project_root, deadline=deadline) as advertised:
         if (
@@ -885,7 +891,7 @@ def certified_index_read(project_root: str) -> Iterator[CertifiedIndexRead | Non
             or advertised.source_generation is None
             or advertised.completeness != "complete"
         ):
-            yield None
+            yield None, advertised
             return
         with _read_certified_query_scope(
             advertised.snapshot_id,
@@ -895,9 +901,27 @@ def certified_index_read(project_root: str) -> Iterator[CertifiedIndexRead | Non
         ) as (snapshot, connection):
             owner = CertifiedIndexRead(snapshot, connection, deadline)
             try:
-                yield owner
+                yield owner, advertised
             finally:
                 owner.close()
+
+
+@contextmanager
+def certified_index_read(project_root: str) -> Iterator[CertifiedIndexRead | None]:
+    """复用认证索引 owner，并只认证本次响应实际返回的源码。"""
+    with _certified_index_read_status(project_root) as (owner, advertised):
+        token = _CERTIFIED_INDEX_REASON.set(
+            advertised.reason or "INDEX_SNAPSHOT_UNKNOWN"
+        )
+        try:
+            yield owner
+        finally:
+            _CERTIFIED_INDEX_REASON.reset(token)
+
+
+def _certified_index_read_reason() -> str | None:
+    """返回当前认证读取租约内首次发布的失败原因。"""
+    return _CERTIFIED_INDEX_REASON.get()
 
 
 def verify_snapshot_source_current(
