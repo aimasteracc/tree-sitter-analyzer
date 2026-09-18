@@ -249,11 +249,17 @@ class TestPublicSchema:
         )
         schema = f.get_tool_schema()
         assert schema["type"] == "object"
-        assert schema["properties"]["action"]["enum"] == ["alpha", "mid", "zeta"]
+        assert schema["properties"]["action"]["enum"] == [
+            "alpha",
+            "help",
+            "mid",
+            "zeta",
+        ]
         assert schema["required"] == ["action"]
         assert schema["additionalProperties"] is True
         assert (
-            "One of: alpha, mid, zeta" in schema["properties"]["action"]["description"]
+            "One of: alpha, help, mid, zeta"
+            in schema["properties"]["action"]["description"]
         )
 
     def test_核心参数全部声明且不进必填(self):
@@ -262,6 +268,10 @@ class TestPublicSchema:
         for key in _CORE_FACADE_PARAMS:
             assert key in schema["properties"], key
             assert key not in schema["required"]
+        assert schema["properties"]["target_action"] == {
+            "type": "string",
+            "description": "Business action to describe when action is help.",
+        }
 
     def test_额外公开参数进schema但不进必填(self):
         f = FacadeTool(
@@ -305,6 +315,12 @@ class TestValidateArguments:
         f = FacadeTool("demo", {"alpha": _RecordingInner()}, {"bes": _noop_bespoke()})
         assert f.validate_arguments({"action": "alpha"}) is True
         assert f.validate_arguments({"action": "bes"}) is True
+
+    def test_help为渐进发现控制动作(self):
+        f = FacadeTool("demo", {"alpha": _RecordingInner()})
+        assert (
+            f.validate_arguments({"action": "help", "target_action": "alpha"}) is True
+        )
 
     def test_缺失action报错文案(self):
         f = FacadeTool("demo", {"alpha": _RecordingInner()})
@@ -362,3 +378,238 @@ class TestWaveEShortDescription:
     def test_full_description_falls_back_to_the_short_form(self):
         f = FacadeTool("demo", {"alpha": _RecordingInner()})
         assert f.full_description() == f.get_tool_definition()["description"]
+
+
+# ---------- 场景：按需动作 schema 与 Agent 核心工作流 ----------
+
+
+class _DiscoveryInner(_RecordingInner):
+    """声明可配置 schema 的发现协议 fixture。"""
+
+    def __init__(
+        self,
+        name: str,
+        properties: dict[str, dict[str, Any]],
+        required: list[str] | None = None,
+    ) -> None:
+        self._properties = properties
+        self._required = required or []
+        super().__init__(name)
+
+    def get_tool_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": self._properties,
+            "required": self._required,
+            "additionalProperties": False,
+        }
+
+
+def _discovery_facade() -> tuple[FacadeTool, _DiscoveryInner]:
+    symbol = _DiscoveryInner(
+        "symbol",
+        {"query": {"type": "string"}, "limit": {"type": "integer"}},
+        ["query"],
+    )
+    function = _DiscoveryInner(
+        "function",
+        {"function_name": {"type": "string"}},
+        ["function_name"],
+    )
+    return FacadeTool("demo", {"symbol": symbol, "func": function}), symbol
+
+
+class TestActionSchemaDiscovery:
+    def test_help返回版本化核心工作流(self):
+        facade, _inner = _discovery_facade()
+        result = asyncio.run(facade.execute({"action": "help"}))
+
+        assert result["success"] is True
+        assert result["verdict"] == "INFO"
+        assert result["core_profile"] == {
+            "version": "agent-core/v1",
+            "steps": [
+                {"position": 1, "facade": "search", "action": "symbol"},
+                {"position": 2, "facade": "structure", "action": "outline"},
+                {"position": 3, "facade": "nav", "action": "pulse"},
+                {"position": 4, "facade": "edit", "action": "impact"},
+                {"position": 5, "facade": "edit", "action": "verify"},
+            ],
+        }
+        assert result["schema_request"] == {
+            "action": "help",
+            "target_action": "<action>",
+        }
+
+    def test_target_action返回可执行schema且不分发(self):
+        facade, inner = _discovery_facade()
+        result = asyncio.run(
+            facade.execute({"action": "help", "target_action": "symbol"})
+        )
+
+        assert result["success"] is True
+        assert result["schema_status"] == "available"
+        schema = result["action_schema"]
+        assert schema["properties"]["action"] == {
+            "type": "string",
+            "const": "symbol",
+            "description": "Facade action selector.",
+        }
+        assert schema["properties"]["query"] == {"type": "string"}
+        assert schema["properties"]["output_format"]["enum"] == ["json"]
+        assert schema["required"] == ["action", "query"]
+        assert schema["additionalProperties"] is False
+        assert inner.seen_args is None
+
+    def test_schema用anyOf表达symbol别名必填关系(self):
+        from jsonschema import Draft202012Validator
+
+        facade, _inner = _discovery_facade()
+        result = asyncio.run(
+            facade.execute({"action": "help", "target_action": "func"})
+        )
+
+        schema = result["action_schema"]
+        assert schema["properties"]["symbol"]["type"] == "string"
+        assert schema["required"] == ["action"]
+        assert schema["allOf"] == [
+            {"anyOf": [{"required": ["function_name"]}, {"required": ["symbol"]}]}
+        ]
+        Draft202012Validator.check_schema(schema)
+        validator = Draft202012Validator(schema)
+        assert (
+            list(validator.iter_errors({"action": "func", "symbol": "doThing"})) == []
+        )
+        assert list(validator.iter_errors({"action": "func"})) != []
+
+    def test_unknown与bespoke返回不同恢复错误(self):
+        facade = FacadeTool(
+            "demo",
+            {"symbol": _DiscoveryInner("symbol", {"query": {"type": "string"}})},
+            {"content": _noop_bespoke()},
+        )
+
+        unknown = asyncio.run(
+            facade.execute({"action": "help", "target_action": "missing"})
+        )
+        unavailable = asyncio.run(
+            facade.execute({"action": "help", "target_action": "content"})
+        )
+
+        assert unknown["error_code"] == "UNKNOWN_ACTION"
+        assert unknown["available_actions"] == ["content", "symbol"]
+        assert unavailable["error_code"] == "ACTION_SCHEMA_UNAVAILABLE"
+        assert unavailable["target_action"] == "content"
+
+    @pytest.mark.parametrize(
+        ("arguments", "invalid"),
+        [
+            (
+                {"action": "help", "target_action": "symbol", "query": "ignored"},
+                ["query"],
+            ),
+            (
+                {
+                    "action": "help",
+                    "target_action": "symbol",
+                    "output_format": "toon",
+                },
+                ["output_format"],
+            ),
+        ],
+    )
+    def test_help拒绝不会应用的参数(
+        self, arguments: dict[str, Any], invalid: list[str]
+    ):
+        facade, _inner = _discovery_facade()
+        result = asyncio.run(facade.execute(arguments))
+
+        assert result["error_code"] == "INVALID_ARGUMENT"
+        assert result["invalid_arguments"] == invalid
+
+    def test_响应修改不会污染inner_schema(self):
+        facade, _inner = _discovery_facade()
+        first = asyncio.run(
+            facade.execute({"action": "help", "target_action": "symbol"})
+        )
+        first["action_schema"]["properties"]["query"]["type"] = "integer"
+
+        second = asyncio.run(
+            facade.execute({"action": "help", "target_action": "symbol"})
+        )
+        assert second["action_schema"]["properties"]["query"]["type"] == "string"
+
+
+def test_agent核心profile路由存在且业务动作仍为84() -> None:
+    """五步 profile 只组合既有业务动作，不扩大公开业务能力数量。"""
+    from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
+
+    facades, by_name = create_tool_registry(None)
+    result = asyncio.run(by_name["search"].execute({"action": "help"}))
+
+    for step in result["core_profile"]["steps"]:
+        facade = by_name[step["facade"]]
+        assert (
+            step["action"] in facade.action_map or step["action"] in facade.bespoke_map
+        )
+    assert (
+        sum(len(facade.action_map) + len(facade.bespoke_map) for _, facade in facades)
+        == 84
+    )
+
+
+def test_全部direct_action_schema均为有效JSONSchema() -> None:
+    """全部 direct route 都应可发现；bespoke route 应明确报告不可用。"""
+    from jsonschema import Draft202012Validator
+
+    from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
+
+    facades, _by_name = create_tool_registry(None)
+    direct_count = 0
+    bespoke_count = 0
+    for _facade_name, facade in facades:
+        for action in facade.action_map:
+            result = asyncio.run(
+                facade.execute({"action": "help", "target_action": action})
+            )
+            assert result["schema_status"] == "available"
+            Draft202012Validator.check_schema(result["action_schema"])
+            direct_count += 1
+        for action in facade.bespoke_map:
+            result = asyncio.run(
+                facade.execute({"action": "help", "target_action": action})
+            )
+            assert result["error_code"] == "ACTION_SCHEMA_UNAVAILABLE"
+            assert result["schema_status"] == "unavailable"
+            bespoke_count += 1
+
+    assert (direct_count, bespoke_count) == (75, 9)
+
+
+@pytest.mark.parametrize(
+    ("facade_name", "target_action", "required"),
+    [
+        ("search", "symbol", ["action", "query"]),
+        ("structure", "outline", ["action", "file_path"]),
+        ("nav", "pulse", ["action", "file"]),
+        ("edit", "impact", ["action"]),
+        ("edit", "verify", ["action", "request"]),
+    ],
+)
+def test_五个核心动作都有精确机器schema(
+    facade_name: str, target_action: str, required: list[str]
+) -> None:
+    """核心动作应返回可执行 schema，且不附带整份长帮助文本。"""
+    from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
+
+    _facades, by_name = create_tool_registry(None)
+    result = asyncio.run(
+        by_name[facade_name].execute({"action": "help", "target_action": target_action})
+    )
+
+    assert result["schema_status"] == "available"
+    assert "description" not in result
+    schema = result["action_schema"]
+    assert schema["properties"]["action"]["const"] == target_action
+    assert schema["required"] == required
+    assert schema["additionalProperties"] is False

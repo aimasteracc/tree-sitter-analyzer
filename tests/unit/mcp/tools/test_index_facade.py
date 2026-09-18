@@ -388,7 +388,7 @@ def test_schema_includes_action_and_union_params() -> None:
     assert "action" in schema.get("required", [])
     # action enum must contain all 8 actions
     action_enum = set(props["action"].get("enum", []))
-    assert action_enum == _ALL_ACTIONS
+    assert action_enum == _ALL_ACTIONS | {"help"}
 
 
 if __name__ == "__main__":

@@ -7,6 +7,8 @@ The MCP server exposes **8 facade tools** routing **84 actions** via the `action
 
 Reading the tables:
 
+Runtime discovery: call a facade with `action=help` for its business action list and `agent-core/v1` profile, or add `target_action=<name>` to receive that direct action's executable `action_schema`. `help` is a discovery control and is excluded from the business-action count above.
+
 - **Params** — accepted top-level parameters; `*` marks required ones. Facades mechanically alias the canonical `symbol` onto inner `function_name`/`class_name` params (noted inline). Every facade also accepts `action` (required) itself.
 - **Response keys** — the statically declared `ToolResponse` envelope (`get_output_schema()`); `*` marks guaranteed keys. `error` appears on failures. "+ action payload" means the action layers its own result keys on top (`additionalProperties: true`); payload shapes are not statically declared, so they are not listed here — see the facade description for per-action semantics.
 - **CLI twin** — the CLI flag (or console script) covering the same capability, from the CLI-parity contract. 4 actions have no authoritative CLI mapping and show — (honest gap, not an omission).
