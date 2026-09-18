@@ -2702,8 +2702,9 @@ def test_watcher_serializes_capture_through_index_commit(
                 assert overlap.wait(0.2) is False
             finally:
                 release.set()
-            assert first.result(timeout=3)["new_files"] == 1
-            assert second.result(timeout=3)["unchanged_files"] == 1
+            # Windows 全量 runner 在并行磁盘负载下曾需要约 15 秒；事件断言仍保留 3 秒死锁门槛。
+            assert first.result(timeout=20)["new_files"] == 1
+            assert second.result(timeout=20)["unchanged_files"] == 1
         assert cache.get_stats()["total_files"] == 1
     finally:
         release.set()
