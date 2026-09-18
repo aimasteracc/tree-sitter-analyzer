@@ -33,7 +33,7 @@ import time
 from collections.abc import Callable
 from typing import Any, Protocol
 
-from . import _router_task, _router_wire
+from . import _router_index, _router_task, _router_wire
 from ._router_session import (
     RouteSession,
     degraded_unknown,
@@ -60,7 +60,6 @@ from .models import (
 from .projection import StepFragment, project_plan_steps
 from .truth_table import (
     FRESH,
-    MISSING,
     NOT_APPLICABLE,
     UNKNOWN,
     Finding,
@@ -218,7 +217,6 @@ async def _run_route(
     )
     if diff_request and request_diff is not None:
         diff_source = request_diff.source
-    record_freshness = session.record_freshness
     add_unknown = session.add_unknown
     current_snapshots = session.current_snapshots
     mint_evidence = session.mint_evidence
@@ -227,119 +225,7 @@ async def _run_route(
     call = session.call
 
     try:
-        # --- Row 1: authoritative index snapshot oracle (all routes). ---
-        index_response = await call(
-            "all:index.status",
-            "index",
-            "status",
-            {"access_mode": "read_existing", "output_format": "json"},
-        )
-        if index_response is None:  # pragma: no cover - first call is always admitted
-            record_freshness(UNKNOWN, "BUDGET_EXHAUSTED", [])
-            record_not_called("all:index.status", "index", "status")
-        else:
-            index_success = index_response.get("success") is True
-            snapshot_state.index_snapshot_id = index_response.get("snapshot_id")
-            snapshot_state.index_source_generation = index_response.get(
-                "source_generation"
-            )
-            index_completeness = index_response.get("completeness")
-            if (
-                not isinstance(snapshot_state.index_snapshot_id, str)
-                or not snapshot_state.index_snapshot_id
-            ):
-                snapshot_state.index_snapshot_id = None
-            if (
-                not isinstance(snapshot_state.index_source_generation, str)
-                or not snapshot_state.index_source_generation
-            ):
-                snapshot_state.index_source_generation = None
-            snapshot_state.index_complete = index_completeness == "complete"
-            snapshot_state.oracle_fresh = (
-                index_success
-                and snapshot_state.index_snapshot_id is not None
-                and snapshot_state.index_source_generation is not None
-                and snapshot_state.index_complete
-            )
-            if not index_success:
-                record_freshness(
-                    UNKNOWN,
-                    str(
-                        index_response.get("access_reason")
-                        or "AUTHORITATIVE_SNAPSHOT_UNAVAILABLE"
-                    ),
-                    [],
-                )
-                contribution = contribute(
-                    row="all:index.status",
-                    state="failed",
-                    kind="generic",
-                    finding="malformed",
-                    freshness=UNKNOWN,
-                    truncated=False,
-                )
-                record_contribution(
-                    contribution,
-                    facade="index",
-                    action="status",
-                    response=index_response,
-                    request_hash=_request_hash({"access_mode": "read_existing"}),
-                    evidence_ids=[],
-                    snapshots=[],
-                    success=False,
-                )
-                add_unknown("all:index.status", "PRIMITIVE_FAILURE")
-            elif (
-                snapshot_state.index_snapshot_id is None
-                or snapshot_state.index_source_generation is None
-            ):
-                record_freshness(MISSING, "AUTHORITATIVE_SNAPSHOT_UNAVAILABLE", [])
-                contribution = contribute(
-                    row="all:index.status",
-                    state="succeeded",
-                    kind="generic",
-                    finding="malformed",
-                    freshness=MISSING,
-                    truncated=False,
-                )
-                record_contribution(
-                    contribution,
-                    facade="index",
-                    action="status",
-                    response=index_response,
-                    request_hash=_request_hash({"access_mode": "read_existing"}),
-                    evidence_ids=[],
-                    snapshots=[],
-                    success=True,
-                )
-                add_unknown("all:index.status", "AUTHORITATIVE_SNAPSHOT_UNAVAILABLE")
-            else:
-                record_freshness(
-                    FRESH if snapshot_state.index_complete else UNKNOWN,
-                    None
-                    if snapshot_state.index_complete
-                    else f"INCOMPLETE_ORACLE:{index_completeness}",
-                    [snapshot_state.index_snapshot_id],
-                )
-                contribution = contribute(
-                    row="all:index.status",
-                    state="succeeded",
-                    kind="generic",
-                    finding="none",
-                    freshness=FRESH if snapshot_state.index_complete else UNKNOWN,
-                    truncated=False,
-                    primitive_verdict="INFO",
-                )
-                record_contribution(
-                    contribution,
-                    facade="index",
-                    action="status",
-                    response=index_response,
-                    request_hash=_request_hash({"access_mode": "read_existing"}),
-                    evidence_ids=[],
-                    snapshots=current_snapshots(),
-                    success=True,
-                )
+        await _router_index.run_index_oracle(session)
 
         if not session.stopped and diff_request:
             # --- Diff route: impact -> constraints -> fan-out. ---
