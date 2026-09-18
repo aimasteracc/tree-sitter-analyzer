@@ -384,6 +384,67 @@ def test_constraints_stage_exception_still_releases_snapshot(monkeypatch) -> Non
     ]
 
 
+def test_assess_change_delegates_exact_changed_records_to_fanout_stage(
+    monkeypatch,
+) -> None:
+    import tree_sitter_analyzer.task._router_fanout as fanout_router_module
+
+    observed: dict[str, Any] = {}
+
+    async def capture_fanout(*, session, changed_records):
+        observed["changed_records"] = changed_records
+        observed["calls_at_entry"] = [
+            (facade, action) for facade, action, _ in session.executor.calls
+        ]
+        observed["snapshot_tokens"] = (
+            session.snapshots.diff_snapshot_id,
+            session.snapshots.impact_source_generation,
+            session.snapshots.route_lease_id,
+        )
+
+    monkeypatch.setattr(fanout_router_module, "run_fanout_stage", capture_fanout)
+    executor = FakeExecutor()
+
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+
+    assert observed["changed_records"] == tuple(IMPACT_OK["changed_records"])
+    assert observed["calls_at_entry"] == [
+        ("index", "status"),
+        ("edit", "impact"),
+        ("edit", "constraints"),
+    ]
+    assert observed["snapshot_tokens"] == ("ds_1", "gen_1", "lease_1")
+    actions = [(facade, action) for facade, action, _ in executor.calls]
+    assert ("edit", "ast_diff") not in actions
+    assert ("edit", "classify") not in actions
+    assert actions[-1] == ("edit", "release_snapshot")
+    assert outcome.task == "assess_change"
+
+
+def test_fanout_stage_exception_still_releases_snapshot(monkeypatch) -> None:
+    import tree_sitter_analyzer.task._router_fanout as fanout_router_module
+
+    async def explode_fanout(*, session, changed_records):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(fanout_router_module, "run_fanout_stage", explode_fanout)
+    executor = FakeExecutor()
+
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+
+    assert outcome.error == "INTERNAL_ERROR"
+    assert [(facade, action) for facade, action, _ in executor.calls] == [
+        ("index", "status"),
+        ("edit", "impact"),
+        ("edit", "constraints"),
+        ("edit", "release_snapshot"),
+    ]
+
+
 def test_understand_compact_profile_lowers_cell_values() -> None:
     executor = FakeExecutor()
     outcome = _run(

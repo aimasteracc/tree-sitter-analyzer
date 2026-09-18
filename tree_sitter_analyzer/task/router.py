@@ -35,19 +35,12 @@ from typing import Any, Protocol
 
 from . import (
     _router_constraints,
+    _router_fanout,
     _router_impact,
     _router_index,
     _router_task,
-    _router_wire,
 )
-from ._router_session import (
-    RouteSession,
-    degraded_unknown,
-    with_evidence,
-)
-from ._router_session import (
-    request_hash as _request_hash,
-)
+from ._router_session import RouteSession
 from .models import (
     TASK_TEXT_OMITTED,
     AssessChangeRequest,
@@ -63,13 +56,8 @@ from .models import (
     build_subject_diff,
     build_subject_task,
 )
-from .projection import StepFragment, project_plan_steps
-from .truth_table import (
-    FRESH,
-    UNKNOWN,
-    aggregate_status_and_verdict,
-    contribute,
-)
+from .projection import project_plan_steps
+from .truth_table import aggregate_status_and_verdict
 
 #: Stable error codes (RFC-0022 §Fixed task-outcome/v1 semantics).
 INTERNAL_ERROR = "INTERNAL_ERROR"
@@ -78,11 +66,6 @@ DIFF_SNAPSHOT_CLEANUP_FAILED = "DIFF_SNAPSHOT_CLEANUP_FAILED"
 BUDGET_EXHAUSTED = "BUDGET_EXHAUSTED"
 TRUNCATED = "TRUNCATED"
 SOURCE_GENERATION_MISMATCH = "SOURCE_GENERATION_MISMATCH"
-
-_UNSUPPORTED_RECORD_STATUSES = frozenset(
-    {"added", "deleted", "renamed", "A", "D", "R", "C"}
-)
-_STRUCTURAL_INVALID_VERDICTS = frozenset({"REVIEW", "UNSAFE"})
 
 Clock = Callable[[], int]
 
@@ -213,7 +196,6 @@ async def _run_route(
     truncated_rows = ledger.truncated_rows
     truncated_reason: str | None = None
     changed_paths: list[str] = []
-    assessed_scope_paths: list[str] = []
     diff_source = "workspace"
     request_diff = getattr(request, "diff", None)
     diff_request = request_diff is not None and isinstance(
@@ -221,13 +203,6 @@ async def _run_route(
     )
     if diff_request and request_diff is not None:
         diff_source = request_diff.source
-    add_unknown = session.add_unknown
-    current_snapshots = session.current_snapshots
-    mint_evidence = session.mint_evidence
-    record_contribution = session.record_contribution
-    record_not_called = session.record_not_called
-    call = session.call
-
     try:
         await _router_index.run_index_oracle(session)
 
@@ -239,383 +214,16 @@ async def _run_route(
             )
             diff_source = impact_result.diff_source
             changed_paths = list(impact_result.changed_paths)
-            assessed_scope_paths = list(impact_result.assessed_scope_paths)
-            changed_records = list(impact_result.changed_records)
             if not session.stopped:
                 await _router_constraints.run_constraints_stage(
                     session=session,
-                    assessed_scope_paths=tuple(assessed_scope_paths),
+                    assessed_scope_paths=impact_result.assessed_scope_paths,
                 )
 
-                # Fan-out ast_diff + classify over eligible records.
-                if snapshot_state.diff_snapshot_id and not session.stopped:
-                    eligible: list[str] = []
-                    for record in changed_records or []:
-                        if not isinstance(record, dict):
-                            continue
-                        path = record.get("path")
-                        if not isinstance(path, str):
-                            continue
-                        # Frozen ChangedFile records use Git status codes
-                        # (A/D/R/C) plus old/new availability and
-                        # unsupported_kind (Codex review #1290); the fan-out
-                        # requires both materialized sides.
-                        unsupported = (
-                            record.get("binary") is True
-                            or record.get("status") in _UNSUPPORTED_RECORD_STATUSES
-                            or record.get("unsupported_kind") is not None
-                            or record.get("old_available") is False
-                            or record.get("new_available") is False
-                            or record.get("old_kind") not in (None, "file", "missing")
-                            or record.get("new_kind") not in (None, "file", "missing")
-                        )
-                        if unsupported:
-                            add_unknown(
-                                f"diff:edit.ast_diff:{path}",
-                                "not_run:UNSUPPORTED_DIFF_RECORD",
-                            )
-                            add_unknown(
-                                f"diff:edit.classify:{path}",
-                                "not_run:UNSUPPORTED_DIFF_RECORD",
-                            )
-                            continue
-                        eligible.append(path)
-                    sorted_eligible = sorted(set(eligible))
-                    for path_index, path in enumerate(sorted_eligible):  # noqa: C901
-                        ast_diff_arguments = {
-                            "diff_snapshot_id": snapshot_state.diff_snapshot_id,
-                            "file_path": path,
-                            "access_mode": "read_existing",
-                            "output_format": "json",
-                        }
-                        ast_diff_response = await call(
-                            f"diff:edit.ast_diff:{path}",
-                            "edit",
-                            "ast_diff",
-                            ast_diff_arguments,
-                        )
-                        if ast_diff_response is None:
-                            for remaining in sorted_eligible[path_index:]:
-                                record_not_called(
-                                    f"diff:edit.ast_diff:{remaining}",
-                                    "edit",
-                                    "ast_diff",
-                                    kind="structural",
-                                )
-                                record_not_called(
-                                    f"diff:edit.classify:{remaining}",
-                                    "edit",
-                                    "classify",
-                                )
-                            session.stopped = True
-                            break
-                        ast_diff_success = ast_diff_response.get("success") is True
-                        ast_diff_verdict = ast_diff_response.get("verdict")
-                        ast_diff_access_unavailable = _router_wire.access_unavailable(
-                            ast_diff_response
-                        )
-                        if ast_diff_access_unavailable is not None:
-                            contribution = contribute(
-                                row=f"diff:edit.ast_diff:{path}",
-                                state="failed",
-                                kind="structural",
-                                finding="malformed",
-                                freshness=UNKNOWN,
-                                truncated=False,
-                            )
-                            record_contribution(
-                                contribution,
-                                facade="edit",
-                                action="ast_diff",
-                                response=ast_diff_response,
-                                request_hash=_request_hash(ast_diff_arguments),
-                                evidence_ids=[],
-                                snapshots=current_snapshots(),
-                                success=True,
-                            )
-                            add_unknown(
-                                f"diff:edit.ast_diff:{path}",
-                                f"ACCESS_UNAVAILABLE:{ast_diff_access_unavailable}",
-                            )
-                        elif ast_diff_success:
-                            ast_diff_records = _router_wire.echo_records(
-                                ast_diff_response
-                            )
-                            ast_diff_echo_ok = any(
-                                record.kind == "diff"
-                                and record.snapshot_id
-                                == snapshot_state.diff_snapshot_id
-                                and record.source_generation
-                                == snapshot_state.impact_source_generation
-                                for record in ast_diff_records
-                            )
-                            if not ast_diff_echo_ok:
-                                contribution = contribute(
-                                    row=f"diff:edit.ast_diff:{path}",
-                                    state="failed",
-                                    kind="structural",
-                                    finding="malformed",
-                                    freshness=UNKNOWN,
-                                    truncated=False,
-                                )
-                                record_contribution(
-                                    contribution,
-                                    facade="edit",
-                                    action="ast_diff",
-                                    response=ast_diff_response,
-                                    request_hash=_request_hash(ast_diff_arguments),
-                                    evidence_ids=[],
-                                    snapshots=ast_diff_records,
-                                    success=True,
-                                )
-                                add_unknown(
-                                    f"diff:edit.ast_diff:{path}",
-                                    SOURCE_GENERATION_MISMATCH,
-                                )
-                                session.stopped = True
-                                break
-                            finding = (
-                                "invalid"
-                                if ast_diff_verdict in _STRUCTURAL_INVALID_VERDICTS
-                                else _router_wire.finding_from_verdict(ast_diff_verdict)
-                            )
-                            ast_diff_truncated = (
-                                ast_diff_response.get("truncated") is True
-                            )
-                            contribution = contribute(
-                                row=f"diff:edit.ast_diff:{path}",
-                                state="succeeded",
-                                kind="structural",
-                                finding=finding,
-                                freshness=FRESH,
-                                truncated=ast_diff_truncated,
-                                primitive_verdict=_router_wire.primitive_verdict(
-                                    ast_diff_verdict
-                                ),
-                            )
-                            evidence_id, evidence_code = mint_evidence(
-                                f"diff:edit.ast_diff:{path}",
-                                "edit",
-                                "ast_diff",
-                                ast_diff_response,
-                                path,
-                                snapshots=ast_diff_records,
-                            )
-                            if evidence_code == "action_version_missing":
-                                contribution = degraded_unknown(contribution)
-                            else:
-                                contribution = with_evidence(
-                                    contribution, evidence_id, locator=path
-                                )
-                            record_contribution(
-                                contribution,
-                                facade="edit",
-                                action="ast_diff",
-                                response=ast_diff_response,
-                                request_hash=_request_hash(ast_diff_arguments),
-                                evidence_ids=([evidence_id] if evidence_id else []),
-                                snapshots=current_snapshots(),
-                                success=True,
-                            )
-                            step_fragments.append(
-                                StepFragment(
-                                    route="edit.ast_diff",
-                                    path=path,
-                                    symbol=None,
-                                    locator=path,
-                                    evidence_id=evidence_id,
-                                )
-                            )
-                        else:
-                            contribution = contribute(
-                                row=f"diff:edit.ast_diff:{path}",
-                                state="failed",
-                                kind="structural",
-                                finding="malformed",
-                                freshness=UNKNOWN,
-                                truncated=False,
-                            )
-                            record_contribution(
-                                contribution,
-                                facade="edit",
-                                action="ast_diff",
-                                response=ast_diff_response,
-                                request_hash=_request_hash(ast_diff_arguments),
-                                evidence_ids=[],
-                                snapshots=current_snapshots(),
-                                success=False,
-                            )
-                            add_unknown(
-                                f"diff:edit.ast_diff:{path}", "PRIMITIVE_FAILURE"
-                            )
-                        classify_arguments = {
-                            "diff_snapshot_id": snapshot_state.diff_snapshot_id,
-                            "file_path": path,
-                            "access_mode": "read_existing",
-                            "output_format": "json",
-                        }
-                        classify_response = await call(
-                            f"diff:edit.classify:{path}",
-                            "edit",
-                            "classify",
-                            classify_arguments,
-                        )
-                        if classify_response is None:
-                            record_not_called(
-                                f"diff:edit.classify:{path}",
-                                "edit",
-                                "classify",
-                            )
-                            for remaining in sorted_eligible[path_index + 1 :]:
-                                record_not_called(
-                                    f"diff:edit.ast_diff:{remaining}",
-                                    "edit",
-                                    "ast_diff",
-                                    kind="structural",
-                                )
-                                record_not_called(
-                                    f"diff:edit.classify:{remaining}",
-                                    "edit",
-                                    "classify",
-                                )
-                            session.stopped = True
-                            break
-                        classify_success = classify_response.get("success") is True
-                        classify_verdict = classify_response.get("verdict")
-                        classify_access_unavailable = _router_wire.access_unavailable(
-                            classify_response
-                        )
-                        if classify_access_unavailable is not None:
-                            contribution = contribute(
-                                row=f"diff:edit.classify:{path}",
-                                state="failed",
-                                kind="generic",
-                                finding="malformed",
-                                freshness=UNKNOWN,
-                                truncated=False,
-                            )
-                            record_contribution(
-                                contribution,
-                                facade="edit",
-                                action="classify",
-                                response=classify_response,
-                                request_hash=_request_hash(classify_arguments),
-                                evidence_ids=[],
-                                snapshots=current_snapshots(),
-                                success=True,
-                            )
-                            add_unknown(
-                                f"diff:edit.classify:{path}",
-                                f"ACCESS_UNAVAILABLE:{classify_access_unavailable}",
-                            )
-                        elif classify_success:
-                            classify_records = _router_wire.echo_records(
-                                classify_response
-                            )
-                            classify_echo_ok = any(
-                                record.kind == "diff"
-                                and record.snapshot_id
-                                == snapshot_state.diff_snapshot_id
-                                and record.source_generation
-                                == snapshot_state.impact_source_generation
-                                for record in classify_records
-                            )
-                            if not classify_echo_ok:
-                                contribution = contribute(
-                                    row=f"diff:edit.classify:{path}",
-                                    state="failed",
-                                    kind="generic",
-                                    finding="malformed",
-                                    freshness=UNKNOWN,
-                                    truncated=False,
-                                )
-                                record_contribution(
-                                    contribution,
-                                    facade="edit",
-                                    action="classify",
-                                    response=classify_response,
-                                    request_hash=_request_hash(classify_arguments),
-                                    evidence_ids=[],
-                                    snapshots=classify_records,
-                                    success=True,
-                                )
-                                add_unknown(
-                                    f"diff:edit.classify:{path}",
-                                    SOURCE_GENERATION_MISMATCH,
-                                )
-                                session.stopped = True
-                                break
-                            classify_truncated = (
-                                classify_response.get("truncated") is True
-                            )
-                            contribution = contribute(
-                                row=f"diff:edit.classify:{path}",
-                                state="succeeded",
-                                kind="generic",
-                                finding=_router_wire.finding_from_verdict(
-                                    classify_verdict
-                                ),
-                                freshness=FRESH,
-                                truncated=classify_truncated,
-                                primitive_verdict=_router_wire.primitive_verdict(
-                                    classify_verdict
-                                ),
-                            )
-                            evidence_id, evidence_code = mint_evidence(
-                                f"diff:edit.classify:{path}",
-                                "edit",
-                                "classify",
-                                classify_response,
-                                path,
-                                snapshots=classify_records,
-                            )
-                            if evidence_code == "action_version_missing":
-                                contribution = degraded_unknown(contribution)
-                            else:
-                                contribution = with_evidence(
-                                    contribution, evidence_id, locator=path
-                                )
-                            record_contribution(
-                                contribution,
-                                facade="edit",
-                                action="classify",
-                                response=classify_response,
-                                request_hash=_request_hash(classify_arguments),
-                                evidence_ids=([evidence_id] if evidence_id else []),
-                                snapshots=current_snapshots(),
-                                success=True,
-                            )
-                            step_fragments.append(
-                                StepFragment(
-                                    route="edit.classify",
-                                    path=path,
-                                    symbol=None,
-                                    locator=path,
-                                    evidence_id=evidence_id,
-                                )
-                            )
-                        else:
-                            contribution = contribute(
-                                row=f"diff:edit.classify:{path}",
-                                state="failed",
-                                kind="generic",
-                                finding="malformed",
-                                freshness=UNKNOWN,
-                                truncated=False,
-                            )
-                            record_contribution(
-                                contribution,
-                                facade="edit",
-                                action="classify",
-                                response=classify_response,
-                                request_hash=_request_hash(classify_arguments),
-                                evidence_ids=[],
-                                snapshots=current_snapshots(),
-                                success=False,
-                            )
-                            add_unknown(
-                                f"diff:edit.classify:{path}", "PRIMITIVE_FAILURE"
-                            )
+                await _router_fanout.run_fanout_stage(
+                    session=session,
+                    changed_records=impact_result.changed_records,
+                )
         elif (
             not session.stopped and not diff_request
         ):  # pragma: no cover - 路由停止状态只会在分支内部设置
