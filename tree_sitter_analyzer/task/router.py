@@ -33,12 +33,15 @@ import time
 from collections.abc import Callable
 from typing import Any, Protocol
 
-from .evidence import (
-    EvidenceInput,
-    SourceSnapshotRecord,
-    evidence_identity,
-    normalized_result_hash,
+from ._router_session import (
+    RouteSession,
+    degraded_unknown,
+    with_evidence,
 )
+from ._router_session import (
+    request_hash as _request_hash,
+)
+from .evidence import SourceSnapshotRecord
 from .models import (
     TASK_TEXT_OMITTED,
     AssessChangeRequest,
@@ -61,7 +64,6 @@ from .truth_table import (
     MISSING,
     NOT_APPLICABLE,
     UNKNOWN,
-    Contribution,
     Finding,
     aggregate_status_and_verdict,
     contribute,
@@ -190,25 +192,6 @@ def _echo_matches(
     )
 
 
-def _snapshot_wire(records: list[SourceSnapshotRecord]) -> list[dict[str, Any]]:
-    return [
-        {
-            "kind": record.kind,
-            "snapshot_id": record.snapshot_id,
-            "source_generation": record.source_generation,
-        }
-        for record in records
-    ]
-
-
-def _request_hash(arguments: dict[str, Any]) -> str:
-    """Canonical request hash with task text replaced by the fixed scalar."""
-    canonical = dict(arguments)
-    if "task" in canonical:
-        canonical["task"] = TASK_TEXT_OMITTED
-    return normalized_result_hash(canonical)
-
-
 def _project_request(request: TaskRequest) -> TaskRequest:
     """Project the frozen request: task text is never frozen (RFC-0022)."""
     budget = request.budget
@@ -298,263 +281,42 @@ async def _run_route(
     clock: Clock | None,
 ) -> TaskOutcome:
     clock_fn = clock or _default_clock
-    start_ms = clock_fn()
-    budget = request.budget
-    deadline_ms = start_ms + budget.effective_deadline_ms
+    session = RouteSession.from_request(request, executor, clock_fn)
+    budget = session.budget
+    start_ms = session.start_ms
+    snapshot_state = session.snapshots
+    ledger = session.ledger
+    cleanup = session.cleanup
 
-    consumed_calls = 0
-    contributions: list[Contribution] = []
-    evidence: list[dict[str, Any]] = []
-    provenance: list[dict[str, Any]] = []
-    freshness_records: list[dict[str, Any]] = []
-    unknowns: list[dict[str, Any]] = []
-    errors: list[str] = []
-    step_fragments: list[StepFragment] = []
-    relevant_symbols: list[str] = []
-    relevant_paths: list[str] = []
-    verification: list[dict[str, Any]] = []
-    claims: list[dict[str, Any]] = []
-    truncated_rows: list[str] = []
+    contributions = ledger.contributions
+    evidence = ledger.evidence
+    provenance = ledger.provenance
+    freshness_records = ledger.freshness_records
+    unknowns = ledger.unknowns
+    errors = ledger.errors
+    step_fragments = ledger.step_fragments
+    relevant_symbols = ledger.relevant_symbols
+    relevant_paths = ledger.relevant_paths
+    verification = ledger.verification
+    claims = ledger.claims
+    truncated_rows = ledger.truncated_rows
     truncated_reason: str | None = None
-    index_snapshot_id: str | None = None
-    index_source_generation: str | None = None
-    index_complete = False
-    oracle_fresh = False
-    diff_snapshot_id: str | None = None
-    route_lease_id: str | None = None
-    impact_source_generation: str | None = None
     changed_paths: list[str] = []
     assessed_scope_paths: list[str] = []
-    route_stopped = False
     diff_source = "workspace"
     request_diff = getattr(request, "diff", None)
     diff_request = request_diff is not None and isinstance(
         request, (PlanChangeRequest, AssessChangeRequest)
     )
-    if diff_request:
-        assert request_diff is not None
+    if diff_request and request_diff is not None:
         diff_source = request_diff.source
-    cleanup_calls = 0
-    cleanup_wall_ms = 0
-    cleanup_status: str = "not_required"
-    cleanup_error_code: str | None = None
-    routed_end_ms = start_ms
-
-    def record_freshness(freshness: str, reason: str | None, tokens: list[str]) -> None:
-        freshness_records.append(
-            {
-                "freshness": freshness,
-                "reason": reason,
-                "oracle_complete": index_complete,
-                "snapshot_id": index_snapshot_id,
-                "source_generation": index_source_generation,
-                "graph_tokens": tokens,
-            }
-        )
-
-    def add_unknown(row: str, reason: str) -> None:
-        unknowns.append({"row": row, "reason": reason})
-
-    def current_snapshots() -> list[SourceSnapshotRecord]:
-        snapshots: list[SourceSnapshotRecord] = []
-        if index_snapshot_id and index_source_generation:
-            snapshots.append(
-                SourceSnapshotRecord(
-                    kind="index",
-                    snapshot_id=index_snapshot_id,
-                    source_generation=index_source_generation,
-                )
-            )
-        if diff_snapshot_id and impact_source_generation:
-            snapshots.append(
-                SourceSnapshotRecord(
-                    kind="diff",
-                    snapshot_id=diff_snapshot_id,
-                    source_generation=impact_source_generation,
-                )
-            )
-        return snapshots
-
-    def mint_evidence(
-        row: str,
-        facade: str,
-        action: str,
-        response: dict[str, Any],
-        locator: str | None,
-        fragment: dict[str, Any] | None = None,
-        snapshots: list[SourceSnapshotRecord] | None = None,
-    ) -> tuple[str | None, str]:
-        """Mint one evidence ID from the exact wire fragment (RFC-0022).
-
-        Returns ``(evidence_id, code)`` where ``code`` is ``minted``,
-        ``action_version_missing`` (ownership absent -> the contribution must
-        become unknown, RFC-0022 P0.5), or ``budget_exhausted`` (the
-        evidence-item ceiling stopped minting -> the row is truncated).
-        The fragment defaults to the full response; per-fragment minting
-        (one violation or code block) passes the exact fragment bytes.
-        """
-        if len(evidence) >= budget.effective_evidence:
-            truncated_rows.append(row)
-            return None, "budget_exhausted"
-        action_version = response.get("action_version")
-        if not isinstance(action_version, str) or not action_version:
-            add_unknown(row, "ACTION_VERSION_MISSING")
-            return None, "action_version_missing"
-        bound_snapshots = snapshots if snapshots is not None else current_snapshots()
-        canonical_fragment = dict(sorted((fragment or response).items()))
-        result_hash = normalized_result_hash(canonical_fragment)
-        identity = evidence_identity(
-            EvidenceInput(
-                primitive_facade=facade,
-                action=action,
-                action_version=action_version,
-                normalized_result_sha256=result_hash,
-                source_snapshots=tuple(bound_snapshots),
-                locator=locator or "",
-            )
-        )
-        evidence.append(
-            {
-                "evidence_id": identity,
-                "primitive_facade": facade,
-                "action": action,
-                "action_version": action_version,
-                "normalized_result_sha256": result_hash,
-                "source_snapshots": _snapshot_wire(bound_snapshots),
-                "locator": locator,
-            }
-        )
-        return identity, "minted"
-
-    def record_contribution(
-        contribution: Contribution,
-        *,
-        facade: str,
-        action: str,
-        response: dict[str, Any] | None,
-        request_hash: str,
-        evidence_ids: list[str],
-        snapshots: list[SourceSnapshotRecord],
-        success: bool,
-    ) -> None:
-        contributions.append(contribution)
-        verification.append(
-            {
-                "row": contribution.row,
-                "facade": facade,
-                "action": action,
-                "finding": contribution.finding,
-                "freshness": contribution.freshness,
-                "truncated": contribution.truncated,
-                "status_contribution": contribution.status_contribution,
-                "verdict_contribution": contribution.verdict_contribution,
-                "evidence_id": contribution.evidence_id,
-                "locator": contribution.locator,
-            }
-        )
-        provenance.append(
-            {
-                "row": contribution.row,
-                "primitive_facade": facade,
-                "action": action,
-                "action_version": (
-                    response.get("action_version") if response else None
-                ),
-                "request_hash": request_hash,
-                "result_hash": (
-                    normalized_result_hash(dict(sorted(response.items())))
-                    if response
-                    else None
-                ),
-                "source_snapshots": _snapshot_wire(snapshots),
-                "success": success,
-                "verdict": response.get("verdict") if response else None,
-                "truncated": contribution.truncated,
-                "evidence_ids": list(evidence_ids),
-            }
-        )
-
-    def record_not_called(
-        row: str, facade: str, action: str, kind: str = "generic"
-    ) -> None:
-        """Record an omitted required row (budget/deadline) as not_called."""
-        contribution = contribute(
-            row=row,
-            state="not_called",
-            kind=kind,  # type: ignore[arg-type]
-            finding="malformed",
-            freshness=UNKNOWN,
-            truncated=None,
-        )
-        record_contribution(
-            contribution,
-            facade=facade,
-            action=action,
-            response=None,
-            request_hash=_request_hash({}),
-            evidence_ids=[],
-            snapshots=[],
-            success=True,
-        )
-
-    async def call(
-        row: str,
-        facade: str,
-        action: str,
-        arguments: dict[str, Any],
-    ) -> dict[str, Any] | None:
-        """One routed call: budget/deadline admission, then execute.
-
-        Returns ``None`` when budget or deadline stopped the call before
-        admission; a raised executor error degrades to a failed response.
-        """
-        nonlocal consumed_calls
-        if consumed_calls >= budget.effective_calls:
-            truncated_rows.append(row)
-            return None
-        if clock_fn() > deadline_ms:
-            truncated_rows.append(row)
-            return None
-        consumed_calls += 1
-        try:
-            return await executor.call(facade, action, arguments)
-        except Exception:
-            return {"success": False, "verdict": "ERROR"}
-
-    def degraded_unknown(contribution: Contribution) -> Contribution:
-        """RFC-0022 P0.5: missing/disagreeing ownership makes it unknown."""
-        return Contribution(
-            row=contribution.row,
-            kind=contribution.kind,
-            state="succeeded",
-            finding="malformed",
-            freshness=UNKNOWN,
-            truncated=None,
-            status_contribution="unknown",
-            verdict_contribution=None,
-            locator=contribution.locator,
-            evidence_id=None,
-            primitive_verdict=contribution.primitive_verdict,
-        )
-
-    def with_evidence(
-        contribution: Contribution,
-        evidence_id: str | None,
-        locator: str | None = None,
-    ) -> Contribution:
-        return Contribution(
-            row=contribution.row,
-            kind=contribution.kind,
-            state=contribution.state,
-            finding=contribution.finding,
-            freshness=contribution.freshness,
-            truncated=contribution.truncated,
-            status_contribution=contribution.status_contribution,
-            verdict_contribution=contribution.verdict_contribution,
-            locator=(locator if locator is not None else contribution.locator),
-            evidence_id=evidence_id,
-            primitive_verdict=contribution.primitive_verdict,
-        )
+    record_freshness = session.record_freshness
+    add_unknown = session.add_unknown
+    current_snapshots = session.current_snapshots
+    mint_evidence = session.mint_evidence
+    record_contribution = session.record_contribution
+    record_not_called = session.record_not_called
+    call = session.call
 
     try:
         # --- Row 1: authoritative index snapshot oracle (all routes). ---
@@ -569,22 +331,27 @@ async def _run_route(
             record_not_called("all:index.status", "index", "status")
         else:
             index_success = index_response.get("success") is True
-            index_snapshot_id = index_response.get("snapshot_id")
-            index_source_generation = index_response.get("source_generation")
+            snapshot_state.index_snapshot_id = index_response.get("snapshot_id")
+            snapshot_state.index_source_generation = index_response.get(
+                "source_generation"
+            )
             index_completeness = index_response.get("completeness")
-            if not isinstance(index_snapshot_id, str) or not index_snapshot_id:
-                index_snapshot_id = None
             if (
-                not isinstance(index_source_generation, str)
-                or not index_source_generation
+                not isinstance(snapshot_state.index_snapshot_id, str)
+                or not snapshot_state.index_snapshot_id
             ):
-                index_source_generation = None
-            index_complete = index_completeness == "complete"
-            oracle_fresh = (
+                snapshot_state.index_snapshot_id = None
+            if (
+                not isinstance(snapshot_state.index_source_generation, str)
+                or not snapshot_state.index_source_generation
+            ):
+                snapshot_state.index_source_generation = None
+            snapshot_state.index_complete = index_completeness == "complete"
+            snapshot_state.oracle_fresh = (
                 index_success
-                and index_snapshot_id is not None
-                and index_source_generation is not None
-                and index_complete
+                and snapshot_state.index_snapshot_id is not None
+                and snapshot_state.index_source_generation is not None
+                and snapshot_state.index_complete
             )
             if not index_success:
                 record_freshness(
@@ -614,7 +381,10 @@ async def _run_route(
                     success=False,
                 )
                 add_unknown("all:index.status", "PRIMITIVE_FAILURE")
-            elif index_snapshot_id is None or index_source_generation is None:
+            elif (
+                snapshot_state.index_snapshot_id is None
+                or snapshot_state.index_source_generation is None
+            ):
                 record_freshness(MISSING, "AUTHORITATIVE_SNAPSHOT_UNAVAILABLE", [])
                 contribution = contribute(
                     row="all:index.status",
@@ -637,18 +407,18 @@ async def _run_route(
                 add_unknown("all:index.status", "AUTHORITATIVE_SNAPSHOT_UNAVAILABLE")
             else:
                 record_freshness(
-                    FRESH if index_complete else UNKNOWN,
+                    FRESH if snapshot_state.index_complete else UNKNOWN,
                     None
-                    if index_complete
+                    if snapshot_state.index_complete
                     else f"INCOMPLETE_ORACLE:{index_completeness}",
-                    [index_snapshot_id],
+                    [snapshot_state.index_snapshot_id],
                 )
                 contribution = contribute(
                     row="all:index.status",
                     state="succeeded",
                     kind="generic",
                     finding="none",
-                    freshness=FRESH if index_complete else UNKNOWN,
+                    freshness=FRESH if snapshot_state.index_complete else UNKNOWN,
                     truncated=False,
                     primitive_verdict="INFO",
                 )
@@ -663,7 +433,7 @@ async def _run_route(
                     success=True,
                 )
 
-        if not route_stopped and diff_request:
+        if not session.stopped and diff_request:
             # --- Diff route: impact -> constraints -> fan-out. ---
             assert request_diff is not None
             impact_arguments = {
@@ -679,23 +449,33 @@ async def _run_route(
             )
             if impact_response is None:
                 record_not_called("diff:edit.impact", "edit", "impact")
-                route_stopped = True
+                session.stopped = True
             else:
                 impact_success = impact_response.get("success") is True
-                diff_snapshot_id = impact_response.get("diff_snapshot_id")
-                route_lease_id = impact_response.get("route_lease_id")
-                impact_source_generation = impact_response.get("source_generation")
+                snapshot_state.diff_snapshot_id = impact_response.get(
+                    "diff_snapshot_id"
+                )
+                snapshot_state.route_lease_id = impact_response.get("route_lease_id")
+                snapshot_state.impact_source_generation = impact_response.get(
+                    "source_generation"
+                )
                 changed_records = impact_response.get("changed_records")
                 raw_assessed_scope_paths = impact_response.get("assessed_scope_paths")
-                if not isinstance(diff_snapshot_id, str) or not diff_snapshot_id:
-                    diff_snapshot_id = None
-                if not isinstance(route_lease_id, str) or not route_lease_id:
-                    route_lease_id = None
                 if (
-                    not isinstance(impact_source_generation, str)
-                    or not impact_source_generation
+                    not isinstance(snapshot_state.diff_snapshot_id, str)
+                    or not snapshot_state.diff_snapshot_id
                 ):
-                    impact_source_generation = None
+                    snapshot_state.diff_snapshot_id = None
+                if (
+                    not isinstance(snapshot_state.route_lease_id, str)
+                    or not snapshot_state.route_lease_id
+                ):
+                    snapshot_state.route_lease_id = None
+                if (
+                    not isinstance(snapshot_state.impact_source_generation, str)
+                    or not snapshot_state.impact_source_generation
+                ):
+                    snapshot_state.impact_source_generation = None
                 if not isinstance(changed_records, list):
                     changed_records = None
                 assessed_valid = isinstance(raw_assessed_scope_paths, list)
@@ -711,9 +491,9 @@ async def _run_route(
                         changed_paths.append(record["path"])
                 snapshots = current_snapshots()
                 missing_fields = (
-                    diff_snapshot_id is None
-                    or route_lease_id is None
-                    or impact_source_generation is None
+                    snapshot_state.diff_snapshot_id is None
+                    or snapshot_state.route_lease_id is None
+                    or snapshot_state.impact_source_generation is None
                     or changed_records is None
                     or not assessed_valid
                 )
@@ -740,7 +520,7 @@ async def _run_route(
                     add_unknown(
                         "diff:edit.impact", f"ACCESS_UNAVAILABLE:{access_unavailable}"
                     )
-                    route_stopped = True
+                    session.stopped = True
                 elif not impact_success:
                     contribution = contribute(
                         row="diff:edit.impact",
@@ -761,7 +541,7 @@ async def _run_route(
                         success=False,
                     )
                     add_unknown("diff:edit.impact", "PRIMITIVE_FAILURE")
-                    route_stopped = True
+                    session.stopped = True
                 elif missing_fields:
                     contribution = contribute(
                         row="diff:edit.impact",
@@ -782,10 +562,11 @@ async def _run_route(
                         success=True,
                     )
                     add_unknown("diff:edit.impact", "MISSING_SNAPSHOT_FIELDS")
-                    route_stopped = True
+                    session.stopped = True
                 elif (
-                    index_source_generation is not None
-                    and impact_source_generation != index_source_generation
+                    snapshot_state.index_source_generation is not None
+                    and snapshot_state.impact_source_generation
+                    != snapshot_state.index_source_generation
                 ):
                     contribution = contribute(
                         row="diff:edit.impact",
@@ -806,9 +587,9 @@ async def _run_route(
                         success=True,
                     )
                     add_unknown("diff:edit.impact", SOURCE_GENERATION_MISMATCH)
-                    route_stopped = True
+                    session.stopped = True
                 else:
-                    freshness = FRESH if oracle_fresh else UNKNOWN
+                    freshness = FRESH if snapshot_state.oracle_fresh else UNKNOWN
                     impact_verdict = impact_response.get("verdict")
                     impact_truncated = impact_response.get("truncated") is True
                     contribution = contribute(
@@ -857,10 +638,13 @@ async def _run_route(
                                 )
                             )
                 if (
-                    diff_snapshot_id
-                    and route_lease_id
-                    and not route_stopped
-                    and (index_snapshot_id is None or index_source_generation is None)
+                    snapshot_state.diff_snapshot_id
+                    and snapshot_state.route_lease_id
+                    and not session.stopped
+                    and (
+                        snapshot_state.index_snapshot_id is None
+                        or snapshot_state.index_source_generation is None
+                    )
                 ):
                     # Missing oracle tokens stop before constraints/fan-out.
                     contribution = contribute(
@@ -885,15 +669,19 @@ async def _run_route(
                         "diff:edit.constraints",
                         "AUTHORITATIVE_SNAPSHOT_UNAVAILABLE",
                     )
-                    route_stopped = True
-                if diff_snapshot_id and route_lease_id and not route_stopped:
+                    session.stopped = True
+                if (
+                    snapshot_state.diff_snapshot_id
+                    and snapshot_state.route_lease_id
+                    and not session.stopped
+                ):
                     # Reserved constraints slot, immediately after impact.
-                    assert index_snapshot_id is not None
-                    assert index_source_generation is not None
+                    assert snapshot_state.index_snapshot_id is not None
+                    assert snapshot_state.index_source_generation is not None
                     constraints_arguments = {
-                        "diff_snapshot_id": diff_snapshot_id,
-                        "snapshot_id": index_snapshot_id,
-                        "source_generation": index_source_generation,
+                        "diff_snapshot_id": snapshot_state.diff_snapshot_id,
+                        "snapshot_id": snapshot_state.index_snapshot_id,
+                        "source_generation": snapshot_state.index_source_generation,
                         "scope_paths": list(assessed_scope_paths),
                         "persist": False,
                         "access_mode": "read_existing",
@@ -912,7 +700,7 @@ async def _run_route(
                             "constraints",
                             kind="constraints",
                         )
-                        route_stopped = True
+                        session.stopped = True
                     else:
                         constraints_access_unavailable = _access_unavailable(
                             constraints_response
@@ -940,17 +728,21 @@ async def _run_route(
                                 "diff:edit.constraints",
                                 f"ACCESS_UNAVAILABLE:{constraints_access_unavailable}",
                             )
-                            route_stopped = True
+                            session.stopped = True
                         else:
                             records = _echo_records(constraints_response)
                             diff_echo_ok = any(
                                 record.kind == "diff"
-                                and record.snapshot_id == diff_snapshot_id
-                                and record.source_generation == impact_source_generation
+                                and record.snapshot_id
+                                == snapshot_state.diff_snapshot_id
+                                and record.source_generation
+                                == snapshot_state.impact_source_generation
                                 for record in records
                             )
                             index_echo_ok = _echo_matches(
-                                records, index_snapshot_id, index_source_generation
+                                records,
+                                snapshot_state.index_snapshot_id,
+                                snapshot_state.index_source_generation,
                             )
                             state = constraints_response.get("state")
                             reason = constraints_response.get("reason")
@@ -984,7 +776,7 @@ async def _run_route(
                                 add_unknown(
                                     "diff:edit.constraints", "PRIMITIVE_FAILURE"
                                 )
-                                route_stopped = True
+                                session.stopped = True
                             elif state == "not_applicable" and reason == "NO_CONFIG":
                                 # NO_CONFIG cites only the acquired diff
                                 # snapshot (the config probe never opens the
@@ -1015,7 +807,7 @@ async def _run_route(
                                         "diff:edit.constraints",
                                         SOURCE_GENERATION_MISMATCH,
                                     )
-                                    route_stopped = True
+                                    session.stopped = True
                                 else:
                                     contribution = contribute(
                                         row="diff:edit.constraints",
@@ -1060,7 +852,7 @@ async def _run_route(
                                     "diff:edit.constraints",
                                     SOURCE_GENERATION_MISMATCH,
                                 )
-                                route_stopped = True
+                                session.stopped = True
                             else:
                                 constraints_verdict = constraints_response.get(
                                     "verdict"
@@ -1075,7 +867,9 @@ async def _run_route(
                                     state="succeeded",
                                     kind="constraints",
                                     finding=finding,
-                                    freshness=FRESH if oracle_fresh else UNKNOWN,
+                                    freshness=FRESH
+                                    if snapshot_state.oracle_fresh
+                                    else UNKNOWN,
                                     truncated=False,
                                     primitive_verdict=_primitive_verdict(
                                         constraints_verdict
@@ -1140,7 +934,7 @@ async def _run_route(
                                 )
 
                 # Fan-out ast_diff + classify over eligible records.
-                if diff_snapshot_id and not route_stopped:
+                if snapshot_state.diff_snapshot_id and not session.stopped:
                     eligible: list[str] = []
                     for record in changed_records or []:
                         if not isinstance(record, dict):
@@ -1175,7 +969,7 @@ async def _run_route(
                     sorted_eligible = sorted(set(eligible))
                     for path_index, path in enumerate(sorted_eligible):  # noqa: C901
                         ast_diff_arguments = {
-                            "diff_snapshot_id": diff_snapshot_id,
+                            "diff_snapshot_id": snapshot_state.diff_snapshot_id,
                             "file_path": path,
                             "access_mode": "read_existing",
                             "output_format": "json",
@@ -1199,7 +993,7 @@ async def _run_route(
                                     "edit",
                                     "classify",
                                 )
-                            route_stopped = True
+                            session.stopped = True
                             break
                         ast_diff_success = ast_diff_response.get("success") is True
                         ast_diff_verdict = ast_diff_response.get("verdict")
@@ -1233,8 +1027,10 @@ async def _run_route(
                             ast_diff_records = _echo_records(ast_diff_response)
                             ast_diff_echo_ok = any(
                                 record.kind == "diff"
-                                and record.snapshot_id == diff_snapshot_id
-                                and record.source_generation == impact_source_generation
+                                and record.snapshot_id
+                                == snapshot_state.diff_snapshot_id
+                                and record.source_generation
+                                == snapshot_state.impact_source_generation
                                 for record in ast_diff_records
                             )
                             if not ast_diff_echo_ok:
@@ -1260,7 +1056,7 @@ async def _run_route(
                                     f"diff:edit.ast_diff:{path}",
                                     SOURCE_GENERATION_MISMATCH,
                                 )
-                                route_stopped = True
+                                session.stopped = True
                                 break
                             finding = (
                                 "invalid"
@@ -1335,7 +1131,7 @@ async def _run_route(
                                 f"diff:edit.ast_diff:{path}", "PRIMITIVE_FAILURE"
                             )
                         classify_arguments = {
-                            "diff_snapshot_id": diff_snapshot_id,
+                            "diff_snapshot_id": snapshot_state.diff_snapshot_id,
                             "file_path": path,
                             "access_mode": "read_existing",
                             "output_format": "json",
@@ -1364,7 +1160,7 @@ async def _run_route(
                                     "edit",
                                     "classify",
                                 )
-                            route_stopped = True
+                            session.stopped = True
                             break
                         classify_success = classify_response.get("success") is True
                         classify_verdict = classify_response.get("verdict")
@@ -1398,8 +1194,10 @@ async def _run_route(
                             classify_records = _echo_records(classify_response)
                             classify_echo_ok = any(
                                 record.kind == "diff"
-                                and record.snapshot_id == diff_snapshot_id
-                                and record.source_generation == impact_source_generation
+                                and record.snapshot_id
+                                == snapshot_state.diff_snapshot_id
+                                and record.source_generation
+                                == snapshot_state.impact_source_generation
                                 for record in classify_records
                             )
                             if not classify_echo_ok:
@@ -1425,7 +1223,7 @@ async def _run_route(
                                     f"diff:edit.classify:{path}",
                                     SOURCE_GENERATION_MISMATCH,
                                 )
-                                route_stopped = True
+                                session.stopped = True
                                 break
                             classify_truncated = (
                                 classify_response.get("truncated") is True
@@ -1495,11 +1293,14 @@ async def _run_route(
                                 f"diff:edit.classify:{path}", "PRIMITIVE_FAILURE"
                             )
         elif (
-            not route_stopped and not diff_request
+            not session.stopped and not diff_request
         ):  # pragma: no cover - route_stopped is only set inside the branches
             # --- Task route: nav.context (+ edit.safe fan-out for plan). ---
             task_text = getattr(request, "task", "") or ""
-            if index_snapshot_id is None or index_source_generation is None:
+            if (
+                snapshot_state.index_snapshot_id is None
+                or snapshot_state.index_source_generation is None
+            ):
                 contribution = contribute(
                     row=f"{operation}:nav.context",
                     state="not_called",
@@ -1529,8 +1330,8 @@ async def _run_route(
                     "max_code_blocks": 3 if budget.profile == "compact" else 5,
                     "include_graph": False,
                     "access_mode": "read_existing",
-                    "snapshot_id": index_snapshot_id,
-                    "source_generation": index_source_generation,
+                    "snapshot_id": snapshot_state.index_snapshot_id,
+                    "source_generation": snapshot_state.index_source_generation,
                     "output_format": "json",
                 }
                 nav_response = await call(
@@ -1541,11 +1342,13 @@ async def _run_route(
                 )
                 if nav_response is None:
                     record_not_called(f"{operation}:nav.context", "nav", "context")
-                    route_stopped = True
+                    session.stopped = True
                 else:
                     records = _echo_records(nav_response)
                     echo_ok = _echo_matches(
-                        records, index_snapshot_id, index_source_generation
+                        records,
+                        snapshot_state.index_snapshot_id,
+                        snapshot_state.index_source_generation,
                     )
                     nav_success = nav_response.get("success") is True
                     nav_access_unavailable = _access_unavailable(nav_response)
@@ -1572,7 +1375,7 @@ async def _run_route(
                             f"{operation}:nav.context",
                             f"ACCESS_UNAVAILABLE:{nav_access_unavailable}",
                         )
-                        route_stopped = True
+                        session.stopped = True
                     elif not nav_success:
                         contribution = contribute(
                             row=f"{operation}:nav.context",
@@ -1593,7 +1396,7 @@ async def _run_route(
                             success=False,
                         )
                         add_unknown(f"{operation}:nav.context", "PRIMITIVE_FAILURE")
-                        route_stopped = True
+                        session.stopped = True
                     elif not echo_ok:
                         contribution = contribute(
                             row=f"{operation}:nav.context",
@@ -1616,7 +1419,7 @@ async def _run_route(
                         add_unknown(
                             f"{operation}:nav.context", SOURCE_GENERATION_MISMATCH
                         )
-                        route_stopped = True
+                        session.stopped = True
                     else:
                         nav_verdict = nav_response.get("verdict")
                         nav_truncated = nav_response.get("truncated") is True
@@ -1625,7 +1428,7 @@ async def _run_route(
                             state="succeeded",
                             kind="generic",
                             finding=_finding_from_verdict(nav_verdict),
-                            freshness=FRESH if oracle_fresh else UNKNOWN,
+                            freshness=FRESH if snapshot_state.oracle_fresh else UNKNOWN,
                             truncated=nav_truncated,
                             primitive_verdict=_primitive_verdict(nav_verdict),
                         )
@@ -1707,8 +1510,8 @@ async def _run_route(
                                 safe_arguments = {
                                     "file_path": path,
                                     "edit_type": "refactor",
-                                    "snapshot_id": index_snapshot_id,
-                                    "source_generation": index_source_generation,
+                                    "snapshot_id": snapshot_state.index_snapshot_id,
+                                    "source_generation": snapshot_state.index_source_generation,
                                     "access_mode": "read_existing",
                                     "output_format": "json",
                                 }
@@ -1725,13 +1528,13 @@ async def _run_route(
                                             "edit",
                                             "safe",
                                         )
-                                    route_stopped = True
+                                    session.stopped = True
                                     break
                                 safe_records = _echo_records(safe_response)
                                 safe_echo_ok = _echo_matches(
                                     safe_records,
-                                    index_snapshot_id,
-                                    index_source_generation,
+                                    snapshot_state.index_snapshot_id,
+                                    snapshot_state.index_source_generation,
                                 )
                                 safe_success = safe_response.get("success") is True
                                 safe_access_unavailable = _access_unavailable(
@@ -1808,7 +1611,7 @@ async def _run_route(
                                         f"plan_change:edit.safe:{path}",
                                         SOURCE_GENERATION_MISMATCH,
                                     )
-                                    route_stopped = True
+                                    session.stopped = True
                                     break
                                 safe_verdict = safe_response.get("verdict")
                                 safe_truncated = safe_response.get("truncated") is True
@@ -1817,7 +1620,9 @@ async def _run_route(
                                     state="succeeded",
                                     kind="generic",
                                     finding=_finding_from_verdict(safe_verdict),
-                                    freshness=FRESH if oracle_fresh else UNKNOWN,
+                                    freshness=FRESH
+                                    if snapshot_state.oracle_fresh
+                                    else UNKNOWN,
                                     truncated=safe_truncated,
                                     primitive_verdict=_primitive_verdict(safe_verdict),
                                 )
@@ -1855,50 +1660,52 @@ async def _run_route(
                                         evidence_id=evidence_id,
                                     )
                                 )
-        routed_end_ms = clock_fn()
+        session.routed_end_ms = clock_fn()
     finally:
-        if diff_snapshot_id and route_lease_id:
-            cleanup_calls = 1
+        if snapshot_state.diff_snapshot_id and snapshot_state.route_lease_id:
+            cleanup.calls = 1
             cleanup_start = clock_fn()
             try:
                 cleanup_response = await executor.call(
                     "edit",
                     "release_snapshot",
                     {
-                        "diff_snapshot_id": diff_snapshot_id,
-                        "route_lease_id": route_lease_id,
+                        "diff_snapshot_id": snapshot_state.diff_snapshot_id,
+                        "route_lease_id": snapshot_state.route_lease_id,
                     },
                 )
             except Exception:
                 cleanup_response = {"success": False}
-            cleanup_wall_ms = int(clock_fn() - cleanup_start)
+            cleanup.wall_ms = int(clock_fn() - cleanup_start)
             if cleanup_response.get("success") is True:
-                cleanup_status = "succeeded"
+                cleanup.status = "succeeded"
             else:
-                cleanup_status = "failed"
-                cleanup_error_code = DIFF_SNAPSHOT_CLEANUP_FAILED
+                cleanup.status = "failed"
+                cleanup.error_code = DIFF_SNAPSHOT_CLEANUP_FAILED
 
     # --- Freeze one TaskOutcome value. ---
     if truncated_rows:
         truncated_reason = (
-            BUDGET_EXHAUSTED if consumed_calls >= budget.effective_calls else TRUNCATED
+            BUDGET_EXHAUSTED
+            if session.consumed_calls >= budget.effective_calls
+            else TRUNCATED
         )
         errors.append(truncated_reason)
     status, verdict = aggregate_status_and_verdict(contributions)
     # routing wall time excludes the separately-accounted cleanup interval
     # (Codex #1290 P2: cleanup bypasses route admission).
-    routing_wall_ms = int(routed_end_ms - start_ms)
+    routing_wall_ms = int(session.routed_end_ms - start_ms)
     if truncated_rows and status == "complete":
         # Omitted decision-relevant evidence forces partial (RFC-0022).
         status = "partial"
-    if cleanup_status == "failed":
+    if cleanup.status == "failed":
         errors.append(DIFF_SNAPSHOT_CLEANUP_FAILED)
         status = "unknown"
         verdict = "ERROR"
     if diff_request:
         subject = build_subject_diff(
             diff_source,
-            diff_snapshot_id or "",
+            snapshot_state.diff_snapshot_id or "",
             sorted(set(changed_paths)),
         )
     else:
@@ -1945,9 +1752,9 @@ async def _run_route(
         status=status,
         verdict=verdict,
         next_step=next_step,
-        primitive_calls=consumed_calls,
+        primitive_calls=session.consumed_calls,
         evidence_items=len(evidence),
-        cleanup_status=cleanup_status,
+        cleanup_status=cleanup.status,
         plan_steps_count=len(plan_steps),
     )
     return TaskOutcome(
@@ -1972,14 +1779,14 @@ async def _run_route(
             "omitted_rows": truncated_rows,
         },
         consumed=ConsumedBudget(
-            primitive_calls=consumed_calls,
+            primitive_calls=session.consumed_calls,
             evidence_items=len(evidence),
             routing_wall_ms=routing_wall_ms,
             deadline_overrun_ms=max(0, routing_wall_ms - budget.effective_deadline_ms),
-            cleanup_calls=cleanup_calls,
-            cleanup_wall_ms=cleanup_wall_ms,
-            cleanup_status=cleanup_status,  # type: ignore[arg-type]
-            cleanup_error_code=cleanup_error_code,
+            cleanup_calls=cleanup.calls,
+            cleanup_wall_ms=cleanup.wall_ms,
+            cleanup_status=cleanup.status,  # type: ignore[arg-type]
+            cleanup_error_code=cleanup.error_code,
         ),
         error="ERROR" if verdict == "ERROR" else None,
     )
