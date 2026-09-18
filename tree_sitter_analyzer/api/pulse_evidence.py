@@ -72,8 +72,10 @@ def certified_source_read(
     try:
         with index_snapshot.certified_index_read(project_root) as owner:
             if owner is None:
-                with index_snapshot.lease_existing_snapshot(project_root) as snapshot:
-                    raise PulseSourceError(snapshot.reason or "INDEX_SNAPSHOT_UNKNOWN")
+                raise PulseSourceError(
+                    index_snapshot._certified_index_read_reason()
+                    or "INDEX_SNAPSHOT_UNKNOWN"
+                )
             evidence: dict[str, Any] = {
                 "freshness": "unknown",
                 "snapshot_id": owner.snapshot.snapshot_id,

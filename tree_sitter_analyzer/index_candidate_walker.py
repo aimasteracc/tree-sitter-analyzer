@@ -32,17 +32,26 @@ def walk_candidate_entries(
     path_byte_budget: int,
     discovery_seconds: float,
     budget_error: str,
+    start_relative: str = "",
 ) -> Iterable[str]:
     """Yield non-directories while charging every entry before filtering."""
     deadline = time.monotonic() + discovery_seconds
     entry_count = 0
     path_bytes = 0
-    ignore_rules: dict[str, IgnoreRules] = {
-        "": _load_ignore_rules(project_root, "", [])
-    }
+    scan_relative, ignore_rules, scope_ignored = _scope_ignore_rules(
+        project_root, start_relative
+    )
+    if scope_ignored:
+        return
+    scan_root = (
+        os.path.join(project_root, scan_relative) if scan_relative else project_root
+    )
     if os.name != "posix":  # pragma: no cover - exercised by Windows CI
         yield from _walk_path_entries(
             project_root,
+            scan_root,
+            scan_relative,
+            ignore_rules,
             excluded_dir_names,
             entry_budget,
             path_byte_budget,
@@ -62,14 +71,14 @@ def walk_candidate_entries(
     root_identity: tuple[int, int, int] | None = None
     try:
         try:
-            root_fd = os.open(project_root, directory_flags)
+            root_fd = os.open(scan_root, directory_flags)
             root_info = os.fstat(root_fd)
             root_identity = (
                 getattr(root_info, "st_dev", 0),
                 getattr(root_info, "st_ino", 0),
                 getattr(root_info, "st_mode", 0),
             )
-            scanners.append((os.scandir(root_fd), root_fd, ""))
+            scanners.append((os.scandir(root_fd), root_fd, scan_relative))
             root_fd = None  # the scanner frame owns it now
         except OSError as exc:
             raise CandidateDiscoveryError(_DISCOVERY_ERROR) from exc
@@ -149,7 +158,7 @@ def walk_candidate_entries(
         # the caller-visible pathname still names that exact directory.  A
         # rename/replacement must not let an old empty root certify a new tree.
         try:
-            reopened_fd = os.open(project_root, directory_flags)
+            reopened_fd = os.open(scan_root, directory_flags)
         except OSError as exc:
             raise CandidateDiscoveryError(_DISCOVERY_ERROR) from exc
         try:
@@ -182,8 +191,37 @@ def _close_scanner_fd(scanner: Any, fd: int) -> None:
         os.close(fd)
 
 
+def _scope_ignore_rules(
+    project_root: str, start_relative: str
+) -> tuple[str, dict[str, IgnoreRules], bool]:
+    """为子目录扫描预载项目根到 scope 的全部忽略规则。"""
+    normalized = os.path.normpath(start_relative) if start_relative else ""
+    if normalized == ".":
+        normalized = ""
+    if (
+        os.path.isabs(normalized)
+        or normalized == ".."
+        or normalized.startswith(".." + os.sep)
+    ):
+        raise CandidateDiscoveryError(_DISCOVERY_ERROR)
+
+    rules = _load_ignore_rules(project_root, "", [])
+    by_directory: dict[str, IgnoreRules] = {"": rules}
+    current = ""
+    for part in normalized.split(os.sep) if normalized else ():
+        current = os.path.join(current, part) if current else part
+        if _is_gitignored(current, rules, directory=True):
+            return normalized, by_directory, True
+        rules = _load_ignore_rules(project_root, current, rules)
+        by_directory[current] = rules
+    return normalized, by_directory, False
+
+
 def _walk_path_entries(
     project_root: str,
+    scan_root: str,
+    scan_relative: str,
+    ignore_rules: dict[str, IgnoreRules],
     excluded_dir_names: frozenset[str],
     entry_budget: int,
     path_byte_budget: int,
@@ -194,12 +232,9 @@ def _walk_path_entries(
     entry_count = 0
     path_bytes = 0
     scanners: list[tuple[Any, str]] = []
-    ignore_rules: dict[str, IgnoreRules] = {
-        "": _load_ignore_rules(project_root, "", [])
-    }
     try:
         try:
-            scanners.append((os.scandir(project_root), ""))
+            scanners.append((os.scandir(scan_root), scan_relative))
         except OSError as exc:
             raise CandidateDiscoveryError(_DISCOVERY_ERROR) from exc
         while scanners:

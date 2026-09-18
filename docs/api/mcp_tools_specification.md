@@ -435,7 +435,7 @@ Tree-sitter Analyzer MCPサーバーは、AI統合コード解析のための55�
 
 ### 5-7. Retired external-search interfaces
 
-`list_files`, `search_content`, and `find_and_grep` are removed. Use indexed `search action=symbol` or `structure action=sitemap` for code-structure discovery, and `nav action=trace` for bounded current-source verification. An indexed sitemap is not a live arbitrary filesystem listing. For unindexed free-text search, use the host agent's text-search capability.
+`list_files`, `search_content`, and `find_and_grep` are removed. Use native `search action=text` for bounded live literal text, indexed `search action=symbol` or `structure action=sitemap` for code-structure discovery, and `nav action=trace` for current symbol verification. An indexed sitemap is not a live arbitrary filesystem listing.
 
 ## Resources
 
@@ -1133,7 +1133,7 @@ Modes: `diff_files` (two file paths), `diff_strings` (two source strings), `diff
 
 ### 18. batch_search *(retired)*
 
-The ripgrep batch wrapper is removed. Use indexed symbol/query/chain operations, or the host agent's text search for arbitrary unindexed content.
+The ripgrep batch wrapper is removed. Use `search action=text` for bounded live literal content, or indexed symbol/query/chain operations for structural retrieval.
 
 ### 19. build_project_index
 
@@ -1857,7 +1857,7 @@ All error responses now include actionable recovery guidance:
   "error": "File not found: /path/to/missing.py",
   "error_type": "FileNotFoundError",
   "error_category": "file_not_found",
-  "recovery_hint": "The file does not exist at the given path. Verify it with the host agent's live file-search capability. Rebuild the index before using structure action=sitemap for indexed source structure."
+  "recovery_hint": "The file does not exist at the given path. Verify a known literal with search action=text, or check the path directly. Rebuild the index before using structure action=sitemap for indexed source structure."
 }
 ```
 

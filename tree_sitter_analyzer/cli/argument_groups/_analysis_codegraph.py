@@ -17,10 +17,54 @@ from ...mcp.tools.symbol_search_tool import (
 from ...mcp.tools.symbol_search_tool import (
     SYMBOL_SEARCH_KINDS as _SYMBOL_SEARCH_KINDS,
 )
+from ...mcp.tools.text_search_tool import (
+    DEFAULT_TEXT_SEARCH_LIMIT as _DEFAULT_TEXT_SEARCH_LIMIT,
+)
 
 
 def _add_mcp_codegraph_map_options(parser: argparse.ArgumentParser) -> None:
     """Add sitemap, xref, complexity, symbol-search, class-hierarchy, visualize, and UML flags."""
+    parser.add_argument(
+        "--text-search",
+        metavar="QUERY",
+        help="Search admitted live project files for an exact literal line match",
+    )
+    parser.add_argument(
+        "--text-search-root",
+        default=".",
+        help="Project-relative directory scope for --text-search (default: .)",
+    )
+    parser.add_argument(
+        "--text-search-case",
+        choices=["smart", "sensitive", "insensitive"],
+        default="smart",
+        help="Case mode for --text-search (default: smart)",
+    )
+    parser.add_argument(
+        "--text-search-word",
+        action="store_true",
+        help="Match the literal as a Unicode word for --text-search",
+    )
+    parser.add_argument(
+        "--text-search-include",
+        action="append",
+        default=[],
+        metavar="GLOB",
+        help="Include glob relative to --text-search-root; repeatable",
+    )
+    parser.add_argument(
+        "--text-search-exclude",
+        action="append",
+        default=[],
+        metavar="GLOB",
+        help="Exclude glob relative to --text-search-root; repeatable",
+    )
+    parser.add_argument(
+        "--text-search-limit",
+        type=int,
+        default=_DEFAULT_TEXT_SEARCH_LIMIT,
+        help=f"Displayed result limit for --text-search (default: {_DEFAULT_TEXT_SEARCH_LIMIT})",
+    )
     parser.add_argument(
         "--codegraph-sitemap",
         action="store_true",

@@ -540,7 +540,7 @@ class TestActionSchemaDiscovery:
         assert second["action_schema"]["properties"]["query"]["type"] == "string"
 
 
-def test_agent核心profile路由存在且业务动作仍为84() -> None:
+def test_agent核心profile路由存在且业务动作仍为85() -> None:
     """五步 profile 只组合既有业务动作，不扩大公开业务能力数量。"""
     from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
 
@@ -554,7 +554,7 @@ def test_agent核心profile路由存在且业务动作仍为84() -> None:
         )
     assert (
         sum(len(facade.action_map) + len(facade.bespoke_map) for _, facade in facades)
-        == 84
+        == 85
     )
 
 
@@ -583,7 +583,7 @@ def test_全部direct_action_schema均为有效JSONSchema() -> None:
             assert result["schema_status"] == "unavailable"
             bespoke_count += 1
 
-    assert (direct_count, bespoke_count) == (75, 9)
+    assert (direct_count, bespoke_count) == (76, 9)
 
 
 @pytest.mark.parametrize(

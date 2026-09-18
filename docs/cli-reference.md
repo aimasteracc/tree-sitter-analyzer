@@ -266,10 +266,11 @@ uv run tree-sitter-analyzer --filter-help
 
 ## Search and Discovery
 
-TSA no longer installs or wraps fd/ripgrep. Build the project index once, use symbol/graph/AST queries for candidate discovery, then use bounded source trace when current text evidence is required. For arbitrary unindexed text, use the host agent's search tool.
+TSA does not install or wrap fd/ripgrep. Use the native no-index text action for current literal text, or build the project index and use symbol/graph/AST queries for structural discovery. The text action returns deterministic live-source coordinates, complete counts before display truncation, and explicit scan evidence.
 
 ```bash
 uv run tree-sitter-analyzer --full-index --format json
+uv run tree-sitter-analyzer --text-search "exact literal" --text-search-root src --format json
 uv run tree-sitter-analyzer --symbol-search UserService --format json
 uv run tree-sitter-analyzer --codegraph-sitemap --codegraph-sitemap-mode flat --format json
 uv run tree-sitter-analyzer --trace-impact --trace-impact-symbol authenticate --format json

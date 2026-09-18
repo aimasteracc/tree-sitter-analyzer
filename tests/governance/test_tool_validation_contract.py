@@ -101,7 +101,7 @@ def _survey() -> tuple[list[str], int]:
 def test_the_survey_found_the_tools_it_constrains() -> None:
     """精确固定声明两个方法的工具数，防止扫描器空跑后仍然通过。"""
     _unguarded, declaring = _survey()
-    assert declaring == 82, (
+    assert declaring == 83, (
         f"expected 82 tool classes declaring validate_arguments and execute, "
         f"found {declaring}; update this constant if the tool set legitimately "
         "changed, otherwise the AST walk no longer matches how tools are written"

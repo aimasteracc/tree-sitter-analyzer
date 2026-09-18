@@ -9,8 +9,8 @@ This guide describes the breaking search-surface and encoding changes released i
 | MCP response encoding | TOON by default | JSON only; remove TOON decoding and consume the structured response envelope |
 | CLI machine-readable encoding | JSON available | `--format json`; TOON is removed |
 | Table rendering | Additional legacy table formats | `--table full` or `--table signatures`; compact/csv table modes are removed |
-| Text-search wrappers | `search.content`, `search.grep`; legacy `search_content`, `find_and_grep`; `search-content`, `find-and-grep` commands | Removed; use the host's text/file search tools, or invoke a suitable text-search program directly |
-| External-tool wrappers | `search.batch`, `project.files`, `project.tools`, `list-files`, `--check-tools` | Removed; use indexed search/structure views, bounded native trace, or a host text-search tool according to the task |
+| Text-search wrappers | `search.content`, `search.grep`; legacy `search_content`, `find_and_grep`; `search-content`, `find-and-grep` commands | Removed; use bounded native `search action=text` / `--text-search` for literal live-source search |
+| External-tool wrappers | `search.batch`, `project.files`, `project.tools`, `list-files`, `--check-tools` | Removed; use native literal search, indexed search/structure views, or bounded trace according to the task |
 | Internal file discovery and live symbol tracing | External search processes | Native discovery and a bounded Python source-scanning worker |
 | Python MCP compatibility classes | `MCPTool`, `UniversalAnalyzeTool`, and `server.universal_analyze_tool` | Removed; extend `BaseMCPTool` and use `structure action=analyze` / `AnalyzeCodeStructureTool` |
 
@@ -19,7 +19,7 @@ replacements for arbitrary text search in unindexed files. Likewise, indexed
 `structure action=sitemap` is not a live filesystem listing. Native source
 occurrences are heuristic text evidence, not proof of AST call relationships.
 
-The v2.0.0 surface has **84 facade actions, 354 unique long CLI flags, and six console-script entry points**. The three published v1.29.5 routes `edit.rename`,
+The v2.0.0 surface has **85 facade actions, 361 unique long CLI flags, and six console-script entry points**. The three published v1.29.5 routes `edit.rename`,
 `health.unreachable`, and `health.middleware` remain available. Explicit rename
 apply can write files; `edit.plan_rename` remains preview-only.
 

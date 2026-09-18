@@ -12,7 +12,7 @@ All tools return **JSON output** (locked — see `CLAUDE.md`). Response-envelope
 
 | MCP name | action= | Purpose |
 |---|---|---|
-| `search` | symbol / query / chain / select / subscribe / unsubscribe / tql_schema / tql_execute / semantic | Code search: BM25 symbol lookup, tree-sitter .scm DSL, indexed semantic retrieval, graph-chain DSL, Hyphae DSL, reactive push subscriptions (RFC-0001) |
+| `search` | text / symbol / query / chain / select / subscribe / unsubscribe / tql_schema / tql_execute / semantic | Code search: bounded live-source literal text scan, BM25 symbol lookup, tree-sitter .scm DSL, indexed semantic retrieval, graph-chain DSL, Hyphae DSL, reactive push subscriptions (RFC-0001) |
 | `nav` | pulse / pulse_batch / navigate / call_path / xref / resolve / lineage / impact / trace / context / callers / callees / callee_tree / caller_tree / test_map / co_change | Call-graph navigation + one-call symbol context; test_map = which tests exercise a function (RFC-0014 Phase B); co_change = git-history temporal coupling (RFC-0014 Phase C) |
 | `structure` | outline / analyze / ast_path / sitemap / class_tree / class_detail / explore / read / signatures | Structural AST analysis + partial file read + signature-only listing |
 | `health` | project / file / scale / patterns / heatmap / imports / matrix / dead / unreachable / routes / middleware / overview / deps / test_gap / self / refactor_queue | Code health, complexity, dependency analysis, untested symbol discovery; `self` = RFC-0025 Layer 5 self-proprioception (per-`(tool, action)` p50/p95 latency by tier + in-process analysis-cache hit rate + on-disk AST-index state, for the current process; CLI twin `--self-health`); `refactor_queue` = RFC-0027 §L8 top-N prioritized refactor queue ranked by `(1 - health/100) * log(1 + churn_30d) * (dead_ratio + 0.1)`, CLI twin `--refactor-queue` |
@@ -38,7 +38,7 @@ legacy MCP name is now reached via its facade (`old_name` →
 | `get_code_outline` | `--outline` | Hierarchical outline (package → class → method) without method bodies |
 | `extract_code_section` | `--partial-read --start-line N --end-line M` | Token-efficient line range |
 | `query_code` | `--query-key methods --filter "public=true"` | tree-sitter query DSL |
-| ~~`search_content`~~ | *(retired)* | Use indexed `search action=symbol`, AST queries, or bounded `nav action=trace` as appropriate |
+| ~~`search_content`~~ | *(retired)* | Use `search action=text` for exact live text, indexed `search action=symbol` for identifiers, or AST queries as appropriate |
 | ~~`find_and_grep`~~ | *(retired)* | Use indexed `structure action=sitemap` for structure and verify candidates against source |
 | `list_agent_skills` | `--list-skills` | Curated skill index for AI agents |
 | `get_agent_workflow` | `--smart-context` | SMART workflow (Set→Map→Analyze→Retrieve→Trace) |
@@ -70,6 +70,7 @@ legacy MCP name is now reached via its facade (`old_name` →
 | `codegraph_explore` | `--codegraph-explore` | BULK fetch N related symbols' source + relationship map |
 | `codegraph_query` | `--codegraph-query` | jQuery-style chained graph query with lexical `search()`, offline `semantic()`, filter/exclude/has selection, cached relationship expansion, Mermaid `uml()` facets, compact answer packs, and evidence facets |
 | `codegraph_symbol_search` | `--symbol-search` | FTS5-powered symbol search over indexed project |
+| `search_text` | `--text-search` | No-index live literal text search with smart/sensitive/insensitive case modes, word matching, glob filters, deterministic ordering, and complete-count evidence |
 | `codegraph_resolve` | `--symbol-resolve` | Go-to-definition / find-all-references |
 | `codegraph_ast_path` | `--ast-path` | "What is at file:line?" AST path/scope |
 | **CodeGraph parity — call graph** | | |

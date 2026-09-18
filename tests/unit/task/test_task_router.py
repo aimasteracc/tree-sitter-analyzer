@@ -186,6 +186,265 @@ def test_understand_runs_exact_route_and_parameters() -> None:
     }
 
 
+def test_understand_delegates_task_route_after_index_oracle(monkeypatch) -> None:
+    import tree_sitter_analyzer.task._router_task as task_router_module
+
+    observed: dict[str, Any] = {}
+
+    async def capture_task_route(*, session, operation: str, task: str) -> None:
+        observed["operation"] = operation
+        observed["task"] = task
+        observed["calls"] = list(session.executor.calls)
+
+    monkeypatch.setattr(task_router_module, "run_task_route", capture_task_route)
+    executor = FakeExecutor()
+
+    outcome = _run(understand(UnderstandRequest(task="trace dispatch"), executor))
+
+    assert observed == {
+        "operation": "understand",
+        "task": "trace dispatch",
+        "calls": [
+            (
+                "index",
+                "status",
+                {"access_mode": "read_existing", "output_format": "json"},
+            )
+        ],
+    }
+    assert outcome.status == "complete"
+    assert outcome.verdict == "INFO"
+
+
+def test_understand_delegates_index_oracle_before_task_route(monkeypatch) -> None:
+    import tree_sitter_analyzer.task._router_index as index_router_module
+    import tree_sitter_analyzer.task._router_task as task_router_module
+
+    observed: list[str] = []
+
+    async def capture_index_oracle(session) -> None:
+        observed.append("index")
+        session.snapshots.index_snapshot_id = "idx_snap_1"
+        session.snapshots.index_source_generation = "gen_1"
+        session.snapshots.index_complete = True
+        session.snapshots.oracle_fresh = True
+
+    async def capture_task_route(*, session, operation: str, task: str) -> None:
+        observed.append(f"task:{operation}:{task}")
+
+    monkeypatch.setattr(index_router_module, "run_index_oracle", capture_index_oracle)
+    monkeypatch.setattr(task_router_module, "run_task_route", capture_task_route)
+    executor = FakeExecutor()
+
+    outcome = _run(understand(UnderstandRequest(task="trace dispatch"), executor))
+
+    assert observed == ["index", "task:understand:trace dispatch"]
+    assert executor.calls == []
+    assert outcome.task == "understand"
+
+
+def test_assess_change_delegates_exact_diff_input_to_impact_stage(monkeypatch) -> None:
+    import tree_sitter_analyzer.task._router_impact as impact_router_module
+
+    diff = DiffInput("staged", scope_paths=("scope/only.py",))
+    observed: dict[str, Any] = {}
+
+    async def capture_impact(*, session, diff: DiffInput):
+        observed["diff"] = diff
+        session.snapshots.diff_snapshot_id = "ds_1"
+        session.snapshots.route_lease_id = "lease_1"
+        session.snapshots.impact_source_generation = "gen_1"
+        return impact_router_module.ImpactResult(
+            diff_source="staged",
+            changed_paths=("src/a.py",),
+            assessed_scope_paths=("scope/only.py",),
+            changed_records=({"path": "src/a.py", "status": "modified"},),
+        )
+
+    monkeypatch.setattr(impact_router_module, "run_impact_stage", capture_impact)
+    executor = FakeExecutor()
+
+    outcome = _run(assess_change(AssessChangeRequest(diff=diff), executor))
+
+    assert observed["diff"] is diff
+    assert ("edit", "impact") not in [(f, a) for f, a, _ in executor.calls]
+    constraints_call = next(
+        args for f, a, args in executor.calls if (f, a) == ("edit", "constraints")
+    )
+    assert constraints_call["scope_paths"] == ["scope/only.py"]
+    assert outcome.subject == {
+        "diff": {
+            "source": "staged",
+            "snapshot_id": "ds_1",
+            "changed_paths": ["src/a.py"],
+        }
+    }
+
+
+def test_impact_stage_exception_after_lease_write_still_releases_snapshot(
+    monkeypatch,
+) -> None:
+    import tree_sitter_analyzer.task._router_impact as impact_router_module
+
+    async def explode_after_lease(*, session, diff: DiffInput):
+        session.snapshots.diff_snapshot_id = "ds_1"
+        session.snapshots.route_lease_id = "lease_1"
+        session.snapshots.impact_source_generation = "gen_1"
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(impact_router_module, "run_impact_stage", explode_after_lease)
+    executor = FakeExecutor()
+
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+
+    assert outcome.error == "INTERNAL_ERROR"
+    assert [(f, a) for f, a, _ in executor.calls] == [
+        ("index", "status"),
+        ("edit", "release_snapshot"),
+    ]
+
+
+def test_assess_change_delegates_assessed_scope_to_constraints_stage(
+    monkeypatch,
+) -> None:
+    import tree_sitter_analyzer.task._router_constraints as constraints_router_module
+
+    observed: dict[str, Any] = {}
+
+    async def capture_constraints(*, session, assessed_scope_paths):
+        observed["session"] = session
+        observed["assessed_scope_paths"] = assessed_scope_paths
+        observed["calls_at_entry"] = [
+            (facade, action) for facade, action, _ in session.executor.calls
+        ]
+        observed["snapshot_tokens"] = (
+            session.snapshots.index_snapshot_id,
+            session.snapshots.index_source_generation,
+            session.snapshots.diff_snapshot_id,
+            session.snapshots.impact_source_generation,
+            session.snapshots.route_lease_id,
+        )
+
+    monkeypatch.setattr(
+        constraints_router_module, "run_constraints_stage", capture_constraints
+    )
+    executor = FakeExecutor()
+
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+
+    assert observed["assessed_scope_paths"] == (
+        "src/a.py",
+        "src/b.py",
+        "src/del.py",
+    )
+    assert observed["calls_at_entry"] == [
+        ("index", "status"),
+        ("edit", "impact"),
+    ]
+    assert observed["snapshot_tokens"] == (
+        "idx_snap_1",
+        "gen_1",
+        "ds_1",
+        "gen_1",
+        "lease_1",
+    )
+    assert ("edit", "constraints") not in [
+        (facade, action) for facade, action, _ in executor.calls
+    ]
+    assert ("edit", "ast_diff") in [
+        (facade, action) for facade, action, _ in executor.calls
+    ]
+    assert outcome.task == "assess_change"
+
+
+def test_constraints_stage_exception_still_releases_snapshot(monkeypatch) -> None:
+    import tree_sitter_analyzer.task._router_constraints as constraints_router_module
+
+    async def explode_constraints(*, session, assessed_scope_paths):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        constraints_router_module, "run_constraints_stage", explode_constraints
+    )
+    executor = FakeExecutor()
+
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+
+    assert outcome.error == "INTERNAL_ERROR"
+    assert [(facade, action) for facade, action, _ in executor.calls] == [
+        ("index", "status"),
+        ("edit", "impact"),
+        ("edit", "release_snapshot"),
+    ]
+
+
+def test_assess_change_delegates_exact_changed_records_to_fanout_stage(
+    monkeypatch,
+) -> None:
+    import tree_sitter_analyzer.task._router_fanout as fanout_router_module
+
+    observed: dict[str, Any] = {}
+
+    async def capture_fanout(*, session, changed_records):
+        observed["changed_records"] = changed_records
+        observed["calls_at_entry"] = [
+            (facade, action) for facade, action, _ in session.executor.calls
+        ]
+        observed["snapshot_tokens"] = (
+            session.snapshots.diff_snapshot_id,
+            session.snapshots.impact_source_generation,
+            session.snapshots.route_lease_id,
+        )
+
+    monkeypatch.setattr(fanout_router_module, "run_fanout_stage", capture_fanout)
+    executor = FakeExecutor()
+
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+
+    assert observed["changed_records"] == tuple(IMPACT_OK["changed_records"])
+    assert observed["calls_at_entry"] == [
+        ("index", "status"),
+        ("edit", "impact"),
+        ("edit", "constraints"),
+    ]
+    assert observed["snapshot_tokens"] == ("ds_1", "gen_1", "lease_1")
+    actions = [(facade, action) for facade, action, _ in executor.calls]
+    assert ("edit", "ast_diff") not in actions
+    assert ("edit", "classify") not in actions
+    assert actions[-1] == ("edit", "release_snapshot")
+    assert outcome.task == "assess_change"
+
+
+def test_fanout_stage_exception_still_releases_snapshot(monkeypatch) -> None:
+    import tree_sitter_analyzer.task._router_fanout as fanout_router_module
+
+    async def explode_fanout(*, session, changed_records):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(fanout_router_module, "run_fanout_stage", explode_fanout)
+    executor = FakeExecutor()
+
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+
+    assert outcome.error == "INTERNAL_ERROR"
+    assert [(facade, action) for facade, action, _ in executor.calls] == [
+        ("index", "status"),
+        ("edit", "impact"),
+        ("edit", "constraints"),
+        ("edit", "release_snapshot"),
+    ]
+
+
 def test_understand_compact_profile_lowers_cell_values() -> None:
     executor = FakeExecutor()
     outcome = _run(
@@ -581,6 +840,25 @@ def test_budget_exhaustion_stops_before_call() -> None:
     assert actions == [("index", "status"), ("nav", "context"), ("edit", "safe")]
     assert "BUDGET_EXHAUSTED" in outcome.errors
     assert outcome.consumed.primitive_calls == 3
+
+
+def test_route_session_admits_only_the_budgeted_number_of_calls() -> None:
+    from tree_sitter_analyzer.task._router_session import RouteSession
+
+    executor = FakeExecutor()
+    request = UnderstandRequest(
+        task="x",
+        budget=Budget(profile="standard", max_primitive_calls=1),
+    )
+    session = RouteSession.from_request(request, executor, lambda: 0)
+
+    first = _run(session.call("first", "index", "status", {}))
+    second = _run(session.call("second", "nav", "context", {}))
+
+    assert first == INDEX_OK
+    assert second is None
+    assert session.consumed_calls == 1
+    assert session.ledger.truncated_rows == ["second"]
 
 
 def test_failed_calls_consume_budget() -> None:
@@ -1044,6 +1322,23 @@ def test_internal_error_guard_freezes_internal_error_outcome(monkeypatch) -> Non
     outcome = _run(
         plan_change(PlanChangeRequest(diff=DiffInput("workspace")), executor)
     )
+    assert outcome.success is False
+    assert outcome.verdict == "ERROR"
+    assert "INTERNAL_ERROR" in outcome.errors
+
+
+def test_task_route_projection_stays_in_router_internal_error_guard(
+    monkeypatch,
+) -> None:
+    import tree_sitter_analyzer.task.router as router_module
+
+    def boom(fragments):
+        raise RuntimeError("router bug")
+
+    monkeypatch.setattr(router_module, "project_plan_steps", boom)
+    executor = FakeExecutor()
+    outcome = _run(plan_change(PlanChangeRequest(task="refactor dispatch"), executor))
+
     assert outcome.success is False
     assert outcome.verdict == "ERROR"
     assert "INTERNAL_ERROR" in outcome.errors

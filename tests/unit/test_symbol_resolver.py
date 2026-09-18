@@ -3,6 +3,7 @@
 
 import os
 import sqlite3
+from contextlib import contextmanager
 
 import pytest
 
@@ -360,6 +361,48 @@ class TestCodeGraphSymbolResolveExecution:
             "definition_count": 0,
             "definitions": [],
         }
+
+    async def test_stale_source_evidence_reuses_first_snapshot(
+        self, tmp_path, monkeypatch
+    ):
+        """源码过期时沿用首次快照原因，不能在 pin 内再次捕获。"""
+        from tree_sitter_analyzer import index_snapshot
+        from tree_sitter_analyzer.api.pulse_evidence import (
+            PulseSourceError,
+            certified_source_read,
+        )
+        from tree_sitter_analyzer.index_snapshot_registry import IndexSnapshot
+
+        captures = 0
+        stale = IndexSnapshot(
+            "idx_stale",
+            "sha256:source",
+            "sha256:index",
+            "generation",
+            "partial",
+            "SOURCE_INDEX_MISMATCH",
+            str(tmp_path),
+            1,
+        )
+
+        @contextmanager
+        def lease_existing_snapshot(project_root, *, deadline=None):
+            nonlocal captures
+            captures += 1
+            if captures > 1:
+                raise RuntimeError("INDEX_SNAPSHOT_CAPACITY")
+            yield stale
+
+        monkeypatch.setattr(
+            index_snapshot, "lease_existing_snapshot", lease_existing_snapshot
+        )
+
+        with pytest.raises(PulseSourceError) as error:
+            with certified_source_read(str(tmp_path)):
+                pytest.fail("过期快照不能发布认证读取")
+
+        assert error.value.reason == "SOURCE_INDEX_MISMATCH"
+        assert captures == 1
 
     async def test_resolve_mode(self, indexed_project):
         tool = CodeGraphSymbolResolveTool(str(indexed_project))
