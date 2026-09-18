@@ -207,11 +207,25 @@ def attach_commands(response: dict[str, Any], context: Any) -> dict[str, Any]:
         for key, stage in fields.items()
         if response.get(key) and not within_budget(response[key])
     }
-    if not oversized and context.request.read_only:
+    request_context = context.request
+    read_only = bool(getattr(request_context, "read_only", False))
+    binding_fields = (
+        "mode",
+        "changed_files",
+        "project_root",
+        "include_tests",
+        "scope_paths",
+        "resource_profile",
+        "pr_url",
+    )
+    if not oversized and (
+        read_only
+        or any(not hasattr(request_context, field) for field in binding_fields)
+    ):
         return response
-    root = str(Path(context.request.project_root or ".").resolve())
+    root = str(Path(getattr(request_context, "project_root", None) or ".").resolve())
     try:
-        if context.request.read_only:
+        if read_only:
             raise ValueError("VERIFICATION_SNAPSHOT_NOT_REPLAYABLE")
         stages = compile_stages(context)
         request = request_binding(context)
@@ -253,7 +267,10 @@ def attach_commands(response: dict[str, Any], context: Any) -> dict[str, Any]:
             return value
 
         return cast(dict[str, Any], replace(response))
-    except (ValueError, OSError, subprocess.SubprocessError) as exc:
+    except (AttributeError, ValueError, OSError, subprocess.SubprocessError) as exc:
+        if not oversized:
+            response.pop("verification_request", None)
+            return response
         # 错误响应保留全部结构化步骤，但绝不继续推荐无法启动的总命令。
         for key in fields:
             if key in response:

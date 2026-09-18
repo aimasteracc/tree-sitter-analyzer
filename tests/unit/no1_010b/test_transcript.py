@@ -2,11 +2,25 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 from tree_sitter_analyzer.no1_010b.__main__ import main
-from tree_sitter_analyzer.no1_010b.transcript import _touched_paths, _tree_digest
+from tree_sitter_analyzer.no1_010b.record import ExpectedTerminal
+from tree_sitter_analyzer.no1_010b.transcript import (
+    ReferenceTranscriptError,
+    _apply_reference_edit,
+    _require_tool_success,
+    _run_git,
+    _touched_paths,
+    _tree_digest,
+    run_reference_transcript,
+)
 
 CORPUS = Path("benchmarks/no1_010b/corpus.jsonl")
 
@@ -136,3 +150,174 @@ def test_reference_transcript_cli_rejects_unknown_task(capsys) -> None:
     assert exit_code == 2
     assert captured.out == ""
     assert captured.err == "reference task not found: no1-010b/not-registered\n"
+
+
+def test_reference_transcript_cli_reports_runtime_failure(monkeypatch, capsys) -> None:
+    async def fail(*args, **kwargs):
+        raise ReferenceTranscriptError("forced failure")
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.no1_010b.__main__.run_reference_transcript", fail
+    )
+
+    exit_code = main(
+        [
+            "--corpus",
+            str(CORPUS),
+            "--reference-transcript-task",
+            "no1-010b/0001-bugfix-dispatch-unknown-route",
+        ]
+    )
+
+    assert exit_code == 1
+    assert capsys.readouterr().err == "reference transcript failed: forced failure\n"
+
+
+def test_reference_helpers_reject_failed_git_edit_and_tool_result(tmp_path) -> None:
+    with pytest.raises(ReferenceTranscriptError, match="git rev-parse HEAD failed"):
+        _run_git(tmp_path, "rev-parse", "HEAD")
+
+    target = tmp_path / "src" / "dispatch.py"
+    target.parent.mkdir()
+    target.write_text("def dispatch():\n    pass\n", encoding="utf-8")
+    with pytest.raises(ReferenceTranscriptError, match="anchor is not unique"):
+        _apply_reference_edit(tmp_path)
+
+    for result in (None, {}, {"success": False}):
+        with pytest.raises(ReferenceTranscriptError, match="index.full failed"):
+            _require_tool_success("index.full", result)
+
+
+@pytest.mark.parametrize(
+    ("record_change", "message"),
+    [
+        ({"id": "no1-010b/other"}, "unsupported reference task"),
+        (
+            {"expected_terminal": ExpectedTerminal("FAIL", "ORACLE_FAILED")},
+            "must register terminal PASS",
+        ),
+        ({"repo": "fixtures/missing"}, "fixture or oracle is missing"),
+    ],
+)
+def test_reference_transcript_rejects_unregistered_inputs(
+    committed_records, record_change, message
+) -> None:
+    record = replace(committed_records[0], **record_change)
+
+    with pytest.raises(ReferenceTranscriptError, match=message):
+        asyncio.run(run_reference_transcript(record, CORPUS.parent))
+
+
+class _TranscriptFacade:
+    def __init__(self) -> None:
+        self.responses = {
+            "full": {"success": True},
+            "symbol": {
+                "success": True,
+                "results": [
+                    {
+                        "name": "dispatch",
+                        "file": "src/dispatch.py",
+                        "kind": "function",
+                        "line": 28,
+                    }
+                ],
+                "source_evidence": {"freshness": "fresh"},
+            },
+            "outline": {"success": True},
+            "safe": {"success": True},
+            "impact": {
+                "success": True,
+                "verification_request": "bound-request",
+            },
+            "verify": {"success": True, "status": "passed"},
+        }
+
+    async def execute(self, arguments):
+        return self.responses[arguments["action"]]
+
+
+@pytest.fixture
+def transcript_runtime(monkeypatch):
+    """用真实 Git 补丁配合可控 facade，逐一验证失败关闭边界。"""
+    from tree_sitter_analyzer.no1_010b import transcript
+
+    facade = _TranscriptFacade()
+    for name in (
+        "build_index_facade",
+        "build_search_facade",
+        "build_structure_facade",
+        "build_edit_facade",
+    ):
+        monkeypatch.setattr(transcript, name, lambda *args, _facade=facade: _facade)
+    monkeypatch.setattr(
+        transcript,
+        "_run_registered_verification",
+        lambda *args: {"passed": True, "argv": [], "exit_code": 0},
+    )
+    monkeypatch.setattr(
+        transcript,
+        "_run_reference_oracle",
+        lambda *args: {"status": "PASS", "reason": "dispatch-returns-none"},
+    )
+    return transcript, facade
+
+
+@pytest.mark.parametrize(
+    ("failure", "message"),
+    [
+        ("search", "one fresh target"),
+        ("preflight", "reference patch rejected"),
+        ("allowlist", "reference patch violations"),
+        ("paths", "unexpected changed paths"),
+        ("request", "did not issue a verification request"),
+        ("verify", "edit.verify did not pass"),
+        ("registered", "registered verification failed"),
+        ("oracle", "reference oracle did not declare PASS"),
+        ("digest", "non-allowed tree digest changed"),
+    ],
+)
+def test_reference_transcript_fails_closed_at_each_boundary(
+    committed_records, tmp_path, monkeypatch, transcript_runtime, failure, message
+) -> None:
+    transcript, facade = transcript_runtime
+    if failure == "search":
+        facade.responses["symbol"]["source_evidence"] = {"freshness": "stale"}
+    elif failure == "preflight":
+        monkeypatch.setattr(
+            transcript,
+            "preflight_agent_patch",
+            lambda patch: SimpleNamespace(as_reason=lambda: "PATCH_REJECTED"),
+        )
+    elif failure == "allowlist":
+        monkeypatch.setattr(
+            transcript, "allowlist_violations", lambda *args: ["forbidden.py"]
+        )
+    elif failure == "paths":
+        monkeypatch.setattr(transcript, "_touched_paths", lambda patch: ["tests/x.py"])
+    elif failure == "request":
+        facade.responses["impact"].pop("verification_request")
+    elif failure == "verify":
+        facade.responses["verify"]["status"] = "failed"
+    elif failure == "registered":
+        monkeypatch.setattr(
+            transcript,
+            "_run_registered_verification",
+            lambda *args: {"passed": False},
+        )
+    elif failure == "oracle":
+        monkeypatch.setattr(
+            transcript,
+            "_run_reference_oracle",
+            lambda *args: {"status": "FAIL"},
+        )
+    else:
+        digests = iter(["before", "after"])
+        monkeypatch.setattr(transcript, "_tree_digest", lambda *args: next(digests))
+
+    with pytest.raises(ReferenceTranscriptError, match=message):
+        asyncio.run(
+            run_reference_transcript(
+                committed_records[0], CORPUS.parent, workspace_parent=tmp_path
+            )
+        )
