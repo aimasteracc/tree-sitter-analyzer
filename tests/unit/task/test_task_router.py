@@ -306,6 +306,84 @@ def test_impact_stage_exception_after_lease_write_still_releases_snapshot(
     ]
 
 
+def test_assess_change_delegates_assessed_scope_to_constraints_stage(
+    monkeypatch,
+) -> None:
+    import tree_sitter_analyzer.task._router_constraints as constraints_router_module
+
+    observed: dict[str, Any] = {}
+
+    async def capture_constraints(*, session, assessed_scope_paths):
+        observed["session"] = session
+        observed["assessed_scope_paths"] = assessed_scope_paths
+        observed["calls_at_entry"] = [
+            (facade, action) for facade, action, _ in session.executor.calls
+        ]
+        observed["snapshot_tokens"] = (
+            session.snapshots.index_snapshot_id,
+            session.snapshots.index_source_generation,
+            session.snapshots.diff_snapshot_id,
+            session.snapshots.impact_source_generation,
+            session.snapshots.route_lease_id,
+        )
+
+    monkeypatch.setattr(
+        constraints_router_module, "run_constraints_stage", capture_constraints
+    )
+    executor = FakeExecutor()
+
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+
+    assert observed["assessed_scope_paths"] == (
+        "src/a.py",
+        "src/b.py",
+        "src/del.py",
+    )
+    assert observed["calls_at_entry"] == [
+        ("index", "status"),
+        ("edit", "impact"),
+    ]
+    assert observed["snapshot_tokens"] == (
+        "idx_snap_1",
+        "gen_1",
+        "ds_1",
+        "gen_1",
+        "lease_1",
+    )
+    assert ("edit", "constraints") not in [
+        (facade, action) for facade, action, _ in executor.calls
+    ]
+    assert ("edit", "ast_diff") in [
+        (facade, action) for facade, action, _ in executor.calls
+    ]
+    assert outcome.task == "assess_change"
+
+
+def test_constraints_stage_exception_still_releases_snapshot(monkeypatch) -> None:
+    import tree_sitter_analyzer.task._router_constraints as constraints_router_module
+
+    async def explode_constraints(*, session, assessed_scope_paths):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        constraints_router_module, "run_constraints_stage", explode_constraints
+    )
+    executor = FakeExecutor()
+
+    outcome = _run(
+        assess_change(AssessChangeRequest(diff=DiffInput("workspace")), executor)
+    )
+
+    assert outcome.error == "INTERNAL_ERROR"
+    assert [(facade, action) for facade, action, _ in executor.calls] == [
+        ("index", "status"),
+        ("edit", "impact"),
+        ("edit", "release_snapshot"),
+    ]
+
+
 def test_understand_compact_profile_lowers_cell_values() -> None:
     executor = FakeExecutor()
     outcome = _run(
