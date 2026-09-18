@@ -2,6 +2,34 @@
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-09-18
+
+### Added
+
+- Agents can request an exact JSON Schema for every direct public facade action
+  through `action=help` and `target_action=<name>`; bespoke routes fail closed
+  when no authoritative schema exists. Discovery also returns the canonical
+  five-step search, inspect, trace, assess, and verify workflow.
+- `search.symbol` and `nav.resolve` now return certified source evidence tied to
+  one index owner, and fail closed when the source or index changes during a query.
+- Change-impact responses now provide replay-safe verification descriptors. Five
+  executable E0 reference transcripts cover bug fixing, cross-file refactoring,
+  exact test selection, expected verification failure, and deprecated-call migration.
+
+### Changed
+
+- Facades reject unsupported or misspelled action arguments with stable
+  `INVALID_ARGUMENT` details, allowed-argument lists, suggestions, and a recovery step.
+- Full-index method resolution builds project-wide uniqueness indexes once per
+  resolver snapshot, eliminating repeated project-wide method scans for each call edge.
+
+### Fixed
+
+- Incremental saves now invalidate unique-method bindings when a same-named method is
+  added or removed, then restore the binding only when it becomes unambiguous again.
+- Weak cross-file guesses no longer overwrite stronger symbol bindings, arbitrary
+  candidate ties remain unresolved, and call-edge backfill matches the actual call site.
+
 ## [2.0.0] - 2026-09-17
 
 ### Breaking changes
