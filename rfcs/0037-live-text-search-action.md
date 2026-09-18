@@ -1,6 +1,6 @@
 # RFC-0037: Live text search action
 
-- **Status**: accepted — owner direction 2026-09-19; implementation tracked after this RFC lands
+- **Status**: implemented for v2.2.0 — owner direction 2026-09-19
 - **Created**: 2026-09-19
 - **Tracking**: TSA standard agent search surface; extends RFC-0033 and leaves RFC-0034 qualification gates intact
 - **Affected source paths**: `text_search.py`, `mcp/tools/{search_facade,text_search_tool}.py`, `cli/`, `mcp/facade_map.py`, search tests, codemaps, generated facade docs, `skills/tsa-find/`

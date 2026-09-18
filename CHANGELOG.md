@@ -2,12 +2,25 @@
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-09-19
+
 ### Added
 
 - `search action=text` and `--text-search` provide bounded, no-index literal
   search over current project files with deterministic source coordinates,
   complete counts, ignore/glob handling, and fail-closed scan evidence. The
   native engine requires neither ripgrep nor fd.
+
+### Fixed
+
+- Certified source reads now preserve the first published snapshot failure
+  reason without capturing a second stale snapshot, avoiding false
+  `INDEX_SNAPSHOT_CAPACITY` errors on large indexes.
+
+### For contributors
+
+- The task router is split into bounded index, impact, constraint, fan-out,
+  session, task, and wire modules while preserving byte-exact public responses.
 
 ## [2.1.0] - 2026-09-18
 
