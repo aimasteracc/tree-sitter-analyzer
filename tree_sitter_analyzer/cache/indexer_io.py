@@ -392,6 +392,7 @@ def insert_index_row(
     indexed_at: str,
     extractor_version: int,
     include_activation: bool = True,
+    invalidate_affected_resolutions: bool = True,
 ) -> None:
     """Write one worker result to SQLite (main table + optional FTS5)."""
     rel_path = r["rel_path"]
@@ -422,6 +423,7 @@ def insert_index_row(
         r["language"],
         r["symbol_rows"],
         cache.fts5_available,
+        invalidate_affected_resolutions=invalidate_affected_resolutions,
     )
     call_edges = json.loads(r.get("call_edges_json", "[]"))
     imports_list = json.loads(r.get("imports_json", "[]"))

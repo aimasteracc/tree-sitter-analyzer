@@ -4,6 +4,7 @@
 import pytest
 
 from tree_sitter_analyzer.ast_cache import ASTCache
+from tree_sitter_analyzer.cross_file_resolver import ResolvedEdge
 
 
 @pytest.fixture
@@ -86,6 +87,83 @@ class TestBackfillCrossFileEdges:
         assert len(rows) == 6
         resolved_names = {r["callee_name"] for r in rows}
         assert "format_user" in resolved_names or "handle_request" in resolved_names
+
+    def test_backfill_does_not_overwrite_a_stronger_resolved_edge(
+        self, multi_file_project, monkeypatch
+    ):
+        """弱文件候选不能拆散强解析器已经认证的文件与符号身份。"""
+        _project, cache = multi_file_project
+        conn = cache._get_conn()
+        row = conn.execute(
+            "SELECT id, file_path, caller_name, caller_line, callee_name, "
+            "callee_line, callee_resolved_file, callee_symbol_id FROM edges "
+            "WHERE kind = 'calls' AND callee_resolution IN ('local', 'project') "
+            "AND callee_symbol_id IS NOT NULL LIMIT 1"
+        ).fetchone()
+        assert row is not None
+        original = (row["callee_resolved_file"], row["callee_symbol_id"])
+        conn.execute(
+            "UPDATE edges SET callee_line = caller_line WHERE id = ?", (row["id"],)
+        )
+
+        proposal = ResolvedEdge(
+            caller_name=row["caller_name"],
+            caller_file=row["file_path"],
+            caller_line=row["caller_line"],
+            callee_name=row["callee_name"],
+            callee_file=row["file_path"],
+            callee_line=row["caller_line"],
+            callee_resolved_file="wrong.py",
+            confidence=1.0,
+        )
+        monkeypatch.setattr(
+            "tree_sitter_analyzer.cross_file_resolver.CrossFileResolver.resolve_call_edges",
+            lambda _self: [proposal],
+        )
+
+        cache.backfill_cross_file_edges()
+        after = conn.execute(
+            "SELECT callee_resolved_file, callee_symbol_id FROM edges WHERE id = ?",
+            (row["id"],),
+        ).fetchone()
+
+        assert tuple(after) == original
+
+    def test_backfill_matches_the_call_site_line(self, multi_file_project, monkeypatch):
+        """调用者起始行与调用点行不同，回填仍须更新精确的调用边。"""
+        _project, cache = multi_file_project
+        conn = cache._get_conn()
+        row = conn.execute(
+            "SELECT id, file_path, caller_name, caller_line, callee_name, callee_line "
+            "FROM edges WHERE kind = 'calls' AND caller_line != callee_line LIMIT 1"
+        ).fetchone()
+        assert row is not None
+        conn.execute(
+            "UPDATE edges SET callee_resolution = 'unknown', "
+            "callee_resolved_file = '', callee_symbol_id = NULL WHERE id = ?",
+            (row["id"],),
+        )
+        proposal = ResolvedEdge(
+            caller_name=row["caller_name"],
+            caller_file=row["file_path"],
+            caller_line=row["caller_line"],
+            callee_name=row["callee_name"],
+            callee_file=row["file_path"],
+            callee_line=row["callee_line"],
+            callee_resolved_file="resolved.py",
+            confidence=1.0,
+        )
+        monkeypatch.setattr(
+            "tree_sitter_analyzer.cross_file_resolver.CrossFileResolver.resolve_call_edges",
+            lambda _self: [proposal],
+        )
+
+        cache.backfill_cross_file_edges()
+        after = conn.execute(
+            "SELECT callee_resolved_file FROM edges WHERE id = ?", (row["id"],)
+        ).fetchone()
+
+        assert after["callee_resolved_file"] == "resolved.py"
 
     def test_cross_file_stats_after_backfill(self, multi_file_project):
         _project, cache = multi_file_project

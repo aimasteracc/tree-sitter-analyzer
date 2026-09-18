@@ -62,11 +62,12 @@ def _reset_incoming_edge_resolutions(
     conn: sqlite3.Connection,
     rel_path: str,
 ) -> None:
-    """Unresolve calls and drop hierarchy edges targeting a removed generation."""
+    """撤销指向旧代际或受该文件符号唯一性影响的调用解析。"""
     rows = conn.execute(
         "SELECT id, metadata FROM edges "
-        "WHERE kind = 'calls' AND callee_resolved_file = ?",
-        (rel_path,),
+        "WHERE kind = 'calls' AND (callee_resolved_file = ? OR callee_name IN ("
+        "SELECT name FROM ast_symbol_rows WHERE file_path = ?))",
+        (rel_path, rel_path),
     ).fetchall()
     for row in rows:
         metadata = json.loads(row["metadata"] or "{}")
@@ -198,6 +199,7 @@ def write_fts5_symbols(
             fts_params,
         )
     upsert_symbol_projection_state(conn, rel_path)
+    _reset_incoming_edge_resolutions(conn, rel_path)
     return [
         {"id": base_id + i, "line": p[4], "end_line": p[5]}
         for i, p in enumerate(sym_params)
@@ -210,10 +212,12 @@ def write_fts5_symbols_from_tuples(
     language: str,
     symbol_rows: list[tuple[str, str, int, int]],
     fts5_available: bool = True,
+    *,
+    invalidate_affected_resolutions: bool = True,
 ) -> list[dict[str, Any]]:
     """Insert ordinary worker symbol rows and optional FTS projection."""
     _clear_symbol_resolver_context()
-    if _table_exists(conn, "edges"):
+    if invalidate_affected_resolutions and _table_exists(conn, "edges"):
         _reset_incoming_edge_resolutions(conn, rel_path)
     if fts5_available:
         _delete_fts_rows(conn, rel_path)
@@ -245,6 +249,8 @@ def write_fts5_symbols_from_tuples(
             fts_params,
         )
     upsert_symbol_projection_state(conn, rel_path)
+    if invalidate_affected_resolutions:
+        _reset_incoming_edge_resolutions(conn, rel_path)
     for i, (_n, _k, ln, el) in enumerate(symbol_rows):
         inserted.append(
             {

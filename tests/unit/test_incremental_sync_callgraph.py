@@ -6,12 +6,13 @@ import sqlite3
 
 import pytest
 
+from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache.callgraph_state import (
     CALL_GRAPH_PIPELINE_VERSION,
     call_graph_built,
     mark_call_graph_built_strict,
 )
-from tree_sitter_analyzer.incremental_sync import SyncResult
+from tree_sitter_analyzer.incremental_sync import IncrementalSync, SyncResult
 from tree_sitter_analyzer.incremental_sync_callgraph import (
     pipeline_repair_required,
     run_call_graph_pipeline,
@@ -52,6 +53,51 @@ def test_pipeline_runs_all_three_stages_in_order_with_exact_counters() -> None:
         2,
         ["cross_file", "synapse", "unresolved"],
     )
+
+
+def test_incremental_method_ambiguity_invalidates_and_restores_resolution(
+    tmp_path,
+) -> None:
+    """保存引入同名方法时撤销唯一绑定，删除后重新绑定并认证调用图。"""
+    target = tmp_path / "target.py"
+    caller = tmp_path / "caller.py"
+    duplicate = tmp_path / "duplicate.py"
+    target.write_text(
+        "class Target:\n    def special(self):\n        return 1\n", encoding="utf-8"
+    )
+    caller.write_text("def caller(obj):\n    return obj.special()\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    cache.index_project(workers=0)
+    query = (
+        "SELECT callee_resolution, callee_resolved_file, callee_symbol_id "
+        "FROM edges WHERE kind = 'calls' AND callee_name = 'special'"
+    )
+
+    try:
+        before = cache.get_conn().execute(query).fetchone()
+        duplicate.write_text(
+            "class Other:\n    def special(self):\n        return 2\n", encoding="utf-8"
+        )
+        ambiguous_run = IncrementalSync(cache).sync(max_files=10)
+        ambiguous = cache.get_conn().execute(query).fetchone()
+
+        duplicate.unlink()
+        restored_run = IncrementalSync(cache).sync(max_files=10)
+        restored = cache.get_conn().execute(query).fetchone()
+        marker_current = cache.call_graph_built()
+    finally:
+        cache.close()
+
+    assert tuple(before)[:2] == ("project", "target.py")
+    assert (ambiguous_run.errors, ambiguous_run.backfill_errors) == (0, 0)
+    assert (ambiguous["callee_resolution"], ambiguous["callee_symbol_id"]) == (
+        "unknown",
+        None,
+    )
+    assert (restored_run.errors, restored_run.backfill_errors) == (0, 0)
+    assert tuple(restored)[:2] == ("project", "target.py")
+    assert restored["callee_symbol_id"] is not None
+    assert marker_current is True
 
 
 def test_cross_file_failure_prevents_pipeline_certification() -> None:
