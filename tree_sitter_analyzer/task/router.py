@@ -33,6 +33,7 @@ import time
 from collections.abc import Callable
 from typing import Any, Protocol
 
+from . import _router_task, _router_wire
 from ._router_session import (
     RouteSession,
     degraded_unknown,
@@ -41,7 +42,6 @@ from ._router_session import (
 from ._router_session import (
     request_hash as _request_hash,
 )
-from .evidence import SourceSnapshotRecord
 from .models import (
     TASK_TEXT_OMITTED,
     AssessChangeRequest,
@@ -58,7 +58,6 @@ from .models import (
     build_subject_task,
 )
 from .projection import StepFragment, project_plan_steps
-from .route_table import SAFE_FANOUT_CAPS
 from .truth_table import (
     FRESH,
     MISSING,
@@ -77,13 +76,10 @@ BUDGET_EXHAUSTED = "BUDGET_EXHAUSTED"
 TRUNCATED = "TRUNCATED"
 SOURCE_GENERATION_MISMATCH = "SOURCE_GENERATION_MISMATCH"
 
-#: Primitive verdict vocabularies (RFC truth table rows 5-8).
-_RISK_VERDICTS = frozenset({"UNSAFE", "WARN", "REVIEW", "CAUTION"})
-_NON_RISK_VERDICTS = frozenset({"SAFE", "INFO", "NOT_FOUND"})
-_STRUCTURAL_INVALID_VERDICTS = frozenset({"REVIEW", "UNSAFE"})
 _UNSUPPORTED_RECORD_STATUSES = frozenset(
     {"added", "deleted", "renamed", "A", "D", "R", "C"}
 )
+_STRUCTURAL_INVALID_VERDICTS = frozenset({"REVIEW", "UNSAFE"})
 
 Clock = Callable[[], int]
 
@@ -102,94 +98,6 @@ class PrimitiveExecutor(Protocol):
 
 def _default_clock() -> int:
     return int(time.monotonic() * 1000)
-
-
-def _finding_from_verdict(verdict: object) -> Finding:
-    """Normalize a primitive verdict to a truth-table finding.
-
-    risk verdicts -> ``risk``; non-risk verdicts -> ``none``; anything else
-    (missing, unknown, ERROR) -> ``malformed`` so the truth table records
-    ``unknown`` (fail closed).
-    """
-    if isinstance(verdict, str) and verdict in _RISK_VERDICTS:
-        return "risk"
-    if isinstance(verdict, str) and verdict in _NON_RISK_VERDICTS:
-        return "none"
-    return "malformed"
-
-
-def _primitive_verdict(verdict: object) -> Verdict | None:
-    if isinstance(verdict, str) and (
-        verdict in _RISK_VERDICTS or verdict in _NON_RISK_VERDICTS
-    ):
-        return verdict  # type: ignore[return-value]  # narrowed by membership
-    return None
-
-
-def _access_unavailable(response: dict[str, Any]) -> str | None:
-    """P0.4 access-evidence branch (RFC-0022 §P0.4).
-
-    A primitive may classify an unavailable capability with ``success=true``;
-    Phase A branches on ``access_state``/``access_reason``, not on
-    ``success``. Returns the stable reason when the capability was not
-    available (including ``unknown`` authority), else ``None``.
-    """
-    state = response.get("access_state")
-    if state is not None and state != "available":
-        reason = response.get("access_reason")
-        if isinstance(reason, str) and reason:
-            return reason
-        return "READ_EXISTING_UNAVAILABLE"
-    return None
-
-
-def _echo_records(response: dict[str, Any]) -> list[SourceSnapshotRecord]:
-    """Extract the stable P0.4 snapshot record list from a primitive result."""
-    records: list[SourceSnapshotRecord] = []
-    for raw in response.get("source_snapshots") or []:
-        if type(raw) is not dict:
-            continue
-        kind = raw.get("kind")
-        snapshot_id = raw.get("snapshot_id")
-        source_generation = raw.get("source_generation")
-        if (
-            kind in {"index", "diff"}
-            and isinstance(snapshot_id, str)
-            and isinstance(source_generation, str)
-        ):
-            records.append(
-                SourceSnapshotRecord(
-                    kind=kind,
-                    snapshot_id=snapshot_id,
-                    source_generation=source_generation,
-                )
-            )
-    if records:
-        return records
-    # Fallback: top-level echoes (some adapters echo snapshot_id and
-    # source_generation at the top level rather than in access evidence).
-    snapshot_id = response.get("snapshot_id")
-    source_generation = response.get("source_generation")
-    if isinstance(snapshot_id, str) and isinstance(source_generation, str):
-        records.append(
-            SourceSnapshotRecord(
-                kind="index",
-                snapshot_id=snapshot_id,
-                source_generation=source_generation,
-            )
-        )
-    return records
-
-
-def _echo_matches(
-    records: list[SourceSnapshotRecord], snapshot_id: str, source_generation: str
-) -> bool:
-    return any(
-        record.kind == "index"
-        and record.snapshot_id == snapshot_id
-        and record.source_generation == source_generation
-        for record in records
-    )
 
 
 def _project_request(request: TaskRequest) -> TaskRequest:
@@ -497,7 +405,7 @@ async def _run_route(
                     or changed_records is None
                     or not assessed_valid
                 )
-                access_unavailable = _access_unavailable(impact_response)
+                access_unavailable = _router_wire.access_unavailable(impact_response)
                 if access_unavailable is not None:
                     contribution = contribute(
                         row="diff:edit.impact",
@@ -596,10 +504,12 @@ async def _run_route(
                         row="diff:edit.impact",
                         state="succeeded",
                         kind="generic",
-                        finding=_finding_from_verdict(impact_verdict),
+                        finding=_router_wire.finding_from_verdict(impact_verdict),
                         freshness=freshness,
                         truncated=impact_truncated,
-                        primitive_verdict=_primitive_verdict(impact_verdict),
+                        primitive_verdict=_router_wire.primitive_verdict(
+                            impact_verdict
+                        ),
                     )
                     impact_evidence_id, impact_evidence_code = mint_evidence(
                         "diff:edit.impact",
@@ -702,8 +612,8 @@ async def _run_route(
                         )
                         session.stopped = True
                     else:
-                        constraints_access_unavailable = _access_unavailable(
-                            constraints_response
+                        constraints_access_unavailable = (
+                            _router_wire.access_unavailable(constraints_response)
                         )
                         if constraints_access_unavailable is not None:
                             contribution = contribute(
@@ -721,7 +631,9 @@ async def _run_route(
                                 response=constraints_response,
                                 request_hash=_request_hash(constraints_arguments),
                                 evidence_ids=[],
-                                snapshots=_echo_records(constraints_response),
+                                snapshots=_router_wire.echo_records(
+                                    constraints_response
+                                ),
                                 success=True,
                             )
                             add_unknown(
@@ -730,7 +642,7 @@ async def _run_route(
                             )
                             session.stopped = True
                         else:
-                            records = _echo_records(constraints_response)
+                            records = _router_wire.echo_records(constraints_response)
                             diff_echo_ok = any(
                                 record.kind == "diff"
                                 and record.snapshot_id
@@ -739,7 +651,7 @@ async def _run_route(
                                 == snapshot_state.impact_source_generation
                                 for record in records
                             )
-                            index_echo_ok = _echo_matches(
+                            index_echo_ok = _router_wire.echo_matches(
                                 records,
                                 snapshot_state.index_snapshot_id,
                                 snapshot_state.index_source_generation,
@@ -871,7 +783,7 @@ async def _run_route(
                                     if snapshot_state.oracle_fresh
                                     else UNKNOWN,
                                     truncated=False,
-                                    primitive_verdict=_primitive_verdict(
+                                    primitive_verdict=_router_wire.primitive_verdict(
                                         constraints_verdict
                                     ),
                                     violations=violations,
@@ -997,7 +909,7 @@ async def _run_route(
                             break
                         ast_diff_success = ast_diff_response.get("success") is True
                         ast_diff_verdict = ast_diff_response.get("verdict")
-                        ast_diff_access_unavailable = _access_unavailable(
+                        ast_diff_access_unavailable = _router_wire.access_unavailable(
                             ast_diff_response
                         )
                         if ast_diff_access_unavailable is not None:
@@ -1024,7 +936,9 @@ async def _run_route(
                                 f"ACCESS_UNAVAILABLE:{ast_diff_access_unavailable}",
                             )
                         elif ast_diff_success:
-                            ast_diff_records = _echo_records(ast_diff_response)
+                            ast_diff_records = _router_wire.echo_records(
+                                ast_diff_response
+                            )
                             ast_diff_echo_ok = any(
                                 record.kind == "diff"
                                 and record.snapshot_id
@@ -1061,7 +975,7 @@ async def _run_route(
                             finding = (
                                 "invalid"
                                 if ast_diff_verdict in _STRUCTURAL_INVALID_VERDICTS
-                                else _finding_from_verdict(ast_diff_verdict)
+                                else _router_wire.finding_from_verdict(ast_diff_verdict)
                             )
                             ast_diff_truncated = (
                                 ast_diff_response.get("truncated") is True
@@ -1073,7 +987,9 @@ async def _run_route(
                                 finding=finding,
                                 freshness=FRESH,
                                 truncated=ast_diff_truncated,
-                                primitive_verdict=_primitive_verdict(ast_diff_verdict),
+                                primitive_verdict=_router_wire.primitive_verdict(
+                                    ast_diff_verdict
+                                ),
                             )
                             evidence_id, evidence_code = mint_evidence(
                                 f"diff:edit.ast_diff:{path}",
@@ -1164,7 +1080,7 @@ async def _run_route(
                             break
                         classify_success = classify_response.get("success") is True
                         classify_verdict = classify_response.get("verdict")
-                        classify_access_unavailable = _access_unavailable(
+                        classify_access_unavailable = _router_wire.access_unavailable(
                             classify_response
                         )
                         if classify_access_unavailable is not None:
@@ -1191,7 +1107,9 @@ async def _run_route(
                                 f"ACCESS_UNAVAILABLE:{classify_access_unavailable}",
                             )
                         elif classify_success:
-                            classify_records = _echo_records(classify_response)
+                            classify_records = _router_wire.echo_records(
+                                classify_response
+                            )
                             classify_echo_ok = any(
                                 record.kind == "diff"
                                 and record.snapshot_id
@@ -1232,10 +1150,14 @@ async def _run_route(
                                 row=f"diff:edit.classify:{path}",
                                 state="succeeded",
                                 kind="generic",
-                                finding=_finding_from_verdict(classify_verdict),
+                                finding=_router_wire.finding_from_verdict(
+                                    classify_verdict
+                                ),
                                 freshness=FRESH,
                                 truncated=classify_truncated,
-                                primitive_verdict=_primitive_verdict(classify_verdict),
+                                primitive_verdict=_router_wire.primitive_verdict(
+                                    classify_verdict
+                                ),
                             )
                             evidence_id, evidence_code = mint_evidence(
                                 f"diff:edit.classify:{path}",
@@ -1294,372 +1216,12 @@ async def _run_route(
                             )
         elif (
             not session.stopped and not diff_request
-        ):  # pragma: no cover - route_stopped is only set inside the branches
-            # --- Task route: nav.context (+ edit.safe fan-out for plan). ---
-            task_text = getattr(request, "task", "") or ""
-            if (
-                snapshot_state.index_snapshot_id is None
-                or snapshot_state.index_source_generation is None
-            ):
-                contribution = contribute(
-                    row=f"{operation}:nav.context",
-                    state="not_called",
-                    kind="generic",
-                    finding="malformed",
-                    freshness=UNKNOWN,
-                    truncated=None,
-                )
-                record_contribution(
-                    contribution,
-                    facade="nav",
-                    action="context",
-                    response=None,
-                    request_hash=_request_hash({}),
-                    evidence_ids=[],
-                    snapshots=[],
-                    success=True,
-                )
-                add_unknown(
-                    f"{operation}:nav.context",
-                    "AUTHORITATIVE_SNAPSHOT_UNAVAILABLE",
-                )
-            else:
-                nav_arguments = {
-                    "task": task_text,
-                    "max_nodes": 12 if budget.profile == "compact" else 30,
-                    "max_code_blocks": 3 if budget.profile == "compact" else 5,
-                    "include_graph": False,
-                    "access_mode": "read_existing",
-                    "snapshot_id": snapshot_state.index_snapshot_id,
-                    "source_generation": snapshot_state.index_source_generation,
-                    "output_format": "json",
-                }
-                nav_response = await call(
-                    f"{operation}:nav.context",
-                    "nav",
-                    "context",
-                    nav_arguments,
-                )
-                if nav_response is None:
-                    record_not_called(f"{operation}:nav.context", "nav", "context")
-                    session.stopped = True
-                else:
-                    records = _echo_records(nav_response)
-                    echo_ok = _echo_matches(
-                        records,
-                        snapshot_state.index_snapshot_id,
-                        snapshot_state.index_source_generation,
-                    )
-                    nav_success = nav_response.get("success") is True
-                    nav_access_unavailable = _access_unavailable(nav_response)
-                    if nav_access_unavailable is not None:
-                        contribution = contribute(
-                            row=f"{operation}:nav.context",
-                            state="failed",
-                            kind="generic",
-                            finding="malformed",
-                            freshness=UNKNOWN,
-                            truncated=False,
-                        )
-                        record_contribution(
-                            contribution,
-                            facade="nav",
-                            action="context",
-                            response=nav_response,
-                            request_hash=_request_hash(nav_arguments),
-                            evidence_ids=[],
-                            snapshots=records,
-                            success=True,
-                        )
-                        add_unknown(
-                            f"{operation}:nav.context",
-                            f"ACCESS_UNAVAILABLE:{nav_access_unavailable}",
-                        )
-                        session.stopped = True
-                    elif not nav_success:
-                        contribution = contribute(
-                            row=f"{operation}:nav.context",
-                            state="failed",
-                            kind="generic",
-                            finding="malformed",
-                            freshness=UNKNOWN,
-                            truncated=False,
-                        )
-                        record_contribution(
-                            contribution,
-                            facade="nav",
-                            action="context",
-                            response=nav_response,
-                            request_hash=_request_hash(nav_arguments),
-                            evidence_ids=[],
-                            snapshots=records,
-                            success=False,
-                        )
-                        add_unknown(f"{operation}:nav.context", "PRIMITIVE_FAILURE")
-                        session.stopped = True
-                    elif not echo_ok:
-                        contribution = contribute(
-                            row=f"{operation}:nav.context",
-                            state="failed",
-                            kind="generic",
-                            finding="malformed",
-                            freshness=UNKNOWN,
-                            truncated=False,
-                        )
-                        record_contribution(
-                            contribution,
-                            facade="nav",
-                            action="context",
-                            response=nav_response,
-                            request_hash=_request_hash(nav_arguments),
-                            evidence_ids=[],
-                            snapshots=records,
-                            success=True,
-                        )
-                        add_unknown(
-                            f"{operation}:nav.context", SOURCE_GENERATION_MISMATCH
-                        )
-                        session.stopped = True
-                    else:
-                        nav_verdict = nav_response.get("verdict")
-                        nav_truncated = nav_response.get("truncated") is True
-                        contribution = contribute(
-                            row=f"{operation}:nav.context",
-                            state="succeeded",
-                            kind="generic",
-                            finding=_finding_from_verdict(nav_verdict),
-                            freshness=FRESH if snapshot_state.oracle_fresh else UNKNOWN,
-                            truncated=nav_truncated,
-                            primitive_verdict=_primitive_verdict(nav_verdict),
-                        )
-                        record_contribution(
-                            contribution,
-                            facade="nav",
-                            action="context",
-                            response=nav_response,
-                            request_hash=_request_hash(nav_arguments),
-                            evidence_ids=[],
-                            snapshots=records,
-                            success=True,
-                        )
-                        code_blocks = nav_response.get("code_blocks") or []
-                        block_paths: list[str] = []
-                        for block in code_blocks:
-                            if not isinstance(block, dict):
-                                continue
-                            # The real CodeGraphContextTool wire uses
-                            # file/name; accept both vocabularies.
-                            path = block.get("path")
-                            if not isinstance(path, str):
-                                path = block.get("file")
-                            symbol = block.get("symbol")
-                            if not isinstance(symbol, str):
-                                symbol = block.get("name")
-                            if isinstance(path, str):
-                                block_paths.append(path)
-                                if isinstance(symbol, str) and symbol:
-                                    relevant_symbols.append(symbol)
-                            block_fragment = {
-                                "file": path,
-                                "name": symbol,
-                                "start_line": block.get("start_line"),
-                                "end_line": block.get("end_line"),
-                            }
-                            evidence_id, evidence_code = mint_evidence(
-                                f"{operation}:nav.context",
-                                "nav",
-                                "context",
-                                nav_response,
-                                path if isinstance(path, str) else None,
-                                fragment=block_fragment,
-                                snapshots=records,
-                            )
-                            if evidence_code == "action_version_missing":
-                                contribution = degraded_unknown(contribution)
-                            if evidence_code == "budget_exhausted":
-                                step_fragments.append(
-                                    StepFragment(
-                                        route="nav.context",
-                                        path=path if isinstance(path, str) else None,
-                                        symbol=(
-                                            symbol if isinstance(symbol, str) else None
-                                        ),
-                                        locator=(
-                                            path if isinstance(path, str) else None
-                                        ),
-                                        evidence_id=None,
-                                    )
-                                )
-                                continue
-                            step_fragments.append(
-                                StepFragment(
-                                    route="nav.context",
-                                    path=path if isinstance(path, str) else None,
-                                    symbol=(
-                                        symbol if isinstance(symbol, str) else None
-                                    ),
-                                    locator=(path if isinstance(path, str) else None),
-                                    evidence_id=evidence_id,
-                                )
-                            )
-                        relevant_paths.extend(block_paths)
-                        if operation == "plan_change":
-                            safe_paths = sorted(set(block_paths))
-                            cap = SAFE_FANOUT_CAPS[budget.profile]
-                            for safe_index, path in enumerate(safe_paths[:cap]):
-                                safe_arguments = {
-                                    "file_path": path,
-                                    "edit_type": "refactor",
-                                    "snapshot_id": snapshot_state.index_snapshot_id,
-                                    "source_generation": snapshot_state.index_source_generation,
-                                    "access_mode": "read_existing",
-                                    "output_format": "json",
-                                }
-                                safe_response = await call(
-                                    f"plan_change:edit.safe:{path}",
-                                    "edit",
-                                    "safe",
-                                    safe_arguments,
-                                )
-                                if safe_response is None:
-                                    for remaining in safe_paths[safe_index:]:
-                                        record_not_called(
-                                            f"plan_change:edit.safe:{remaining}",
-                                            "edit",
-                                            "safe",
-                                        )
-                                    session.stopped = True
-                                    break
-                                safe_records = _echo_records(safe_response)
-                                safe_echo_ok = _echo_matches(
-                                    safe_records,
-                                    snapshot_state.index_snapshot_id,
-                                    snapshot_state.index_source_generation,
-                                )
-                                safe_success = safe_response.get("success") is True
-                                safe_access_unavailable = _access_unavailable(
-                                    safe_response
-                                )
-                                if safe_access_unavailable is not None:
-                                    contribution = contribute(
-                                        row=f"plan_change:edit.safe:{path}",
-                                        state="failed",
-                                        kind="generic",
-                                        finding="malformed",
-                                        freshness=UNKNOWN,
-                                        truncated=False,
-                                    )
-                                    record_contribution(
-                                        contribution,
-                                        facade="edit",
-                                        action="safe",
-                                        response=safe_response,
-                                        request_hash=_request_hash(safe_arguments),
-                                        evidence_ids=[],
-                                        snapshots=safe_records,
-                                        success=True,
-                                    )
-                                    add_unknown(
-                                        f"plan_change:edit.safe:{path}",
-                                        f"ACCESS_UNAVAILABLE:{safe_access_unavailable}",
-                                    )
-                                    continue
-                                if not safe_success:
-                                    contribution = contribute(
-                                        row=f"plan_change:edit.safe:{path}",
-                                        state="failed",
-                                        kind="generic",
-                                        finding="malformed",
-                                        freshness=UNKNOWN,
-                                        truncated=False,
-                                    )
-                                    record_contribution(
-                                        contribution,
-                                        facade="edit",
-                                        action="safe",
-                                        response=safe_response,
-                                        request_hash=_request_hash(safe_arguments),
-                                        evidence_ids=[],
-                                        snapshots=safe_records,
-                                        success=False,
-                                    )
-                                    add_unknown(
-                                        f"plan_change:edit.safe:{path}",
-                                        "PRIMITIVE_FAILURE",
-                                    )
-                                    continue
-                                if not safe_echo_ok:
-                                    contribution = contribute(
-                                        row=f"plan_change:edit.safe:{path}",
-                                        state="failed",
-                                        kind="generic",
-                                        finding="malformed",
-                                        freshness=UNKNOWN,
-                                        truncated=False,
-                                    )
-                                    record_contribution(
-                                        contribution,
-                                        facade="edit",
-                                        action="safe",
-                                        response=safe_response,
-                                        request_hash=_request_hash(safe_arguments),
-                                        evidence_ids=[],
-                                        snapshots=safe_records,
-                                        success=True,
-                                    )
-                                    add_unknown(
-                                        f"plan_change:edit.safe:{path}",
-                                        SOURCE_GENERATION_MISMATCH,
-                                    )
-                                    session.stopped = True
-                                    break
-                                safe_verdict = safe_response.get("verdict")
-                                safe_truncated = safe_response.get("truncated") is True
-                                contribution = contribute(
-                                    row=f"plan_change:edit.safe:{path}",
-                                    state="succeeded",
-                                    kind="generic",
-                                    finding=_finding_from_verdict(safe_verdict),
-                                    freshness=FRESH
-                                    if snapshot_state.oracle_fresh
-                                    else UNKNOWN,
-                                    truncated=safe_truncated,
-                                    primitive_verdict=_primitive_verdict(safe_verdict),
-                                )
-                                evidence_id, evidence_code = mint_evidence(
-                                    f"plan_change:edit.safe:{path}",
-                                    "edit",
-                                    "safe",
-                                    safe_response,
-                                    path,
-                                    snapshots=safe_records,
-                                )
-                                if evidence_code == "action_version_missing":
-                                    contribution = degraded_unknown(contribution)
-                                else:
-                                    contribution = with_evidence(
-                                        contribution, evidence_id, locator=path
-                                    )
-                                record_contribution(
-                                    contribution,
-                                    facade="edit",
-                                    action="safe",
-                                    response=safe_response,
-                                    request_hash=_request_hash(safe_arguments),
-                                    evidence_ids=([evidence_id] if evidence_id else []),
-                                    snapshots=safe_records,
-                                    success=True,
-                                )
-                                relevant_paths.append(path)
-                                step_fragments.append(
-                                    StepFragment(
-                                        route="edit.safe",
-                                        path=path,
-                                        symbol=None,
-                                        locator=path,
-                                        evidence_id=evidence_id,
-                                    )
-                                )
+        ):  # pragma: no cover - 路由停止状态只会在分支内部设置
+            await _router_task.run_task_route(
+                session=session,
+                operation=operation,
+                task=getattr(request, "task", "") or "",
+            )
         session.routed_end_ms = clock_fn()
     finally:
         if snapshot_state.diff_snapshot_id and snapshot_state.route_lease_id:
