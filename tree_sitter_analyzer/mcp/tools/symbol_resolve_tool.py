@@ -102,11 +102,57 @@ class CodeGraphSymbolResolveTool(BaseMCPTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
 
+        if self.project_root is None:
+            raise ValueError("Project root not set. Call set_project_path first.")
+        from ... import index_snapshot
+        from ...api.pulse_evidence import PulseSourceError, certified_source_read
+
+        try:
+            with certified_source_read(self.project_root) as (owner, evidence):
+                response = self._execute_resolve(
+                    arguments, owner.query_cache(), evidence, owner.read_source
+                )
+                if not response.get("definitions"):
+                    index_snapshot.verify_snapshot_source_current(
+                        owner.snapshot, deadline=owner.deadline
+                    )
+                return response
+        except PulseSourceError as exc:
+            if not exc.allows_coordinate_fallback():
+                response = exc.to_response("Symbol resolve")
+                response.update(
+                    verdict="ERROR",
+                    symbol=arguments["symbol"],
+                    mode=arguments.get("mode", "resolve"),
+                    definition_count=0,
+                    definitions=[],
+                )
+                if arguments.get("mode", "resolve") == "references":
+                    response.update(reference_count=0, references=[])
+                return response
+            response = self._execute_resolve(
+                arguments, self._get_cache(), exc.evidence(), None
+            )
+            response["source_evidence"] = exc.evidence()
+            if response.get("success") is True:
+                response["verdict"] = "WARN"
+            if response.get("success") is True and not response.get("definitions"):
+                response["next_step"] = (
+                    "Build or synchronize the project index, then repeat nav.resolve."
+                )
+            return response
+
+    def _execute_resolve(
+        self,
+        arguments: dict[str, Any],
+        cache: Any,
+        source_evidence: dict[str, Any],
+        source_reader: Any,
+    ) -> dict[str, Any]:
+        """在指定 owner 连接上解析，并认证每个将要发布的位置。"""
         symbol = arguments["symbol"]
         mode = arguments.get("mode", "resolve")
         output_format = arguments.get("output_format", "json")
-
-        cache = self._get_cache()
         conn = cache.get_conn()
         row_count = conn.execute("SELECT COUNT(*) FROM ast_index").fetchone()[0]
         if row_count == 0:
@@ -128,6 +174,14 @@ class CodeGraphSymbolResolveTool(BaseMCPTool):
         else:
             result = resolver.resolve(symbol)
 
+        if source_reader is not None:
+            paths = dict.fromkeys(
+                [location.file for location in result.definitions]
+                + [location.file for location in result.references]
+            )
+            for path in paths:
+                source_reader(path)
+
         # Pain #23 (dogfood pass 3): symbol_resolve emitted no verdict.
         # NOT_FOUND when no definitions are found (agents should stop chasing);
         # INFO otherwise.
@@ -139,6 +193,7 @@ class CodeGraphSymbolResolveTool(BaseMCPTool):
             "definition_count": len(result.definitions),
             "definitions": [d.to_dict() for d in result.definitions],
             "resolved_via": result.resolved_via,
+            "source_evidence": source_evidence,
         }
         if mode == "references":
             response["reference_count"] = len(result.references)

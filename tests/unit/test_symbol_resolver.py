@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tests for symbol_resolver engine and codegraph_resolve MCP tool."""
 
+import os
 import sqlite3
 
 import pytest
@@ -184,6 +185,25 @@ class TestSymbolResolverEngine:
         assert "reference_count" in d
         cache.close()
 
+    def test_find_references_propagates_strict_sql_failure(self):
+        """认证缓存不能把引用查询损坏伪装成空引用列表。"""
+
+        class BrokenConnection:
+            @staticmethod
+            def execute(*_args, **_kwargs):
+                raise sqlite3.OperationalError("injected edges failure")
+
+        class StrictCache:
+            strict_sql_errors = True
+
+            @staticmethod
+            def get_conn():
+                return BrokenConnection()
+
+        resolver = SymbolResolver(StrictCache())
+        with pytest.raises(sqlite3.OperationalError, match="injected edges failure"):
+            resolver._find_references("target", "target")
+
     def test_qualified_name_resolution(self, indexed_project):
         cache = ASTCache(str(indexed_project))
         resolver = SymbolResolver(cache)
@@ -261,6 +281,86 @@ class TestCodeGraphSymbolResolveValidation:
 
 @pytest.mark.asyncio
 class TestCodeGraphSymbolResolveExecution:
+    async def test_certified_resolve_publishes_fresh_source_evidence(self, tmp_path):
+        from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+            CodeGraphFullIndexTool,
+        )
+
+        source = tmp_path / "sample.py"
+        source.write_text("def target():\n    return 1\n", encoding="utf-8")
+        indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
+            {"mode": "full", "max_files": 10}
+        )
+        assert indexed["published"] is True
+
+        tool = CodeGraphSymbolResolveTool(str(tmp_path))
+        result = await tool.execute({"symbol": "target", "output_format": "json"})
+
+        assert result["definition_count"] == 1
+        assert result["source_evidence"] == {
+            "freshness": "fresh",
+            "snapshot_id": result["source_evidence"]["snapshot_id"],
+            "source_generation": result["source_evidence"]["source_generation"],
+            "reason": None,
+        }
+        assert result["source_evidence"]["snapshot_id"] is not None
+        assert result["source_evidence"]["source_generation"] is not None
+
+    async def test_uncertified_resolve_cannot_claim_not_found(self, indexed_project):
+        tool = CodeGraphSymbolResolveTool(str(indexed_project))
+        result = await tool.execute(
+            {"symbol": "does_not_exist", "output_format": "json"}
+        )
+
+        assert result["success"] is True
+        assert result["verdict"] == "WARN"
+        assert result["definitions"] == []
+        assert result["source_evidence"] == {
+            "freshness": "unknown",
+            "snapshot_id": None,
+            "source_generation": None,
+            "reason": "SOURCE_SCOPE_DESCRIPTOR_MISSING",
+        }
+
+    async def test_equal_length_rewrite_with_restored_mtime_is_stale(self, tmp_path):
+        from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+            CodeGraphFullIndexTool,
+        )
+
+        source = tmp_path / "sample.py"
+        indexed_source = "def target():\n    return 1\n"
+        source.write_text(indexed_source, encoding="utf-8")
+        indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
+            {"mode": "full", "max_files": 10}
+        )
+        assert indexed["published"] is True
+        before = source.stat()
+        replacement = "def moved_():\n    return 2\n"
+        assert len(replacement) == len(indexed_source)
+        source.write_text(replacement, encoding="utf-8")
+        os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns))
+
+        result = await CodeGraphSymbolResolveTool(str(tmp_path)).execute(
+            {"symbol": "target", "output_format": "json"}
+        )
+
+        assert result == {
+            "success": False,
+            "error_code": "SOURCE_EVIDENCE_UNAVAILABLE",
+            "error": "Symbol resolve source evidence unavailable: SOURCE_INDEX_MISMATCH",
+            "source_evidence": {
+                "freshness": "stale",
+                "snapshot_id": None,
+                "source_generation": None,
+                "reason": "SOURCE_INDEX_MISMATCH",
+            },
+            "verdict": "ERROR",
+            "symbol": "target",
+            "mode": "resolve",
+            "definition_count": 0,
+            "definitions": [],
+        }
+
     async def test_resolve_mode(self, indexed_project):
         tool = CodeGraphSymbolResolveTool(str(indexed_project))
         result = await tool.execute(
@@ -296,8 +396,109 @@ class TestCodeGraphSymbolResolveExecution:
         project.mkdir()
         tool = CodeGraphSymbolResolveTool(str(project))
         result = await tool.execute({"symbol": "anything", "output_format": "json"})
-        assert result["success"] is False
-        assert "empty" in result["error"].lower()
+        assert result == {
+            "success": False,
+            "verdict": "ERROR",
+            "error": "AST cache is empty. Run ast_cache mode=index first.",
+            "hint": (
+                "Use codegraph_symbol_search or ast_cache mode=index to build the index."
+            ),
+            "symbol": "anything",
+            "source_evidence": {
+                "freshness": "missing",
+                "snapshot_id": None,
+                "source_generation": None,
+                "reason": "MISSING_INDEX",
+            },
+        }
+
+    async def test_references_without_definition_revalidate_full_scope(self, tmp_path):
+        """仅有旧引用时，新增定义也必须使认证结果失败关闭。"""
+        from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+            CodeGraphFullIndexTool,
+        )
+
+        caller = tmp_path / "caller.py"
+        caller.write_text("def caller():\n    return ghost()\n", encoding="utf-8")
+        definition = tmp_path / "definition.py"
+        indexed_definition = "#placeholder\n"
+        current_definition = "def ghost():\n"
+        assert len(indexed_definition) == len(current_definition)
+        definition.write_text(indexed_definition, encoding="utf-8")
+        indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
+            {"mode": "full", "max_files": 10}
+        )
+        assert indexed["published"] is True
+        before = definition.stat()
+        definition.write_text(current_definition, encoding="utf-8")
+        os.utime(definition, ns=(before.st_atime_ns, before.st_mtime_ns))
+
+        result = await CodeGraphSymbolResolveTool(str(tmp_path)).execute(
+            {"symbol": "ghost", "mode": "references", "output_format": "json"}
+        )
+
+        assert result == {
+            "success": False,
+            "error_code": "SOURCE_EVIDENCE_UNAVAILABLE",
+            "error": (
+                "Symbol resolve source evidence unavailable: SOURCE_INDEX_MISMATCH"
+            ),
+            "source_evidence": {
+                "freshness": "stale",
+                "snapshot_id": None,
+                "source_generation": None,
+                "reason": "SOURCE_INDEX_MISMATCH",
+            },
+            "verdict": "ERROR",
+            "symbol": "ghost",
+            "mode": "references",
+            "definition_count": 0,
+            "definitions": [],
+            "reference_count": 0,
+            "references": [],
+        }
+
+    async def test_public_reference_sql_failure_is_corrupt_index(
+        self, tmp_path, monkeypatch
+    ):
+        """公开解析接口不能发布认证查询的部分结果。"""
+        from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+            CodeGraphFullIndexTool,
+        )
+
+        source = tmp_path / "sample.py"
+        source.write_text("def target():\n    return 1\n", encoding="utf-8")
+        indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
+            {"mode": "full", "max_files": 10}
+        )
+        assert indexed["published"] is True
+
+        def fail_references(self, symbol, short_name):
+            raise sqlite3.OperationalError("injected edges failure")
+
+        monkeypatch.setattr(SymbolResolver, "_find_references", fail_references)
+        result = await CodeGraphSymbolResolveTool(str(tmp_path)).execute(
+            {"symbol": "target", "mode": "references", "output_format": "json"}
+        )
+
+        assert result == {
+            "success": False,
+            "error_code": "SOURCE_EVIDENCE_UNAVAILABLE",
+            "error": "Symbol resolve source evidence unavailable: CORRUPT_INDEX",
+            "source_evidence": {
+                "freshness": "unknown",
+                "snapshot_id": None,
+                "source_generation": None,
+                "reason": "CORRUPT_INDEX",
+            },
+            "verdict": "ERROR",
+            "symbol": "target",
+            "mode": "references",
+            "definition_count": 0,
+            "definitions": [],
+            "reference_count": 0,
+            "references": [],
+        }
 
     async def test_resolve_function_definition(self, indexed_project):
         tool = CodeGraphSymbolResolveTool(str(indexed_project))

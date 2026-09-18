@@ -6,29 +6,14 @@ from typing import Any
 
 import pytest
 
-from tests.unit._navigation_test_support import (
-    INDEXED_SOURCE as _INDEXED_SOURCE,
-)
-from tests.unit._navigation_test_support import (
-    MOVED_SOURCE as _MOVED_SOURCE,
-)
-from tests.unit._navigation_test_support import (
-    FTSAndLinearCache,
-    build_indexed_project,
-)
-from tests.unit._navigation_test_support import (
-    assert_no_mixed_source as _assert_no_mixed_source,
-)
-from tests.unit._navigation_test_support import (
-    published_search as _published_search,
-)
+from tests.unit import _navigation_test_support as nav_support
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.mcp.tools.symbol_search_tool import CodeGraphSymbolSearchTool
 
 
 @pytest.fixture
 def indexed_project(tmp_path):
-    return build_indexed_project(tmp_path)
+    return nav_support.build_indexed_project(tmp_path)
 
 
 class TestCodeGraphSymbolSearchToolDefinition:
@@ -200,7 +185,7 @@ class TestCodeGraphSymbolSearchExecution:
         assert "structure action=explore" in result["next_step"]
 
     async def test_top_match_inlines_source_body(self, tmp_path):
-        _source, facade, symbol = await _published_search(tmp_path)
+        _source, facade, symbol = await nav_support.published_search(tmp_path)
         result = await facade.execute(
             {"action": "symbol", "query": "target", "output_format": "json"}
         )
@@ -212,15 +197,24 @@ class TestCodeGraphSymbolSearchExecution:
         assert "INDEXED_MARKER" in hit["body"]["content"]
         symbol._cache.close()
 
+    async def test_certified_search_publishes_fresh_source_evidence(self, tmp_path):
+        await nav_support.verify_certified_search_evidence(tmp_path)
+
+    async def test_uncertified_search_cannot_claim_not_found(self, indexed_project):
+        await nav_support.verify_uncertified_search_not_found(indexed_project)
+
+    async def test_equal_length_rewrite_with_restored_mtime_is_stale(self, tmp_path):
+        await nav_support.verify_equal_length_search_rewrite_is_stale(tmp_path)
+
     async def test_public_search_does_not_mix_old_coordinates_with_moved_source(
         self, tmp_path, monkeypatch
     ):
-        source, facade, symbol = await _published_search(tmp_path)
+        source, facade, symbol = await nav_support.published_search(tmp_path)
         original_search = symbol._search
 
         def search_then_save(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:
             rows = original_search(*args, **kwargs)
-            source.write_text(_MOVED_SOURCE, encoding="utf-8")
+            source.write_text(nav_support.MOVED_SOURCE, encoding="utf-8")
             return rows
 
         monkeypatch.setattr(symbol, "_search", search_then_save)
@@ -228,7 +222,7 @@ class TestCodeGraphSymbolSearchExecution:
             result = await facade.execute(
                 {"action": "symbol", "query": "target", "output_format": "json"}
             )
-            _assert_no_mixed_source(result)
+            nav_support.assert_no_mixed_source(result)
         finally:
             if symbol._cache is not None:
                 symbol._cache.close()
@@ -242,7 +236,7 @@ class TestCodeGraphSymbolSearchExecution:
     ):
         from tree_sitter_analyzer import source_oracle
 
-        source, facade, symbol = await _published_search(tmp_path)
+        source, facade, symbol = await nav_support.published_search(tmp_path)
         original_capture = source_oracle.safe_workspace_path
         observed_transient_read = False
         legacy_reader_called = False
@@ -252,22 +246,22 @@ class TestCodeGraphSymbolSearchExecution:
         def legacy_live_read(path: str) -> list[str]:
             nonlocal legacy_reader_called
             legacy_reader_called = True
-            source.write_text(_MOVED_SOURCE, encoding="utf-8")
+            source.write_text(nav_support.MOVED_SOURCE, encoding="utf-8")
             try:
                 return Path(path).read_text(encoding="utf-8").splitlines()
             finally:
-                source.write_text(_INDEXED_SOURCE, encoding="utf-8")
+                source.write_text(nav_support.INDEXED_SOURCE, encoding="utf-8")
 
         def capture_during_transient_save(root: str, path: str, **kwargs: Any) -> Any:
             nonlocal observed_transient_read
             if path != "sample.py" or observed_transient_read:
                 return original_capture(root, path, **kwargs)
             observed_transient_read = True
-            source.write_text(_MOVED_SOURCE, encoding="utf-8")
+            source.write_text(nav_support.MOVED_SOURCE, encoding="utf-8")
             try:
                 return original_capture(root, path, **kwargs)
             finally:
-                source.write_text(_INDEXED_SOURCE, encoding="utf-8")
+                source.write_text(nav_support.INDEXED_SOURCE, encoding="utf-8")
 
         monkeypatch.setattr(
             source_oracle, "safe_workspace_path", capture_during_transient_save
@@ -277,16 +271,16 @@ class TestCodeGraphSymbolSearchExecution:
             result = await facade.execute(
                 {"action": "symbol", "query": "target", "output_format": "json"}
             )
-            _assert_no_mixed_source(result)
+            nav_support.assert_no_mixed_source(result)
             assert observed_transient_read is True
             assert legacy_reader_called is False
-            assert source.read_text(encoding="utf-8") == _INDEXED_SOURCE
+            assert source.read_text(encoding="utf-8") == nav_support.INDEXED_SOURCE
         finally:
             if symbol._cache is not None:
                 symbol._cache.close()
 
     async def test_search_deterrent_next_step(self, tmp_path):
-        _source, facade, symbol = await _published_search(tmp_path)
+        _source, facade, symbol = await nav_support.published_search(tmp_path)
         result = await facade.execute(
             {"action": "symbol", "query": "target", "output_format": "json"}
         )
@@ -297,7 +291,7 @@ class TestCodeGraphSymbolSearchExecution:
     async def test_certified_search_modes_share_the_owner_connection(
         self, tmp_path, query, monkeypatch
     ):
-        _source, facade, symbol = await _published_search(tmp_path)
+        _source, facade, symbol = await nav_support.published_search(tmp_path)
 
         def reject_legacy(*_args: Any, **_kwargs: Any) -> Any:
             pytest.fail("search silently fell back to the live ASTCache connection")
@@ -330,7 +324,7 @@ class TestCodeGraphSymbolSearchExecution:
         from tree_sitter_analyzer import source_oracle
         from tree_sitter_analyzer.source_oracle import SourceOracleError
 
-        _source, facade, symbol = await _published_search(tmp_path)
+        _source, facade, symbol = await nav_support.published_search(tmp_path)
 
         def unsupported(*_args, **_kwargs):
             raise SourceOracleError("DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED")
@@ -351,7 +345,7 @@ class TestCodeGraphSymbolSearchExecution:
         # PR #1491：导航正文按返回文件摘要认证，不再在请求前后扫描整个仓库。
         from tree_sitter_analyzer import index_snapshot
 
-        _source, facade, symbol = await _published_search(tmp_path)
+        _source, facade, symbol = await nav_support.published_search(tmp_path)
         monkeypatch.setattr(
             index_snapshot,
             "verify_snapshot_source_current",
@@ -372,12 +366,12 @@ class TestCodeGraphSymbolSearchExecution:
     async def test_owner_exit_failure_removes_all_unbound_enrichment(
         self, tmp_path, monkeypatch
     ):
-        # PR #1491：owner 在响应提交前失败时，已拼装的正文必须退回纯坐标结果。
+        # PR #1491：owner 在响应提交前失败时，不能发布已拼装正文或缓存坐标。
         from contextlib import contextmanager
 
         from tree_sitter_analyzer import index_snapshot
 
-        _source, facade, symbol = await _published_search(tmp_path)
+        _source, facade, symbol = await nav_support.published_search(tmp_path)
         original = index_snapshot.certified_index_read
 
         @contextmanager
@@ -391,9 +385,9 @@ class TestCodeGraphSymbolSearchExecution:
             {"action": "symbol", "query": "target", "output_format": "json"}
         )
 
-        assert result["success"] is True
-        assert all("code" not in row and "body" not in row for row in result["results"])
-        assert result["next_step"] == "Use the returned coordinates to read the source."
+        nav_support.assert_source_failure(
+            result, "Symbol search", "INDEX_SNAPSHOT_DEADLINE", "unknown"
+        )
         symbol._cache.close()
 
     async def test_snapshot_acquisition_failure_preserves_coordinate_success(
@@ -459,7 +453,7 @@ class TestCodeGraphSymbolSearchExecution:
 
     async def test_fuzzy_special_chars_do_not_crash(self, indexed_project):
         tool = CodeGraphSymbolSearchTool(str(indexed_project))
-        for bad_query in ["~foo-bar", "~foo.bar", "~foo:bar"]:
+        for bad_query in ["~foo-bar", "~foo.bar", "~foo:bar", '~foo"bar', '~"']:
             result = await tool.execute({"query": bad_query, "output_format": "json"})
             assert result["success"] is True, (
                 f"Query {bad_query!r} must not crash; got {result}"
@@ -650,7 +644,11 @@ class TestCodeGraphSymbolSearchSourceContext:
         """#922：FTS 命中不能阻止线性扫描补回后缀匹配。"""
         tool = CodeGraphSymbolSearchTool()
         results = tool._fuzzy_search(
-            FTSAndLinearCache(), "Service", language=None, kind="any", limit=10
+            nav_support.FTSAndLinearCache(),
+            "Service",
+            language=None,
+            kind="any",
+            limit=10,
         )
         names = [r["name"] for r in results]
         assert "Service" in names, f"FTS5 hit Service must appear; got {names}"
@@ -758,8 +756,9 @@ async def test_empty_index_does_not_claim_symbol_absence(tmp_path, indexed):
             {"query": "authenticate_user", "output_format": "json"}
         )
         assert (result["success"], result["verdict"]) == (
-            (True, "INFO") if indexed else (False, "ERROR")
+            (True, "WARN") if indexed else (False, "ERROR")
         )
+        assert result["source_evidence"]["freshness"] == "unknown"
         if not indexed:
             assert result["error_code"] == "INDEX_NOT_READY"
             assert result["error_type"] == "validation"
@@ -788,9 +787,10 @@ async def test_indexed_zero_symbols_can_report_not_found(tmp_path, empty_project
         )
         assert (result["success"], result["verdict"], result["results"]) == (
             True,
-            "NOT_FOUND",
+            "WARN",
             [],
         )
+        assert result["source_evidence"]["freshness"] == "unknown"
     finally:
         cache.close()
         if tool._cache is not None:

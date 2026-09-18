@@ -199,28 +199,41 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         if self.project_root is None:  # pragma: no cover - _get_cache 已拒绝
             raise ValueError("Project root not set. Call set_project_path first.")
         from ... import index_snapshot
+        from ...api.pulse_evidence import PulseSourceError, certified_source_read
 
         result: dict[str, Any] | None = None
         try:
-            with index_snapshot.certified_index_read(self.project_root) as certified:
-                if certified is not None:
-                    result = await self._execute_search(
-                        arguments,
-                        _SnapshotSearchCache(certified.connection),
-                        certified.read_source,
+            with certified_source_read(self.project_root) as (owner, evidence):
+                result = await self._execute_search(
+                    arguments,
+                    _SnapshotSearchCache(owner.connection),
+                    owner.read_source,
+                    evidence,
+                )
+                if not result.get("results"):
+                    index_snapshot.verify_snapshot_source_current(
+                        owner.snapshot, deadline=owner.deadline
                     )
-                    return result
-        except (OSError, ValueError, RuntimeError, sqlite3.DatabaseError):
+                return result
+        except PulseSourceError as exc:
+            if not exc.allows_coordinate_fallback():
+                response = exc.to_response("Symbol search")
+                response.update(verdict="ERROR", results=[])
+                return response
             if result is not None:
                 self._remove_unbound_source(result)
+                self._mark_uncertified(result, exc)
                 return result
-        return await self._execute_search(arguments, cache, None)
+            result = await self._execute_search(arguments, cache, None, exc.evidence())
+            self._mark_uncertified(result, exc)
+            return result
 
     async def _execute_search(
         self,
         arguments: dict[str, Any],
         cache: Any,
         source_reader: Callable[[str], str] | None,
+        source_evidence: dict[str, Any],
     ) -> dict[str, Any]:
         query = arguments["query"]
         language = arguments.get("language")
@@ -242,15 +255,12 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
         results = self._fold_and_rank_results(results)
         sources: dict[str, str] = {}
         if source_reader is not None:
-            try:
-                sources = {
-                    path: source_reader(path)
-                    for path in dict.fromkeys(
-                        str(row.get("file", "")) for row in results if row.get("file")
-                    )
-                }
-            except (OSError, ValueError, RuntimeError):
-                sources = {}
+            sources = {
+                path: source_reader(path)
+                for path in dict.fromkeys(
+                    str(row.get("file", "")) for row in results if row.get("file")
+                )
+            }
         bound_reader: Callable[[str], str] | None = (
             (lambda path: sources[path]) if sources else None
         )
@@ -285,6 +295,7 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
             "truncated": truncated,
             "results": results,
             "data_source": "fts5" if cache.fts5_available else "linear_scan",
+            "source_evidence": source_evidence,
         }
         if results:
             if truncated:
@@ -319,6 +330,17 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
             row.pop("body", None)
         if "no Read needed" in str(result.get("next_step", "")):
             result["next_step"] = "Use the returned coordinates to read the source."
+
+    @staticmethod
+    def _mark_uncertified(result: dict[str, Any], exc: Any) -> None:
+        """未认证坐标只能作为恢复线索，不能宣称 fresh NOT_FOUND。"""
+        result["source_evidence"] = exc.evidence()
+        if result.get("success") is True:
+            result["verdict"] = "WARN"
+        if result.get("success") is True and not result.get("results"):
+            result["next_step"] = (
+                "Build or synchronize the project index, then repeat search.symbol."
+            )
 
     def _search(
         self,
@@ -380,7 +402,9 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
                 # Use quoted-prefix matching ("term"*) so "SecurityVal" matches
                 # "SecurityValidator" — plain term* drops quoting and crashes on
                 # inputs with FTS5 special chars (-, ., :); "term"* is safe (#739).
-                fts_query = " OR ".join(f'"{t.lower()}"*' for t in terms)
+                from ...cache.query import _fts_prefix_query
+
+                fts_query = _fts_prefix_query(substring.lower())
 
                 conn = cache.get_conn()
                 # Weighted BM25 (name col 10x) — hardcoded constant, no injection risk.
