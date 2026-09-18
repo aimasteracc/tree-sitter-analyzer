@@ -583,6 +583,25 @@ def test_budget_exhaustion_stops_before_call() -> None:
     assert outcome.consumed.primitive_calls == 3
 
 
+def test_route_session_admits_only_the_budgeted_number_of_calls() -> None:
+    from tree_sitter_analyzer.task._router_session import RouteSession
+
+    executor = FakeExecutor()
+    request = UnderstandRequest(
+        task="x",
+        budget=Budget(profile="standard", max_primitive_calls=1),
+    )
+    session = RouteSession.from_request(request, executor, lambda: 0)
+
+    first = _run(session.call("first", "index", "status", {}))
+    second = _run(session.call("second", "nav", "context", {}))
+
+    assert first == INDEX_OK
+    assert second is None
+    assert session.consumed_calls == 1
+    assert session.ledger.truncated_rows == ["second"]
+
+
 def test_failed_calls_consume_budget() -> None:
     executor = FakeExecutor(
         responses={("nav", "context"): {"success": False, "verdict": "ERROR"}}
