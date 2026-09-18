@@ -314,6 +314,7 @@ def run_index_project(
                 cache,
                 conn,
                 extractor_version=_AST_CACHE_EXTRACTOR_VERSION,
+                invalidate_affected_resolutions=not force,
             ),
             indexed_at,
             activation_enabled,

@@ -154,3 +154,33 @@ def test_class_method_duplicate_class_stays_unknown():
     )
     r = resolve_callee("send", "caller.py", ctx, callee_full="Client.send")
     assert r.resolution == "unknown"
+
+
+def test_repeated_method_resolution_builds_project_method_index_once():
+    """重复解析只能遍历一次项目类方法，且唯一性与歧义语义保持不变。"""
+
+    class CountingMethods(dict):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.items_calls = 0
+
+        def items(self):
+            self.items_calls += 1
+            return super().items()
+
+    methods = CountingMethods(
+        {
+            "a.py": {"A": {"unique": 10, "shared": 11}},
+            "b.py": {"B": {"shared": 20}},
+        }
+    )
+    ctx = _ctx(file_class_methods=methods)
+
+    unique = resolve_callee("obj.unique", "caller.py", ctx)
+    class_bound = resolve_callee("A.shared", "caller.py", ctx)
+    ambiguous = resolve_callee("obj.shared", "caller.py", ctx)
+
+    assert (unique.resolution, unique.callee_symbol_id) == ("project", 10)
+    assert (class_bound.resolution, class_bound.callee_symbol_id) == ("project", 11)
+    assert ambiguous.resolution == "unknown"
+    assert methods.items_calls == 1

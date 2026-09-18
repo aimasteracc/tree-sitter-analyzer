@@ -70,6 +70,9 @@ class ResolverContext:
         self._name_to_source = name_to_source or {}
         self._file_class_methods = file_class_methods or {}
         self._file_class_methods_loaded = file_class_methods is not None
+        self._method_indexes_loaded = False
+        self._class_method_index: dict[tuple[str, str], tuple[str, int] | None] = {}
+        self._unique_method_index: dict[str, tuple[str, int] | None] = {}
         self._global_name_table = global_name_table or {}
         self._import_alias_target = import_alias_target or {}
         self._imports_by_file = imports_by_file or {}
@@ -127,6 +130,37 @@ class ResolverContext:
             self._file_class_methods = _build_file_class_methods_from_cache(self.cache)
             self._file_class_methods_loaded = True
         return self._file_class_methods
+
+    def _ensure_method_indexes(self) -> None:
+        """为当前不可变解析快照构建一次类方法反向索引。"""
+        if self._method_indexes_loaded:
+            return
+        for file_path, classes in self.file_class_methods.items():
+            for class_name, methods in classes.items():
+                for method_name, symbol_id in methods.items():
+                    target = (file_path, symbol_id)
+                    class_key = (class_name, method_name)
+                    if class_key not in self._class_method_index:
+                        self._class_method_index[class_key] = target
+                    elif self._class_method_index[class_key] != target:
+                        self._class_method_index[class_key] = None
+                    if method_name not in self._unique_method_index:
+                        self._unique_method_index[method_name] = target
+                    elif self._unique_method_index[method_name] != target:
+                        self._unique_method_index[method_name] = None
+        self._method_indexes_loaded = True
+
+    @property
+    def class_method_index(self) -> dict[tuple[str, str], tuple[str, int] | None]:
+        """返回类名和方法名对应的唯一项目定义；歧义项的值为 ``None``。"""
+        self._ensure_method_indexes()
+        return self._class_method_index
+
+    @property
+    def unique_method_index(self) -> dict[str, tuple[str, int] | None]:
+        """返回方法名对应的唯一项目定义；歧义项的值为 ``None``。"""
+        self._ensure_method_indexes()
+        return self._unique_method_index
 
     @property
     def global_name_table(self) -> dict[str, list[tuple[str, int]]]:

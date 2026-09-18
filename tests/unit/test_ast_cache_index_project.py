@@ -52,6 +52,16 @@ class TestIndexProject:
         result = cache.index_project(force=True)
         assert result["indexed"] == 2
 
+    def test_force_rebuild_skips_per_file_resolution_invalidation(self, cache):
+        """全量重建已先清空全部边，不能再为每个文件扫描逐步增长的边表。"""
+        with patch(
+            "tree_sitter_analyzer.cache.write._reset_incoming_edge_resolutions"
+        ) as reset:
+            result = cache.index_project(force=True, workers=0)
+
+        assert result["indexed"] == 2
+        reset.assert_not_called()
+
     def test_index_project_max_files(self, cache):
         result = cache.index_project(max_files=1)
         assert result["total_files"] <= 1

@@ -36,7 +36,8 @@ _SQL_COUNT_CROSS_FILE_EDGES = (
 _SQL_UPDATE_CALLEE_RESOLVED = (
     "UPDATE edges SET callee_resolved_file = ? "
     "WHERE kind = 'calls' AND file_path = ? AND caller_line = ? "
-    "AND caller_name = ? AND callee_line = ?"
+    "AND caller_name = ? AND callee_line = ? "
+    "AND callee_resolution = 'unknown' AND callee_symbol_id IS NULL"
 )
 
 
@@ -429,7 +430,7 @@ def backfill_cross_file_edges(cache: Any, conn: sqlite3.Connection) -> dict[str,
                 edge.caller_file,
                 edge.caller_line,
                 edge.caller_name,
-                edge.caller_line,
+                edge.callee_line,
             )
             try:
                 cursor = conn.execute(_SQL_UPDATE_CALLEE_RESOLVED, params)

@@ -407,17 +407,7 @@ def _try_class_method(
     # Config, Handler...). Picking the first match could resolve to the wrong
     # module. Only resolve when the (class, method) is unique project-wide;
     # otherwise stay unknown rather than guess the wrong file.
-    found: tuple[str, int] | None = None
-    for file_path, classes in ctx.file_class_methods.items():
-        methods = classes.get(qualifier)
-        if methods is None:
-            continue
-        sym_id = methods.get(base)
-        if sym_id is None:
-            continue
-        if found is not None and (file_path, sym_id) != found:
-            return None  # duplicate class name across modules — ambiguous
-        found = (file_path, sym_id)
+    found = ctx.class_method_index.get((qualifier, base))
     if found is not None:
         return ResolvedCallee(found[1], "project", found[0])
     return None
@@ -459,15 +449,7 @@ def _try_unique_method(
     table_lang = _table_language(ctx, caller_file)
     if table_lang == "python" and qualifier in BUILTIN_TYPE_NAMES_PY:
         return None
-    found: tuple[str, int] | None = None
-    for file_path, classes in ctx.file_class_methods.items():
-        for _cls, methods in classes.items():
-            sym_id = methods.get(base)
-            if sym_id is None:
-                continue
-            if found is not None and (file_path, sym_id) != found:
-                return None  # defined on >1 class — ambiguous, don't guess
-            found = (file_path, sym_id)
+    found = ctx.unique_method_index.get(base)
     if found is not None:
         return ResolvedCallee(found[1], "project", found[0])
     return None
