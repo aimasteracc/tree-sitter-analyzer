@@ -27,6 +27,22 @@
 
 这是输入分区的局部见证，不是跨平台等价性或速度声明。此前本机吞吐对比也不是准入依据；外部后端只有在统一语义、包含边界检查和源码核验成本之后仍有收益才值得集成。
 
+### 2026-09-27 阶段 A 第一切片
+
+`scripts/qualify_search_backend.py` 现提供隔离差分执行器，固定 ripgrep 15.1.0 的
+Linux x86_64、macOS arm64/x86_64 与 Windows x86_64 上游资产、下载地址和
+SHA-256。执行器先复用生产文本检索的流式 admission/source-oracle primitive，
+再把认证字节写入一次性目录供固定 argv 的 rg 扫描；rg 不负责递归发现，也不读取
+原工作树路径。`.github/workflows/search-backend-qualification.yml` 在三个原生 runner
+下载并核验资产，运行相同合同和矩阵，保留 90 天 JSON 工件。
+
+本机 macOS arm64 / Python 3.14.3 的固定资产运行确认 7 个预注册分区均符合预期：
+LF、ignore scope、Unicode word、smart case 和零匹配等价；CR-only 的 rg 坐标为
+第 1 行第 6 列，而原生语义为第 2 行第 1 列；NUL 文件中 rg 返回命中，原生实现按
+二进制跳过。报告因此是 `passed=true, all_equivalent=false`。这证明直接替换不安全，
+不构成加速结论，也不启用生产后端。尚未完成本 RFC 的完整输入矩阵与 20 项配对
+agent 任务，阶段 A 总验收保持未勾选。
+
 ## Detailed design
 
 ### 能力分工

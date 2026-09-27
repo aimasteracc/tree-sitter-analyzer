@@ -9,6 +9,7 @@ import stat
 import subprocess
 import sys
 import time
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal
@@ -85,6 +86,14 @@ class TextSearchReport:
         return len({hit.file for hit in self.hits})
 
 
+@dataclass(frozen=True, slots=True)
+class _AdmittedSource:
+    """通过统一发现与源码认证后的单文件字节。"""
+
+    file: str
+    data: bytes
+
+
 def _validate_scope(request: TextSearchRequest) -> tuple[Path, Path]:
     root = Path(request.project_root)
     if root.is_symlink():
@@ -147,16 +156,13 @@ def _map_oracle_error(exc: SourceOracleError) -> TextSearchError:
     return TextSearchError(mapping.get(str(exc), "SOURCE_FILE_UNAVAILABLE"))
 
 
-def search_text(request: TextSearchRequest) -> TextSearchReport:
-    """完整扫描当前 admitted scope；任何不确定性都拒绝返回部分结果。"""
-    project_root, scope = _validate_scope(request)
-    deadline = time.monotonic() + request.timeout
-    matcher = _compile_matcher(request)
-    hits: list[TextSearchHit] = []
-    files_scanned = 0
-    bytes_scanned = 0
-    binary_files_skipped = 0
-
+def _admitted_sources(
+    request: TextSearchRequest,
+    project_root: Path,
+    scope: Path,
+    deadline: float,
+) -> Iterator[_AdmittedSource]:
+    """逐个产生权威文件字节，供原生与资格扫描共享。"""
     try:
         candidates = walk_candidate_entries(
             str(project_root),
@@ -204,32 +210,46 @@ def search_text(request: TextSearchRequest) -> TextSearchReport:
                 raise _map_oracle_error(exc) from exc
             if captured.kind != "file" or captured.data is None:
                 raise TextSearchError("SOURCE_FILE_CHANGED")
-            raw = captured.data
-            files_scanned += 1
-            bytes_scanned += len(raw)
-            if bytes_scanned > _MAX_TOTAL_BYTES:
-                raise TextSearchError("SOURCE_SCAN_BUDGET_EXCEEDED")
-            if b"\x00" in raw:
-                binary_files_skipped += 1
-                continue
-            for number, line in enumerate(decode_index_source(raw).splitlines(), 1):
-                match = matcher.search(line)
-                if match is None:
-                    continue
-                hits.append(
-                    TextSearchHit(
-                        file=root_relative,
-                        line=number,
-                        column=match.start() + 1,
-                        text=line,
-                    )
-                )
-                if len(hits) > _MAX_MATCHES:
-                    raise TextSearchError("SOURCE_MATCH_BUDGET_EXCEEDED")
+            yield _AdmittedSource(file=root_relative, data=captured.data)
     except CandidateDiscoveryBudgetExceeded as exc:
         raise TextSearchError("SOURCE_DISCOVERY_BUDGET_EXCEEDED") from exc
     except CandidateDiscoveryError as exc:
         raise TextSearchError("SOURCE_DISCOVERY_FAILED") from exc
+
+
+def search_text(request: TextSearchRequest) -> TextSearchReport:
+    """完整扫描当前 admitted scope；任何不确定性都拒绝返回部分结果。"""
+    project_root, scope = _validate_scope(request)
+    deadline = time.monotonic() + request.timeout
+    matcher = _compile_matcher(request)
+    hits: list[TextSearchHit] = []
+    files_scanned = 0
+    bytes_scanned = 0
+    binary_files_skipped = 0
+
+    for source in _admitted_sources(request, project_root, scope, deadline):
+        raw = source.data
+        files_scanned += 1
+        bytes_scanned += len(raw)
+        if bytes_scanned > _MAX_TOTAL_BYTES:
+            raise TextSearchError("SOURCE_SCAN_BUDGET_EXCEEDED")
+        if b"\x00" in raw:
+            binary_files_skipped += 1
+            continue
+        for number, line in enumerate(decode_index_source(raw).splitlines(), 1):
+            match = matcher.search(line)
+            if match is None:
+                continue
+            hits.append(
+                TextSearchHit(
+                    file=source.file,
+                    line=number,
+                    column=match.start() + 1,
+                    text=line,
+                )
+            )
+            if len(hits) > _MAX_MATCHES:
+                raise TextSearchError("SOURCE_MATCH_BUDGET_EXCEEDED")
 
     hits.sort(key=lambda hit: (hit.file, hit.line, hit.column))
     return TextSearchReport(
