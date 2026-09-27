@@ -1,0 +1,68 @@
+name: Search Backend Qualification
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - "tree_sitter_analyzer/text_search.py"
+      - "scripts/qualify_search_backend.py"
+      - "tests/contracts/test_search_backend_qualification.py"
+      - "rfcs/0034-optional-search-backend-qualification.md"
+      - ".github/workflows/search-backend-qualification.yml"
+  push:
+    branches: [develop]
+    paths:
+      - "tree_sitter_analyzer/text_search.py"
+      - "scripts/qualify_search_backend.py"
+      - "tests/contracts/test_search_backend_qualification.py"
+      - "rfcs/0034-optional-search-backend-qualification.md"
+      - ".github/workflows/search-backend-qualification.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  differential-matrix:
+    name: RFC-0034 rg 15.1.0 (${{ matrix.axis }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - axis: linux
+            runner: ubuntu-24.04
+          - axis: macos
+            runner: macos-14
+          - axis: windows
+            runner: windows-2022
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: "0.12.3"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6.0.0
+        with:
+          python-version: "3.11"
+      - name: Install locked project
+        run: uv sync --frozen
+        shell: bash
+      - name: Verify qualification contracts
+        run: uv run pytest tests/contracts/test_search_backend_qualification.py tests/unit/test_text_search.py -q
+        shell: bash
+      - name: Run pinned differential matrix
+        run: |
+          mkdir -p qualification-artifacts
+          uv run python scripts/qualify_search_backend.py \
+            --download-pinned-rg \
+            --output "qualification-artifacts/${{ matrix.axis }}.json"
+        shell: bash
+      - name: Upload differential evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rfc0034-stage-a-${{ matrix.axis }}-${{ github.sha }}
+          path: qualification-artifacts/
+          if-no-files-found: error
+          retention-days: 90

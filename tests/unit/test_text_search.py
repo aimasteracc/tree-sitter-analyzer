@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -126,6 +128,39 @@ def test_text_search_budget_failure_never_returns_partial_results(
 
     with pytest.raises(TextSearchError, match="SOURCE_SCAN_BUDGET_EXCEEDED"):
         search_text(_request(tmp_path))
+
+
+def test_shared_admission_streams_one_certified_file_at_a_time(
+    tmp_path, monkeypatch
+) -> None:
+    from tree_sitter_analyzer import text_search
+
+    first = tmp_path / "a.py"
+    second = tmp_path / "b.py"
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    reads: list[str] = []
+    monkeypatch.setattr(
+        text_search,
+        "walk_candidate_entries",
+        lambda *_args, **_kwargs: iter((str(first), str(second))),
+    )
+
+    def capture(_root: str, relative: str, **_kwargs):
+        reads.append(relative)
+        return SimpleNamespace(kind="file", data=(tmp_path / relative).read_bytes())
+
+    monkeypatch.setattr(text_search, "safe_index_source_path", capture)
+    request = _request(tmp_path)
+    iterator = text_search._admitted_sources(
+        request, tmp_path, tmp_path, time.monotonic() + 5
+    )
+
+    assert reads == []
+    assert next(iterator).file == "a.py"
+    assert reads == ["a.py"]
+    assert next(iterator).file == "b.py"
+    assert reads == ["a.py", "b.py"]
 
 
 def test_isolated_worker_preserves_unicode_and_complete_counts(tmp_path) -> None:
