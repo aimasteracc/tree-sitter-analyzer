@@ -84,7 +84,7 @@ jobs:
         shell: bash
       - name: Upload build evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-build-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
           path: qualification-build/
@@ -121,7 +121,7 @@ jobs:
           python-version: "3.10"
       - name: Install qualification runtime dependencies
         run: python -m pip install --disable-pip-version-check "jsonschema>=4,<5" packaging psutil
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-build-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
           path: qualification-input
@@ -141,7 +141,7 @@ jobs:
           $value | Set-Content -Encoding ascii qualification-artifacts/job-result.json
       - name: Upload native evidence even on failure
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-${{ matrix.axis }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
           path: qualification-artifacts/
@@ -167,25 +167,25 @@ jobs:
       - name: Install aggregate runtime dependencies
         run: python -m pip install --disable-pip-version-check "jsonschema>=4,<5" packaging psutil
       - name: Download build manifest and wheel
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-build-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
           path: downloaded/build
       - name: Download Linux report
         continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-linux-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
           path: downloaded/linux
       - name: Download macOS report
         continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-macos-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
           path: downloaded/macos
       - name: Download Windows report
         continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: native-windows-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
           path: downloaded/windows
@@ -215,7 +215,7 @@ jobs:
         shell: bash
       - name: Upload aggregate evidence even on failure
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-aggregate-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
           path: qualification-aggregate/
