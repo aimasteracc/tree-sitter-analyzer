@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -260,6 +262,8 @@ def test_build_in_progress_fails_closed_on_clock_error(monkeypatch) -> None:
 
 def test_pid_alive_branches(monkeypatch) -> None:
     """_pid_alive maps os.kill outcomes correctly: gone→False, EPERM→alive."""
+    # 本用例只覆盖 POSIX 分支；Windows 分支不调用 os.kill（见 T-5 回归用例）。
+    monkeypatch.setattr(bs, "IS_WINDOWS", False)
     assert bs._pid_alive(0) is False  # non-positive pid is never alive
 
     monkeypatch.setattr(bs.os, "kill", lambda *a: None)
@@ -276,6 +280,77 @@ def test_pid_alive_branches(monkeypatch) -> None:
 
     monkeypatch.setattr(bs.os, "kill", _eperm)
     assert bs._pid_alive(4321) is True  # exists, owned by another user
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="仅 Windows：信号 0 即 CTRL_C_EVENT"
+)
+def test_pid_alive_never_sends_signal_zero_on_windows(monkeypatch) -> None:
+    """T-5 回归 (2026-10-14)：Windows 上 os.kill(pid, 0) 不是存在性探测。
+
+    CPython 在 Windows 把 sig == CTRL_C_EVENT (== 0) 实现为
+    ``GenerateConsoleCtrlEvent``，向共享控制台的进程组投递 Ctrl+C：pytest 收到
+    KeyboardInterrupt、PowerShell 宿主被杀，本地 quick gate 在约 62% 处反复中断。
+    这里用记录替身替换 os.kill，绝不向测试进程发送真实 Ctrl+C。
+    """
+    calls: list[tuple[int, int]] = []
+    monkeypatch.setattr(bs.os, "kill", lambda pid, sig: calls.append((pid, sig)))
+
+    assert bs._pid_alive(os.getpid()) is True
+    assert calls == []
+
+
+def test_pid_alive_reports_current_process_alive() -> None:
+    """当前进程必然存活；Windows 走原生查询，POSIX 走信号 0。"""
+    assert bs._pid_alive(os.getpid()) is True
+
+
+def test_pid_alive_reports_exited_child_dead() -> None:
+    """已退出并被回收的子进程 pid 不再存活。"""
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    assert child.wait(timeout=60) == 0
+    assert bs._pid_alive(child.pid) is False
+
+
+@pytest.mark.parametrize("pid", [0, -1])
+def test_pid_alive_rejects_non_positive_pid(pid: int) -> None:
+    """pid <= 0 永不视为存活（POSIX 上 0/-1 指向进程组，必须先拦截）。"""
+    assert bs._pid_alive(pid) is False
+
+
+def test_pid_alive_maps_windows_access_denied_to_alive(monkeypatch) -> None:
+    """OpenProcess 返回 ERROR_ACCESS_DENIED：进程存在但属于其他用户，视为存活。"""
+    monkeypatch.setattr(bs, "IS_WINDOWS", True)
+    monkeypatch.setattr(bs, "_query_process", lambda pid: (5, 0))
+    assert bs._pid_alive(4321) is True
+
+
+def test_pid_alive_maps_windows_invalid_pid_to_dead(monkeypatch) -> None:
+    """OpenProcess 返回 ERROR_INVALID_PARAMETER：不存在该 pid，视为未存活。"""
+    monkeypatch.setattr(bs, "IS_WINDOWS", True)
+    monkeypatch.setattr(bs, "_query_process", lambda pid: (87, 0))
+    assert bs._pid_alive(4321) is False
+
+
+def test_pid_alive_treats_other_windows_open_errors_as_alive(monkeypatch) -> None:
+    """其他 OpenProcess 错误（如 ERROR_INVALID_HANDLE=6）保守视为存活，不提前抢占标记。"""
+    monkeypatch.setattr(bs, "IS_WINDOWS", True)
+    monkeypatch.setattr(bs, "_query_process", lambda pid: (6, 0))
+    assert bs._pid_alive(4321) is True
+
+
+def test_pid_alive_reports_windows_still_active_as_alive(monkeypatch) -> None:
+    """进程句柄打开成功且退出码为 STILL_ACTIVE (259)：仍在运行。"""
+    monkeypatch.setattr(bs, "IS_WINDOWS", True)
+    monkeypatch.setattr(bs, "_query_process", lambda pid: (0, 259))
+    assert bs._pid_alive(4321) is True
+
+
+def test_pid_alive_reports_windows_exited_process_as_dead(monkeypatch) -> None:
+    """进程对象仍可打开但已有退出码（如 0）：已退出，视为未存活。"""
+    monkeypatch.setattr(bs, "IS_WINDOWS", True)
+    monkeypatch.setattr(bs, "_query_process", lambda pid: (0, 0))
+    assert bs._pid_alive(4321) is False
 
 
 def test_build_in_progress_stale_when_timestamp_is_in_the_future() -> None:
