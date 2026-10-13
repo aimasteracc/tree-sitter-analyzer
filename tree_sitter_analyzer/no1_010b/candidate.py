@@ -114,7 +114,7 @@ def _frozen_path(tools: Sequence[ToolIdentity]) -> str:
     """
     dirs = [str(Path(tool.path).parent) for tool in tools if tool.path is not None]
     system_root = os.environ.get("SYSTEMROOT")
-    if _IS_WINDOWS and system_root:  # pragma: no cover - Windows-only 系统目录
+    if _IS_WINDOWS and system_root:  # pragma: no cover - Windows-only system dirs
         dirs.extend([str(Path(system_root) / "System32"), system_root])
     return os.pathsep.join(dict.fromkeys(dirs))
 
@@ -307,7 +307,8 @@ def remove_tree(path: Path) -> None:
     shutil.rmtree(path, ignore_errors=True)
 
 
-if sys.platform == "win32":
+# Windows 分支只在 Windows 上可达；CI 覆盖率在 ubuntu 轴采集，故排除（else 不受影响）。
+if sys.platform == "win32":  # pragma: no cover - Windows-only taskkill branch
 
     def terminate_group(proc: subprocess.Popen[bytes]) -> None:
         """Windows：组长仍存活时 ``taskkill /T /F`` 终止其整棵进程树。

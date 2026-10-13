@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from tests.unit.no1_010b._verifier_helpers import (
     EXPECTED_NOT_IMPLEMENTED,
     GOOD_PATCH,
@@ -16,9 +18,10 @@ from tests.unit.no1_010b._verifier_helpers import (
     value_patch,
     verify,
 )
+from tree_sitter_analyzer.no1_010b import verifier
 from tree_sitter_analyzer.no1_010b.patch import PATCH_MAX_LINES_PER_HUNK
 from tree_sitter_analyzer.no1_010b.runner import Verdict
-from tree_sitter_analyzer.no1_010b.verifier import verify_patch
+from tree_sitter_analyzer.no1_010b.verifier import AttemptOutcome, verify_patch
 
 CONTEXT_MISMATCH = diff(
     "src/value.py", "def value():\n    return 7\n", "def value():\n    return 2\n"
@@ -112,3 +115,25 @@ def test_allowlist_path_violation_is_terminal(value_corpus: Path) -> None:
 def test_outcome_exposes_a_sha256_env_digest(value_corpus: Path) -> None:
     outcome = verify_patch(make_record(), value_corpus, GOOD_PATCH)
     assert len(outcome.env_digest or "") == 64
+
+
+def test_pass_with_unimplemented_checks_is_not_terminal_even_with_authority() -> None:
+    # 即使将来具备判定权（authority_requires 为空），缺检查的 PASS 仍不是终态。
+    outcome = AttemptOutcome(Verdict("PASS"), ("stale_rows",), ())
+    assert outcome.terminal is None
+
+
+def test_workspace_creation_failure_is_sandbox_failure(
+    value_corpus: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 临时目录的父目录不存在：mkdir 失败，attempt 无效而不是抛异常。
+    missing = tmp_path / "no-such-temp-root"
+    monkeypatch.setattr(verifier.tempfile, "gettempdir", lambda: str(missing))
+    assert verify(value_corpus, GOOD_PATCH) == Verdict("UNKNOWN", "SANDBOX_FAILURE")
+
+
+def test_missing_fixture_is_sandbox_failure(value_corpus: Path) -> None:
+    record = make_record(repo="fixtures/does-not-exist")
+    assert verify(value_corpus, GOOD_PATCH, record=record) == Verdict(
+        "UNKNOWN", "SANDBOX_FAILURE"
+    )

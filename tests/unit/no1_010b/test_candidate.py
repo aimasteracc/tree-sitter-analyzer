@@ -4,13 +4,20 @@ from __future__ import annotations
 
 import hashlib
 import os
+import signal
+import subprocess
 import sys
 import time
 from pathlib import Path
 
 import pytest
 
-from tests.unit.no1_010b._verifier_helpers import write_exit_script
+from tests.unit.no1_010b._verifier_helpers import (
+    kill_quietly,
+    still_running,
+    write_exit_script,
+)
+from tree_sitter_analyzer.no1_010b import candidate
 from tree_sitter_analyzer.no1_010b.candidate import (
     CommandResult,
     OutputCap,
@@ -152,3 +159,77 @@ def test_output_cap_stops_a_continuous_writer_before_the_timeout(
     elapsed = time.monotonic() - started
     # ratchet: nondeterministic 墙钟上界（远小于 60 s 超时），证明是提前终止
     assert (result, elapsed < 30.0) == (CommandResult("output_limit"), True)
+
+
+def test_unreadable_tool_binary_is_recorded_as_unreadable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # which() 指向无法作为文件读取的路径（此处为目录）：身份记为 unreadable。
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.no1_010b.candidate.shutil.which",
+        lambda _name: str(tmp_path),
+    )
+    (git,) = (tool for tool in resolve_tools() if tool.name == "git")
+    assert git == ToolIdentity("git", str(tmp_path.absolute()), "unreadable")
+
+
+def test_reap_kills_a_process_that_outlives_the_reap_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(candidate, "_REAP_TIMEOUT_S", 0.05)
+    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    candidate._reap(proc)
+    # POSIX 上 kill() 即 SIGKILL（-9）；Windows 上 TerminateProcess 退出码为 1。
+    assert proc.returncode == (1 if sys.platform == "win32" else -signal.SIGKILL)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX-only: Windows has no SIGTERM handler to ignore (taskkill /F)",
+)
+def test_group_member_ignoring_sigterm_is_killed_after_grace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 组长已退出，但组内后代忽略 SIGTERM：宽限期满后必须以 SIGKILL 收掉。
+    monkeypatch.setattr(candidate, "GROUP_GRACE_S", 0.3)
+    pid_file = tmp_path / "child.pid"
+    child = (
+        "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        "time.sleep(60)"
+    )
+    leader = (
+        "import pathlib, subprocess, sys, time\n"
+        f"proc = subprocess.Popen([sys.executable, '-c', {child!r}])\n"
+        "time.sleep(0.5)\n"
+        f"pathlib.Path({str(pid_file)!r}).write_text(str(proc.pid))\n"
+    )
+    result = _run([sys.executable, "-c", leader], tmp_path, tmp_path)
+    pid = int(pid_file.read_text())
+    try:
+        alive = still_running(pid)
+    finally:
+        kill_quietly(pid)
+    assert (result, alive) == (CommandResult("exited", 0), False)
+
+
+class _Unkillable:
+    """kill() 无效、wait() 永远超时的进程替身（模拟不可中断睡眠中的进程）。"""
+
+    def __init__(self) -> None:
+        self.kills = 0
+
+    def wait(self, timeout: float) -> int:
+        raise subprocess.TimeoutExpired(["unkillable"], timeout)
+
+    def kill(self) -> None:
+        self.kills += 1
+
+
+def test_reap_gives_up_after_two_kill_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 回收有界：两次 kill 仍收不回就返回，绝不让 runner 无限挂起。
+    monkeypatch.setattr(candidate, "_REAP_TIMEOUT_S", 0.01)
+    proc = _Unkillable()
+    candidate._reap(proc)  # type: ignore[arg-type]
+    assert proc.kills == 2

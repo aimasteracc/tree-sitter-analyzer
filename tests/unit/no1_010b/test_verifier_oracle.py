@@ -119,6 +119,31 @@ def test_stderr_diagnostic_after_result_is_oracle_protocol_error(
     )
 
 
+def test_non_utf8_capture_is_oracle_protocol_error(value_corpus: Path) -> None:
+    body = "import os\n\n\ndef value():\n    os.write(1, b'\\xff\\n')\n    return 2\n"
+    assert verify(value_corpus, value_patch(body)) == Verdict(
+        "UNKNOWN", "ORACLE_PROTOCOL_ERROR"
+    )
+
+
+def test_deleted_capture_is_oracle_execution_error(value_corpus: Path) -> None:
+    # POSIX 上候选删除捕获文件后 runner 无从读取；Windows 上删除被拒、value()
+    # 抛错使 main() 返回 1——两条路径都必须是执行错误，绝不是 PASS。
+    body = (
+        "import os, sys\n\n\ndef value():\n    os.remove(sys.argv[3])\n    return 2\n"
+    )
+    assert verify(value_corpus, value_patch(body)) == Verdict(
+        "UNKNOWN", "ORACLE_EXECUTION_ERROR"
+    )
+
+
+def test_wrapper_hard_exit_nonzero_is_oracle_execution_error(
+    value_corpus: Path,
+) -> None:
+    patch = value_patch("import os\n\n\ndef value():\n    os._exit(3)\n")
+    assert verify(value_corpus, patch) == Verdict("UNKNOWN", "ORACLE_EXECUTION_ERROR")
+
+
 def test_continuous_writer_is_protocol_error_before_timeout(
     value_corpus: Path,
 ) -> None:
