@@ -2125,6 +2125,8 @@ class TestWalSnapshotPath:
             (tmp_path / "sample.py").write_text(wal_source, encoding="utf-8")
         build = await CodeGraphFullIndexTool(str(tmp_path)).execute({"mode": "full"})
         assert (build["success"], build["verdict"]) == (True, "INFO")
+        # 密封版本为只读文件（RFC-0032 E5）；模拟活跃写端须先恢复写位。
+        os.chmod(resolve_index_path(str(tmp_path)), 0o600)
         conn = sqlite3.connect(resolve_index_path(str(tmp_path)))
         try:
             assert conn.execute("PRAGMA journal_mode=WAL").fetchone() == ("wal",)

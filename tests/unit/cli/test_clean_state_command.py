@@ -60,6 +60,24 @@ def test_removes_present_directory(tmp_path: Path, capsys) -> None:
     assert not target.exists()
 
 
+@pytest.mark.asyncio
+async def test_removes_cache_holding_sealed_generation(tmp_path: Path, capsys) -> None:
+    # rfcs/evidence/0032-feasibility E5（2026-10-13）：密封版本是只读文件，
+    # Windows 上 rmtree 遇只读文件报 PermissionError，清理须先恢复写位。
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    (tmp_path / "a.py").write_text("def saved(): return 1\n", encoding="utf-8")
+    built = await CodeGraphFullIndexTool(str(tmp_path)).execute({"mode": "full"})
+    assert built["published"] is True
+    capsys.readouterr()
+
+    exit_code = run_clean_state(_args(tmp_path), _capture_errors().append)
+
+    assert exit_code == 0
+    assert "removed: .ast-cache" in capsys.readouterr().out.splitlines()
+    assert (tmp_path / ".ast-cache").exists() is False
+
+
 def test_absent_paths_are_reported_skipped(tmp_path: Path, capsys) -> None:
     """When nothing exists each path should yield a ``skipped`` line."""
     errors = _capture_errors()

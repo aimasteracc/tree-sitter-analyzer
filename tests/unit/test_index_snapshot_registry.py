@@ -426,6 +426,7 @@ class TestAuthoritativeSnapshotTransitions:
         )
         from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 
+        os.chmod(resolve_index_path(tmp_path), 0o600)  # 密封版本只读，先恢复写位
         conn = sqlite3.connect(resolve_index_path(tmp_path))
         conn.execute("DELETE FROM ast_call_graph_state")
         conn.commit()

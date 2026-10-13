@@ -24,6 +24,7 @@ from ..indexing_snapshot import (
     walk_index_candidate_entries,
 )
 from ..project_graph import _language_from_ext
+from ..read_only_files import mark_read_only
 from ._win_fileops import IS_WINDOWS, replace_file
 from ._win_fileops import IndexWriterBusy as IndexWriterBusy  # 发布失败关闭的类型
 from .generation_routing import read_selector
@@ -327,7 +328,11 @@ class GenerationStore:
         return selector
 
     def seal(self, selector: GenerationSelector) -> None:
-        """构建连接释放后截断 WAL 并刷盘；完成之前不能发布。"""
+        """构建连接释放后合并 WAL、刷盘并标记文件级只读；完成之前不能发布。
+
+        公共只读连接可 ``ATTACH ... mode=rw`` 同一文件绕过 ``mode=ro``
+        （rfcs/evidence/0032-feasibility E5），因此发布前由操作系统只读位兜底。
+        """
         database = self.database(selector)
         self._verify_database(selector)
         connection = sqlite3.connect(database.as_uri() + "?mode=rw", uri=True)
@@ -335,11 +340,20 @@ class GenerationStore:
             checkpoint = connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             if checkpoint.fetchone()[0] != 0:
                 raise RuntimeError("INDEX_GENERATION_CHECKPOINT_BUSY")
+            # 只读 WAL 库的读者会另建可写 -wal/-shm；切回回滚日志使版本只剩主库。
+            journal = connection.execute("PRAGMA journal_mode=DELETE").fetchone()[0]
         finally:
             connection.close()
+        if journal != "delete" or any(
+            os.path.lexists(f"{database}{suffix}")
+            for suffix in ("-wal", "-shm", "-journal")
+        ):
+            raise RuntimeError("INDEX_GENERATION_SIDECAR_PRESENT")
         self._verify_database(selector)
         with database.open("r+b") as handle:
             os.fsync(handle.fileno())
+        # 只读位丢失（如掉电前未落盘）只会退回可写文件，不会损坏已刷盘内容。
+        mark_read_only(database)
         _flush_directory(database.parent)
         _flush_directory(database.parent.parent)
 

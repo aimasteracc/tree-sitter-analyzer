@@ -220,6 +220,7 @@ def test_foreign_store_selector_cannot_supply_database_path(store, tmp_path):
 def test_missing_prepared_database_cannot_be_published(store):
     first = store.sync()
     prepared = store.prepare(store.capture())
+    os.chmod(store.database(prepared.selector), 0o600)  # 密封版本只读，先恢复写位
     store.database(prepared.selector).unlink()
     with pytest.raises(FileNotFoundError, match="DATABASE_MISSING"):
         store.publish(prepared)
