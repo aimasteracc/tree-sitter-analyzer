@@ -373,11 +373,17 @@ def unsatisfied_gates(
                 "RFC-0026 B1",
                 CODE_BLOCKED,
                 "NOT_SATISFIED",
-                "no patch application, isolated worktree, read-only candidate "
-                "mount, write journal, stale-row projection comparison, or "
-                "unsupported-relationship evidence check exists. B1 is entirely "
-                "model-free: its exit artifact is 10/10 pre-registered terminal "
-                "pairs plus the mutation suite, with no arms and no spend",
+                "B1 slice 1 exists (no1_010b/verifier.py): patch application in "
+                "an isolated per-attempt copy, the segment-aware allowlist check, "
+                "and provisional oracle, verification and tree-snapshot checks. "
+                "Only verdicts decided before candidate code runs are terminal; "
+                "every later verdict is provisional because no read-only "
+                "candidate mount or write journal exists. Also missing: network, "
+                "runner-venv and home isolation, process-escape containment, "
+                "stale-row projection comparison, and the unsupported-"
+                "relationship evidence check. B1 is entirely model-free: its exit "
+                "artifact is 10/10 pre-registered terminal pairs plus the "
+                "mutation suite, with no arms and no spend",
             )
         )
 
