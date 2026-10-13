@@ -10,7 +10,7 @@
   - `tree_sitter_analyzer/api/pulse_evidence.py`
   - `tree_sitter_analyzer/mcp/tools/pulse_tool.py`
   - `tree_sitter_analyzer/cli/commands/mcp_commands/_specs_pulse.py`
-  - `tests/unit/api/test_pulse.py`
+  - `tests/unit/api/test_pulse_read_consistency.py`
   - `tests/unit/mcp/tools/test_pulse_tool.py`
   - `tests/unit/cli/test_mcp_commands.py`
 
