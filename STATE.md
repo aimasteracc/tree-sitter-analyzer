@@ -132,6 +132,18 @@ unwritten code: patch application, isolated worktree, read-only candidate mount,
 write journal, stale-row projection comparison, unsupported-relationship
 evidence check. **Schedule B1; it does not need a budget decision.**
 
+**2026-10-13 update (B1 slice 1, `feature/no1-010b-b1-runner`):** patch
+application in an isolated copy, the allowlist check, the trusted oracle
+wrapper, typed verification argv in a frozen environment and the post-command
+snapshot recheck now exist (`no1_010b/{candidate,oracle_wrapper,verifier}.py`).
+Only pre-execution outcomes (`PATCH_NOT_APPLICABLE`, `PATCH_OVER_BOUND`,
+diff-level `PATH_VIOLATION`) are terminal; everything decided after candidate
+code runs stays provisional (`terminal = None`), because without the read-only
+mount and write journal candidate code can forge the oracle result (pinned by a
+strict xfail). Still unwritten: read-only candidate mount, write journal,
+network/venv/home isolation, process-escape containment, stale-row projection
+comparison, unsupported-relationship evidence check, registration registry.
+
 The narrow claim that *does* hold: **no model-free run can produce a B2
 baseline.** RFC-0026 section 2 designates the supplied-patch route as "the
 validation channel, **not the agent measurement**", and makes three non-pooled
