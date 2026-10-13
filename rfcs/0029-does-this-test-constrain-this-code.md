@@ -1,6 +1,6 @@
 # RFC-0029: "Does this test constrain this code?" — a question an agent can ask
 
-- **Status**: draft
+- **Status**: draft — implementation merged in #1327 (2026-08-25); 11/18 acceptance criteria verified 2026-10-13
 - **Author(s)**: @lead-agent
 - **Created**: 2026-08-20
 - **Last updated**: 2026-08-20
@@ -541,8 +541,8 @@ four — the two dropped items and why are in the motivation table.
 
 ## Acceptance criteria
 
-- [ ] `edit action=mutation_probe` + `--mutation-probe`, 1:1, parity test green
-- [ ] the action lives on `edit`, **not** `health`; `health`'s
+- [x] `edit action=mutation_probe` + `--mutation-probe`, 1:1, parity test green
+- [x] the action lives on `edit`, **not** `health`; `health`'s
       `readOnlyHint=True` assertion remains true
 - [ ] the action name does not self-heal into any sibling action under
       `difflib.get_close_matches(cutoff=0.6)` — asserted by a test over the live
@@ -551,24 +551,24 @@ four — the two dropped items and why are in the motivation table.
 - [ ] the **hoist** mutation is implemented and item 1 of the test plan passes
       because of it
 - [ ] the **two-defect** corpus returns `does_not_constrain` for both
-- [ ] at least three positive controls return `constrains`
-- [ ] a non-assertion failure returns `unknown` / `MUTATED_RUN_CRASHED`, never
+- [x] at least three positive controls return `constrains`
+- [x] a non-assertion failure returns `unknown` / `MUTATED_RUN_CRASHED`, never
       `constrains`
 - [ ] a deselected / uncollected node returns `unknown`, and collected count is
       asserted to be exactly 1
-- [ ] the run is isolated by `--override-ini="addopts=…"` (dropping the repo's
+- [x] the run is isolated by `--override-ini="addopts=…"` (dropping the repo's
       default xdist, rerun and marker filter), not by `-p no:randomly`
-- [ ] mutated bytes are delivered via `sys.meta_path`; a relative-import module is
+- [x] mutated bytes are delivered via `sys.meta_path`; a relative-import module is
       in the corpus and does not raise `ImportError`
-- [ ] every fail-closed subcode forced by its own test
-- [ ] `unknown` is emitted, never a defaulted `constrains`
+- [x] every fail-closed subcode forced by its own test
+- [x] `unknown` is emitted, never a defaulted `constrains`
 - [ ] working tree provably unmodified across every call path
-- [ ] a call completes within the **60 s** budget and the response reports
+- [x] a call completes within the **60 s** budget and the response reports
       `baseline_ms` / `mutated_ms` / `overhead_ms`
 - [ ] false-negative profile published and executable, including the two
       out-of-scope corpus items
-- [ ] CODEMAPs updated; codemap-sync gate green
-- [ ] NOT wired into any gate or score (deliberate, see Drawbacks 4)
+- [x] CODEMAPs updated; codemap-sync gate green
+- [x] NOT wired into any gate or score (deliberate, see Drawbacks 4)
 
 ## What this RFC does NOT do (deferred)
 

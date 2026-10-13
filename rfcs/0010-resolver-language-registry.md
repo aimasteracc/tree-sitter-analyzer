@@ -207,13 +207,13 @@ surfaces for a fixture in the new language.
 
 ## Acceptance criteria
 
-- [ ] `_registry.py` + `register_language`/`get_language_resolver` exist; Java
+- [x] `_registry.py` + `register_language`/`get_language_resolver` exist; Java
       migrated to self-register; `_context.py` + `__init__.py` are registry-driven
 - [ ] 401 resolver tests green; Java classification byte-identical (parity test)
-- [ ] `languages/` subpackage with auto-discovery; adding a language requires
+- [x] `languages/` subpackage with auto-discovery; adding a language requires
       **zero edits to any existing file** (only new files: `languages/<lang>.py`,
       its constants, and tests) — verified by a discovery test
-- [ ] Auto-discovery test: every `languages/*.py` module registered a resolver
+- [x] Auto-discovery test: every `languages/*.py` module registered a resolver
 - [ ] First-wave languages land one focused PR each, conservative tiers,
       adversarial-reviewed, with a "no cross-language mis-wire" test
 - [ ] The correctness report (REPORT-v1.21.0, PR #343, or a successor) re-measures the classification rate +
