@@ -54,7 +54,7 @@ imported_by AS (
     AND    (e.callee_resolved_file = t.file_path
             OR (t.language = 'python' AND e.target_node_id = :module_node))
     ORDER  BY e.file_path
-    LIMIT  20
+    LIMIT  :imported_by_probe
 ),
 git_heat AS (
     SELECT a.last_modified_commit AS last_commit,
