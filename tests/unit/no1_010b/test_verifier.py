@@ -297,6 +297,6 @@ def _reference_patch(record: BenchmarkRecord) -> str:
 @pytest.mark.slow_ok
 def test_committed_reference_patch_passes_implemented_checks() -> None:
     records = load_corpus_records(str(CORPUS_ROOT / "corpus.jsonl"))
-    (record,) = [item for item in records if item.id == REFERENCE_TASK_ID]
+    (record,) = (item for item in records if item.id == REFERENCE_TASK_ID)
     outcome = verify_patch(record, CORPUS_ROOT, _reference_patch(record))
     assert outcome.checks_verdict == Verdict("PASS")
