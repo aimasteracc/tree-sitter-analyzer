@@ -127,6 +127,30 @@ def test_relative_argv0_escaping_the_root_is_a_spawn_error(
     assert _run(["../outside/tool"], root, tmp_path) == CommandResult("spawn_error")
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="驱动器相对路径仅存在于 Windows")
+def test_drive_relative_argv0_is_a_spawn_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 2026-10-13 内部复审 LOW-3：``C:tool`` 无分隔符却按进程 cwd 解析，必须拒绝。
+    root = tmp_path / "candidate"
+    root.mkdir()
+    write_exit_script(tmp_path / "tool", 0)
+    monkeypatch.chdir(tmp_path)
+    drive = tmp_path.drive
+    assert _run([f"{drive}tool"], root, tmp_path) == CommandResult("spawn_error")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="PATHEXT 仅在 Windows 生效")
+def test_empty_pathext_still_accepts_an_exact_executable_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 2026-10-13 内部复审 LOW-4：PATHEXT 为空时，带确切后缀的命令不得被拒绝。
+    root = tmp_path / "candidate"
+    write_exit_script(root / "tools" / "check", 7)
+    monkeypatch.setenv("PATHEXT", "")
+    assert _run(["./tools/check.cmd"], root, tmp_path) == CommandResult("exited", 7)
+
+
 def test_unstartable_command_is_a_spawn_error(tmp_path: Path) -> None:
     # 解释器存在但 cwd 不存在：Popen 抛 OSError，结局是 spawn_error 而非异常。
     missing = tmp_path / "no-such-dir"
@@ -159,6 +183,25 @@ def test_output_cap_stops_a_continuous_writer_before_the_timeout(
     elapsed = time.monotonic() - started
     # ratchet: nondeterministic 墙钟上界（远小于 60 s 超时），证明是提前终止
     assert (result, elapsed < 30.0) == (CommandResult("output_limit"), True)
+
+
+def test_output_over_cap_then_fast_exit_is_output_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 2026-10-13 内部复审 MEDIUM-1：超限后在同一轮询步内退出曾随时序判为 exited。
+    # 把轮询步放大到远超进程寿命，使其必然在首个等待步内退出（旧实现必返回 exited）。
+    monkeypatch.setattr(candidate, "_POLL_S", 30.0)
+    capture = tmp_path / "capture.log"
+    writer = f"open({str(capture)!r}, 'wb').write(b'x' * 1034)\n"
+    result = run_bounded(
+        [sys.executable, "-c", writer],
+        cwd=tmp_path,
+        env=frozen_env(tmp_path / "scratch", resolve_tools()),
+        timeout_s=60.0,
+        log_path=tmp_path / "run.log",
+        output_cap=OutputCap(capture, 1024),
+    )
+    assert result == CommandResult("output_limit")
 
 
 def test_unreadable_tool_binary_is_recorded_as_unreadable(

@@ -55,6 +55,7 @@ EXPECTED_NOT_IMPLEMENTED = (
     "runner_venv_isolation",
     "home_isolation",
     "process_escape_containment",
+    "output_volume_containment",
     "stale_rows",
     "unsupported_relationship",
     "registration_registry",

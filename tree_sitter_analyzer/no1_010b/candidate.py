@@ -25,7 +25,7 @@ import sys
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Literal
 
 GIT_TIMEOUT_S = 30.0
@@ -371,8 +371,13 @@ def _resolve_executable(argv0: str, cwd: Path, search_path: str) -> str | None:
     """解析 argv[0]：裸名走冻结 PATH；含路径分隔符的相对路径相对候选根解析。
 
     相对路径解析后（含符号链接）必须仍在候选根内，``..`` 逃逸一律拒绝；绝对
-    路径（如 corpus 记录中的解释器）按原样校验可执行性。
+    路径（如 corpus 记录中的解释器）按原样校验可执行性。Windows 上的驱动器相对
+    路径（如 ``C:tool``）没有分隔符却按进程 cwd 解析，一律拒绝。
     """
+    windows_path = PureWindowsPath(argv0)
+    drive_relative = bool(windows_path.drive) and not windows_path.is_absolute()
+    if _IS_WINDOWS and drive_relative:  # pragma: no cover - Windows-only refusal
+        return None
     if not any(sep and sep in argv0 for sep in (os.sep, os.altsep)):
         return shutil.which(argv0, path=search_path)
     if Path(argv0).is_absolute():
@@ -396,7 +401,8 @@ def _executable_file(target: Path) -> str | None:
         exts = [
             e for e in os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(";") if e
         ]
-        if target.suffix.casefold() not in {e.casefold() for e in exts}:
+        # PATHEXT 为空时没有可补的后缀，只校验原名本身。
+        if exts and target.suffix.casefold() not in {e.casefold() for e in exts}:
             candidates = [target.with_name(target.name + ext) for ext in exts]
     for candidate in candidates:
         if candidate.is_file() and os.access(candidate, os.X_OK):
@@ -414,19 +420,30 @@ def _file_size(path: Path) -> int:
 def _await_exit(
     proc: subprocess.Popen[bytes], timeout_s: float, cap: OutputCap | None
 ) -> CommandResult:
-    """等待退出；有 ``cap`` 时按 ``_POLL_S`` 轮询输出文件大小，超限立即返回。"""
+    """等待退出；有 ``cap`` 时按 ``_POLL_S`` 轮询输出文件大小，超限立即返回。
+
+    进程退出后再检查一次大小：超限后在同一轮询步内退出的进程也必须判为
+    ``output_limit``，否则同一候选会随时序得到不同的原因码。
+    """
     deadline = time.monotonic() + timeout_s
     while True:
-        if cap is not None and _file_size(cap.path) > cap.max_bytes:
+        if _over_cap(cap):
             return CommandResult("output_limit")
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return CommandResult("timeout")
         step = remaining if cap is None else min(remaining, _POLL_S)
         try:
-            return CommandResult("exited", proc.wait(timeout=step))
+            returncode = proc.wait(timeout=step)
         except subprocess.TimeoutExpired:
             continue
+        if _over_cap(cap):
+            return CommandResult("output_limit")
+        return CommandResult("exited", returncode)
+
+
+def _over_cap(cap: OutputCap | None) -> bool:
+    return cap is not None and _file_size(cap.path) > cap.max_bytes
 
 
 def run_bounded(

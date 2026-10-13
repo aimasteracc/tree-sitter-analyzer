@@ -71,6 +71,7 @@ _NOT_IMPLEMENTED = (
     "runner_venv_isolation",
     "home_isolation",
     "process_escape_containment",
+    "output_volume_containment",
     "stale_rows",
     "unsupported_relationship",
     "registration_registry",
@@ -210,7 +211,9 @@ def _oracle_verdict(
         env=env,
         timeout_s=attempt.oracle_timeout_s,
         log_path=scratch / "oracle.log",
-        # 上限在捕获期间执行（不等进程退出），持续写入者不会写满磁盘。
+        # 上限在捕获期间按路径轮询执行，只约束 oracle 捕获文件本身；候选可在 POSIX
+        # 上 unlink 后继续写、写其他 scratch 文件，verification 输出也不设上限——
+        # 这是已上报的 ``output_volume_containment`` 缺口。
         output_cap=OutputCap(capture, ORACLE_OUTPUT_MAX_BYTES),
     )
     if result.status == "output_limit":

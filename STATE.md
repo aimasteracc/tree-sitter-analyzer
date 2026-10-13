@@ -141,7 +141,7 @@ diff-level `PATH_VIOLATION`) are terminal; everything decided after candidate
 code runs stays provisional (`terminal = None`), because without the read-only
 mount and write journal candidate code can forge the oracle result (pinned by a
 strict xfail). Still unwritten: read-only candidate mount, write journal,
-network/venv/home isolation, process-escape containment, stale-row projection
+network/venv/home isolation, process-escape containment, output-volume containment, stale-row projection
 comparison, unsupported-relationship evidence check, registration registry.
 
 The narrow claim that *does* hold: **no model-free run can produce a B2
