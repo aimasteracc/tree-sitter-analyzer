@@ -332,6 +332,27 @@ def test_pid_alive_maps_windows_invalid_pid_to_dead(monkeypatch) -> None:
     assert bs._pid_alive(4321) is False
 
 
+def test_pid_alive_treats_other_windows_open_errors_as_alive(monkeypatch) -> None:
+    """其他 OpenProcess 错误（如 ERROR_INVALID_HANDLE=6）保守视为存活，不提前抢占标记。"""
+    monkeypatch.setattr(bs, "IS_WINDOWS", True)
+    monkeypatch.setattr(bs, "_query_process", lambda pid: (6, 0))
+    assert bs._pid_alive(4321) is True
+
+
+def test_pid_alive_reports_windows_still_active_as_alive(monkeypatch) -> None:
+    """进程句柄打开成功且退出码为 STILL_ACTIVE (259)：仍在运行。"""
+    monkeypatch.setattr(bs, "IS_WINDOWS", True)
+    monkeypatch.setattr(bs, "_query_process", lambda pid: (0, 259))
+    assert bs._pid_alive(4321) is True
+
+
+def test_pid_alive_reports_windows_exited_process_as_dead(monkeypatch) -> None:
+    """进程对象仍可打开但已有退出码（如 0）：已退出，视为未存活。"""
+    monkeypatch.setattr(bs, "IS_WINDOWS", True)
+    monkeypatch.setattr(bs, "_query_process", lambda pid: (0, 0))
+    assert bs._pid_alive(4321) is False
+
+
 def test_build_in_progress_stale_when_timestamp_is_in_the_future() -> None:
     """A clock that stepped backward (NTP) must not make a marker fresh forever."""
     conn = sqlite3.connect(":memory:")
