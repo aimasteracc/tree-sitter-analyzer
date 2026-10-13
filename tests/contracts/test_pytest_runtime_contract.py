@@ -480,6 +480,24 @@ def test_dead_pytest_process_temp_root_is_removed(tmp_path) -> None:
     assert stale_root.exists() is False
 
 
+def test_stale_temp_root_with_read_only_generation_is_removed(tmp_path) -> None:
+    # rfcs/evidence/0032-feasibility E5（2026-10-13）：密封版本改为只读文件后，
+    # Windows 上 rmtree(ignore_errors=True) 会静默残留，清理须先恢复写位。
+    import stat
+
+    from tests import pytest_temp_hygiene
+
+    stale_root = tmp_path / "run-99999999-deadbeef"
+    sealed = stale_root / "generations" / "g" / "index.db"
+    sealed.parent.mkdir(parents=True)
+    sealed.write_bytes(b"sealed")
+    os.chmod(sealed, stat.S_IREAD)
+
+    pytest_temp_hygiene.remove_stale_pytest_temp_roots(tmp_path)
+
+    assert stale_root.exists() is False
+
+
 def test_xdist_worker_keeps_controller_temp_root(monkeypatch, tmp_path) -> None:
     """Workers must inherit the controller root instead of replacing it."""
     from tests import pytest_temp_hygiene

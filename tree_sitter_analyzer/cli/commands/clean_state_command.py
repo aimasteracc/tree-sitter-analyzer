@@ -29,6 +29,7 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
+from ...read_only_files import clear_read_only_tree
 from ..output_format import wants_json_output
 
 # Exact list of ephemeral paths owned by tree-sitter-analyzer. Relative
@@ -143,6 +144,8 @@ def _remove_single(target: Path, rel: str, prefix_remove: str) -> str:
     """Best-effort removal of a single path. Returns the status line."""
     try:
         if target.is_dir() and not target.is_symlink():
+            # 已密封索引版本是只读文件；Windows 上须先恢复写位才能删除。
+            clear_read_only_tree(target)
             shutil.rmtree(target)
         else:
             target.unlink()

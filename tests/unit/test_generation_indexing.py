@@ -7,6 +7,12 @@ from pathlib import Path
 
 import pytest
 
+# root 绕过 0444 权限位，属 RFC-0032 已声明的边界外情形。
+_ROOT_BYPASSES_MODE_BITS = pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0,
+    reason="tracked: RFC-0032 boundary, root bypasses read-only file bits",
+)
+
 
 @pytest.fixture
 def project_root(tmp_path):
@@ -367,6 +373,81 @@ async def test_post_publication_error_reports_actual_visibility(
     assert result["success"] is False
     assert result["published"] is (True if damage == "completed" else None)
     assert result["phase"] == "generation_publication"
+
+
+async def _publish_full_index(project_root, arguments=None):
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    result = await CodeGraphFullIndexTool(project_root).execute(
+        arguments or {"mode": "full"}
+    )
+    assert result["published"] is True
+
+
+@_ROOT_BYPASSES_MODE_BITS
+@pytest.mark.asyncio
+async def test_public_read_connection_cannot_attach_published_generation_rw(
+    project_root,
+):
+    # rfcs/evidence/0032-feasibility E5（2026-10-13）：公共只读连接经
+    # ATTACH mode=rw 删光已发布版本，新读者随后看到空索引。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    await _publish_full_index(project_root)
+    cache = ASTCache(project_root)
+    try:
+        connection = cache.get_conn()
+        connection.execute(
+            "ATTACH DATABASE ? AS w", (Path(cache.db_path).as_uri() + "?mode=rw",)
+        )
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            connection.execute("DELETE FROM w.ast_index")
+        connection.commit()
+    finally:
+        cache.close()
+    fresh = ASTCache(project_root)
+    try:
+        assert fresh.get_stats()["total_files"] == 1
+    finally:
+        fresh.close()
+
+
+@pytest.mark.asyncio
+async def test_next_publication_copies_from_read_only_parent(project_root):
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
+    await _publish_full_index(project_root)
+    parent = resolve_index_path(project_root)
+    (Path(project_root) / "src" / "extra.py").write_text(
+        "def added(): return 2\n", encoding="utf-8"
+    )
+    await _publish_full_index(project_root, {"mode": "incremental"})
+    assert resolve_index_path(project_root) != parent
+    cache = ASTCache(project_root)
+    try:
+        assert sorted(row["name"] for row in cache.get_functions()) == [
+            "added",
+            "goodbye",
+            "hello",
+        ]
+    finally:
+        cache.close()
+
+
+def test_seal_rejects_leftover_sidecar_beside_read_only_database(project_root):
+    # rfcs/evidence/0032-feasibility E5b（2026-10-13）：只读主库旁的残留日志或
+    # 共享内存文件会让读者走旁路，密封必须拒绝而不是带着它发布。
+    from tree_sitter_analyzer.cache.generation_indexing import project_store
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    store = project_store(project_root, make_source_scope_descriptor())
+    selector = store.begin(store.capture())
+    database = store.database(selector)
+    database.with_name("index.db-shm").write_bytes(b"")
+    with pytest.raises(RuntimeError, match="INDEX_GENERATION_SIDECAR_PRESENT"):
+        store.seal(selector)
+    assert store.active_selector() is None
 
 
 def test_derived_mutation_rejects_nondefault_legacy_path(project_root):

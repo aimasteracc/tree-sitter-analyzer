@@ -686,3 +686,29 @@ pytest 但选中零项，给 agent 一个看似可执行、实际永远无法验
 `tests/unit/mcp/test_verification_command.py` 固定 benchmark claim 的 POSIX、Windows 和 nodeid
 路径会删除且只删除 `not benchmark`，并固定普通 benchmark 路径仍受默认 marker 排除；
 生成命令的测试必须断言最终 marker 与目标可达性，不能只比较字符串片段。
+
+## 2026-10 — 只读连接不等于只读文件
+
+### Context
+
+v2.x 已发布版本的 `ASTCache.get_conn()` 以 `mode=ro` 打开，既有测试只验证直接
+`DELETE` 被拒绝。RFC-0032 可行性备忘录（`rfcs/evidence/0032-feasibility` E5，
+2026-10-13）实测：同一连接 `ATTACH DATABASE '<同一文件>' AS w`（`mode=rw`）后
+`DELETE FROM w.ast_index` 成功，新的 `ASTCache(root)` 随后报告 0 个文件。修复在密封时
+把版本切回回滚日志并清除文件写位；WAL 模式下只读主库的读者还会另建可写 `-wal`/`-shm`。
+
+### Lessons learned
+
+1. **`mode=ro` 是连接属性，不是文件属性。** 同一连接可以 ATTACH 出可写别名；不可变性
+   必须落在文件系统（或外部权限）层，测试必须覆盖 ATTACH 逃逸而不止直接写。
+2. **只读文件改变删除语义。** Windows 上 `shutil.rmtree` 遇只读文件报错，
+   `ignore_errors=True` 时静默残留；引入只读位的同一改动必须同时修正全部删除路径。
+3. **边界要写明。** root 与把写位改回来的同用户代码不受只读位约束，代码注释与测试
+   跳过原因都必须如实声明，不能宣称为访问控制。
+
+### Required guardrail
+
+`tests/unit/test_generation_indexing.py` 固定 ATTACH mode=rw 删除必须报 `readonly`
+且新读者仍得到原文件数；`tests/unit/test_generation_reads.py` 固定新进程读取后版本目录
+只剩只读 `index.db`；`tests/unit/cli/test_clean_state_command.py` 固定 `--clean-state`
+能删除含密封版本的缓存。

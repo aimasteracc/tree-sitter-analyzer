@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import shutil
@@ -11,6 +12,8 @@ from pathlib import Path
 from typing import Any
 
 import psutil
+
+from tree_sitter_analyzer.read_only_files import clear_read_only_tree
 
 _MANAGED_TEMP_PATTERN = re.compile(r"run-(?P<pid>\d+)-[0-9a-f]{8}")
 _TEMP_VARIABLES = ("TEMP", "TMP", "TMPDIR")
@@ -57,6 +60,13 @@ def _same_directory(first: Path, second: Path) -> bool:
     return first.resolve() == second.resolve()
 
 
+def _remove_tree(path: Path) -> None:
+    """尽力删除目录树；先恢复只读文件写位，否则 Windows 会静默残留已密封索引。"""
+    with contextlib.suppress(OSError):
+        clear_read_only_tree(path)
+    shutil.rmtree(path, ignore_errors=True)
+
+
 def _process_is_running(pid: int) -> bool:
     """Return whether a process id still belongs to a live process."""
     return psutil.pid_exists(pid)
@@ -73,7 +83,7 @@ def remove_stale_pytest_temp_roots(parent: Path) -> None:
             continue
         if _process_is_running(int(match.group("pid"))):
             continue
-        shutil.rmtree(candidate, ignore_errors=True)
+        _remove_tree(candidate)
 
 
 def _has_explicit_basetemp(config: Any) -> bool:
@@ -122,7 +132,7 @@ def configure_pytest_temp_root(config: Any) -> None:
     tempfile.tempdir = None
     if not _same_directory(Path(tempfile.gettempdir()), session_root):
         _restore_process_temp_settings(config)
-        shutil.rmtree(session_root, ignore_errors=True)
+        _remove_tree(session_root)
         raise RuntimeError(f"pytest temp root is not writable: {session_root}")
 
     config.option.basetemp = str(session_root / "work")
@@ -137,7 +147,7 @@ def cleanup_pytest_temp_root(config: Any) -> None:
     _restore_process_temp_settings(config)
     config._tsa_pytest_temp_root = None
     parent = session_root.parent
-    shutil.rmtree(session_root, ignore_errors=True)
+    _remove_tree(session_root)
     try:
         parent.rmdir()
     except OSError:

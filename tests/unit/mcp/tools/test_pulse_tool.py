@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from contextlib import closing
 from unittest.mock import MagicMock
@@ -76,6 +77,7 @@ async def test_batch_corrupt_index_rejects_all_uncertified_targets(
     source = root / "bad.py"
     source.write_text("def broken():\n    pass\n", encoding="utf-8")
     cache.index_file(str(source))
+    os.chmod(cache.db_path, 0o600)  # 新密封版本只读，先恢复写位再注入损坏
     with closing(sqlite3.connect(cache.db_path)) as corrupt:
         corrupt.execute(
             "UPDATE ast_index SET symbols_json='{' WHERE file_path='bad.py'"
@@ -298,6 +300,8 @@ async def indexed_pulse_project(tmp_path):
     )
     await _certify_project(tmp_path)
     cache = ASTCache(str(tmp_path))
+    # 密封版本为只读文件（RFC-0032 E5）；损坏注入用例须先恢复写位。
+    os.chmod(cache.db_path, 0o600)
     yield tmp_path, cache
     cache.close()
 
