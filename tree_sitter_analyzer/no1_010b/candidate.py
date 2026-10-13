@@ -376,12 +376,32 @@ def _resolve_executable(argv0: str, cwd: Path, search_path: str) -> str | None:
     if not any(sep and sep in argv0 for sep in (os.sep, os.altsep)):
         return shutil.which(argv0, path=search_path)
     if Path(argv0).is_absolute():
-        return shutil.which(argv0)
+        return _executable_file(Path(argv0))
     root = cwd.resolve()
     target = (root / argv0).resolve()
     if not target.is_relative_to(root):
         return None
-    return shutil.which(str(target))
+    return _executable_file(target)
+
+
+def _executable_file(target: Path) -> str | None:
+    """校验带目录的可执行路径；Windows 上显式按 PATHEXT 补后缀。
+
+    Python 3.11 的 ``shutil.which`` 对含目录的命令不应用 PATHEXT（3.12 起才应用），
+    这里自行展开，使解析结果不随解释器版本变化；也不借道 ``which(name, path=...)``，
+    因为 Windows 上它会先搜索当前目录。
+    """
+    candidates = [target]
+    if _IS_WINDOWS:  # pragma: no cover - Windows-only PATHEXT expansion
+        exts = [
+            e for e in os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(";") if e
+        ]
+        if target.suffix.casefold() not in {e.casefold() for e in exts}:
+            candidates = [target.with_name(target.name + ext) for ext in exts]
+    for candidate in candidates:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
 
 
 def _file_size(path: Path) -> int:
