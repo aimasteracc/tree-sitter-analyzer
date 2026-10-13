@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.unit.no1_010b._verifier_helpers import write_value_corpus
 from tree_sitter_analyzer.no1_010b.preflight import PreflightResult, run_preflight
 from tree_sitter_analyzer.no1_010b.record import BenchmarkRecord
 from tree_sitter_analyzer.no1_010b.record_loader import load_corpus_records
@@ -37,3 +38,9 @@ def committed_preflight(
 @pytest.fixture(scope="session")
 def committed_checks(committed_preflight: PreflightResult) -> dict[str, str]:
     return {check.check: check.status for check in committed_preflight.checks}
+
+
+@pytest.fixture
+def value_corpus(tmp_path: Path) -> Path:
+    """B1 verifier 测试用的合成 corpus（每个测试独占一份）。"""
+    return write_value_corpus(tmp_path / "corpus")
