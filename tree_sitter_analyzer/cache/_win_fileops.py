@@ -12,12 +12,15 @@ POSIX 不调用本模块：``rename(2)`` 在读者持有旧 inode 时本身即�
 from __future__ import annotations
 
 import ctypes
-import functools
 import os
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 WRITER_BUSY = "INDEX_WRITER_BUSY"
+# 按真实平台判定；测试会把 ``os.name`` 改成 "nt" 来模拟非 POSIX，不能借此进入原生路径。
+IS_WINDOWS = sys.platform == "win32"
 
 _FILE_RENAME_INFO_EX = 22
 _RENAME_FLAGS = 0x1 | 0x2  # REPLACE_IF_EXISTS | POSIX_SEMANTICS
@@ -28,10 +31,12 @@ _SHARE_ALL = 0x1 | 0x2 | 0x4  # READ | WRITE | DELETE
 _OPEN_EXISTING = 3
 _FILE_ATTRIBUTE_NORMAL = 0x80
 _INVALID_HANDLE = ctypes.c_void_p(-1).value
-# 不支持 FileRenameInfoEx（旧系统 / 非 NTFS）或仍被不共享删除的读者占用时的错误码：
-# INVALID_FUNCTION / ACCESS_DENIED / SHARING_VIOLATION / LOCK_VIOLATION /
-# NOT_SUPPORTED / INVALID_PARAMETER。
-_BUSY_ERRORS = frozenset({1, 5, 32, 33, 50, 87})
+# 不支持 FileRenameInfoEx（旧系统 / 非 NTFS）或仍被不共享删除的旧读者占用时的错误码：
+# INVALID_FUNCTION / SHARING_VIOLATION / LOCK_VIOLATION / NOT_SUPPORTED /
+# INVALID_PARAMETER。E4c 实测旧读者阻塞 POSIX 语义改名时返回 32 (共享冲突)。
+# ACCESS_DENIED (5) 不归入忙错误：它通常意味着 ACL 或只读目标等永久性原因，
+# 标为可重试会误导调用方，因此保留为 PermissionError。
+_BUSY_ERRORS = frozenset({1, 32, 33, 50, 87})
 
 
 class IndexWriterBusy(RuntimeError):
@@ -51,11 +56,13 @@ def native_failure(code: int, path: Path) -> Exception:
     return OSError(None, f"WinError {code}", str(path), code)
 
 
-@functools.lru_cache(maxsize=1)
-def _kernel32() -> Any:  # pragma: no cover - 仅 Windows 加载 Kernel32
+def _bind_native() -> Any:  # pragma: no cover - 仅 Windows 加载 Kernel32 与 CRT
+    """导入时绑定真实原生接口；之后替换 ``ctypes`` / ``msvcrt`` 全局的测试替身不影响选择器。"""
+    import msvcrt
     from ctypes import wintypes
 
-    dll = cast(Any, ctypes).WinDLL("kernel32", use_last_error=True)
+    native = cast(Any, ctypes)
+    dll = native.WinDLL("kernel32", use_last_error=True)
     dll.CreateFileW.argtypes = [
         wintypes.LPCWSTR,
         wintypes.DWORD,
@@ -75,11 +82,25 @@ def _kernel32() -> Any:  # pragma: no cover - 仅 Windows 加载 Kernel32
     dll.SetFileInformationByHandle.restype = wintypes.BOOL
     dll.CloseHandle.argtypes = [wintypes.HANDLE]
     dll.CloseHandle.restype = wintypes.BOOL
-    return dll
+    return SimpleNamespace(
+        kernel32=dll,
+        get_last_error=native.get_last_error,
+        format_error=native.FormatError,
+        open_osfhandle=cast(Any, msvcrt).open_osfhandle,
+    )
+
+
+_NATIVE: Any = None
+if IS_WINDOWS:  # pragma: no cover - 仅 Windows 绑定原生接口
+    _NATIVE = _bind_native()
+
+
+def _kernel32() -> Any:  # pragma: no cover - 仅 Windows
+    return _NATIVE.kernel32
 
 
 def _last_error() -> int:  # pragma: no cover - 仅 Windows 读取原生错误码
-    return int(cast(Any, ctypes).get_last_error())
+    return int(_NATIVE.get_last_error())
 
 
 def _create(path: Path, access: int) -> int:  # pragma: no cover - 仅 Windows
@@ -94,7 +115,7 @@ def _create(path: Path, access: int) -> int:  # pragma: no cover - 仅 Windows
     )
     if handle is None or handle == _INVALID_HANDLE:
         code = _last_error()
-        raise OSError(None, cast(Any, ctypes).FormatError(code), str(path), code)
+        raise OSError(None, _NATIVE.format_error(code), str(path), code)
     return int(handle)
 
 
@@ -108,15 +129,11 @@ def _set_file_information(
 
 def open_shared_reader(path: Path) -> int:  # pragma: no cover - 仅 Windows 读者
     """以读/写/删除共享只读打开，返回 CRT 描述符；读者不再阻塞发布者替换名称。"""
-    import msvcrt
-
     handle = _create(path, _GENERIC_READ)
     try:
         # 所有权交给 CRT；此后仅由 os.close 关闭原生句柄。
         return int(
-            cast(Any, msvcrt).open_osfhandle(
-                handle, os.O_RDONLY | getattr(os, "O_BINARY", 0)
-            )
+            _NATIVE.open_osfhandle(handle, os.O_RDONLY | getattr(os, "O_BINARY", 0))
         )
     except BaseException:
         _kernel32().CloseHandle(handle)

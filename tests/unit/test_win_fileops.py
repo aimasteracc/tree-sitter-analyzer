@@ -148,7 +148,24 @@ def test_unsupported_rename_fails_closed_with_writer_busy(store, monkeypatch, co
     assert store.active_selector() == first
 
 
-@pytest.mark.parametrize("code", [1, 5, 32, 33, 50, 87])
+@windows_only
+def test_reader_ignores_replaced_ctypes_and_msvcrt_globals(store, monkeypatch):
+    # PR #1550 CI (2026-10-14)：快照测试替换 ctypes.WinDLL / msvcrt 全局模拟 Kernel32，
+    # 选择器读者若延迟查找这些全局就会拿到替身，必须只使用导入时绑定的真实接口。
+    first = store.sync()
+
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("选择器读者不得使用被替换的原生全局")
+
+    monkeypatch.setattr(ctypes, "WinDLL", forbidden)
+    monkeypatch.setattr(ctypes, "get_last_error", forbidden)
+    monkeypatch.setitem(
+        sys.modules, "msvcrt", SimpleNamespace(open_osfhandle=forbidden)
+    )
+    assert store.active_selector() == first
+
+
+@pytest.mark.parametrize("code", [1, 32, 33, 50, 87])
 def test_busy_or_unsupported_codes_map_to_writer_busy(tmp_path, code):
     # rfcs/evidence/0032-feasibility E4 (2026-10-13)：不支持或被旧读者占用即失败关闭。
     failure = _win_fileops.native_failure(code, tmp_path / "active.json")
@@ -160,7 +177,9 @@ def test_busy_or_unsupported_codes_map_to_writer_busy(tmp_path, code):
     )
 
 
-def test_other_native_codes_keep_os_error(tmp_path):
+@pytest.mark.parametrize("code", [2, 5])
+def test_other_native_codes_keep_os_error(tmp_path, code):
+    # PR #1550 评审 (2026-10-14)：ACCESS_DENIED 常为 ACL / 只读等永久原因，不得标为可重试。
     target = tmp_path / "active.json"
-    failure = _win_fileops.native_failure(2, target)
+    failure = _win_fileops.native_failure(code, target)
     assert (isinstance(failure, OSError), failure.filename) == (True, str(target))

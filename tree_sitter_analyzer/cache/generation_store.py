@@ -24,8 +24,8 @@ from ..indexing_snapshot import (
     walk_index_candidate_entries,
 )
 from ..project_graph import _language_from_ext
+from ._win_fileops import IS_WINDOWS, replace_file
 from ._win_fileops import IndexWriterBusy as IndexWriterBusy  # 发布失败关闭的类型
-from ._win_fileops import replace_file
 from .generation_routing import read_selector
 from .generation_selector import (
     GenerationSelector,
@@ -119,7 +119,7 @@ def _flush_directory(path: Path) -> None:
 
 def _replace(source: Path, target: Path) -> None:
     """POSIX rename(2) 本身原子；Windows 需 POSIX 语义改名才能越过持有句柄的读者。"""
-    if os.name == "nt":  # pragma: no cover - Windows 原生改名 (E4, 2026-10-13)
+    if IS_WINDOWS:  # pragma: no cover - Windows 原生改名 (E4, 2026-10-13)
         replace_file(source, target)
         return
     os.replace(source, target)

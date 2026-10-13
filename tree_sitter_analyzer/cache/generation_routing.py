@@ -10,7 +10,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 
-from ._win_fileops import open_shared_reader
+from ._win_fileops import IS_WINDOWS, open_shared_reader
 from .generation_selector import (
     SELECTOR_BYTE_LIMIT,
     GenerationSelector,
@@ -45,7 +45,7 @@ def generation_storage_path(project_root: str) -> Path:
 
 def _open_selector(path: Path, flags: int) -> int:
     """Windows 读者必须共享删除权限，否则会阻塞发布者替换选择器 (E4, 2026-10-13)。"""
-    if os.name == "nt":  # pragma: no cover - Windows 原生共享删除读者
+    if IS_WINDOWS:  # pragma: no cover - Windows 原生共享删除读者
         return open_shared_reader(path)
     return os.open(path, flags)
 
