@@ -4,7 +4,7 @@ Measured on 2026-09-07 (auto-audited by
 `tests/contracts/test_large_test_file_inventory.py` — the inventory must
 match reality or CI fails). The threshold is 800 lines.
 
-## Current Files Over Threshold (50)
+## Current Files Over Threshold (49)
 
 | Lines | File | Note |
 |---:|---|---|
@@ -52,7 +52,6 @@ match reality or CI fails). The threshold is 800 lines.
 | 848 | `tests/unit/test_edge_store.py` | |
 | 847 | `tests/unit/test_ast_diff_scenarios.py` | |
 | 833 | `tests/unit/test_codegraph_impact_tool.py` | |
-| 829 | `tests/unit/api/test_pulse.py` | tracked: #1546 — pulse audit P3-2 in-field truncation cases stay with the existing Pulse suite (T-1); temporary growth from 766 lines. Follow-up must split by behavior under the controlled migration contract, preserving all cases and mutation evidence. |
 | 823 | `tests/unit/mcp/tools/test_pulse_tool.py` | tracked: #1414 — two warm-index admission regressions stay with the existing Pulse suite (T-1); temporary growth from 791 lines. Follow-up must split by behavior under the controlled migration contract, preserving all cases and mutation evidence. |
 | 822 | `tests/unit/cli/test_install_skills.py` | |
 | 821 | `tests/unit/test_wire_owner_contract.py` | |
@@ -326,3 +325,53 @@ That does not identify the historical full-session FD source tracked in #1402.
 The lead reports that the final full-run low-limit observation passed, but
 cross-test retention remains tracked in #1402; this is not an FD-fix claim.
 No additional comprehensive run or FD-observer run is claimed for this follow-up.
+
+## Issue #1546: Pulse API Suite Split
+
+The 829-line `tests/unit/api/test_pulse.py` at develop `2c3c7fa2` is split by
+behavior under the explicit #1546 migration authorization. `test_pulse.py`
+stays as the entry module (DTO/import/SQL-fingerprint contracts and basic
+`query_pulse` lookup/argument validation). Shared helpers (`_MINIMAL_SYM`,
+`_seed_symbol`, `_call`) live once in the non-collected `_pulse_helpers.py`,
+which imports no tests; modules import them by name (no star imports, no test
+re-exports). `_MINIMAL_PR` and `_make_pr_with_comments` have a single consumer
+and moved with it. `ast_cache_conn` remains the shared `tests/unit/conftest.py`
+fixture; there were no module-local fixtures, module markers or xunit hooks.
+The previously split `test_pulse_import_cache.py`, `test_pulse_serialization.py`
+and `test_pulse_typescript_imported_by.py` are unchanged. The MCP tool suite
+`tests/unit/mcp/tools/test_pulse_tool.py` (#1414) is out of scope.
+
+| File | Lines |
+|---|---:|
+| `tests/unit/api/test_pulse.py` | 169 |
+| `tests/unit/api/test_pulse_budget_truncation.py` | 216 |
+| `tests/unit/api/test_pulse_sql_paths.py` | 262 |
+| `tests/unit/api/test_pulse_read_consistency.py` | 157 |
+| `tests/unit/api/_pulse_helpers.py` | 65 |
+
+Actual before/after `pytest --collect-only -q -m ""` maps all 66 original
+nodeids to 66 (entry 24, budget/truncation 16, SQL paths 18, read consistency
+8), including every parameter ID; the part after the first `::` is identical
+and unique, only the owning file changes. Collected markers, parameter values
+and fixture names/scopes match for every case. Before and after both report
+66 passed (and 133 passed for `tests/unit/api` plus the inventory and agent-docs
+contracts).
+
+AST evidence compares all 44 top-level blocks (39 test functions, three helper
+functions and two module constants), normalizing only imports, source
+positions and true docstrings; decorators, parameters, assertions and test data
+are compared strictly. In addition, every block's source text (decorators
+through last line) is byte-identical, so comments, docstrings and explicit
+encodings are unchanged; no translation or UTF-8 change was made. All 43
+original comment tokens are retained; the only new comments are the entry
+module's three-line pointer to the split modules, plus the new module
+docstrings. Twelve negative probes are rejected: flipped assertion, changed
+assertion operand, changed parameter value, changed parameter ID, changed test
+input, changed helper constant, changed helper SQL value, added marker, changed
+explicit encoding, comment-only change, a test duplicated across modules and a
+removed test.
+
+The test-discovery stem family for `tree_sitter_analyzer/api/pulse.py` already
+selects every `tests/unit/api/test_pulse*.py` module, so the change-impact
+`verification_command` covers all split modules without a mapping change; the
+old entry file alone is not a complete Pulse API gate.
