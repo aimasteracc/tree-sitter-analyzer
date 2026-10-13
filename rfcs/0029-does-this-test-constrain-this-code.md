@@ -3,7 +3,7 @@
 - **Status**: draft — implementation merged in #1327 (2026-08-25); 11/18 acceptance criteria verified 2026-10-13
 - **Author(s)**: @lead-agent
 - **Created**: 2026-08-20
-- **Last updated**: 2026-08-20
+- **Last updated**: 2026-10-13
 - **Evidence level**: every number and code location cited here is an **E0**
   measurement taken on 2026-08-19/20 on a single un-isolated Windows host, with
   the command recorded inline. No claim here is qualified above E0, and public

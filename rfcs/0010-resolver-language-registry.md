@@ -3,7 +3,7 @@
 - **Status**: implemented — foundation #345; first wave go/js/ts/cpp/rust #346-#350
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-06-07
-- **Last updated**: 2026-06-07
+- **Last updated**: 2026-10-13
 - **Tracking issue**: TBD
 - **Builds on**: RFC-0008 (multi-language method classification — Java shipped #326)
 - **Affected source paths** (pin them — reviewers watch for drift here):

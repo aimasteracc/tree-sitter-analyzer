@@ -3,7 +3,7 @@
 - **Status**: draft — implementation merged in PR #1407 (2026-09-09, `2edbe708`); validation in progress — 2/7 acceptance criteria verified 2026-10-13
 - **Author(s)**: @aimasteracc / Codex
 - **Created**: 2026-09-08
-- **Last updated**: 2026-09-09
+- **Last updated**: 2026-10-13
 - **Tracking issue**: PR #1407 的 aggregate-command P2
 - **Affected source paths**:
   - `tree_sitter_analyzer/mcp/tools/utils/verification_command.py`

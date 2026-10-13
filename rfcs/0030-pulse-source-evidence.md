@@ -3,7 +3,7 @@
 - **Status**: draft — source-certified Pulse merged in #1404 (2026-09-08); 2/7 acceptance criteria verified 2026-10-13
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-09-08
-- **Last updated**: 2026-09-08
+- **Last updated**: 2026-10-13
 - **Tracking issue**: TRUST-C1 / TRUST-I1，见 `ROADMAP-no1-agent-trust.md`
 - **Affected source paths**:
   - `tree_sitter_analyzer/api/pulse.py`

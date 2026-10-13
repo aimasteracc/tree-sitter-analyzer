@@ -3,7 +3,7 @@
 - **Status**: draft — RFC plus descriptive post-hoc E0 baseline; no admission baseline
 - **Author(s)**: Runtime Lead
 - **Created**: 2026-08-08
-- **Last updated**: 2026-08-10
+- **Last updated**: 2026-10-13
 - **Tracking**: roadmap NO1-006B
 
 ## Scope and evidence order
