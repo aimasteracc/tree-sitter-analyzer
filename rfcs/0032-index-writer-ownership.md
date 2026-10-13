@@ -1,9 +1,9 @@
 # RFC-0032: Index writer ownership and obsolete-candidate fencing
 
-- **Status**: draft
+- **Status**: draft — revision 1 (2026-10-13) adopts the shipped generation-store CAS as the write fence per the feasibility memo; pending owner acceptance
 - **Author(s)**: @aimasteracc, Codex
 - **Created**: 2026-09-08
-- **Last updated**: 2026-09-09
+- **Last updated**: 2026-10-13
 - **Tracking issue**: TBD after acceptance
 - **Affected source paths**:
   - `tree_sitter_analyzer/ast_cache.py`, `_ast_cache_*_mixin.py`
@@ -18,6 +18,79 @@ writer from candidate capture through final publication, and restrict delayed cl
 to rows owned by that operation. Reject obsolete candidates before changing rows,
 graph state, or certification. This requires an ast_cache migration and therefore
 acceptance before implementation; this draft is not a shipped safety guarantee.
+
+## Revision 1 (2026-10-13) — feasibility outcome
+
+The guard-feasibility / native-compatibility gate was resolved by measurement in
+[`evidence/0032-feasibility/`](evidence/0032-feasibility/README.md) (Windows 11 / NTFS,
+Python 3.12.9, SQLite 3.47.1; POSIX/macOS statements there are reasoning that native CI
+must confirm). This revision supersedes the sections named below; where this section
+and the original text disagree, this section wins. Everything else stands.
+
+**Premise update.** #1421 (merged 2026-09-09, released in v2.0.0–v2.2.0) already routes
+default-locator caches through a copy-on-write generation store whose publication is a
+compare-and-set of the selector under a cross-process lease. On a published default cache
+the obsolete-candidate replay is rejected with `INDEX_GENERATION_SUPERSEDED` and the
+logical dump is preserved, including the identical-bytes ABA case. The replay still
+deletes newer rows on routes that write in place: custom `db_path`, and the default
+locator before its first publication (e.g. `ensure_indexed()` on a fresh project).
+
+**Supersedes "Released-interface boundary" paragraphs 1–3.** On 2026-10-13 the latest
+release is v2.2.0. Since v2.0.0, `IncrementalSync.sync` publicly accepts
+`candidate_snapshot`, and default-locator caches route through the generation store from
+#1421. On a published default cache, `db_path` reports the active generation file and
+`get_conn()` returns a read-only connection. Rejecting unbound candidates on the default
+route is already released behaviour; on custom paths it would be new and requires a
+deprecation period.
+
+**Supersedes "Persistent identity and schema migration" and "Write fence and cleanup"
+for managed storage.** The write fence for default-locator storage is the generation
+selector CAS defined by `GenerationStore.publish`. No SQL triggers or application-defined
+guard functions are installed: measured on SQLite 3.47.1 and 3.50.4 they are unsafe under
+`trusted_schema=OFF`, cannot cover FTS5, and cannot carry connection identity. Schema 18
+adds only `ast_writer_state(id=1, cache_uuid, revision)` for in-place custom databases;
+every TSA mutation there advances `revision` by compare-and-set inside its own
+`BEGIN IMMEDIATE` transaction. This fences same-version TSA writers only; mixed-version
+live writers stay out of scope.
+
+**Amends "Proposed isolated storage protocol" item 1.** The default-locator namespace is
+the shipped `.ast-cache/index-generations/`. `L + ".tsa-v18"` is kept only as a future
+custom-locator option (major version).
+
+**Amends "Crash recovery and publication".** Generation routes have no persisted writing
+phase: an unpublished generation is unreferenced and the next admitted writer proceeds.
+Bounded retirement of unreferenced generations is required; until it exists, orphan
+generations are retained on disk.
+
+**Amends "Typed admission failures and retry contract"** with the mapping
+`INDEX_GENERATION_SUPERSEDED` / `INDEX_GENERATION_SOURCE_CHANGED` →
+`INDEX_CANDIDATE_SUPERSEDED`; lease timeout and Windows sharing violation →
+`INDEX_WRITER_BUSY`; `INDEX_GENERATION_SELECTOR_INVALID` / `_MISSING` / `_PATH_UNSAFE` →
+`INDEX_RECOVERY_REQUIRED`. The existing `error` text and CLI exit 1 are preserved.
+
+**Adds a native publication clause.** On Windows, selector replacement uses
+`FileRenameInfoEx` with POSIX semantics and readers open the selector with
+`FILE_SHARE_DELETE`; if unsupported, publication fails closed with `INDEX_WRITER_BUSY`.
+Windows replacement is atomic but not claimed power-loss durable.
+
+**Supersedes "Proposed read-session contract".** Sealed generation files are marked
+read-only at the OS level before publication; `get_conn()` keeps returning
+`sqlite3.Connection`. Code with the same OS authority that alters file permissions is
+outside the boundary. The full read-session type remains a deferred major-version option.
+
+**Major version.** Not required for slices 1–6 below (each is already released, additive,
+or a type-preserving bug fix). Required only for custom-storage relocation, a
+non-`sqlite3.Connection` read session, or hard rejection of unbound custom-path candidates;
+all three are deferred.
+
+**Implementation slices** (each independently mergeable, RED-first; see the memo §6):
+1. default mutating routes bootstrap a generation before first publication;
+2. Windows selector publication fix *(shipped-defect bug fix, may land before acceptance)*;
+3. seal marks generations read-only *(shipped-defect bug fix, may land before acceptance)*;
+4. typed admission errors with CLI/MCP/watcher parity;
+5. custom-path cooperative revision CAS (schema 18);
+6. bounded retirement of unreferenced generations;
+7. *(optional, major version)* custom locator relocation and a read-session type.
 
 ## Motivation
 
@@ -533,7 +606,10 @@ coverage, and the runtime-contract quick gate before any implementation PR is pu
 
 ## Acceptance criteria
 
-- [ ] RFC accepted, guard feasibility/native compatibility gate resolved.
+- [x] Guard feasibility / native compatibility gate resolved — measured in
+  [`evidence/0032-feasibility/`](evidence/0032-feasibility/README.md) (2026-10-13);
+  outcome recorded as Revision 1.
+- [ ] RFC accepted (owner decision on Revision 1).
 - [ ] Migration and exact schema/guard contracts pass; old writers cannot partially mutate.
 - [ ] Lazy table/DDL inventory is exact; rejected operations preserve committed state
   and leave no transaction that can publish delayed mutations.
@@ -567,3 +643,10 @@ admission and pending RFC-0031 verification execution remain separate work.
    compatibility and active-state isolation instead of in-place old-write rejection?
 3. Resolve selector errors, native publication, consumer inventory, and active-write
    guard feasibility before implementation; no experiment waives these requirements.
+
+Revision 1 status of the questions above: (2) is answered by the shipped generation store
+for the default locator; (3) is resolved by the feasibility memo, except consumer
+inventory, which slice 1 must complete. Still open for the owner: accepting Revision 1;
+custom-path policy (cooperative CAS now vs. relocation at a major version); orphan
+retention bound (count/age vs. reader-pin only); and the durability claim level on
+Windows/macOS (atomic-only vs. `MOVEFILE_WRITE_THROUGH` / `F_FULLFSYNC`).
