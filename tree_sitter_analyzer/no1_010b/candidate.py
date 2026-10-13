@@ -1,9 +1,10 @@
 """NO1-010B 候选树的隔离副本、补丁应用、快照与受限进程执行（RFC-0026 §2/§3）。
 
 本模块只提供 B1 第一切片的进程级隔离：独立副本、冻结环境（PATH 仅含解释器 /
-git / uv 所在目录）、缓存重定向到候选树之外的 scratch、每条命令独占进程组并在
-命令结束后（无论是否超时）终止整组，以及每条命令后基于 ``lstat`` 的候选树快照
-复核（含文件 mode，绝不打开 FIFO 等特殊文件）。
+git / uv 所在目录，其绝对路径与二进制 sha256 纳入环境摘要）、缓存重定向到候选
+树之外的 scratch、每条命令独占进程组并在命令结束后（无论是否超时或输出超限）
+终止整组，以及每条命令后基于 ``lstat`` 的候选树快照复核（含根目录与文件 mode，
+绝不打开 FIFO 等特殊文件）。
 
 **尚未实现的边界**（由 ``verifier`` 显式上报）：内核级只读挂载、写入日志、网络
 隔离、runner venv 与 $HOME 隔离；``setsid``/双 fork 逃逸出进程组的后代，以及
@@ -51,31 +52,74 @@ class CandidateError(RuntimeError):
 
 @dataclass(frozen=True)
 class CommandResult:
-    """一条受限命令的结局：正常退出、超时（已终止整个进程组）或无法启动。"""
+    """一条受限命令的结局：正常退出、超时或输出超限（均已终止整个进程组）、
+    或无法启动。"""
 
-    status: Literal["exited", "timeout", "spawn_error"]
+    status: Literal["exited", "timeout", "output_limit", "spawn_error"]
     returncode: int | None = None
 
 
-def _frozen_path() -> str:
+@dataclass(frozen=True)
+class OutputCap:
+    """运行期间监视的输出文件及其字节上限；超过即终止整个进程组。"""
+
+    path: Path
+    max_bytes: int
+
+
+@dataclass(frozen=True)
+class ToolIdentity:
+    """冻结环境中一个工具的身份：未解析的绝对路径 + 二进制内容 sha256。
+
+    工具不存在时两者皆为 ``None``；同目录替换二进制会改变 ``sha256``。
+    """
+
+    name: str
+    path: str | None
+    sha256: str | None
+
+
+def _binary_sha256(path: Path) -> str:
+    """对工具二进制求 sha256（跟随 venv 的符号链接到真实解释器）。"""
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(chunk)
+    except OSError:
+        return "unreadable"
+    return digest.hexdigest()
+
+
+def _identify(name: str, found: str | None) -> ToolIdentity:
+    if found is None:
+        return ToolIdentity(name, None, None)
+    path = Path(found).absolute()
+    return ToolIdentity(name, str(path), _binary_sha256(path))
+
+
+def resolve_tools() -> tuple[ToolIdentity, ...]:
+    """一次性解析解释器、git、uv；同一份结果同时用于 PATH 与 ``env_digest``。"""
+    located: dict[str, str | None] = {"python": sys.executable}
+    located.update({tool: shutil.which(tool) for tool in _PATH_TOOLS})
+    return tuple(_identify(name, found) for name, found in located.items())
+
+
+def _frozen_path(tools: Sequence[ToolIdentity]) -> str:
     """PATH 只由解释器、git、uv 的绝对目录（及 Windows 系统目录）组成。
 
     刻意不 ``resolve()``：POSIX venv 的 ``bin/python`` 是指向系统解释器的符号
     链接，解析后会丢掉 venv 的 ``bin``（及其中的 pytest），实测使参考补丁的
     ``uv run pytest`` 无法启动。
     """
-    dirs = [str(Path(sys.executable).absolute().parent)]
-    for tool in _PATH_TOOLS:
-        found = shutil.which(tool)
-        if found is not None:
-            dirs.append(str(Path(found).absolute().parent))
+    dirs = [str(Path(tool.path).parent) for tool in tools if tool.path is not None]
     system_root = os.environ.get("SYSTEMROOT")
-    if _IS_WINDOWS and system_root:
+    if _IS_WINDOWS and system_root:  # pragma: no cover - Windows-only 系统目录
         dirs.extend([str(Path(system_root) / "System32"), system_root])
     return os.pathsep.join(dict.fromkeys(dirs))
 
 
-def frozen_env(scratch: Path) -> dict[str, str]:
+def frozen_env(scratch: Path, tools: Sequence[ToolIdentity]) -> dict[str, str]:
     """构造冻结环境：最小透传键 + 受限 PATH + 全部工具缓存重定向到 scratch。"""
     env = {key: os.environ[key] for key in _PASSTHROUGH_ENV if key in os.environ}
     tmp = scratch / "tmp"
@@ -83,7 +127,7 @@ def frozen_env(scratch: Path) -> dict[str, str]:
     pytest_cache = (scratch / "pytest-cache").as_posix()
     env.update(
         {
-            "PATH": _frozen_path(),
+            "PATH": _frozen_path(tools),
             "TMPDIR": str(tmp),
             "TEMP": str(tmp),
             "TMP": str(tmp),
@@ -112,15 +156,25 @@ def frozen_env(scratch: Path) -> dict[str, str]:
     return env
 
 
-def env_digest(env: dict[str, str], workspace: Path) -> str:
-    """对冻结环境求 sha256；每次 attempt 不同的 workspace 路径先归一化。"""
+def env_digest(
+    env: dict[str, str], workspace: Path, tools: Sequence[ToolIdentity]
+) -> str:
+    """对冻结环境与工具身份求 sha256；每次 attempt 不同的 workspace 路径先归一化。
+
+    只记录目录不够：同目录替换的二进制会改变行为，因此纳入各工具的绝对路径与
+    二进制 sha256。
+    """
     variants = (str(workspace), workspace.as_posix())
     normalized = {}
     for key, value in env.items():
         for variant in variants:
             value = value.replace(variant, "<workspace>")
         normalized[key] = value
-    encoded = json.dumps(sorted(normalized.items()), ensure_ascii=False)
+    payload = {
+        "env": sorted(normalized.items()),
+        "tools": [[tool.name, tool.path, tool.sha256] for tool in tools],
+    }
+    encoded = json.dumps(payload, ensure_ascii=False)
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
@@ -199,7 +253,8 @@ def tree_snapshot(root: Path, ignored: Sequence[str] = ()) -> dict[str, str]:
     FIFO/socket/设备等特殊条目与不可读条目都以独立签名记录而绝不打开，
     因此任何此类新增或变化都会被 ``changed_entries`` 视为改动。
     """
-    entries: dict[str, str] = {}
+    # 根条目本身也入快照：否则 ``chmod('.')`` 这类只改根 mode 的写入会漏检。
+    entries: dict[str, str] = {".": _entry_signature(root)[0]}
     pending = [root]
     while pending:
         directory = pending.pop()
@@ -311,6 +366,48 @@ def _reap(proc: subprocess.Popen[bytes]) -> None:
             proc.kill()
 
 
+def _resolve_executable(argv0: str, cwd: Path, search_path: str) -> str | None:
+    """解析 argv[0]：裸名走冻结 PATH；含路径分隔符的相对路径相对候选根解析。
+
+    相对路径解析后（含符号链接）必须仍在候选根内，``..`` 逃逸一律拒绝；绝对
+    路径（如 corpus 记录中的解释器）按原样校验可执行性。
+    """
+    if not any(sep and sep in argv0 for sep in (os.sep, os.altsep)):
+        return shutil.which(argv0, path=search_path)
+    if Path(argv0).is_absolute():
+        return shutil.which(argv0)
+    root = cwd.resolve()
+    target = (root / argv0).resolve()
+    if not target.is_relative_to(root):
+        return None
+    return shutil.which(str(target))
+
+
+def _file_size(path: Path) -> int:
+    try:
+        return os.stat(path).st_size
+    except OSError:
+        return 0
+
+
+def _await_exit(
+    proc: subprocess.Popen[bytes], timeout_s: float, cap: OutputCap | None
+) -> CommandResult:
+    """等待退出；有 ``cap`` 时按 ``_POLL_S`` 轮询输出文件大小，超限立即返回。"""
+    deadline = time.monotonic() + timeout_s
+    while True:
+        if cap is not None and _file_size(cap.path) > cap.max_bytes:
+            return CommandResult("output_limit")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return CommandResult("timeout")
+        step = remaining if cap is None else min(remaining, _POLL_S)
+        try:
+            return CommandResult("exited", proc.wait(timeout=step))
+        except subprocess.TimeoutExpired:
+            continue
+
+
 def run_bounded(
     argv: Sequence[str],
     *,
@@ -318,9 +415,10 @@ def run_bounded(
     env: dict[str, str],
     timeout_s: float,
     log_path: Path,
+    output_cap: OutputCap | None = None,
 ) -> CommandResult:
-    """无 shell 运行列表 argv；命令结束（或超时）后一律终止其整个进程组。"""
-    executable = shutil.which(argv[0], path=env.get("PATH", ""))
+    """无 shell 运行列表 argv；命令结束、超时或输出超限后一律终止其整个进程组。"""
+    executable = _resolve_executable(argv[0], cwd, env.get("PATH", ""))
     if executable is None:
         return CommandResult("spawn_error")
     flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
@@ -338,11 +436,8 @@ def run_bounded(
             )
         except OSError:
             return CommandResult("spawn_error")
-        try:
-            returncode = proc.wait(timeout=timeout_s)
-        except subprocess.TimeoutExpired:
-            terminate_group(proc)
-            _reap(proc)
-            return CommandResult("timeout")
+        result = _await_exit(proc, timeout_s, output_cap)
         terminate_group(proc)
-    return CommandResult("exited", returncode)
+        if result.status != "exited":
+            _reap(proc)
+    return result

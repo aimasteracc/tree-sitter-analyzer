@@ -119,6 +119,21 @@ def test_stderr_diagnostic_after_result_is_oracle_protocol_error(
     )
 
 
+def test_continuous_writer_is_protocol_error_before_timeout(
+    value_corpus: Path,
+) -> None:
+    # Codex P2：上限在捕获期间执行；若只在退出后检查，此处会等到 60 s 超时。
+    body = (
+        "import os\n\n\n"
+        "def value():\n"
+        "    while True:\n"
+        "        os.write(1, b'x' * 65536)\n"
+    )
+    assert verify(value_corpus, value_patch(body), oracle_timeout_s=60.0) == Verdict(
+        "UNKNOWN", "ORACLE_PROTOCOL_ERROR"
+    )
+
+
 # slow_ok：刻意等待真实墙钟超时再终止整个进程组，成本即被测行为本身。
 @pytest.mark.slow_ok
 def test_hanging_oracle_is_oracle_timeout(value_corpus: Path) -> None:

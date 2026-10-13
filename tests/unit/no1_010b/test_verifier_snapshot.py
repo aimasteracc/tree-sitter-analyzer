@@ -57,6 +57,16 @@ def test_unreadable_candidate_file_is_path_violation(value_corpus: Path) -> None
 
 @pytest.mark.skipif(
     sys.platform == "win32",
+    reason="POSIX-only: Windows directory chmod does not change st_mode bits",
+)
+def test_candidate_root_mode_change_is_path_violation(value_corpus: Path) -> None:
+    # Codex P2：快照必须包含候选根本身，``chmod('.')`` 不得漏检。
+    verdict = _with_verification(value_corpus, "import os; os.chmod('.', 0o700)")
+    assert verdict == Verdict("FAIL", "PATH_VIOLATION")
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
     reason="POSIX-only: Windows has no FIFO special files (tracked: RFC-0026 B1)",
 )
 def test_fifo_in_candidate_tree_is_path_violation(value_corpus: Path) -> None:

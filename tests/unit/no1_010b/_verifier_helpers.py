@@ -134,6 +134,22 @@ def reference_patch(record: BenchmarkRecord) -> str:
     return diff(replacement.path, before, after)
 
 
+def write_exit_script(stem: Path, code: int) -> Path:
+    """写出以 ``code`` 退出的可执行脚本并返回其路径。
+
+    POSIX 写带 shebang 的 ``stem`` 并设为可执行；Windows 写 ``stem.cmd``，
+    ``shutil.which`` 会按 PATHEXT 把无后缀的 ``stem`` 解析到它。
+    """
+    stem.parent.mkdir(parents=True, exist_ok=True)
+    if sys.platform == "win32":
+        script = stem.with_suffix(".cmd")
+        script.write_bytes(f"@exit /b {code}\r\n".encode("ascii"))
+        return script
+    stem.write_bytes(f"#!/bin/sh\nexit {code}\n".encode("ascii"))
+    stem.chmod(0o755)
+    return stem
+
+
 def spawn_grandchild_argv(pid_file: Path, *, linger: bool) -> list[str]:
     """verification 命令：派生长睡孙进程并写出其 pid，然后挂起或立即退出。"""
     script = (

@@ -40,6 +40,7 @@ from typing import cast
 from .candidate import (
     COPY_IGNORED,
     CandidateError,
+    OutputCap,
     apply_patch,
     changed_entries,
     changed_files,
@@ -47,6 +48,7 @@ from .candidate import (
     env_digest,
     frozen_env,
     remove_tree,
+    resolve_tools,
     run_bounded,
     tree_snapshot,
 )
@@ -208,7 +210,11 @@ def _oracle_verdict(
         env=env,
         timeout_s=attempt.oracle_timeout_s,
         log_path=scratch / "oracle.log",
+        # 上限在捕获期间执行（不等进程退出），持续写入者不会写满磁盘。
+        output_cap=OutputCap(capture, ORACLE_OUTPUT_MAX_BYTES),
     )
+    if result.status == "output_limit":
+        return Verdict("UNKNOWN", "ORACLE_PROTOCOL_ERROR")
     if result.status == "timeout":
         return Verdict("UNKNOWN", "ORACLE_TIMEOUT")
     if result.status != "exited" or result.returncode != 0:
@@ -282,8 +288,9 @@ def _run_attempt(
 ) -> AttemptOutcome:
     root, scratch = workspace / "candidate", workspace / "scratch"
     scratch.mkdir()
-    env = frozen_env(scratch)
-    digest = env_digest(env, workspace)
+    tools = resolve_tools()
+    env = frozen_env(scratch, tools)
+    digest = env_digest(env, workspace, tools)
     corpus_before = attempt.corpus_snapshot()
     copy_fixture(attempt.fixture, root)
     (scratch / "oracle").mkdir()
