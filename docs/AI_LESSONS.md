@@ -710,5 +710,5 @@ v2.x 已发布版本的 `ASTCache.get_conn()` 以 `mode=ro` 打开，既有测�
 
 `tests/unit/test_generation_indexing.py` 固定 ATTACH mode=rw 删除必须报 `readonly`
 且新读者仍得到原文件数；`tests/unit/test_generation_reads.py` 固定新进程读取后版本目录
-只剩只读 `index.db`；`tests/unit/cli/test_clean_state_command.py` 固定 `--clean-state`
+只剩只读主库文件（index.db）；`tests/unit/cli/test_clean_state_command.py` 固定 `--clean-state`
 能删除含密封版本的缓存。
