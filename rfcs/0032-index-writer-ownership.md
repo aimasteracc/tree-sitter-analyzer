@@ -1,10 +1,10 @@
 # RFC-0032: Index writer ownership and obsolete-candidate fencing
 
-- **Status**: draft — revision 1 (2026-10-13) adopts the shipped generation-store CAS as the write fence per the feasibility memo; pending owner acceptance
+- **Status**: accepted — Revision 1 accepted by the owner on 2026-10-14 (generation-store CAS as the write fence; decisions under "Deferred / open questions")
 - **Author(s)**: @aimasteracc, Codex
 - **Created**: 2026-09-08
-- **Last updated**: 2026-10-13
-- **Tracking issue**: TBD after acceptance
+- **Last updated**: 2026-10-14
+- **Tracking issue**: #1554
 - **Affected source paths**:
   - `tree_sitter_analyzer/ast_cache.py`, `_ast_cache_*_mixin.py`
   - `tree_sitter_analyzer/cache/{schema,schema_extensions,write,indexer_snapshot,index_project_runner}.py`
@@ -609,7 +609,8 @@ coverage, and the runtime-contract quick gate before any implementation PR is pu
 - [x] Guard feasibility / native compatibility gate resolved — measured in
   [`evidence/0032-feasibility/`](evidence/0032-feasibility/README.md) (2026-10-13);
   outcome recorded as Revision 1.
-- [ ] RFC accepted (owner decision on Revision 1).
+- [x] RFC accepted — owner accepted Revision 1 on 2026-10-14 with the decisions recorded
+  under "Deferred / open questions"; tracked in #1554.
 - [ ] Migration and exact schema/guard contracts pass; old writers cannot partially mutate.
 - [ ] Lazy table/DDL inventory is exact; rejected operations preserve committed state
   and leave no transaction that can publish delayed mutations.
@@ -646,7 +647,14 @@ admission and pending RFC-0031 verification execution remain separate work.
 
 Revision 1 status of the questions above: (2) is answered by the shipped generation store
 for the default locator; (3) is resolved by the feasibility memo, except consumer
-inventory, which slice 1 must complete. Still open for the owner: accepting Revision 1;
-custom-path policy (cooperative CAS now vs. relocation at a major version); orphan
-retention bound (count/age vs. reader-pin only); and the durability claim level on
-Windows/macOS (atomic-only vs. `MOVEFILE_WRITE_THROUGH` / `F_FULLFSYNC`).
+inventory, which slice 1 must complete.
+
+**Owner decisions (2026-10-14, accepting Revision 1):**
+- Custom-path policy: cooperative revision CAS now (schema 18 `ast_writer_state`);
+  relocating custom storage is deferred to a future major version.
+- Orphan generation retention: bounded by count and age; a generation is never retired
+  while active or while a reader pins it.
+- Durability claim: atomic replacement only on Windows/macOS; no power-loss durability
+  is claimed (no `MOVEFILE_WRITE_THROUGH` / `F_FULLFSYNC` work in this RFC).
+- Question (1): revision-bound candidates and schema 18 are accepted for in-place custom
+  databases only; unbound candidates on custom paths stay accepted until a major version.
