@@ -88,7 +88,7 @@ number; if two RFCs collide on a number in flight, the later-merged one renames.
 | [0029](0029-does-this-test-constrain-this-code.md) | "Does this test constrain this code?" — interactive mutation query | draft (impl merged #1327; 11/18 AC verified 2026-10-13) |
 | [0030](0030-pulse-source-evidence.md) | Pulse source-version evidence | draft (impl merged #1404; 2/7 AC verified 2026-10-13) |
 | [0031](0031-bounded-verification-execution.md) | Bounded verification command and plan replay | draft (impl merged #1407; 2/7 AC verified 2026-10-13) |
-| [0032](0032-index-writer-ownership.md) | Index writer ownership and obsolete-candidate fencing | draft |
+| [0032](0032-index-writer-ownership.md) | Index writer ownership and obsolete-candidate fencing | draft (revision 1 2026-10-13: feasibility resolved, pending acceptance) |
 | [0033](0033-native-search-independence.md) | Native search independence | accepted |
 | [0034](0034-optional-search-backend-qualification.md) | Optional search backend qualification | draft |
 | [0035](0035-trusted-reactive-feedback.md) | Trusted reactive feedback | implemented (#1492) |
