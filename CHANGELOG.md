@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Pulse responses now report in-field truncation: `field_truncation` (compact
+  `ftr`) maps each list field cut to fewer items to `kept`, `total` and
+  `at_least`. When a source limit was hit (requested `max_*` or the fixed
+  `imported_by` cap of 20), `total` is `null` and `at_least` gives the proven
+  lower bound instead of a fabricated exact count. `truncated_fields` keeps
+  its existing meaning: budget-dropped fields, plus `imported_by` when Python
+  import enrichment degraded and only the SQL-backed list is returned (#1446)
+  (audit P3-2).
+
 ## [2.2.0] - 2026-09-19
 
 ### Added

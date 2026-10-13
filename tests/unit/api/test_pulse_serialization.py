@@ -95,6 +95,26 @@ def test_serialization_preserves_relationship_payloads(format):
         assert result["comments"] == [{"line": 2, "text": "note", "kind": "inline"}]
 
 
+def test_field_truncation_is_serialized_in_compact_and_verbose():
+    # 审计 P3-2：字段内截断以 字段名→{kept,total,at_least} 输出；total=null 表示未知。
+    from tree_sitter_analyzer.api.pulse import FieldTruncation
+
+    pulse = dataclasses.replace(
+        _MINIMAL_PR,
+        field_truncation=(
+            FieldTruncation("callers", 5, 12, 12),
+            FieldTruncation("imported_by", 5, None, 21),
+        ),
+    )
+    expected = {
+        "callers": {"kept": 5, "total": 12, "at_least": 12},
+        "imported_by": {"kept": 5, "total": None, "at_least": 21},
+    }
+    assert serialize(pulse, "compact")["ftr"] == expected
+    assert serialize(pulse, "verbose")["field_truncation"] == expected
+    assert serialize(_MINIMAL_PR, "compact")["ftr"] == {}
+
+
 def test_compact_availability_keys_and_conditional_reason():
     """issue #1444：iga 常驻；cgr 仅在 call_graph 不可用时出现；verbose 出全键。"""
     ok = serialize(_MINIMAL_PR, format="compact")

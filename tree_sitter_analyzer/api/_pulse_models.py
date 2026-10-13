@@ -88,6 +88,16 @@ class BranchContext:
 
 
 @dataclass(frozen=True)
+class FieldTruncation:
+    """列表字段内的数量截断（审计 P3-2）；整字段删除只记入 truncated_fields。"""
+
+    field: str
+    kept: int  # 响应中实际保留的条数
+    total: int | None  # 真实总数；None 表示源查询已触顶、总数未知
+    at_least: int  # 真实总数的已证实下界；total 已知时等于 total
+
+
+@dataclass(frozen=True)
 class PulseResponse:
     """单次请求返回的快照绑定符号上下文。"""
 
@@ -105,6 +115,8 @@ class PulseResponse:
     imported_by: tuple[str, ...] = field(default_factory=tuple)
     siblings: tuple[SiblingRef, ...] = field(default_factory=tuple)
     comments: tuple[CommentRef, ...] = field(default_factory=tuple)
+    # 追加在末尾以保持既有位置参数顺序；仅含被部分截断且仍保留的字段。
+    field_truncation: tuple[FieldTruncation, ...] = field(default_factory=tuple)
 
 
 # 保留公开限定名及既有 pickle 路径；这里只设置类型元数据，不反向导入 pulse。
@@ -117,6 +129,7 @@ for _model in (
     SiblingRef,
     CommentRef,
     BranchContext,
+    FieldTruncation,
     PulseResponse,
 ):
     _model.__module__ = "tree_sitter_analyzer.api.pulse"

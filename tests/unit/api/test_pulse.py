@@ -14,6 +14,7 @@ import pytest
 from tree_sitter_analyzer.api.pulse import (
     CallerRef,
     CommentRef,
+    FieldTruncation,
     PulseResponse,
     SymbolInfo,
     apply_budget,
@@ -99,7 +100,10 @@ print('ok')
 
 
 def test_pulse_sql_preserves_reviewed_snapshot_and_activation_guards():
-    """PR #1350/#1352：固定 SQL 包含已审阅的快照与 lazy-state 守卫，指纹随此次收敛更新。"""
+    """PR #1350/#1352：固定 SQL 包含已审阅的快照与 lazy-state 守卫，指纹随此次收敛更新。
+
+    审计 P3-2：imported_by 的 LIMIT 20 改为绑定 :imported_by_probe（21 行）以证明触顶。
+    """
     import hashlib
 
     from tree_sitter_analyzer.api import _pulse_sql, pulse
@@ -107,8 +111,8 @@ def test_pulse_sql_preserves_reviewed_snapshot_and_activation_guards():
     assert pulse._PULSE_SQL is _pulse_sql._PULSE_SQL
     # 使用原始摘要字节表达公开校验和，不添加秘密扫描豁免。
     assert hashlib.sha256(pulse._PULSE_SQL.encode("utf-8")).digest() == (
-        b"XHYf\xa0.\xb5#]\xa6\xaf\xc6\x91(N\x96"
-        b"\xad\ta\x80\xda>\x91\x85!Vn\x07@8\x80\x84"
+        b"\x8e\xc02z\xab\xda\xe9\xf4\x01\x86\xa4\x91\x1aA\x03B"
+        b"\xc8\x87\xa9\x12\xe8\x96\xac\xd9\xe5|\xf5i\x0c\xdev\x94"
     )
 
 
@@ -756,6 +760,59 @@ def test_apply_budget_preserves_query_side_truncated_fields():
     )
     result = apply_budget(pr, token_budget=1)
     assert result.truncated_fields == ("imported_by", "comments")
+
+
+@pytest.mark.parametrize(
+    "count,prior,expected",
+    [
+        # 审计 P3-2：top-N 把 12 个导入者裁到 5 个必须可见；源未触顶时总数精确。
+        (12, (), (FieldTruncation("imported_by", 5, 12, 12),)),
+        # 审计 P3-2：未裁剪的字段不得出现字段内截断声明。
+        (2, (), ()),
+        # 审计 P3-2：源已触顶再做 top-N 时保留「总数未知」，不得改报 total=20。
+        (
+            20,
+            (FieldTruncation("imported_by", 20, None, 21),),
+            (FieldTruncation("imported_by", 5, None, 21),),
+        ),
+    ],
+    ids=["trimmed-exact-total", "untrimmed", "capped-source-unknown-total"],
+)
+def test_apply_budget_field_truncation(count, prior, expected):
+    files = tuple(f"m{i:02}.py" for i in range(count))
+    pr = PulseResponse(_MINIMAL_SYM, imported_by=files, field_truncation=prior)
+    assert apply_budget(pr, 100_000).field_truncation == expected
+
+
+@pytest.mark.parametrize("count,expected", [(20, ()), (25, ((20, None, 21),))])
+def test_query_pulse_imported_by_sql_cap_reports_unknown_total(
+    ast_cache_conn, count, expected
+):
+    # 审计 P3-2：SQL 上限 20 触顶时真实总数未知，只声明下界，不捏造精确计数。
+    _seed_symbol(ast_cache_conn, "run", "pkg/mod.py")
+    ast_cache_conn.executemany(
+        "INSERT INTO edges (source_node_id, target_node_id, kind, file_path, callee_name) "
+        "VALUES (?, 'module:pkg.mod', 'imports', ?, 'pkg.mod')",
+        [(f"file:c{i:02}.py", f"c{i:02}.py") for i in range(count)],
+    )
+    result = query_pulse(ast_cache_conn, "pkg/mod.py", "run", max_comments=0)
+    assert result.imported_by == tuple(f"c{i:02}.py" for i in range(20))
+    assert result.field_truncation == tuple(
+        FieldTruncation("imported_by", *e) for e in expected
+    )
+
+
+def test_query_pulse_requested_limit_cap_reports_unknown_total(ast_cache_conn):
+    # 审计 P3-2：max_callers 触顶同样只能声明下界。
+    target = _seed_symbol(ast_cache_conn, "work", "b.py")
+    for line in (1, 2, 3):
+        _seed_symbol(ast_cache_conn, f"run{line}", "a.py")
+        _call(
+            ast_cache_conn, f"run{line}", "work", target_id=target, target_file="b.py"
+        )
+    result = query_pulse(ast_cache_conn, "b.py", "work", max_callers=2, max_comments=0)
+    assert len(result.callers) == 2
+    assert result.field_truncation == (FieldTruncation("callers", 2, None, 3),)
 
 
 def test_certified_pulse_missing_index_is_read_only(tmp_path):

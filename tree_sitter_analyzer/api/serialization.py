@@ -17,6 +17,8 @@ COMPACT_LEGEND = (
     "lang=language, cls=class, doc=docstring, h=hot30, r=resolution, "
     "sha=commit, m=commit_msg, at=timestamp_seconds, m30=mod_30d, m90=mod_90d, "
     "mall=mod_all, s=git_state, tok=token_estimate, trunc=truncated_fields, "
+    "ftr=field_truncation {field: {kept, total (null=unknown, source capped), "
+    "at_least}}, "
     "cg=call_graph_available, cgr=call_graph_reason (only when cg=false), "
     "iga=imports_graph_available"
 )
@@ -29,6 +31,14 @@ def serialize(pulse: PulseResponse, format: str = "compact") -> dict[str, Any]:
     if format == "verbose":
         return _verbose(pulse)
     return _compact(pulse)
+
+
+def _field_truncation(pulse: PulseResponse) -> dict[str, dict[str, int | None]]:
+    """字段内截断：字段名 → 保留数、真实总数（未知为 None）与已证实下界。"""
+    return {
+        t.field: {"kept": t.kept, "total": t.total, "at_least": t.at_least}
+        for t in pulse.field_truncation
+    }
 
 
 def _skeletal(pulse: PulseResponse) -> dict[str, Any]:
@@ -85,6 +95,7 @@ def _compact(pulse: PulseResponse) -> dict[str, Any]:
         "cmt": [{"l": c.line, "t": c.text, "k": c.kind} for c in pulse.comments],
         "tok": pulse.token_estimate,
         "trunc": list(pulse.truncated_fields),
+        "ftr": _field_truncation(pulse),
         "cg": pulse.call_graph_available,
         "iga": pulse.imports_graph_available,
     }
@@ -144,6 +155,7 @@ def _verbose(pulse: PulseResponse) -> dict[str, Any]:
         ],
         "token_estimate": pulse.token_estimate,
         "truncated_fields": list(pulse.truncated_fields),
+        "field_truncation": _field_truncation(pulse),
         "call_graph_available": pulse.call_graph_available,
         "call_graph_reason": pulse.call_graph_reason,
         "imports_graph_available": pulse.imports_graph_available,
