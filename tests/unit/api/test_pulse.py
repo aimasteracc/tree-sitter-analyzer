@@ -14,6 +14,7 @@ import pytest
 from tree_sitter_analyzer.api.pulse import (
     CallerRef,
     CommentRef,
+    FieldTruncation,
     PulseResponse,
     SymbolInfo,
     apply_budget,
@@ -761,21 +762,26 @@ def test_apply_budget_preserves_query_side_truncated_fields():
     assert result.truncated_fields == ("imported_by", "comments")
 
 
-def test_apply_budget_reports_top_n_trim_with_exact_total():
-    # 审计 P3-2：top-N 把 12 个导入者裁到 5 个必须可见；源未触顶时总数精确。
-    from tree_sitter_analyzer.api.pulse import FieldTruncation
-
-    files = tuple(f"m{i:02}.py" for i in range(12))
-    result = apply_budget(PulseResponse(_MINIMAL_SYM, imported_by=files), 100_000)
-    assert result.imported_by == files[:5]
-    assert result.field_truncation == (FieldTruncation("imported_by", 5, 12, 12),)
-    assert result.truncated_fields == ()
-
-
-def test_apply_budget_untrimmed_fields_have_no_truncation_entry():
-    # 审计 P3-2：未裁剪的字段不得出现字段内截断声明。
-    pr = PulseResponse(_MINIMAL_SYM, imported_by=("a.py", "b.py"))
-    assert apply_budget(pr, 100_000).field_truncation == ()
+@pytest.mark.parametrize(
+    "count,prior,expected",
+    [
+        # 审计 P3-2：top-N 把 12 个导入者裁到 5 个必须可见；源未触顶时总数精确。
+        (12, (), (FieldTruncation("imported_by", 5, 12, 12),)),
+        # 审计 P3-2：未裁剪的字段不得出现字段内截断声明。
+        (2, (), ()),
+        # 审计 P3-2：源已触顶再做 top-N 时保留「总数未知」，不得改报 total=20。
+        (
+            20,
+            (FieldTruncation("imported_by", 20, None, 21),),
+            (FieldTruncation("imported_by", 5, None, 21),),
+        ),
+    ],
+    ids=["trimmed-exact-total", "untrimmed", "capped-source-unknown-total"],
+)
+def test_apply_budget_field_truncation(count, prior, expected):
+    files = tuple(f"m{i:02}.py" for i in range(count))
+    pr = PulseResponse(_MINIMAL_SYM, imported_by=files, field_truncation=prior)
+    assert apply_budget(pr, 100_000).field_truncation == expected
 
 
 @pytest.mark.parametrize("count,expected", [(20, ()), (25, ((20, None, 21),))])
@@ -783,8 +789,6 @@ def test_query_pulse_imported_by_sql_cap_reports_unknown_total(
     ast_cache_conn, count, expected
 ):
     # 审计 P3-2：SQL 上限 20 触顶时真实总数未知，只声明下界，不捏造精确计数。
-    from tree_sitter_analyzer.api.pulse import FieldTruncation
-
     _seed_symbol(ast_cache_conn, "run", "pkg/mod.py")
     ast_cache_conn.executemany(
         "INSERT INTO edges (source_node_id, target_node_id, kind, file_path, callee_name) "
@@ -798,24 +802,8 @@ def test_query_pulse_imported_by_sql_cap_reports_unknown_total(
     )
 
 
-def test_apply_budget_keeps_unknown_total_from_capped_source():
-    # 审计 P3-2：源已触顶再做 top-N 时保留「总数未知」，不得改报 total=20。
-    from tree_sitter_analyzer.api.pulse import FieldTruncation
-
-    pr = PulseResponse(
-        _MINIMAL_SYM,
-        imported_by=tuple(f"c{i:02}.py" for i in range(20)),
-        field_truncation=(FieldTruncation("imported_by", 20, None, 21),),
-    )
-    assert apply_budget(pr, 100_000).field_truncation == (
-        FieldTruncation("imported_by", 5, None, 21),
-    )
-
-
 def test_query_pulse_requested_limit_cap_reports_unknown_total(ast_cache_conn):
     # 审计 P3-2：max_callers 触顶同样只能声明下界。
-    from tree_sitter_analyzer.api.pulse import FieldTruncation
-
     target = _seed_symbol(ast_cache_conn, "work", "b.py")
     for line in (1, 2, 3):
         _seed_symbol(ast_cache_conn, f"run{line}", "a.py")
