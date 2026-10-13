@@ -24,6 +24,8 @@ from ..indexing_snapshot import (
     walk_index_candidate_entries,
 )
 from ..project_graph import _language_from_ext
+from ._win_fileops import IndexWriterBusy as IndexWriterBusy  # 发布失败关闭的类型
+from ._win_fileops import replace_file
 from .generation_routing import read_selector
 from .generation_selector import (
     GenerationSelector,
@@ -115,15 +117,23 @@ def _flush_directory(path: Path) -> None:
         os.close(descriptor)
 
 
+def _replace(source: Path, target: Path) -> None:
+    """POSIX rename(2) 本身原子；Windows 需 POSIX 语义改名才能越过持有句柄的读者。"""
+    if os.name == "nt":  # pragma: no cover - Windows 原生改名 (E4, 2026-10-13)
+        replace_file(source, target)
+        return
+    os.replace(source, target)
+
+
 def _write_atomic(path: Path, data: bytes) -> None:
-    """先刷盘临时文件，再替换入口并同步父目录。"""
+    """先刷盘临时文件，再原子替换入口并同步父目录；Windows 只保证原子、不保证掉电持久。"""
     temporary = path.parent / f"selector-{uuid.uuid4().hex}.tmp"
     try:
         with temporary.open("xb") as handle:
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, path)
+        _replace(temporary, path)
         _flush_directory(path.parent)
     finally:
         temporary.unlink(missing_ok=True)
