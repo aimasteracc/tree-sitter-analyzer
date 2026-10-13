@@ -1,9 +1,9 @@
 # RFC-0031: 有界验证命令与计划重建执行
 
-- **Status**: implementation in PR #1407; validation in progress
+- **Status**: draft — implementation merged in PR #1407 (2026-09-09, `2edbe708`); validation in progress — 2/7 acceptance criteria verified 2026-10-13
 - **Author(s)**: @aimasteracc / Codex
 - **Created**: 2026-09-08
-- **Last updated**: 2026-09-09
+- **Last updated**: 2026-10-13
 - **Tracking issue**: PR #1407 的 aggregate-command P2
 - **Affected source paths**:
   - `tree_sitter_analyzer/mcp/tools/utils/verification_command.py`
@@ -197,8 +197,8 @@ PR checkout 身份与计划一致，不证明运行期间源码被冻结。diff/
 
 ## Acceptance criteria
 
-- [ ] 重建描述符与完整步骤摘要实现并通过 RED-first 用例。
-- [ ] `verification_command`、test/pytest aliases 及阶段命令都受外层预算保护。
+- [x] 重建描述符与完整步骤摘要实现并通过 RED-first 用例。
+- [x] `verification_command`、test/pytest aliases 及阶段命令都受外层预算保护。
 - [ ] 所有现有分析模式完整支持，计划变化明确拒绝且无测试副作用。
 - [ ] 大目标集合真实执行与默认门禁不遗漏。
 - [ ] 只读分析、进程树回收、Windows 原生验证通过。
