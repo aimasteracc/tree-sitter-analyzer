@@ -69,7 +69,8 @@ class PossibleEdgesMixin:
             if caller not in certain and caller not in seen:
                 seen.add(caller)
                 result.append(caller)
-        return result
+        # 边的读取顺序随平台 / SQLite 而异，按位置排序保证输出确定。
+        return sorted(result, key=lambda ref: (ref.file_path, ref.start_line, ref.name))
 
     def possible_callers_of(
         self, func_name: str, file_path: str | None = None

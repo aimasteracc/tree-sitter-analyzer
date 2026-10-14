@@ -718,3 +718,65 @@ def test_exclusion_reason_is_the_single_decision_point() -> None:
     ):
         assert exclusion_reason(callee) is None
         assert _can_target_local_symbol(callee) is True
+
+
+_PUBLISH_FIXTURE = {
+    "gen_store.py": (
+        "class GenerationStore:\n    def publish(self, item):\n        return item\n"
+    ),
+    "registry.py": (
+        "class Registry:\n    def publish(self, item):\n        return item\n"
+    ),
+    "app.py": (
+        "from gen_store import GenerationStore\n"
+        "from registry import Registry\n\n\n"
+        "def publish_generation():\n"
+        "    store = GenerationStore()\n"
+        "    return store.publish(1)\n\n\n"
+        "def publish_registry():\n"
+        "    reg = Registry()\n"
+        "    return reg.publish(2)\n\n\n"
+        "def publish_unknown(target):\n"
+        "    return target.publish(3)\n"
+    ),
+}
+
+
+class TestQualifiedCallersNoBareNameFanout:
+    """#1559：限定名 Class.method 的调用方不得按裸名扇出到同名方法。"""
+
+    @pytest.fixture
+    async def publish_root(self, tmp_path):
+        from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+            CodeGraphFullIndexTool,
+        )
+
+        for name, text in _PUBLISH_FIXTURE.items():
+            (tmp_path / name).write_text(text, encoding="utf-8")
+        indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
+            {"mode": "full", "max_files": 10}
+        )
+        assert indexed["published"] is True
+        return str(tmp_path)
+
+    @pytest.mark.asyncio
+    async def test_qualified_callers_list_only_their_own_class(self, publish_root):
+        # #1559：`reg.publish` 已持久化解析到 Registry，不得出现在
+        # GenerationStore.publish 的调用方中；`target.publish` 无法判定，不得猜测。
+        result = await CodeGraphCallersTool(publish_root).execute(
+            {"function_name": "GenerationStore.publish", "include_bodies": False}
+        )
+        assert [c["name"] for c in result["callers"]] == ["publish_generation"]
+
+    @pytest.mark.asyncio
+    async def test_ambiguous_bare_call_makes_qualified_answer_incomplete(
+        self, publish_root
+    ):
+        # #1559：存在无法解析的 `target.publish` 时，答案不能声称 complete。
+        result = await CodeGraphCallersTool(publish_root).execute(
+            {"function_name": "GenerationStore.publish", "include_bodies": False}
+        )
+        assert (result["completeness"], result["unresolved_inbound"]) == (
+            "incomplete",
+            1,
+        )
