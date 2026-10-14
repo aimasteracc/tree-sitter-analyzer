@@ -288,6 +288,22 @@ class TestImportGraphBuild:
         assert result.edges[0].source_file == "a.py"
         assert result.edges[0].target_file == "b.py"
 
+    def test_dependents_of_builds_graph_lazily(self, monkeypatch) -> None:
+        # 未先调用 build() 时，dependents_of 必须自行从缓存构图再查询。
+        class _FakeCache:
+            def __init__(self, root: str) -> None:
+                pass
+
+            def get_imports(self) -> dict[str, list[str]]:
+                return {"a.py": ["import b"], "b.py": []}
+
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr("tree_sitter_analyzer.ast_cache.ASTCache", _FakeCache)
+        graph = ImportGraph(ROOT)
+        assert [d["source"] for d in graph.dependents_of("b.py")] == ["a.py"]
+
     def test_build_resolves_esm_import_from_mts_file(self, monkeypatch) -> None:
         """PUBLIC API: an ESM import in a .mts file must produce an edge.
 
