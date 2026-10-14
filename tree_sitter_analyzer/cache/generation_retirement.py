@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-import logging
 import os
 import shutil
 import stat
@@ -18,8 +17,6 @@ from pathlib import Path
 
 from ..read_only_files import clear_read_only_tree, mark_read_only
 from .generation_pins import GENERATION_ID, TOMBSTONE, has_live_pin, pin_directory
-
-logger = logging.getLogger(__name__)
 
 RETAIN_COUNT = 2
 RETAIN_AGE_S = 24 * 60 * 60
@@ -33,13 +30,10 @@ def _plain(info: os.stat_result, kind: int) -> bool:
 
 
 def _verified(directory: Path) -> tuple[bool, float] | None:
-    """返回 (已密封, 修改时间)；链接、重解析点和陌生名字都不是版本。"""
+    """返回 (已密封, 修改时间)；非版本返回 None，其他 OSError 上抛由发布方记录。"""
     if not GENERATION_ID.fullmatch(directory.name):
         return None
-    try:
-        info = os.lstat(directory)
-    except OSError:
-        return None
+    info = os.lstat(directory)
     if not _plain(info, stat.S_IFDIR):
         return None
     try:
@@ -47,8 +41,6 @@ def _verified(directory: Path) -> tuple[bool, float] | None:
     except FileNotFoundError:
         # 构建者在建目录与建主库之间被杀：未密封孤儿。
         return False, info.st_mtime
-    except OSError:
-        return None
     if not _plain(database, stat.S_IFREG):
         return None
     return not database.st_mode & stat.S_IWUSR, database.st_mtime
@@ -60,17 +52,18 @@ def _remove(storage: Path, directory: Path, sealed: bool) -> bool:
     pins.mkdir(parents=True, exist_ok=True)
     tombstone = pins / TOMBSTONE
     tombstone.touch(exist_ok=True)
-    if has_live_pin(pins):
-        tombstone.unlink(missing_ok=True)
-        return False
     database = directory / "index.db"
+    removed = False
     try:
-        clear_read_only_tree(directory)
-        database.unlink(missing_ok=True)
+        if not has_live_pin(pins):
+            clear_read_only_tree(directory)
+            database.unlink(missing_ok=True)
+            removed = True
     except OSError:
-        # Windows 上仍被打开的主库不可删除；恢复只读位后留待下次。
+        # 探测失败或主库仍被打开（Windows 不可删除）：恢复只读位，留待下次。
         if sealed and database.exists():
             mark_read_only(database)
+    if not removed:
         tombstone.unlink(missing_ok=True)
         return False
     shutil.rmtree(directory, ignore_errors=True)
@@ -83,10 +76,7 @@ def retire_generations(
 ) -> list[str]:
     """回收活动版本之外不再需要的版本，返回本次实际删除的版本 ID。"""
     started, now = time.monotonic(), time.time() if now is None else now
-    try:
-        directories = [Path(e.path) for e in os.scandir(storage / "generations")]
-    except FileNotFoundError:
-        return []
+    directories = [Path(e.path) for e in os.scandir(storage / "generations")]
     found = {
         directory: verdict
         for directory in directories
@@ -102,9 +92,6 @@ def retire_generations(
     for directory, (sealed, _modified) in found.items():
         if directory in kept or time.monotonic() - started > BUDGET_S:
             continue
-        try:
-            if _remove(storage, directory, sealed):
-                removed.append(directory.name)
-        except OSError:
-            logger.warning("generation retirement skipped %s", directory, exc_info=True)
+        if _remove(storage, directory, sealed):
+            removed.append(directory.name)
     return removed

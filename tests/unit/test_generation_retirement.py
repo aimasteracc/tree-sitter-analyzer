@@ -14,15 +14,6 @@ from pathlib import Path
 import pytest
 
 
-def wait_for_lock_release(directory, timeout=10.0):
-    """Windows 在进程终止后异步释放字节区间锁；有界等待，最终断言保持精确。"""
-    from tree_sitter_analyzer.cache.generation_pins import has_live_pin
-
-    deadline = time.monotonic() + timeout
-    while has_live_pin(directory) and time.monotonic() < deadline:
-        time.sleep(0.05)
-
-
 @pytest.fixture
 def root(tmp_path):
     project = tmp_path / "project"
@@ -45,8 +36,7 @@ def _active(root):
     return resolve_index_location(root).path.parent.name
 
 
-def _write(root, n):
-    """一次真实默认定位符写入：改 a.py 后单文件索引并发布。"""
+def _write(root, n):  # 一次真实默认定位符写入：改 a.py 后单文件索引并发布
     from tree_sitter_analyzer.ast_cache import ASTCache
 
     path = os.path.join(root, "a.py")
@@ -115,7 +105,7 @@ _KILLED_BUILDER = textwrap.dedent(
 
 @pytest.mark.slow_ok  # 真实子进程导入并被强杀，Windows 上启动即数秒。
 def test_killed_mid_build_generation_is_removed_by_next_write(root):
-    from tree_sitter_analyzer.cache.generation_pins import pin_directory
+    from tree_sitter_analyzer.cache.generation_pins import has_live_pin, pin_directory
 
     _write(root, 1)
     builder = subprocess.Popen(
@@ -133,7 +123,9 @@ def test_killed_mid_build_generation_is_removed_by_next_write(root):
         builder.kill()
         builder.stdin.close()
         builder.stdout.close()
-    wait_for_lock_release(pin_directory(_storage(root), orphan))
+    pins, deadline = pin_directory(_storage(root), orphan), time.monotonic() + 10
+    while has_live_pin(pins) and time.monotonic() < deadline:  # Windows 异步释放字节锁
+        time.sleep(0.05)
     before = orphan in _ids(root)
     _write(root, 2)
     assert (before, orphan in _ids(root)) == (True, False)
@@ -148,6 +140,7 @@ def test_age_bound_retires_every_inactive_generation(root):
     for n in range(1, 4):
         _write(root, n)
     active = _active(root)
+    (_storage(root) / "generations" / ("d" * 32)).mkdir()  # 建目录后、建主库前被杀
     retire_generations(_storage(root), active, now=time.time() + RETAIN_AGE_S + 60)
     assert _ids(root) == [active]
 
@@ -160,7 +153,9 @@ def test_unverified_directories_are_never_removed(root, tmp_path):
     stranger = _storage(root) / "generations" / "not-a-generation"
     stranger.mkdir()
     (stranger / "index.db").write_bytes(b"")
-    expected = sorted([active, "not-a-generation"])
+    (_storage(root) / "generations" / ("e" * 32)).write_bytes(b"")  # 文件而非目录
+    (_storage(root) / "generations" / ("c" * 32) / "index.db").mkdir(parents=True)
+    expected = sorted([active, "not-a-generation", "e" * 32, "c" * 32])
     if os.name == "posix":  # Windows 建符号链接需特权
         outside = tmp_path / "outside"
         outside.mkdir()
@@ -169,3 +164,22 @@ def test_unverified_directories_are_never_removed(root, tmp_path):
         expected = sorted([*expected, "f" * 32])
     retire_generations(_storage(root), active, now=time.time() + 10**9)
     assert _ids(root) == expected
+
+
+def test_failed_deletion_keeps_generation_sealed(root, monkeypatch):
+    from tree_sitter_analyzer.cache import generation_retirement as owner
+
+    _write(root, 1)
+    _write(root, 2)
+    active, before, gens = _active(root), _ids(root), _storage(root) / "generations"
+    busy = PermissionError("open elsewhere")
+    monkeypatch.setattr(
+        owner, "clear_read_only_tree", lambda _d: (_ for _ in ()).throw(busy)
+    )
+    removed = owner.retire_generations(_storage(root), active, now=time.time() + 10**9)
+    writable = [
+        os.access(gens / g / "index.db", os.W_OK) for g in before if g != active
+    ]
+    tombstones = list((_storage(root) / "pins").glob("*/retiring"))
+    expected = ([], before, [False] * (len(before) - 1), [])
+    assert (removed, _ids(root), writable, tombstones) == expected

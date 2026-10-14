@@ -55,10 +55,8 @@ class GenerationPin:
         if descriptor is not None:
             os.close(descriptor)
             # 目录可能已被回收者清理，或探测者暂持句柄；残留文件无锁即过期。
-            try:
+            with contextlib.suppress(OSError):
                 self.path.unlink()
-            except OSError:
-                pass
 
     def __del__(self) -> None:
         with contextlib.suppress(Exception):
@@ -91,7 +89,7 @@ def pin_database(database: Path) -> GenerationPin | None:
 
 
 def has_live_pin(directory: Path) -> bool:
-    """逐个探测钉文件：能加锁即持有者已退出，删除残留；任一加锁失败即为活钉。"""
+    """能加锁即持有者已退出并删除残留；任一加锁失败即活钉；其他 OSError 上抛。"""
     try:
         paths = [Path(e.path) for e in os.scandir(directory) if e.name.endswith(".pin")]
     except FileNotFoundError:
@@ -101,15 +99,10 @@ def has_live_pin(directory: Path) -> bool:
             descriptor = os.open(path, os.O_RDWR)
         except FileNotFoundError:
             continue
-        except OSError:
-            return True
         try:
             if not _lock(descriptor):
                 return True
         finally:
             os.close(descriptor)
-        try:
-            path.unlink(missing_ok=True)
-        except OSError:
-            return True
+        path.unlink(missing_ok=True)
     return False
