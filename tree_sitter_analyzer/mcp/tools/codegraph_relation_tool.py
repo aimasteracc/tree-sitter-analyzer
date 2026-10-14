@@ -7,6 +7,7 @@ import re
 from typing import Any
 
 from ...call_graph import CachedCallGraph, CallGraph
+from .parse_fallback_budget import index_missing_response
 from .relation_freshness import index_identity
 
 _STDLIB_TOP_LEVELS = frozenset(
@@ -174,6 +175,18 @@ class CodeGraphRelationToolMixin:
             return bool(cache.call_graph_built())
         except Exception:
             return False
+
+    def _parse_fallback_refusal(
+        self, cache: Any, tool_label: str, **subject: Any
+    ) -> dict[str, Any] | None:
+        """#1562：无索引且仓库超出现场解析预算时返回 INDEX_MISSING 答复。
+
+        有缓存（哪怕没有调用边）时走 ``CachedCallGraph``，不会现场解析，
+        因此返回 ``None``；只有 ``cache is None`` 才会触发整仓解析。
+        """
+        if cache is not None:
+            return None
+        return index_missing_response(self.project_root, tool_label, **subject)
 
     def _get_call_graph(self) -> CallGraph:
         if not self.project_root:
