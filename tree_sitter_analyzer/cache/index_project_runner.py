@@ -342,10 +342,9 @@ def run_index_project(
             # A partial projection cannot use the unchanged-file fast path. Every
             # canonical file has now been rewritten with ordinary/FTS/activation
             # rows in its writer transaction; remove only orphan derived paths.
-            conn.execute(
-                "DELETE FROM ast_symbol_rows WHERE file_path NOT IN "
-                "(SELECT file_path FROM ast_index)"
-            )
+            from .symbol_comments import prune_unindexed_symbol_rows
+
+            prune_unindexed_symbol_rows(conn)
             if cache.fts5_available:
                 # Contentless FTS5 cannot reliably predicate-delete stale rows.
                 # Rebuild it from the now-exact ordinary projection instead.
