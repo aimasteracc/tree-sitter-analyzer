@@ -744,7 +744,7 @@ def test_incoming_resolution_lookup_uses_both_edge_indexes(tmp_path):
         cache.close()
     assert plan == [
         "SEARCH edges USING INDEX idx_edges_resolved (callee_resolved_file=?)",
-        "SEARCH edges USING INDEX idx_edges_callee_name (callee_name=? AND kind=?)",
+        "SEARCH edges USING INDEX idx_edges_callee_name (callee_name=?)",
     ]
 
 

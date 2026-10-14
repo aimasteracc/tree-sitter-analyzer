@@ -59,11 +59,13 @@ def _delete_file_rows_if_table_present(
 
 
 #: 受某文件影响的调用边：解析到该文件，或调用名属于该文件声明的符号（#1562）。
+#: `+kind` 让 kind 条件不可走索引：小表上规划器会改选低选择性的 idx_edges_kind
+#: （CI 的 SQLite 实测如此），这里强制两支分别走 resolved / callee_name 索引。
 INCOMING_RESOLUTION_ROWS_SQL = (
     "SELECT id, metadata FROM edges "
-    "WHERE kind = 'calls' AND callee_resolved_file = ? "
+    "WHERE +kind = 'calls' AND callee_resolved_file = ? "
     "UNION SELECT id, metadata FROM edges "
-    "WHERE kind = 'calls' AND callee_name IN ("
+    "WHERE +kind = 'calls' AND callee_name IN ("
     "SELECT name FROM ast_symbol_rows WHERE file_path = ?)"
 )
 
