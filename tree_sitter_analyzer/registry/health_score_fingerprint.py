@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, cast
 
+from .._bounded_read import read_at_most
+
 _IS_WINDOWS = os.name == "nt"
 
 
@@ -82,7 +84,8 @@ class _Fingerprint:
                 change_before = _change_time(stream.fileno(), before)
                 if not stat.S_ISREG(before.st_mode):
                     return None
-                content = stream.read(64 * 1024 * 1024 + 1)
+                # #1592：按文件大小读取，避免每个文件都预分配 64 MiB 缓冲。
+                content = read_at_most(stream, 64 * 1024 * 1024)
                 after = os.fstat(stream.fileno())
                 change_after = _change_time(stream.fileno(), after)
             fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
