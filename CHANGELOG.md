@@ -12,6 +12,20 @@
   its existing meaning: budget-dropped fields, plus `imported_by` when Python
   import enrichment degraded and only the SQL-backed list is returned (#1446)
   (audit P3-2).
+- `nav action=callers` / `action=callees` (and CLI `--callers` / `--callees`)
+  no longer answer from a call graph memoized for the life of the MCP server.
+  The in-memory graph is bound to the index identity (published generation,
+  `ast_index` row count and newest `indexed_at`, newest `edges` rowid) and is
+  rebuilt when a re-index or `edit action=impact` changes it. Responses now
+  carry the RFC-0030 `source_evidence` object (`freshness`, `snapshot_id`,
+  `source_generation`, `reason`). The per-call check re-validates only the
+  files the answer is built from; an empty answer also re-checks every
+  indexed file's stamp within a 0.5 s budget. A detected drift reports
+  `freshness: "stale"` / `SOURCE_INDEX_MISMATCH` and a `next_step` naming the
+  changed files and the refresh command; otherwise `freshness` is `unknown`
+  with the new reason `SOURCE_REVALIDATION_SCOPED` (never `fresh`, because
+  files outside the answer and new files are not re-checked). A symbol absent
+  from a stale index is no longer blamed on spelling (dogfood 2026-10-14).
 
 ## [2.2.0] - 2026-09-19
 

@@ -712,3 +712,31 @@ v2.x 已发布版本的 `ASTCache.get_conn()` 以 `mode=ro` 打开，既有测�
 且新读者仍得到原文件数；`tests/unit/test_generation_reads.py` 固定新进程读取后版本目录
 只剩只读主库文件（index.db）；`tests/unit/cli/test_clean_state_command.py` 固定 `--clean-state`
 能删除含密封版本的缓存。
+
+## 2026-10 — 内存记忆必须绑定索引身份，且物理戳记不是身份
+
+### Context
+
+dogfood 2026-10-14：同一 MCP 服务器内 `nav action=callers` 建索引后答 2 个调用者；
+编辑源码新增第三个调用者、再执行 `index action=cache mode=index` 后仍答 2，没有任何
+过期标记；`edit action=impact` 已把新边写入 index.db，nav 依旧答 2，只有
+`set_project_path` 能恢复。根因是 `CodeGraphRelationToolMixin._get_call_graph` 把
+内存调用图记忆到工具生命周期结束，只在项目根变化时重置。第一次修复用主库与 WAL 的
+(mtime_ns, size) 作为身份，结果每次调用都重建：实测每次打开 `ASTCache` 都会向 WAL
+写入约 57 KB，物理戳记每次都变。
+
+### Lessons learned
+
+1. **长寿命进程里的记忆必须有失效键。** 只在项目根变化时重置的缓存，在 MCP 服务器里
+   等于永久缓存；失效键要绑定数据来源的身份，而不是绑定调用者的参数。
+2. **物理戳记不是内容身份。** 读者也会写 WAL；身份应取内容层信号（generation、
+   `ast_index` 行数与最新 `indexed_at`、`edges` 最大 rowid），并用“索引未变时同一对象被
+   复用”的测试固定，防止身份退化为每次重建。
+3. **只检查答案涉及的文件不能宣称 fresh。** RFC-0030 已否决仅检查返回路径；廉价检查
+   通过时只能报告 `unknown`，检测到差异才报告 `stale`。
+
+### Required guardrail
+
+`tests/unit/test_codegraph_callees_tool.py` 用同一个长寿命 nav 实例固定：重建索引后答案
+反映新调用者；未重建时 `source_evidence.freshness == "stale"` 且 next_step 给出刷新命令；
+新符号缺席时不归咎拼写；索引未变时内存调用图对象被复用。

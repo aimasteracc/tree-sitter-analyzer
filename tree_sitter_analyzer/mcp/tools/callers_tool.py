@@ -25,6 +25,12 @@ from .index_rebuild_signal import (
     is_index_rebuilding,
     rebuild_in_progress_next_step,
 )
+from .relation_freshness import (
+    apply_source_evidence,
+    not_in_index_hint,
+    relation_files,
+    relation_source_evidence,
+)
 
 logger = setup_logger(__name__)
 
@@ -350,6 +356,13 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # above, which trusts the marker; here the marker may be set over an
         # empty table, so the edge probe itself is the evidence.
         empty_evidence_base = cache is not None and not cache.has_call_edges()
+        # dogfood 2026-10-14：答案必须声明它所依据的索引是否已落后于源码。
+        evidence, stale_files = relation_source_evidence(
+            cache,
+            self.project_root,
+            relation_files(cache, func_name, callers),
+            absence=not callers,
+        )
 
         warnings_list: list[str] = []
         if _is_stale_resolution(callers):
@@ -530,10 +543,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                         "edges could not be read. Do not treat this as absence."
                     )
             else:
-                index_hint = (
-                    f"Symbol {func_name!r} not in the index. "
-                    "Check spelling or run --codegraph-navigate to browse."
-                )
+                index_hint = not_in_index_hint(func_name, evidence)
             next_step = f"{index_hint} {next_step}" if next_step else index_hint
         if next_step:
             result["next_step"] = next_step
@@ -571,6 +581,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             "verdict": verdict,
             "next_step": as_next_step,
         }
+        apply_source_evidence(result, evidence, stale_files)
 
         # RFC-0027 L6.2: this route's cold/warm cliff (24.8 s -> 16 ms in the
         # L5 baseline) is the largest in the product, so a caller choosing
