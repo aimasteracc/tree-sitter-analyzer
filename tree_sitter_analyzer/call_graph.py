@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from .cached_edge_resolution import CachedEdgeResolver
+from .cached_reexport_binding import PackageReexportBinder
 from .call_graph_possible import PossibleEdgesMixin
 from .callee_resolution import CalleeResolver
 from .constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
@@ -800,6 +801,7 @@ class CachedCallGraph(CallGraph):
             functions_by_name=self._func_by_name,
             functions_by_file=self._func_by_file,
             file_import_map=file_import_map,
+            reexport_binder=PackageReexportBinder(self._cache),
         )
         if self._callee_resolver is None:
             self._callee_resolver = edge_resolver.callee_resolver

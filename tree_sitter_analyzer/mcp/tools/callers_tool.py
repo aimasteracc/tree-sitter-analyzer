@@ -27,6 +27,7 @@ from .index_rebuild_signal import (
 )
 from .relation_freshness import (
     apply_source_evidence,
+    name_only_hint,
     not_in_index_hint,
     relation_files,
     relation_source_evidence,
@@ -151,6 +152,14 @@ def _collect_sites(
         sites.extend(found)
     sites.sort(key=lambda site: (site["file"], site["line"]))
     return sites[:limit] if limit is not None else sites
+
+
+def _symbol_indexed(cache: Any, func_name: str) -> bool:
+    """#1578：目标符号是否在索引中有定义行（读取失败按"未知"处理为 False）。"""
+    if cache is None:
+        return False
+    declaring = cache.symbol_declaring_files(func_name.rpartition(".")[2])
+    return bool(declaring)
 
 
 def _describe_sites(sites: list[dict[str, Any]] | None) -> str:
@@ -315,6 +324,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         )
 
         unattributed_call_sites = 0
+        name_only_inbound = 0
         cache = bound_cache if bound_cache is not None else self._try_get_cache()
         refusal = self._parse_fallback_refusal(cache, "callers", function=func_name)
         if refusal is not None:
@@ -346,6 +356,8 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 graph = self._get_call_graph()
                 data_source = self._data_source
             callers = graph.callers_of(func_name, file_path)
+            # #1578：仅同名匹配、无法绑定到目标的入边——它们存在时不能宣称 complete。
+            name_only_inbound = len(graph.possible_callers_of(func_name, file_path))
             self._enrich_callers_with_resolution(callers)
             # #981 defense-in-depth: the built marker can be a false-negative
             # (e.g. cleared while the index actually holds 125K call edges).
@@ -421,7 +433,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
 
         if unresolved_inbound is None or unresolved_in_declaring_files is None:
             completeness = "unknown"
-        elif unresolved_inbound + unresolved_in_declaring_files:
+        elif unresolved_inbound + unresolved_in_declaring_files + name_only_inbound:
             completeness = "incomplete" if total_callers else "unknown"
         elif unattributed_call_sites:
             # #638 counts module-level call sites instead of listing them, so a
@@ -527,6 +539,8 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                         "and are counted rather than listed, so this is not an "
                         "empty result; read them directly."
                     )
+                elif name_only_inbound:
+                    index_hint = name_only_hint(func_name, name_only_inbound)
                 elif unresolved_in_declaring_files:
                     index_hint = (
                         f"{unresolved_in_declaring_files} unresolved call(s) sit "
@@ -552,7 +566,9 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                         "edges could not be read. Do not treat this as absence."
                     )
             else:
-                index_hint = not_in_index_hint(func_name, evidence)
+                index_hint = not_in_index_hint(
+                    func_name, evidence, indexed=_symbol_indexed(cache, func_name)
+                )
             next_step = f"{index_hint} {next_step}" if next_step else index_hint
         if next_step:
             result["next_step"] = next_step

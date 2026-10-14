@@ -8,7 +8,8 @@
 
 1. 边上带有持久化解析（``callee_resolution`` 为 ``project`` / ``local``，且
    ``callee_resolved_file`` 中存在同名函数）时，只绑定到该文件中的目标；同文件
-   多个同名候选时用接收者（``callee_full`` 的限定符）收窄。
+   多个同名候选时用接收者（``callee_full`` 的限定符）收窄；该文件中没有同名
+   函数时，沿包再导出与基类找唯一定义（#1578）。
 2. 持久化解析为 ``builtin`` / ``stdlib`` / ``external`` 时不是项目函数，不建边。
 3. 其余情况沿用本地 / import 两档高置信解析；全局兜底只在**唯一**候选、且调用
    无接收者、接收者为 ``self`` 一类、或接收者正是候选所属类时才绑定。
@@ -24,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 from .callee_resolution import CalleeResolver
 
 if TYPE_CHECKING:
+    from .cached_reexport_binding import PackageReexportBinder
     from .call_graph import FunctionRef
 
 #: 持久化解析已确定为非项目目标的取值（RFC-0004/0005/0007）。
@@ -55,8 +57,10 @@ class CachedEdgeResolver:
         functions_by_name: dict[str, list[FunctionRef]],
         functions_by_file: dict[str, list[FunctionRef]],
         file_import_map: dict[str, dict[str, str]],
+        reexport_binder: PackageReexportBinder | None = None,
     ) -> None:
         self._functions_by_file = functions_by_file
+        self._reexport_binder = reexport_binder
         self._resolver = CalleeResolver(
             functions_by_name=functions_by_name,
             functions_by_file=functions_by_file,
@@ -77,9 +81,12 @@ class CachedEdgeResolver:
         if resolution in _NON_PROJECT_RESOLUTIONS:
             return EdgeTargets()
         if resolution in _PROJECT_RESOLUTIONS:
-            persisted = self._persisted_targets(
-                base_name, qualifier, str(edge.get("callee_resolved_file") or "")
-            )
+            resolved_file = str(edge.get("callee_resolved_file") or "")
+            persisted = self._persisted_targets(base_name, qualifier, resolved_file)
+            if persisted is None:
+                persisted = self._reexported_targets(
+                    base_name, qualifier, resolved_file
+                )
             if persisted is not None:
                 return persisted
         return self._inferred_targets(full_name, qualifier, caller_file)
@@ -99,6 +106,17 @@ class CachedEdgeResolver:
         if len(narrowed) == 1:
             return EdgeTargets(certain=narrowed)
         return EdgeTargets(possible=narrowed)
+
+    def _reexported_targets(
+        self, base_name: str, qualifier: str, resolved_file: str
+    ) -> EdgeTargets | None:
+        """#1578：沿包再导出与基类找到 ``接收者类型.方法`` 的唯一定义。"""
+        if self._reexport_binder is None or not qualifier:
+            return None
+        bound = self._reexport_binder.bind(
+            resolved_file, _receiver_name(qualifier), base_name, self._functions_by_file
+        )
+        return EdgeTargets(certain=bound) if len(bound) == 1 else None
 
     def _inferred_targets(
         self, full_name: str, qualifier: str, caller_file: str
