@@ -457,3 +457,76 @@ def test_derived_mutation_rejects_nondefault_legacy_path(project_root):
     with pytest.raises(ValueError, match="INDEX_GENERATION_PATH_MISMATCH"):
         mutate_index_path(project_root, path, lambda _: pytest.fail("不得运行写入"))
     assert path.exists() is False
+
+
+def _without_swift_grammar(monkeypatch):
+    """让 Swift 语法表现为未安装；直接改类方法，绕过进程内的可用性缓存。"""
+    import tree_sitter_analyzer.core.parser as parser_module
+    from tree_sitter_analyzer.language_loader import LanguageLoader
+
+    installed = parser_module.is_grammar_installed
+    monkeypatch.setattr(
+        parser_module,
+        "is_grammar_installed",
+        lambda language: language != "swift" and installed(language),
+    )
+    available = LanguageLoader.is_language_available
+    load = LanguageLoader.load_language
+    monkeypatch.setattr(
+        LanguageLoader,
+        "is_language_available",
+        lambda self, language: language != "swift" and available(self, language),
+    )
+    monkeypatch.setattr(
+        LanguageLoader,
+        "load_language",
+        lambda self, language: None if language == "swift" else load(self, language),
+    )
+
+
+@pytest.mark.asyncio
+async def test_full_index_publishes_beside_a_missing_optional_grammar(
+    project_root, monkeypatch
+):
+    # Issue #1562: `index action=full` indexed 218/2415 files and did not publish
+    # because the optional swift grammar was missing; a stable per-file failure
+    # must not withhold the rest of the index (#1554 publication policy).
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    (Path(project_root) / "src" / "greet.swift").write_text(
+        'func greet() -> String { return "hi" }\n', encoding="utf-8"
+    )
+    _without_swift_grammar(monkeypatch)
+    result = await CodeGraphFullIndexTool(project_root).execute({})
+    cache = ASTCache(project_root)
+    try:
+        files = cache.get_stats()["total_files"]
+    finally:
+        cache.close()
+    assert (result["published"], result["completeness"], files) == (
+        True,
+        "incomplete",
+        1,
+    )
+
+
+@pytest.mark.asyncio
+async def test_full_index_with_missing_grammar_names_the_files_to_install_for(
+    project_root, monkeypatch
+):
+    # Issue #1562: the published-but-incomplete result says what is missing.
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    (Path(project_root) / "src" / "greet.swift").write_text(
+        'func greet() -> String { return "hi" }\n', encoding="utf-8"
+    )
+    _without_swift_grammar(monkeypatch)
+    result = await CodeGraphFullIndexTool(project_root).execute({})
+    assert result["agent_summary"]["next_step"] == (
+        "Published without 1 file(s) whose optional grammar is not installed "
+        "(src/greet.swift: Swift grammar not installed — pip install "
+        '"tree-sitter-analyzer[swift]"). Install the extra and re-run '
+        "index action=full; graph answers about those files stay incomplete "
+        "until then."
+    )

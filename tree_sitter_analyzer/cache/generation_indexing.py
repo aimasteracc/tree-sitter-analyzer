@@ -202,7 +202,12 @@ async def run_full_index(
             result = await tool._execute_in_place(
                 arguments, candidate.snapshot, started_at=started_at
             )
-        if not result.get("success") or not result.get("scope_complete"):
+        # #1562：只有稳定单文件失败（如缺少可选语法）时照常发布，完整性如实标为
+        # incomplete；与 publication_policy 对 index_project/sync 的规则一致。
+        stable_only = result.get("stable_failures_only") is True
+        if not stable_only and (
+            not result.get("success") or not result.get("scope_complete")
+        ):
             result["success"] = False
             result["published"] = False
             return result
@@ -217,6 +222,9 @@ async def run_full_index(
                 failure["published"] = None
             return failure
         result["published"] = True
+        if stable_only and not result.get("scope_complete"):
+            # 已发布但未认证：success 保持 False（PR #1350），完整性如实为 incomplete。
+            result["completeness"] = "incomplete"
         result["generation_id"] = selector.generation_id
         result["elapsed_seconds"] = round(time.monotonic() - started_at, 3)
         return result
