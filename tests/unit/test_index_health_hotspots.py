@@ -173,3 +173,45 @@ def test_pruning_unindexed_symbol_rows_also_drops_their_comments(tmp_path) -> No
         cache.close()
 
     assert counts == (0, 0)
+
+
+def test_build_within_returns_a_fast_graph() -> None:
+    # #1602: 预算内完成的构建原样返回。
+    from tree_sitter_analyzer.bounded_graph_build import build_within
+
+    graph = object()
+
+    assert (
+        build_within(lambda _root: graph, "/root", 5.0, wait_after_timeout=False)
+        is graph
+    )
+
+
+def test_build_within_reraises_a_failed_build() -> None:
+    # #1602: 预算内的构建失败交给调用方既有的回退分支，不吞掉。
+    from tree_sitter_analyzer.bounded_graph_build import build_within
+
+    def broken(_root: str) -> object:
+        raise OSError("unreadable root")
+
+    with pytest.raises(OSError, match="unreadable root"):
+        build_within(broken, "/root", 5.0, wait_after_timeout=False)
+
+
+def test_comment_helpers_tolerate_a_database_without_comments() -> None:
+    # #1602: 旧库没有注释表时只修剪符号行，不报错。
+    from tree_sitter_analyzer.cache.symbol_comments import (
+        delete_file_symbol_comments,
+        prune_unindexed_symbol_rows,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT)")
+    conn.execute(
+        "CREATE TABLE ast_symbol_rows (id INTEGER PRIMARY KEY, file_path TEXT)"
+    )
+    conn.execute("INSERT INTO ast_symbol_rows (file_path) VALUES ('gone.py')")
+    delete_file_symbol_comments(conn, "gone.py")
+    prune_unindexed_symbol_rows(conn)
+
+    assert conn.execute("SELECT count(*) FROM ast_symbol_rows").fetchone()[0] == 0
