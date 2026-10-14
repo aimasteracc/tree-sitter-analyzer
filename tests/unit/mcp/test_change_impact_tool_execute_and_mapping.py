@@ -339,6 +339,8 @@ def test_change_impact_result_uses_complete_mapped_tests_for_verification(monkey
     assert len(result["tests_to_run"]) == 30
     assert result["tests_to_run_count"] == 32
     assert result["tests_to_run_omitted_count"] == 2
+    # Issue #1557：展示列表被截断时必须显式标记，不能把部分集合当作完整集合。
+    assert result["tests_to_run_truncated"] is True
     assert "tests/unit/test_feature_30.py" not in result["tests_to_run"]
     assert "tests/unit/test_feature_30.py" in result["verification_command"]
     assert "tests/unit/test_feature_31.py" in result["verification_command"]
@@ -347,6 +349,87 @@ def test_change_impact_result_uses_complete_mapped_tests_for_verification(monkey
     )
     assert result["agent_summary"]["verification_strategy"] == "single_command"
     assert result["agent_summary"]["tests_to_run_count"] == 32
+
+
+def _write_fixture_file(root, rel_path: str, text: str) -> None:
+    """在临时项目里写入一个 UTF-8 源文件，自动创建父目录。"""
+    path = root / rel_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def test_execute_selects_tests_that_import_changed_module(monkeypatch, tmp_path):
+    """Issue #1557：直接导入被改模块的测试必须入选，不能只靠 stem 家族规则。
+
+    覆盖 ``from pkg.mod import X``、``from pkg import mod`` 与函数内局部导入三种形式；
+    既有的 ``cache/`` → ``ast_cache`` 家族映射仍保留，不相关测试不得入选。
+    """
+    changed = "tree_sitter_analyzer/cache/generation_routing.py"
+    _write_fixture_file(tmp_path, "tree_sitter_analyzer/__init__.py", "")
+    _write_fixture_file(tmp_path, "tree_sitter_analyzer/cache/__init__.py", "")
+    _write_fixture_file(tmp_path, changed, "def resolve_index_path():\n    return 1\n")
+    _write_fixture_file(
+        tmp_path, "tree_sitter_analyzer/cache/_win_fileops.py", "X = 1\n"
+    )
+    _write_fixture_file(tmp_path, "tree_sitter_analyzer/other.py", "Y = 2\n")
+    _write_fixture_file(tmp_path, "tests/unit/test_ast_cache.py", "X = 0\n")
+    _write_fixture_file(
+        tmp_path,
+        "tests/unit/test_generation_store.py",
+        "from tree_sitter_analyzer.cache.generation_routing import "
+        "resolve_index_path\n",
+    )
+    _write_fixture_file(
+        tmp_path,
+        "tests/unit/test_win_fileops.py",
+        "from tree_sitter_analyzer.cache import _win_fileops, generation_routing\n",
+    )
+    _write_fixture_file(
+        tmp_path,
+        "tests/unit/test_file_watcher.py",
+        "def test_x():\n"
+        "    from tree_sitter_analyzer.cache.generation_routing import (\n"
+        "        resolve_index_path,\n"
+        "    )\n"
+        "    assert resolve_index_path() == 1\n",
+    )
+    _write_fixture_file(
+        tmp_path,
+        "tests/unit/test_unrelated.py",
+        "from tree_sitter_analyzer.other import Y\n",
+    )
+    monkeypatch.setattr(
+        tool_module,
+        "_get_changed_files",
+        lambda mode, project_root, scope_paths=None: [changed],
+    )
+    monkeypatch.setattr(
+        tool_module,
+        "_get_diff_stat",
+        lambda mode, project_root, scope_paths=None: f"{changed} | 1 +",
+    )
+    # 只隔离索引补全与调用图；依赖图走真实解析，证据来自真实导入。
+    monkeypatch.setattr(
+        change_impact_tool, "compute_call_graph_impact", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(change_impact_tool, "_ensure_ast_cache", lambda *args: None)
+
+    tool = tool_module.ChangeImpactTool(project_root=str(tmp_path))
+    result = asyncio.run(
+        tool.execute(
+            {"output_format": "json", "mode": "diff", "resource_profile": "default"}
+        )
+    )
+
+    assert result["tests_to_run"] == [
+        "tests/unit/test_ast_cache.py",
+        "tests/unit/test_file_watcher.py",
+        "tests/unit/test_generation_store.py",
+        "tests/unit/test_win_fileops.py",
+    ]
+    assert result["tests_to_run_count"] == 4
+    assert result["tests_to_run_omitted_count"] == 0
+    assert result["tests_to_run_truncated"] is False
 
 
 def test_agent_summary_warns_for_unscoped_large_dirty_worktree():

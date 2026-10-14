@@ -49,6 +49,56 @@ def test_cached_dependency_graph_resolves_python_relative_edges(tmp_path):
     assert graph.dependents_of("pkg/b.py") == ["pkg/a.py"]
 
 
+def test_cached_dependency_graph_resolves_from_package_import_submodule(tmp_path):
+    """Issue #1557：``from pkg import sub`` 同时依赖 ``pkg/sub.py``（CPython 语义）。"""
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("", encoding="utf-8")
+    (pkg / "sub.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (pkg / "alias.py").write_text("VALUE = 2\n", encoding="utf-8")
+    (tmp_path / "user.py").write_text(
+        "from pkg import sub, alias as renamed\n", encoding="utf-8"
+    )
+    _index_project(tmp_path)
+
+    # 非 POSIX 平台不认证缓存图而回退到解析图；两条路径必须给出相同的边。
+    graph = _load_dependency_graph(str(tmp_path))
+
+    assert graph is not None
+    assert graph.dependencies_of("user.py") == [
+        "pkg/__init__.py",
+        "pkg/alias.py",
+        "pkg/sub.py",
+    ]
+
+
+def test_add_cached_import_edges_links_from_package_submodules(tmp_path):
+    """Issue #1557：缓存图对 ``from pkg import sub`` 也要连到子模块文件。"""
+    nodes = {"user.py", "pkg/__init__.py", "pkg/sub.py", "pkg/alias.py"}
+    graph = CachedDependencyGraph(str(tmp_path), nodes)
+
+    cached._add_cached_import_edges(
+        graph,
+        {
+            "file_path": "user.py",
+            "language": "python",
+            "imports_json": '[{"text": "from pkg import sub, alias as renamed"}]',
+        },
+        nodes,
+    )
+
+    assert graph.dependencies_of("user.py") == [
+        "pkg/__init__.py",
+        "pkg/alias.py",
+        "pkg/sub.py",
+    ]
+
+
+def test_python_submodule_targets_ignore_invalid_imports_json():
+    """Issue #1557：损坏的导入 JSON 不产生子模块边，与模块解析的容错一致。"""
+    assert cached._python_submodule_targets({"imports_json": "["}, {"a.py"}) == []
+
+
 def test_cached_dependency_graph_resolves_js_relative_edges(tmp_path):
     src = tmp_path / "src"
     src.mkdir()

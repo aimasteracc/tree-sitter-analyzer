@@ -377,7 +377,9 @@ def _build_test_plan(
     if not include_tests or graph is None:
         return {}, []
 
-    test_mapping = _find_test_files(changed_files, set(graph.nodes()))
+    test_mapping = _add_importer_tests(
+        _find_test_files(changed_files, set(graph.nodes())), graph
+    )
     tests_to_run = sorted(
         {
             test_path
@@ -387,6 +389,30 @@ def _build_test_plan(
         }
     )
     return test_mapping, tests_to_run
+
+
+def _add_importer_tests(
+    mapping: dict[str, list[str]],
+    graph: Any,
+) -> dict[str, list[str]]:
+    """把直接导入被改文件的可运行测试并入映射（Issue #1557）。
+
+    文件名/stem 家族规则保持原样，导入证据只做并集补充；依赖图节点统一使用 POSIX
+    分隔符，因此查询前先归一化，不依赖调用方的分隔符风格。仅文档改动不追加测试；
+    运行时自动发现提示保留，导入证据不会把“需完整发现”降级为局部集合。
+    """
+    merged: dict[str, list[str]] = {}
+    for changed_file, tests in mapping.items():
+        if DOCS_ONLY_TEST_HINT in tests:
+            merged[changed_file] = tests
+            continue
+        importers = {
+            dependent.replace("\\", "/")
+            for dependent in graph.dependents_of(changed_file.replace("\\", "/"))
+            if _is_runnable_test_file(dependent, TEST_DIRS, TEST_SUFFIXES)
+        }
+        merged[changed_file] = sorted(set(tests) | importers)
+    return merged
 
 
 def _is_runnable_test_change(path: str) -> bool:

@@ -405,6 +405,8 @@ def build_change_impact_response(
         "tests_to_run_omitted_count": max(
             0, len(context.all_tests) - len(context.visible_tests)
         ),
+        # Issue #1557：展示列表有上限时显式标记截断，完整集合以 verification_command 为准。
+        "tests_to_run_truncated": len(context.visible_tests) < len(context.all_tests),
         "test_required": verification["test_required"],
         "test_runner": verification["test_runner"],
         "default_test_command": verification["default_test_command"],

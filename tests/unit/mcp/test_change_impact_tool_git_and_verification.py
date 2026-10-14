@@ -647,6 +647,10 @@ def test_build_test_plan_returns_sorted_runnable_tests():
                 "tree_sitter_analyzer/cli_main.py",
             }
 
+        def dependents_of(self, file_path):
+            # Issue #1557：测试计划会查询直接导入者；此图没有导入边。
+            return []
+
     test_mapping, tests_to_run = change_impact_tool._build_test_plan(
         [
             "tree_sitter_analyzer/cli_main.py",
@@ -660,6 +664,44 @@ def test_build_test_plan_returns_sorted_runnable_tests():
         verification_tool.AUTO_DISCOVER_TEST_HINT
     ]
     assert tests_to_run == ["tests/unit/cli/test_cli_main_module.py"]
+
+
+class _ImporterGraph:
+    """只有导入边的假图：``tests/unit/test_user.py`` 导入 ``pkg/unknown_module.py``。"""
+
+    def nodes(self):
+        return {"pkg/unknown_module.py", "tests/unit/test_user.py", "docs/guide.md"}
+
+    def dependents_of(self, file_path):
+        return {
+            "pkg/unknown_module.py": ["tests/unit/test_user.py", "pkg/other.py"],
+            "docs/guide.md": ["tests/unit/test_user.py"],
+        }.get(file_path, [])
+
+
+def test_build_test_plan_adds_importers_and_keeps_auto_discovery():
+    """Issue #1557：导入证据并入映射，但不把“需自动发现”降级为局部完整集合。"""
+    test_mapping, tests_to_run = change_impact_tool._build_test_plan(
+        ["pkg\\unknown_module.py"], _ImporterGraph(), include_tests=True
+    )
+
+    assert test_mapping == {
+        "pkg\\unknown_module.py": [
+            verification_tool.AUTO_DISCOVER_TEST_HINT,
+            "tests/unit/test_user.py",
+        ]
+    }
+    assert tests_to_run == ["tests/unit/test_user.py"]
+
+
+def test_build_test_plan_docs_change_ignores_importer_evidence():
+    """Issue #1557：仅文档改动保持 docs-only 提示，不因图边追加测试。"""
+    test_mapping, tests_to_run = change_impact_tool._build_test_plan(
+        ["docs/guide.md"], _ImporterGraph(), include_tests=True
+    )
+
+    assert test_mapping == {"docs/guide.md": [verification_tool.DOCS_ONLY_TEST_HINT]}
+    assert tests_to_run == []
 
 
 def test_cli_path_always_passes_resource_profile_explicitly():

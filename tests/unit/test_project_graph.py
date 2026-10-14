@@ -170,10 +170,14 @@ class TestDependencyGraph:
     def test_get_dependencies_of_file(self, py_graph):
         """Query what a specific file depends on."""
         deps = py_graph.dependencies_of("main.py")
+        # Issue #1557：`from .models import base` / `from .pkg import submodule`
+        # 同时依赖包与子模块文件，旧断言漏掉了子模块边。
         assert deps == [
             "models/__init__.py",
+            "models/base.py",
             "models/user.py",
             "pkg/__init__.py",
+            "pkg/submodule.py",
             "utils.py",
         ], f"main.py dependencies changed: {deps}"
 
@@ -409,8 +413,47 @@ class TestCycleDetection:
     def test_detect_cycles(self, py_graph):
         """Should detect the cycle between main.py and pkg/submodule.py."""
         cycles = py_graph.find_cycles()
-        # models/base.py participates in the fixture's intentional cycle
-        assert len(cycles) == 1, f"Expected 1 cycle in {PY_PROJECT}, got {cycles}"
+        # Issue #1557：子模块边补齐后，夹具注释里的 main.py <-> pkg/submodule.py
+        # 环才被检出；models/base.py 的自导入环保持不变。DFS 起点顺序不固定，按成员比较。
+        assert len(cycles) == 2, f"Expected 2 cycles in {PY_PROJECT}, got {cycles}"
+        assert {frozenset(cycle) for cycle in cycles} == {
+            frozenset({"main.py", "pkg/submodule.py"}),
+            frozenset({"models/base.py"}),
+        }
+
+
+_SUBMODULE_NODES = {"pkg/__init__.py", "pkg/sub.py", "pkg/inner/__init__.py"}
+
+
+@pytest.mark.parametrize(
+    ("module", "names", "source", "is_relative", "expected"),
+    [
+        pytest.param(
+            "pkg",
+            ["sub", "inner"],
+            "a.py",
+            False,
+            ["pkg/sub.py", "pkg/inner/__init__.py"],
+            id="absolute",
+        ),
+        pytest.param(".pkg", ["sub"], "a.py", True, ["pkg/sub.py"], id="relative"),
+        pytest.param(".pkg", ["helper"], "a.py", True, [], id="no-anchor-fallback"),
+        pytest.param("pkg", ["*", "sub.x", ""], "a.py", False, [], id="star-dotted"),
+        pytest.param(".", ["sub"], "pkg/a.py", True, [], id="dots-only"),
+        pytest.param(".sub", ["sub"], "pkg/a.py", True, [], id="extractor-dot-name"),
+        pytest.param("pkg", ["sub"], "pkg/sub.py", False, [], id="self-edge"),
+    ],
+)
+def test_python_submodule_import_targets(module, names, source, is_relative, expected):
+    """Issue #1557：仅精确子模块节点成为边，普通符号与祖先回退不产生边。"""
+    from tree_sitter_analyzer.project_graph import python_submodule_import_targets
+
+    assert (
+        python_submodule_import_targets(
+            module, names, source, _SUBMODULE_NODES, is_relative
+        )
+        == expected
+    )
 
 
 # ============================================================
@@ -450,8 +493,10 @@ class TestBlastRadius:
             "models/base.py",
             "models/user.py",
             "pkg/__init__.py",
+            # Issue #1557：`from .pkg import submodule` 依赖子模块文件。
+            "pkg/submodule.py",
             "utils.py",
-        }, f"Expected 5 reverse deps, got {dependencies}"
+        }, f"Expected 6 reverse deps, got {dependencies}"
 
     def test_blast_radius_leaf_file_forward(self, radius):
         """Changing utils.py (no internal deps, imported by main) → only main is impacted."""

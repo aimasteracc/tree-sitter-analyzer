@@ -12,7 +12,7 @@ Key classes:
 import hashlib
 import os
 from collections import defaultdict, deque
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -247,6 +247,45 @@ def _resolve_python_import(
     if file_candidate_abs in nodes:
         return file_candidate_abs
     return None
+
+
+def python_submodule_import_targets(
+    module: str,
+    names: Iterable[str],
+    source_rel: str,
+    nodes: set[str],
+    is_relative: bool,
+) -> list[str]:
+    """返回 ``from pkg import name`` 中真实存在的子模块文件。
+
+    CPython 执行 ``from pkg import sub`` 时会导入 ``pkg/sub.py``，因此该语句同时依赖
+    包与子模块（Issue #1557）。只接受精确的 ``pkg/name.py`` 或 ``pkg/name/__init__.py``
+    图节点，不使用相对导入的祖先 ``__init__.py`` 回退：普通符号导入不会多出边。
+    仅含点的相对模块（``from . import x``）由既有解析处理；点分名与 ``*`` 不是候选。
+    """
+    if not module or set(module) == {"."}:
+        return []
+    last_segment = module.rsplit(".", 1)[-1]
+    targets: list[str] = []
+    for name in dict.fromkeys(names):
+        if not name or name == "*" or "." in name:
+            continue
+        # 解析图把 ``from . import x`` 记作模块 ``.x``、名称 ``x``，避免重复拼接。
+        if is_relative and name == last_segment:
+            continue
+        dotted = f"{module}.{name}"
+        candidates = (
+            (
+                _relative_init_candidate(dotted, source_rel),
+                _resolve_relative_import(dotted, source_rel),
+            )
+            if is_relative
+            else (_resolve_python_import(dotted, source_rel, nodes, False),)
+        )
+        target = next((path for path in candidates if path in nodes), None)
+        if target is not None and target != source_rel:
+            targets.append(target)
+    return targets
 
 
 def _resolve_js_ts_import(
@@ -534,6 +573,22 @@ class DependencyGraph:
                             continue
                         self._symbol_importers[name].add(rel_path)
                         self._symbol_importer_targets[(name, rel_path)].add(resolved)
+                self._add_python_submodule_edges(imp, rel_path)
+
+    def _add_python_submodule_edges(self, imp: dict[str, Any], source_rel: str) -> None:
+        """为 ``from pkg import sub`` 补上指向 ``pkg/sub.py`` 的文件边（Issue #1557）。"""
+        if imp.get("language") != "python":
+            return
+        for target in python_submodule_import_targets(
+            imp.get("module_name", ""),
+            imp.get("names", ()) or (),
+            source_rel,
+            self._nodes,
+            bool(imp.get("is_relative", False)),
+        ):
+            self._edges.add((source_rel, target))
+            self._deps[source_rel].add(target)
+            self._dependents[target].add(source_rel)
 
     def _resolve_to_project_file(
         self,

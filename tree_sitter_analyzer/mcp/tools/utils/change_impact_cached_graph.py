@@ -24,7 +24,7 @@ from ....index_source_snapshot import (
     capture_current_source_snapshot,
     recorded_source_rows,
 )
-from ....project_graph import _IMPORT_RESOLVERS
+from ....project_graph import _IMPORT_RESOLVERS, python_submodule_import_targets
 from ....synapse_resolver import parse_imports
 
 logger = logging.getLogger(__name__)
@@ -181,6 +181,32 @@ def _add_cached_import_edges(
         resolved = resolver(module, source, nodes, is_relative)
         if resolved:
             graph.add_edge(source, resolved.replace("\\", "/"))
+    if language == "python":
+        for target in _python_submodule_targets(row, nodes):
+            graph.add_edge(source, target)
+
+
+def _python_submodule_targets(row: dict[str, Any], nodes: set[str]) -> list[str]:
+    """``from pkg import sub`` 的子模块边，与解析图共用候选规则（Issue #1557）。"""
+    try:
+        raw_imports = json.loads(row.get("imports_json") or "[]")
+    except (TypeError, json.JSONDecodeError):
+        return []
+    source = row.get("file_path", "")
+    targets: list[str] = []
+    for raw in raw_imports:
+        text = raw.get("text", "") if isinstance(raw, dict) else str(raw)
+        for entry in parse_imports(text, "python", source) if text else ():
+            targets.extend(
+                python_submodule_import_targets(
+                    entry.module_path,
+                    [entry.alias_of or entry.local_name],
+                    source,
+                    nodes,
+                    entry.is_relative,
+                )
+            )
+    return targets
 
 
 def _iter_cached_import_modules(row: dict[str, Any]) -> list[tuple[str, bool]]:
