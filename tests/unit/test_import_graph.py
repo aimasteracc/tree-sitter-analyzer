@@ -199,6 +199,28 @@ class TestImportGraphQueries:
         g = _graph([("a.py", "b.py")])
         assert g.dependents_of("nope.py") == []
 
+    def test_dependents_of_matches_backslash_relative_path(self) -> None:
+        # #1558 (dogfood 2026-10-14)：Windows 风格路径查询 "/" 缓存键曾静默返回 0。
+        g = _graph([("pkg/a.py", "pkg/c.py"), ("pkg/b.py", "pkg/c.py")])
+        sources = {d["source"] for d in g.dependents_of("pkg\\c.py")}
+        assert sources == {"pkg/a.py", "pkg/b.py"}
+
+    def test_dependents_of_matches_absolute_path(self) -> None:
+        # #1558：MCP 工具解析为绝对路径后，Windows 上 relpath 产生 "\\" 分隔符。
+        g = _graph([("pkg/a.py", "pkg/c.py")])
+        absolute = os.path.join(ROOT, "pkg", "c.py")
+        assert [d["source"] for d in g.dependents_of(absolute)] == ["pkg/a.py"]
+
+    def test_dependencies_of_matches_backslash_relative_path(self) -> None:
+        # #1558：正向依赖同样按分隔符无关的键查找。
+        g = _graph([("pkg/a.py", "pkg/b.py")])
+        assert [d["target"] for d in g.dependencies_of("pkg\\a.py")] == ["pkg/b.py"]
+
+    def test_blast_radius_matches_backslash_relative_path(self) -> None:
+        # #1558：影响面计算的起点键也必须命中 "/" 缓存键。
+        g = _graph([("pkg/b.py", "pkg/c.py"), ("pkg/a.py", "pkg/b.py")])
+        assert g.blast_radius("pkg\\c.py")["transitive_dependents"] == 2
+
     def test_blast_radius_transitive(self) -> None:
         # c <- b <- a  (changing c affects b and a)
         g = _graph([("b.py", "c.py"), ("a.py", "b.py")])
@@ -265,6 +287,22 @@ class TestImportGraphBuild:
         assert result.edge_count == 1
         assert result.edges[0].source_file == "a.py"
         assert result.edges[0].target_file == "b.py"
+
+    def test_dependents_of_builds_graph_lazily(self, monkeypatch) -> None:
+        # 未先调用 build() 时，dependents_of 必须自行从缓存构图再查询。
+        class _FakeCache:
+            def __init__(self, root: str) -> None:
+                pass
+
+            def get_imports(self) -> dict[str, list[str]]:
+                return {"a.py": ["import b"], "b.py": []}
+
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr("tree_sitter_analyzer.ast_cache.ASTCache", _FakeCache)
+        graph = ImportGraph(ROOT)
+        assert [d["source"] for d in graph.dependents_of("b.py")] == ["a.py"]
 
     def test_build_resolves_esm_import_from_mts_file(self, monkeypatch) -> None:
         """PUBLIC API: an ESM import in a .mts file must produce an edge.
