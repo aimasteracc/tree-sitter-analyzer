@@ -150,7 +150,9 @@ async def test_unknown_never_reports_absence(tool_with_edges) -> None:
 
 
 @pytest.mark.asyncio
-async def test_real_zero_is_complete_and_may_say_not_in_index(tool_with_edges) -> None:
+async def test_real_zero_is_complete_and_says_defined_without_callers(
+    tool_with_edges,
+) -> None:
     """A zero over an indexed graph is a fact, and may be stated as one.
 
     The graph must hold edges somewhere, or the tool answers from parsing rather
@@ -165,7 +167,10 @@ async def test_real_zero_is_complete_and_may_say_not_in_index(tool_with_edges) -
     result = await _call(tool)
 
     assert (result["verdict"], result["completeness"]) == ("NOT_FOUND", "complete")
-    assert "not in the index" in str(result["next_step"])
+    # #1578 重新固定：target_symbol 在 a.py 中有定义，不得再说 "not in the index"。
+    assert result["next_step"] == (
+        f"{_TARGET!r} is defined in the index and no resolved call edge reaches it."
+    )
     assert result["agent_summary"]["summary_line"] == (
         f"callers: {_TARGET!r} has 0 caller(s)"
     )

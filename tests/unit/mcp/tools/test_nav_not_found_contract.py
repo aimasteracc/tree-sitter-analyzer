@@ -155,3 +155,86 @@ async def test_edges_without_built_marker_no_empty_index_hint(
             f"next_step must not claim the index is empty when edges exist "
             f"(false-negative marker); got: {next_step!r}"
         )
+
+
+_REEXPORT_PROJECT = {
+    "pkg/__init__.py": "from .extractor import Extractor\nfrom .mixin import Mixin\n",
+    "pkg/mixin.py": (
+        "class Mixin:\n    def _inherited(self):\n        return 2\n\n"
+        "    def _unused(self):\n        return 0\n"
+    ),
+    "pkg/extractor.py": (
+        "from .mixin import Mixin\n\n\nclass Extractor(Mixin):\n    pass\n"
+    ),
+    # PEP 562 惰性再导出：静态分析无法从 lazy/__init__.py 找到 LazySub。
+    "lazy/__init__.py": (
+        "def __getattr__(name):\n    from . import impl\n\n"
+        "    return getattr(impl, name)\n"
+    ),
+    "lazy/impl.py": (
+        "class LazyBase:\n    def _hidden(self):\n        return 3\n\n\n"
+        "class LazySub(LazyBase):\n    pass\n"
+    ),
+    "tests/test_use.py": (
+        "import pytest\n\nfrom lazy import LazySub\nfrom pkg import Extractor\n\n\n"
+        "class TestUse:\n"
+        "    @pytest.fixture\n    def extractor(self) -> Extractor:\n"
+        "        return Extractor()\n\n"
+        "    @pytest.fixture\n    def lazy(self) -> LazySub:\n"
+        "        return LazySub()\n\n"
+        "    def test_inherited(self, extractor: Extractor) -> None:\n"
+        "        assert extractor._inherited() == 2\n\n"
+        "    def test_lazy(self, lazy: LazySub) -> None:\n"
+        "        assert lazy._hidden() == 3\n"
+    ),
+}
+
+
+async def _reexport_callers(root: Any, symbol: str) -> dict[str, Any]:
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    for rel, text in _REEXPORT_PROJECT.items():
+        target = root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+    indexed = await CodeGraphFullIndexTool(str(root)).execute(
+        {"mode": "full", "max_files": 20}
+    )
+    assert indexed["published"] is True
+    return await CodeGraphCallersTool(str(root)).execute(
+        {"function_name": symbol, "include_bodies": False}
+    )
+
+
+@pytest.mark.asyncio
+async def test_qualified_callers_follow_reexport_to_base_class_method(
+    tmp_path: Any,
+) -> None:
+    # #1578：调用边解析到 pkg/__init__.py（Extractor 由包再导出），方法定义在基类
+    # Mixin 中；限定名查询必须沿再导出与继承找到它，而不是回答 NOT_FOUND。
+    result = await _reexport_callers(tmp_path, "Mixin._inherited")
+    assert [(c["name"], c["file"]) for c in result["callers"]] == [
+        ("test_inherited", "tests/test_use.py")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_unbound_edge_to_existing_symbol_is_never_complete_absence(
+    tmp_path: Any,
+) -> None:
+    # #1578：符号存在、且有一条无法静态绑定的同名入边时，答案只能是 unknown。
+    result = await _reexport_callers(tmp_path, "LazyBase._hidden")
+    assert (result["verdict"], result["completeness"]) == ("NOT_FOUND", "unknown")
+
+
+@pytest.mark.asyncio
+async def test_existing_symbol_is_never_reported_missing_from_index(
+    tmp_path: Any,
+) -> None:
+    # #1578：索引中有定义、确实无人调用的符号，不得被提示为 "not in the index"
+    # 并建议重建索引；零调用方是关于调用边的事实。
+    result = await _reexport_callers(tmp_path, "Mixin._unused")
+    assert (result["completeness"], result["next_step"]) == (
+        "complete",
+        "'Mixin._unused' is defined in the index and no resolved call edge reaches it.",
+    )

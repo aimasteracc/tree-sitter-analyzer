@@ -202,9 +202,24 @@ def stale_next_step(changed: list[str]) -> str:
     )
 
 
-def not_in_index_hint(func_name: str, evidence: dict[str, Any]) -> str:
-    """符号不在索引中时的提示；索引可能过期时不得归咎于拼写。"""
-    if evidence.get("freshness") == "stale":
+def not_in_index_hint(
+    func_name: str, evidence: dict[str, Any], *, indexed: bool = False
+) -> str:
+    """符号不在索引中时的提示；索引可能过期时不得归咎于拼写。
+
+    ``indexed`` 为真表示符号有定义行（#1578）：此时零结果是关于调用边的事实，
+    不得说成"不在索引中"并建议重建索引。
+    """
+    stale = evidence.get("freshness") == "stale"
+    if indexed:
+        tail = (
+            " The index is stale, so this is not evidence of absence." if stale else ""
+        )
+        return (
+            f"{func_name!r} is defined in the index and no resolved call edge "
+            f"reaches it.{tail}"
+        )
+    if stale:
         return (
             f"Symbol {func_name!r} is not in the index, but the index is stale, "
             "so this is not evidence of absence."
@@ -213,6 +228,16 @@ def not_in_index_hint(func_name: str, evidence: dict[str, Any]) -> str:
         f"Symbol {func_name!r} not in the index. If it was added or renamed "
         f"since the last index, run {REFRESH_COMMAND} and retry; otherwise "
         "check spelling or run --codegraph-navigate to browse."
+    )
+
+
+def name_only_hint(func_name: str, count: int) -> str:
+    """#1578：同名入边无法绑定到目标时的提示——它们可能就是调用方。"""
+    return (
+        f"No resolved caller for {func_name!r}, but {count} call site(s) reach a "
+        "same-named method through a receiver that could not be bound to it, so "
+        "it may still be called. Read those call sites directly rather than "
+        "treating this as absence."
     )
 
 
