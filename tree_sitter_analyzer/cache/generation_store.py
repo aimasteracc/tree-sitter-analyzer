@@ -19,7 +19,6 @@ from ..incremental_sync import IncrementalSync
 from ..incremental_sync_support import SyncResult
 from ..index_source_scope import SourceScopeDescriptor, make_source_scope_descriptor
 from ..indexing_snapshot import (
-    _CANDIDATE_DISCOVERY_SECONDS,
     IndexCandidateSnapshot,
     build_index_candidate_snapshot,
     walk_index_candidate_entries,
@@ -239,7 +238,7 @@ class GenerationStore:
         return self.storage / "generations" / selector.generation_id / "index.db"
 
     def _snapshot(
-        self, discovery_seconds: float = _CANDIDATE_DISCOVERY_SECONDS
+        self, discovery_seconds: float | None = None
     ) -> IndexCandidateSnapshot:
         return build_index_candidate_snapshot(
             str(self.root),

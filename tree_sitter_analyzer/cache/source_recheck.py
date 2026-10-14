@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, cast
 
+from ..discovery_budget import discovery_budget_seconds
 from ..indexing_snapshot import (
     _PERMANENT_SOURCE_REJECTIONS,
     IndexCandidateSnapshot,
@@ -22,8 +23,6 @@ from ..indexing_snapshot import (
 
 SOURCE_CHANGED = "INDEX_GENERATION_SOURCE_CHANGED"
 SOURCE_RECHECK_INCOMPLETE = "INDEX_GENERATION_SOURCE_RECHECK_INCOMPLETE"
-RECHECK_BASE_SECONDS = 30.0
-RECHECK_SECONDS_PER_ENTRY = 0.01
 MAX_REPORTED_CHANGES = 20
 _Pairs = tuple[tuple[str, object], ...]
 
@@ -64,7 +63,7 @@ def source_contents(snapshot: IndexCandidateSnapshot) -> tuple[object, ...]:
 
 def recheck_discovery_seconds(previous: IndexCandidateSnapshot) -> float:
     """复核快照的发现预算（秒），随首次捕获的目录项数增长。"""
-    return RECHECK_BASE_SECONDS + RECHECK_SECONDS_PER_ENTRY * previous.discovered
+    return discovery_budget_seconds(previous.discovered)
 
 
 def _entry_state(entry: IndexSnapshotEntry) -> tuple[object, ...]:
