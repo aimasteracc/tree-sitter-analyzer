@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sqlite3
 import stat
@@ -28,6 +29,8 @@ from ..read_only_files import mark_read_only
 from ._win_fileops import IS_WINDOWS, replace_file
 from ._win_fileops import IndexWriterBusy as IndexWriterBusy  # 发布失败关闭的类型
 from .generation_bootstrap import adopt_legacy_database
+from .generation_pins import GenerationPin, pin_generation
+from .generation_retirement import retire_generations
 from .generation_routing import read_selector
 from .generation_selector import (
     GenerationSelector,
@@ -36,6 +39,7 @@ from .generation_selector import (
 )
 
 _PATH_ONLY_SOURCE = os.name != "posix"
+logger = logging.getLogger(__name__)
 
 
 def _bind_source_hashes(snapshot: IndexCandidateSnapshot) -> IndexCandidateSnapshot:
@@ -172,6 +176,8 @@ class GenerationStore:
         self.logical_path = logical_path or str(self.storage / "index.db")
         self.selector_path = self.storage / "active.json"
         self._database_identities: dict[str, tuple[int, int]] = {}
+        # 构建中的私有版本由本对象钉住；进程被杀即释放，孤儿可被回收（slice 6）。
+        self._build_pins: dict[str, GenerationPin] = {}
         self.scope = scope or make_source_scope_descriptor()
         self._directory_identities = {
             path: (info.st_dev, info.st_ino)
@@ -290,6 +296,7 @@ class GenerationStore:
         selector = self.active_selector()
         if selector is None:
             raise FileNotFoundError("INDEX_GENERATION_MISSING")
+        pin = pin_generation(self.storage, selector.generation_id)
         connection = sqlite3.connect(
             self.database(selector).as_uri() + "?mode=ro", uri=True
         )
@@ -298,6 +305,8 @@ class GenerationStore:
             yield connection
         finally:
             connection.close()
+            if pin is not None:
+                pin.release()
 
     def begin(self, candidate: GenerationCandidate) -> GenerationSelector:
         """为一次已有索引流程分配私有库，不能写入父版本。"""
@@ -310,6 +319,10 @@ class GenerationStore:
             uuid.uuid4().hex,
         )
         database = self.database(selector)
+        pin = pin_generation(self.storage, selector.generation_id)
+        if pin is None:
+            raise Superseded("INDEX_GENERATION_RETIRING")
+        self._build_pins[selector.generation_id] = pin
         database.parent.mkdir(exist_ok=False)
         database.touch(exist_ok=False)
         info = database.stat()
@@ -433,7 +446,18 @@ class GenerationStore:
             _write_atomic(self.selector_path, data)
             if first:
                 _write_atomic(activated, b"1\n")
+            self._retire(prepared.selector)
             return prepared.selector
+
+    def _retire(self, active: GenerationSelector) -> None:
+        """发布后在租约内有界回收；失败只记录，已完成的发布不回滚。"""
+        pin = self._build_pins.pop(active.generation_id, None)
+        if pin is not None:
+            pin.release()
+        try:
+            retire_generations(self.storage, active.generation_id)
+        except Exception:
+            logger.warning("index generation retirement failed", exc_info=True)
 
     def sync(self) -> GenerationSelector:
         """捕获、隔离构建、发布一次完整默认范围索引。"""
