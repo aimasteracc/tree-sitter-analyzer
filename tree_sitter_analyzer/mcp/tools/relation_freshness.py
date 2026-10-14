@@ -42,7 +42,9 @@ REFRESH_COMMAND = (
 )
 
 #: 绝对否定路径的整体复核期限；超出即为 unknown，不以部分结果冒充一致。
-_ABSENCE_SCAN_DEADLINE_SECONDS = 0.5
+#: #1594：callers 的 complete 现在取决于此复核；实测 2,432 个文件的仓库在
+#: Windows 上需 0.40–0.51 s，0.5 s 期限会让同一答案随机降级，故放宽到 2 s。
+_ABSENCE_SCAN_DEADLINE_SECONDS = 2.0
 #: next_step 中最多点名的变更文件数；找到这么多后即可停止复核。
 _NAMED_FILES = 3
 #: 单条 SQL IN 子句的参数上限，低于 SQLite 默认变量上限。
