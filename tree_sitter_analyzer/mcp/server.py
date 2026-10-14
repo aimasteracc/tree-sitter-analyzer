@@ -41,7 +41,6 @@ except ImportError:
     stdio_server = _fallback_stdio_server
 
 
-from ..core.analysis_engine import get_analysis_engine
 from ..platform_compat.detector import PlatformDetector
 from ..project_detector import detect_project_root
 from ..security import SecurityValidator
@@ -49,22 +48,21 @@ from ..utils import setup_logger
 from . import MCP_INFO
 from ._sdk_compat import adapt_server
 from ._server_helpers import (
-    attach_tool_aliases,
     build_initialization_options,
     detect_server_version,
+    get_analysis_engine,
+    materialize_deferred_attribute,
     resolve_project_root,
 )
 from ._server_helpers import (
     log_safely as _log_safely,
 )
-from .resources import CodeFileResource, ProjectStatsResource
-from .server_utils.code_scale_handler import analyze_code_scale
 from .server_utils.prompt_registration import register_prompts
 from .server_utils.resource_registration import register_resources
 from .server_utils.tool_registration import register_tools
 
 # PERF-3: tool classes imported lazily by _create_tool_registry() — saves ~316 ms cold start.
-from .utils.file_metrics import compute_file_metrics
+# 冷启动：resources / code_scale_handler / file_metrics 拉起 core 解析栈，改为用时导入。
 from .utils.shared_cache import get_shared_cache
 
 # Set up logging
@@ -102,10 +100,9 @@ class TreeSitterAnalyzerMCPServer:
     """
 
     def __init__(self, project_root: str | None = None) -> None:
-        """初始化 MCP 服务器组件，并延迟构建较重的工具注册表。
+        """初始化轻量组件；注册表、分析引擎、资源与旧别名均在首次访问时构建。
 
-        注册表只在首次访问 ``tools``、``tool_instances`` 或旧别名属性时构建，
-        因此 MCP ``initialize`` 握手不承担约 54 毫秒的注册开销。
+        因此 MCP ``initialize`` 握手不承担工具模块导入与分析栈加载开销。
         """
         self.server: Server | None = None
         self._initialization_complete = False
@@ -119,15 +116,8 @@ class TreeSitterAnalyzerMCPServer:
 
         _log_safely(logger.info, "Starting MCP server initialization...")
 
-        # 这里仅初始化轻量组件；约 54 毫秒的注册表构建由 _ensure_registry 延迟执行。
-        self.analysis_engine = get_analysis_engine(project_root)
+        # 仅初始化轻量组件；其余在首次访问时构建（_ensure_registry / __getattr__）。
         self.security_validator = SecurityValidator(project_root)
-
-        attach_tool_aliases(self, {}, project_root)
-
-        self.code_file_resource = CodeFileResource()
-        self.project_stats_resource = ProjectStatsResource()
-        self.project_stats_resource.project_root = project_root
 
         self.name = MCP_INFO["name"]
         self.version = detect_server_version(
@@ -143,6 +133,15 @@ class TreeSitterAnalyzerMCPServer:
             self.name,
             self.version,
         )
+
+    def __getattr__(self, name: str) -> Any:
+        """常规查找失败时按需构建分析引擎、资源对象与旧版 ``*_tool`` 别名。"""
+        root = self.__dict__.get("_project_root")
+        if name == "analysis_engine":
+            # 经由本模块全局名调用，保持 patch 目标不变。
+            self.analysis_engine = get_analysis_engine(root)
+            return self.analysis_engine
+        return materialize_deferred_attribute(self, name, root)
 
     def _ensure_registry(self) -> None:
         """Build the deferred facade tool registry exactly once (idempotent).
@@ -211,6 +210,8 @@ class TreeSitterAnalyzerMCPServer:
 
     async def _analyze_code_scale(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Legacy method for analyzing code scale. Delegates to code_scale_handler."""
+        from .server_utils.code_scale_handler import analyze_code_scale
+
         return await analyze_code_scale(
             arguments,
             analysis_engine=self.analysis_engine,
@@ -221,6 +222,8 @@ class TreeSitterAnalyzerMCPServer:
 
     def _calculate_file_metrics(self, file_path: str, language: str) -> dict[str, Any]:
         """Legacy wrapper for file metrics calculation."""
+        from .utils.file_metrics import compute_file_metrics
+
         bm = getattr(self.security_validator, "boundary_manager", None)
         base_root = getattr(bm, "project_root", None)
         return compute_file_metrics(
@@ -282,7 +285,8 @@ class TreeSitterAnalyzerMCPServer:
         # G3: rebind the legacy direct-access inner instances too. They are not
         # in ``self._tools`` (which now holds only the 8 facades) but back the
         # ``read_partial_tool`` / ``table_format_tool`` bespoke paths + tests.
-        for tool in getattr(self, "_legacy_alias_tools", []):
+        # 未物化的别名稍后按新 _project_root 构建。
+        for tool in self.__dict__.get("_legacy_alias_tools", []):
             tool.set_project_path(project_path)
 
         self.analysis_engine = get_analysis_engine(project_path)

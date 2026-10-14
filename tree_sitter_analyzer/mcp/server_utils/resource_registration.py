@@ -9,15 +9,19 @@ logger = setup_logger(__name__)
 
 
 def register_resources(server: Any, server_instance: Any) -> None:
-    """Register resource handlers on the MCP server."""
-    code_file_resource = server_instance.code_file_resource
-    project_stats_resource = server_instance.project_stats_resource
+    """Register resource handlers on the MCP server.
+
+    资源对象在 handler 调用时才从 ``server_instance`` 取得，
+    使其（及其依赖的 core 解析栈）不在 ``initialize`` 之前构建。
+    """
 
     @server.list_resources()  # type: ignore
     async def handle_list_resources() -> list[Any]:
         """List available resources."""
         from mcp.types import Resource
 
+        code_file_resource = server_instance.code_file_resource
+        project_stats_resource = server_instance.project_stats_resource
         return [
             Resource(
                 uri=code_file_resource.get_resource_info()["uri_template"],
@@ -53,6 +57,8 @@ def register_resources(server: Any, server_instance: Any) -> None:
                 read_hyphae_resource,
             )
 
+            code_file_resource = server_instance.code_file_resource
+            project_stats_resource = server_instance.project_stats_resource
             if is_hyphae_resource_uri(str(uri)):
                 # Read the project root at call time — the client may rebind it
                 # via set_project_path after the server (and this closure) was
