@@ -62,7 +62,13 @@ def build_index_status_response(
             )
         return apply_output_format_to_response(result, output_format)
 
-    with index_snapshot.lease_existing_snapshot(project_root) as snapshot:
+    # #1562：状态与 search/pulse/resolve 共用 #1561 的认证期限。10 s 捕获期限下，
+    # Windows 上 2,412 个文件的源码捕获实测已耗 9.6 s，共用该期限的统计读取随即
+    # 超时，状态答复 total_files=0；捕获仍有上界，只是与其他认证读取一致。
+    deadline = index_snapshot._clock() + index_snapshot._CERTIFICATION_DEADLINE_SECONDS
+    with index_snapshot.lease_existing_snapshot(
+        project_root, deadline=deadline
+    ) as snapshot:
         access_snapshot_id = snapshot.snapshot_id
         access_source_generation = snapshot.source_generation
         stats: dict[str, Any] = {}

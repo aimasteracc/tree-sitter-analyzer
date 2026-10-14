@@ -275,7 +275,9 @@ async def test_bounded_stats_runtime_failure_returns_stable_envelope(
         1,
     )
     monkeypatch.setattr(
-        owner, "lease_existing_snapshot", lambda _root: nullcontext(snapshot)
+        owner,
+        "lease_existing_snapshot",
+        lambda _root, **_kwargs: nullcontext(snapshot),
     )
     monkeypatch.setattr(
         owner,
@@ -310,7 +312,9 @@ async def test_malformed_stats_schema_returns_stable_envelope(tmp_path, monkeypa
         1,
     )
     monkeypatch.setattr(
-        owner, "lease_existing_snapshot", lambda _root: nullcontext(snapshot)
+        owner,
+        "lease_existing_snapshot",
+        lambda _root, **_kwargs: nullcontext(snapshot),
     )
     monkeypatch.setattr(
         owner,
@@ -394,3 +398,30 @@ def test_module_exports_exact_focused_surface() -> None:
     from tree_sitter_analyzer import index_status_certification
 
     assert index_status_certification.__all__ == ["build_index_status_response"]
+
+
+def test_status_capture_uses_the_certification_deadline(monkeypatch, tmp_path):
+    # Issue #1562: after a 2412-file index on Windows, `index action=status`
+    # answered total_files=0 with INDEX_SNAPSHOT_DEADLINE. The source capture
+    # alone took 9.6 s of the 10 s capture deadline, so the stats read that
+    # shares it ran out. Status must use the 60 s certification deadline #1561
+    # gave search/pulse/resolve.
+    from contextlib import contextmanager
+
+    from tree_sitter_analyzer import index_snapshot, index_status_response
+
+    seen: list[float | None] = []
+
+    @contextmanager
+    def fake_lease(_root, *, deadline=None):
+        seen.append(deadline)
+        yield index_snapshot.IndexSnapshot(
+            None, None, None, None, "unknown", "MISSING_INDEX", None, 0
+        )
+
+    monkeypatch.setattr(index_snapshot, "_clock", lambda: 100.0)
+    monkeypatch.setattr(index_snapshot, "lease_existing_snapshot", fake_lease)
+    index_status_response.build_index_status_response(
+        str(tmp_path), "json", include_lag=False
+    )
+    assert seen == [160.0]
