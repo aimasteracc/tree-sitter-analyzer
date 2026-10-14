@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache import build_state
 from tree_sitter_analyzer.class_hierarchy import ClassHierarchy
@@ -258,7 +259,7 @@ class TestExecute:
             "class Animal:\n    pass\n\nclass Dog(Animal):\n    pass\n",
             encoding="utf-8",
         )
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         try:
             cache.index_project(workers=0)
             build_state.mark_build_in_progress(cache.get_conn())
@@ -302,7 +303,7 @@ class TestExecute:
             "class Animal:\n    pass\n\nclass Dog(Animal):\n    pass\n",
             encoding="utf-8",
         )
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         try:
             assert cache.index_file(str(sample))["status"] == "indexed"
             row = (
@@ -381,7 +382,7 @@ class TestClassHierarchyEdgeStore:
             + "\n",
             encoding="utf-8",
         )
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         try:
             assert cache.index_file(str(sample))["status"] == "indexed"
             conn = cache.get_conn()

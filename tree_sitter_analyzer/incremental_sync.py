@@ -541,7 +541,7 @@ class IncrementalSync:
         except Exception:
             conn.rollback()
             raise
-        if getattr(self._cache, "_uses_project_mirror", True):
+        if getattr(self._cache, "_owns_project_mirror", True):
             try:
                 from .cache.indexer import _invalidate_ladybug
 

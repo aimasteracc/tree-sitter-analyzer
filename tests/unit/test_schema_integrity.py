@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.ast_cache import (
     _EXPECTED_SCHEMA_VERSIONS,
     ASTCache,
@@ -69,7 +70,7 @@ def _seed_healthy_db(db_path: str) -> None:
     Subsequent helpers operate via a raw SQLite handle (NOT via ASTCache)
     so we can simulate a damaged DB without triggering migrations.
     """
-    cache = ASTCache(str(Path(db_path).parent.parent), db_path=db_path)
+    cache = legacy_cache(str(Path(db_path).parent.parent), db_path=db_path)
     cache.close()
 
 
@@ -141,7 +142,7 @@ def _make_proj(tmp_path: Path) -> tuple[Path, Path]:
 class TestFreshDb:
     def test_fresh_db_applies_all_versions(self, tmp_path: Path) -> None:
         """A brand-new ASTCache stamps every expected version row."""
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         try:
             with _open_db(cache) as conn:
                 rows = conn.execute(
@@ -160,7 +161,7 @@ class TestFreshDb:
 
     def test_fresh_db_self_check_passes(self, tmp_path: Path) -> None:
         """Constructing ASTCache on a fresh dir must not raise."""
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         try:
             with _open_db(cache) as conn:
                 row = conn.execute(
@@ -196,7 +197,7 @@ class TestSelfCheckDetection:
         _drop_column_raw(str(db_path), "edges", "callee_resolution")
 
         with pytest.raises(SchemaIntegrityError) as exc_info:
-            ASTCache(str(proj_root), db_path=str(db_path))
+            legacy_cache(str(proj_root), db_path=str(db_path))
 
         err_msg = str(exc_info.value)
         assert "edges.callee_resolution" in err_msg, (
@@ -213,7 +214,7 @@ class TestSelfCheckDetection:
         _drop_table_raw(str(db_path), "ast_imports")
 
         with pytest.raises(SchemaIntegrityError) as exc_info:
-            ASTCache(str(proj_root), db_path=str(db_path))
+            legacy_cache(str(proj_root), db_path=str(db_path))
 
         assert "ast_imports" in str(exc_info.value), (
             f"Expected error to mention ast_imports (got: {exc_info.value!r})"
@@ -235,7 +236,7 @@ class TestSelfCheckDetection:
         )
 
         with pytest.raises(SchemaIntegrityError) as exc_info:
-            ASTCache(str(proj_root), db_path=str(db_path))
+            legacy_cache(str(proj_root), db_path=str(db_path))
 
         assert "ast_index_snapshot_manifest" in str(exc_info.value)
 
@@ -254,7 +255,7 @@ class TestSelfCheckDetection:
         _drop_table_raw(str(db_path), "ast_symbol_activation")
 
         with pytest.raises(SchemaIntegrityError) as exc_info:
-            ASTCache(str(proj_root), db_path=str(db_path))
+            legacy_cache(str(proj_root), db_path=str(db_path))
 
         err_msg = str(exc_info.value)
         for needle in (
@@ -293,7 +294,7 @@ class TestLegacyRecovery:
             )
 
         # Re-open: must NOT raise; must backfill the registry.
-        cache = ASTCache(str(proj_root), db_path=str(db_path))
+        cache = legacy_cache(str(proj_root), db_path=str(db_path))
         try:
             with _open_db(cache) as conn:
                 rows = conn.execute(

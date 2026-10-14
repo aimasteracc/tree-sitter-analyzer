@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 import tree_sitter_analyzer.diff_snapshot_registry as snapshots
+from tests.unit._ast_cache_helpers import legacy_cache
 from tests.unit.mcp.tools._constraint_check_support import (
     create_frozen_scope as _create_frozen_scope,
 )
@@ -395,11 +396,13 @@ def test_persist_capacity_failure_is_structured_and_fail_closed(
 ) -> None:
     # PR #1254 review 3768096795: capacity exhaustion cannot return SAFE.
     _stage_minimal_constraints(tmp_path)
-    db_path = tmp_path / ".ast-cache" / "index.db"
-    db_path.parent.mkdir()
-    conn = sqlite3.connect(db_path)
-    conn.execute("CREATE TABLE edges(kind TEXT)")
-    conn.execute("INSERT INTO edges VALUES ('calls')")
+    # #1554：持久化在首次发布前也要把旧库复制进版本，旧库须是完整 TSA 模式。
+    legacy_cache(tmp_path).close()
+    conn = sqlite3.connect(tmp_path / ".ast-cache" / "index.db")
+    conn.execute(
+        "INSERT INTO edges(source_node_id, target_node_id, kind) "
+        "VALUES ('a', 'b', 'calls')"
+    )
     conn.commit()
     conn.close()
     monkeypatch.setattr(

@@ -20,6 +20,7 @@ from typing import Any
 
 import pytest
 
+from tests.unit._ast_cache_helpers import engine_cache, write_legacy_index
 from tree_sitter_analyzer import ast_cache as ast_cache_module
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache import unresolved
@@ -238,7 +239,8 @@ def test_autoindex_resolves_pending_refs_when_cache_is_already_warm(
 ) -> None:
     """PR #1350：使用增量引擎的延后回填阶段建立真实热缓存，随后自动完成解析。"""
     _write_project(tmp_path)
-    cache = ASTCache(str(tmp_path))
+    # #1554：逐文件延后回填只能在引擎库上构造，再作为旧库交给自动索引。
+    cache = engine_cache(tmp_path)
     try:
         cache._defer_single_file_backfill = True
         for path in sorted(tmp_path.rglob("*.py")):
@@ -250,6 +252,7 @@ def test_autoindex_resolves_pending_refs_when_cache_is_already_warm(
             ("pkg/python_plugin.py", "LanguagePlugin"),
             ("pkg/missing.py", "MissingBase"),
         }
+        write_legacy_index(cache)
     finally:
         cache.close()
 

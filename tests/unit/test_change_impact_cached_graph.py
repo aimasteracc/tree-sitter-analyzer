@@ -7,7 +7,7 @@ import sqlite3
 
 import pytest
 
-from tree_sitter_analyzer.ast_cache import ASTCache
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.cache.schema import CURRENT_SCHEMA_VERSION
 from tree_sitter_analyzer.mcp.tools.utils import change_impact_cached_graph as cached
 from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
@@ -19,7 +19,7 @@ from tree_sitter_analyzer.mcp.tools.utils.change_impact_cached_graph import (
 
 
 def _index_project(root) -> None:
-    cache = ASTCache(str(root))
+    cache = legacy_cache(str(root))
     try:
         cache.index_project(max_files=20)
     finally:

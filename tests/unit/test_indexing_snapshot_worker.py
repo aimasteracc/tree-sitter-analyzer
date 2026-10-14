@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tree_sitter_analyzer.ast_cache import ASTCache
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.cache.indexer import walk_and_partition
 from tree_sitter_analyzer.indexing_snapshot import (
     IndexCandidateSnapshot,
@@ -400,7 +400,7 @@ def test_definition_rewrite_rebinds_incoming_call_before_marker(
     caller.write_text(
         "from callee import target\n\ndef caller():\n    return target()\n"
     )
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     cache.index_project(workers=workers)
     conn = cache.get_conn()
     old_id = conn.execute(

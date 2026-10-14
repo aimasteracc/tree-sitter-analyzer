@@ -8,6 +8,7 @@ from contextlib import nullcontext
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import (
     CodeGraphStatusTool,
 )
@@ -247,12 +248,11 @@ class TestSnapshotFallbackBounds:
 @requires_posix_fd
 @pytest.mark.asyncio
 async def test_no_fts_snapshot_uses_json_symbol_fallback(tmp_path):
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
 
     source = tmp_path / "sample.py"
     source.write_text("def answer():\n    return 42\n")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     cache.index_file(str(source))
     conn = cache.get_conn()
     conn.execute("DROP TABLE ast_symbols_fts")
@@ -271,12 +271,11 @@ async def test_no_fts_snapshot_uses_json_symbol_fallback(tmp_path):
 @requires_posix_fd
 @pytest.mark.asyncio
 async def test_legacy_v13_without_symbol_table_is_readable(tmp_path):
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
 
     source = tmp_path / "sample.py"
     source.write_text("def answer():\n    return 42\n")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     cache.index_file(str(source))
     conn = cache.get_conn()
     conn.execute("DROP TABLE ast_symbols_fts")
@@ -293,12 +292,11 @@ async def test_legacy_v13_without_symbol_table_is_readable(tmp_path):
 
 
 def _certified_cache(root):
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
 
     source = root / "sample.py"
     source.write_text("value = 1\n")
-    cache = ASTCache(str(root))
+    cache = legacy_cache(str(root))
     cache.index_file(str(source))
     stamp_full_index_manifest(cache.get_conn(), str(root))
     cache.close()
@@ -307,11 +305,10 @@ def _certified_cache(root):
 @requires_posix_fd
 @pytest.mark.asyncio
 async def test_persisted_build_marker_is_concurrent_writer(tmp_path):
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.cache.build_state import mark_build_in_progress
 
     _certified_cache(tmp_path)
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     mark_build_in_progress(cache.get_conn())
     cache.close()
     result = await CodeGraphStatusTool(str(tmp_path)).execute({"output_format": "json"})

@@ -17,7 +17,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from tree_sitter_analyzer.ast_cache import ASTCache
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.cache import unresolved
 
 
@@ -103,8 +103,8 @@ def test_cached_candidate_lookup_matches_uncached_byte_for_byte(
     _write_repeated_name_project(tmp_path / "a")
     _write_repeated_name_project(tmp_path / "b")
 
-    cache_a = ASTCache(str(tmp_path / "a"))
-    cache_b = ASTCache(str(tmp_path / "b"))
+    cache_a = legacy_cache(str(tmp_path / "a"))
+    cache_b = legacy_cache(str(tmp_path / "b"))
     try:
         cache_a.index_project(workers=0)
         cache_b.index_project(workers=0)
@@ -145,7 +145,7 @@ def test_cached_candidate_lookup_matches_uncached_byte_for_byte(
 def test_candidate_cache_collapses_duplicate_selects(tmp_path: Path) -> None:
     """The cache must issue far fewer candidate SELECTs than the uncached path."""
     _write_repeated_name_project(tmp_path)
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_project(workers=0)
         conn = cache.get_conn()
@@ -185,7 +185,7 @@ def test_resolved_extends_replaces_generic_placeholder(tmp_path: Path) -> None:
     this repo's own index).
     """
     _write_repeated_name_project(tmp_path)
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_project(workers=0)
         conn = cache.get_conn()

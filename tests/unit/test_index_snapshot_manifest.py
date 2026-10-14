@@ -7,6 +7,8 @@ import sqlite3
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
+
 requires_posix_snapshot = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
 requires_posix_fd = requires_posix_snapshot
 
@@ -344,12 +346,11 @@ def test_backup_expiring_during_copy_returns_deadline(tmp_path, monkeypatch):
     import time
 
     import tree_sitter_analyzer.index_snapshot as snapshot
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_snapshot_schema import stamp_full_index_manifest
 
     source = tmp_path / "sample.py"
     source.write_text("value = 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(tmp_path)
     cache.index_file(str(source))
     stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
     cache.close()

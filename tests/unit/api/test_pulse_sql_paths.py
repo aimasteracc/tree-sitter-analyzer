@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tests.unit.api._pulse_helpers import _call, _seed_symbol
 from tree_sitter_analyzer.api.pulse import (
     PulseResponse,
@@ -84,11 +85,9 @@ async def test_raw_symbols_json_corruption_remains_an_error(tmp_path):
     # PR #1352：简化内置 JSON 解码不能让真正的索引 JSON 损坏成为成功响应。
     import sqlite3
 
-    from tree_sitter_analyzer.ast_cache import ASTCache
-
     source = tmp_path / "a.py"
     source.write_text("def only():\n    pass\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_file(str(source))
         cache.get_conn().execute("UPDATE ast_index SET symbols_json='{broken'")
@@ -244,11 +243,10 @@ def test_pulse_reports_missing_legacy_commit_message(ast_cache_conn, caplog):
 
 def test_pulse_legacy_comments_are_not_reported_as_empty_success(tmp_path):
     # PR #1352：旧提取数据没有注释证据时，默认查询必须明确拒绝。
-    from tree_sitter_analyzer.ast_cache import ASTCache
 
     source = tmp_path / "a.py"
     source.write_text("def run():\n    pass\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_file(str(source))
         conn = cache.get_conn()

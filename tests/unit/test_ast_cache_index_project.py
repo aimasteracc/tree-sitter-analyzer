@@ -15,6 +15,7 @@ from tree_sitter_analyzer.ast_cache import (
 
 tmp_project = _fixtures.tmp_project
 cache = _fixtures.cache
+engine = _fixtures.engine
 method_project = _fixtures.method_project
 
 
@@ -36,13 +37,13 @@ class TestIndexProject:
         result = cache.index_project()
         assert result["cached"] == 2
 
-    def test_index_project_reindexes_stale_extractor_version(self, cache):
-        cache.index_project(workers=0)
-        conn = cache._get_conn()
+    def test_index_project_reindexes_stale_extractor_version(self, engine):
+        engine.index_project(workers=0)
+        conn = engine._get_conn()
         conn.execute("UPDATE ast_index SET extractor_version = 0")
         conn.commit()
 
-        result = cache.index_project(workers=0)
+        result = engine.index_project(workers=0)
 
         assert result["indexed"] == 2
         assert result["cached"] == 0
@@ -160,49 +161,49 @@ class TestIndexProject:
         assert "knowledge_graph" not in result
 
     def test_index_project_reports_unresolved_reference_backfill(
-        self, cache, monkeypatch
+        self, engine, monkeypatch
     ):
         monkeypatch.setattr(
-            cache,
+            engine,
             "_run_unresolved_refs_backfill",
             lambda: {"resolved": 3, "remaining": 1},
         )
 
-        result = cache.index_project(workers=0)
+        result = engine.index_project(workers=0)
 
         assert result["unresolved_refs_backfill"] == {
             "resolved": 3,
             "remaining": 1,
         }
 
-    def test_index_project_omits_empty_unresolved_backfill(self, cache, monkeypatch):
-        monkeypatch.setattr(cache, "_run_unresolved_refs_backfill", lambda: None)
+    def test_index_project_omits_empty_unresolved_backfill(self, engine, monkeypatch):
+        monkeypatch.setattr(engine, "_run_unresolved_refs_backfill", lambda: None)
 
-        result = cache.index_project(workers=0)
+        result = engine.index_project(workers=0)
 
         assert result["indexed"] == 2
         assert result["unresolved_refs_backfill"] is None
         assert result["backfill_errors"] == 1
 
     def test_index_project_tolerates_unresolved_backfill_failure(
-        self, cache, monkeypatch
+        self, engine, monkeypatch
     ):
         def fail_unresolved_backfill():
             raise RuntimeError("unresolved failed")
 
         monkeypatch.setattr(
-            cache,
+            engine,
             "_run_unresolved_refs_backfill",
             fail_unresolved_backfill,
         )
 
-        result = cache.index_project(workers=0)
+        result = engine.index_project(workers=0)
 
         assert result["indexed"] == 2
         assert "unresolved_refs_backfill" not in result
         assert result["backfill_errors"] == 1
         manifest_count = (
-            cache.get_conn()
+            engine.get_conn()
             .execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest")
             .fetchone()[0]
         )

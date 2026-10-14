@@ -29,7 +29,7 @@ def test_force_index_retains_complete_frozen_epoch_on_live_mutation(tmp_path):
     path.write_text(
         "import os\n\ndef stale():\n    return os.getcwd()\n", encoding="utf-8"
     )
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.legacy_cache(tmp_path)
     cache.index_file(str(path))
     # PR #1253 thread 3759852177: 最终实时重放发生漂移时，冻结行仍须保留。
     snapshot = build_index_candidate_snapshot(
@@ -104,7 +104,7 @@ def test_snapshot_guard_discards_preexisting_stale_generation(tmp_path):
 
     path = tmp_path / "app.py"
     path.write_text("value = 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.engine_cache(tmp_path)
     cache.index_file(str(path))
     path.write_text("value = 20\n", encoding="utf-8")
     snapshot = _snapshot(tmp_path, path)
@@ -139,7 +139,7 @@ def test_snapshot_guard_removes_ladybug_mirror(tmp_path):
 
     path = tmp_path / "app.py"
     path.write_text("value = 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.engine_cache(tmp_path)
     cache.index_file(str(path))
     path.write_text("value = 20\n", encoding="utf-8")
     entry = _snapshot(tmp_path, path).selected_entries[0]
@@ -175,7 +175,7 @@ def test_snapshot_guard_tolerates_ladybug_cleanup_failure(tmp_path):
 
     path = tmp_path / "app.py"
     path.write_text("value = 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.engine_cache(tmp_path)
     cache.index_file(str(path))
     path.write_text("value = 20\n", encoding="utf-8")
     entry = _snapshot(tmp_path, path).selected_entries[0]
@@ -239,7 +239,7 @@ def test_candidate_hash_change_reindexes_with_preserved_mtime_and_size(tmp_path)
 def test_cached_snapshot_mutation_does_not_stamp_graph_complete(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.engine_cache(tmp_path)
     cache.index_file(str(path))
     snapshot = _snapshot(tmp_path, path)
     clear_call_graph_built(cache.get_conn())

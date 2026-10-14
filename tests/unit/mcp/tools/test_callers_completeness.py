@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache.callgraph_state import mark_call_graph_built_strict
 from tree_sitter_analyzer.graph.edge_store import file_node, symbol_node
@@ -312,7 +313,7 @@ def test_unrecognised_resolution_marker_counts_as_unresolved(tmp_path) -> None:
     """
     source = tmp_path / "a.py"
     source.write_text("def target_symbol():\n    return 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         assert cache.index_file(str(source))["status"] == "indexed"
         conn = cache.get_conn()

@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from tests.unit import _navigation_test_support as nav_support
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache import build_state
 from tree_sitter_analyzer.mcp.tools.callees_tool import CodeGraphCalleesTool
@@ -548,7 +549,7 @@ class TestEmptyIndexHint:
             "def foo():\n    bar()\n\ndef bar():\n    return 1\n",
             encoding="utf-8",
         )
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         try:
             cache.index_project(workers=0)
             build_state.mark_build_in_progress(cache.get_conn())
@@ -577,7 +578,7 @@ class TestEmptyIndexHint:
             "def foo():\n    bar()\n\ndef bar():\n    return 1\n",
             encoding="utf-8",
         )
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         try:
             cache.index_project(workers=0)
             build_state.mark_build_in_progress(cache.get_conn())

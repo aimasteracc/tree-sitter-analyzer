@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json  # noqa: F401  # historical monkeypatch surface
 import os
+import sqlite3
 from collections.abc import Callable
 import threading
 from _thread import LockType
@@ -107,14 +108,23 @@ class ASTCache(
         self._read_only = False
         self._generation_managed = False
         self._generation_guard: Callable[[], None] | None = None
+        self._publishes_project_index = False
+        self._unindexed_uri: str | None = None
+        self._unindexed_anchor: sqlite3.Connection | None = None
+        self._unindexed_sealed = False
+        unindexed = False
         if db_path is None or os.path.abspath(db_path) == default_db_path:
             from .cache.generation_routing import resolve_index_location
 
             location = resolve_index_location(self.project_root)
             db_path = str(location.path)
             self._read_only = location.published
-            self._generation_managed = location.published
+            # 首次发布前的默认库同样只能经版本存储写入（#1554 / E1，2026-10-13）；
+            # 仅索引操作内绑定的私有构建库原地写。
+            self._generation_managed = location.published or db_path == default_db_path
             self._generation_guard = location.verify
+            if not location.published and db_path == default_db_path:
+                unindexed = self._open_unindexed_reader(db_path)
         self.db_path = db_path
         self._local = threading.local()
         self._parser = Parser()
@@ -161,6 +171,10 @@ class ASTCache(
                 )
             else:
                 self._init_db()
+                if unindexed:
+                    # 空库只读：原始连接写入会静默丢失，须与已发布版本一样拒绝。
+                    self._unindexed_sealed = True
+                    self._get_conn().execute("PRAGMA query_only=ON")
             if self._cache_dir_fd is not None:  # pragma: no branch - POSIX owner
                 info = os.stat(cache_dir, follow_symlinks=False)
                 if (info.st_dev, info.st_ino) != self._cache_dir_identity:
@@ -192,12 +206,40 @@ class ASTCache(
     def db_path(self, path: str) -> None:
         self._db_path = path
 
+    @property
+    def _owns_project_mirror(self) -> bool:
+        """原地默认库或待发布的版本构建库：删除后派生镜像不得继续存活（#1554）。"""
+        return self._uses_project_mirror or self._publishes_project_index
+
+    def _open_unindexed_reader(self, legacy_path: str) -> bool:
+        """既无旧库也无版本时读者用进程内空库，只读调用不在项目内建库（#1554）。
+
+        锚连接随缓存对象存活（``close()`` 后仍可重新取连接），发布后才释放。
+        """
+        if os.path.lexists(legacy_path):
+            return False
+        from .cache.generation_bootstrap import (
+            open_unindexed_anchor,
+            unindexed_database_uri,
+        )
+
+        uri = unindexed_database_uri()
+        self._unindexed_anchor = open_unindexed_anchor(uri)
+        self._unindexed_uri = uri
+        return True
+
     def _adopt_published_generation(self) -> None:
         """写入成功后换绑只读连接，保留调用方缓存对象和解析器配置。"""
+        from .cache.generation_reads import adopt_read_location
         from .cache.generation_routing import resolve_index_location
 
         location = resolve_index_location(self.project_root)
+        adopt_read_location(self.project_root, location)
         ASTCacheDatabaseMixin.close(self)
+        self._unindexed_uri = None
+        if self._unindexed_anchor is not None:
+            self._unindexed_anchor.close()
+            self._unindexed_anchor = None
         self._read_only = location.published
         self.db_path = str(location.path)
         self._generation_managed = location.published

@@ -8,6 +8,8 @@ from io import StringIO
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
+
 
 @pytest.fixture()
 def indexed_project(tmp_path):
@@ -33,9 +35,8 @@ def indexed_project(tmp_path):
         "        pass\n"
     )
     (project / "app" / "utils.py").write_text("def add(a, b):\n    return a + b\n")
-    from tree_sitter_analyzer.ast_cache import ASTCache
 
-    cache = ASTCache(str(project))
+    cache = legacy_cache(str(project))
     result = cache.index_project()
     assert result["indexed"] == 3, f"Expected 3 indexed files, got {result}"
     cache.close()

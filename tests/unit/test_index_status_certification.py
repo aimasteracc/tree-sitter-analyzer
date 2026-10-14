@@ -8,6 +8,7 @@ from contextlib import nullcontext
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import CodeGraphStatusTool
 
 requires_posix_snapshot = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
@@ -41,14 +42,13 @@ class TestAuthoritativeSnapshotOracle:
 
         import tree_sitter_analyzer.cache.indexer as indexer
         import tree_sitter_analyzer.index_snapshot_schema as schema
-        from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.index_source_snapshot import (
             make_source_scope_descriptor,
         )
 
         source = tmp_path / "sample.py"
         source.write_text("value = 1\n")
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         cache.index_file(str(source))
         conn = cache.get_conn()
         conn.execute("DELETE FROM ast_call_graph_state")
@@ -85,7 +85,6 @@ class TestAuthoritativeSnapshotOracle:
 
         import tree_sitter_analyzer.cache.indexer as indexer
         import tree_sitter_analyzer.index_snapshot_schema as schema
-        from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.cache.callgraph_state import mark_call_graph_built
         from tree_sitter_analyzer.index_source_snapshot import (
             make_source_scope_descriptor,
@@ -93,7 +92,7 @@ class TestAuthoritativeSnapshotOracle:
 
         source = tmp_path / "sample.py"
         source.write_text("value = 1\n")
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         cache.index_file(str(source))
         conn = cache.get_conn()
         mark_call_graph_built(conn)
@@ -177,14 +176,13 @@ class TestAuthoritativeSnapshotOracle:
     ):
         # PR #1254 review 3769193895: pathname platforms are producer-capable.
         import tree_sitter_analyzer.index_snapshot_schema as schema
-        from tree_sitter_analyzer.ast_cache import ASTCache
 
         class PortableOS:
             name = "nt"
             path = schema.os.path
 
         monkeypatch.setattr(schema, "os", PortableOS())
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         try:
             with pytest.raises(
                 sqlite3.OperationalError, match="^CALL_GRAPH_INCOMPLETE$"
@@ -195,9 +193,8 @@ class TestAuthoritativeSnapshotOracle:
 
     def test_manifest_stamp_rejects_missing_call_graph_marker(self, tmp_path):
         import tree_sitter_analyzer.index_snapshot_schema as schema
-        from tree_sitter_analyzer.ast_cache import ASTCache
 
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         try:
             with pytest.raises(
                 sqlite3.OperationalError, match="^CALL_GRAPH_INCOMPLETE$"
@@ -220,11 +217,10 @@ async def test_final_pinned_path_identity_mismatch_is_concurrent_writer(
     tmp_path, monkeypatch
 ):
     import tree_sitter_analyzer.index_snapshot as owner
-    from tree_sitter_analyzer.ast_cache import ASTCache
 
     source = tmp_path / "sample.py"
     source.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     cache.index_file(str(source))
     owner.stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
     cache.close()
@@ -244,11 +240,10 @@ async def test_final_pinned_path_identity_mismatch_is_concurrent_writer(
 async def test_replaced_root_hierarchy_is_concurrent_writer(tmp_path, monkeypatch):
     # PR #1253 thread 3758212507: reject an orphaned pinned root at publication.
     import tree_sitter_analyzer.index_snapshot as owner
-    from tree_sitter_analyzer.ast_cache import ASTCache
 
     source = tmp_path / "sample.py"
     source.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     cache.index_file(str(source))
     owner.stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
     cache.close()
@@ -348,12 +343,11 @@ async def test_call_graph_marker_requires_exact_sqlite_integers(
     tmp_path, marker_id, built
 ):
     # PR #1253 thread 3756001905: coercible and non-finite markers fail closed.
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_snapshot_schema import stamp_full_index_manifest
 
     source = tmp_path / "sample.py"
     source.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     cache.index_file(str(source))
     stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
     conn = cache.get_conn()
@@ -375,10 +369,9 @@ async def test_call_graph_marker_requires_exact_sqlite_integers(
 
 def test_collect_final_stats_without_stamp_preserves_existing_manifest(tmp_path):
     # PR #1253 thread 3756001890: stats collection is never a cleanup writer.
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
 
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     conn = cache.get_conn()
     conn.execute(
         "INSERT INTO ast_index_snapshot_manifest VALUES "

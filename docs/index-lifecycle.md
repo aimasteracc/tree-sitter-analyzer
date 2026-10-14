@@ -49,6 +49,13 @@ only after certification succeeds. The `active.json` selector binds default read
 to one immutable generation. Failed or superseded builds leave the prior generation
 unchanged. `sync` and watcher updates use the same publication boundary.
 
+Every other write to the default cache (`auto`, `ast_cache` index/invalidate,
+persisted constraint checks, Python `index_file`/`index_project`/`IncrementalSync`)
+also publishes a generation, including the first write on a never-published project
+(RFC-0032 slice 1, #1554). No write creates or updates the legacy
+`.ast-cache/index.db`. If a legacy file already exists, the first write copies it
+into the first generation; read-only calls never create or copy one.
+
 Legacy `.ast-cache/index.db` remains separate, so old writers cannot modify the
 published generation. Existing read sessions retain their version; generations are
 currently retained without automatic garbage collection. Use the status response

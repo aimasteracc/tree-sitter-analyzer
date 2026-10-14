@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.mcp.tools._graph_cache_fingerprint import is_ast_index_stale
 from tree_sitter_analyzer.mcp.tools.symbol_lineage_tool import (
     SymbolLineageTool,
@@ -420,11 +421,10 @@ class TestAstIndexStaleness:
         self, tool, tmp_path, monkeypatch, remove_during_open
     ):
         """空库或打开前消失的库均为未知；读取不能重新创建已删除数据库。"""
-        from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.cache import fingerprint
 
         _write_py(tmp_path, "pkg/a.py", "class A:\n    pass\n")
-        ASTCache(str(tmp_path)).close()
+        legacy_cache(str(tmp_path)).close()
         db = tmp_path / ".ast-cache" / "index.db"
         if remove_during_open:
             original = fingerprint.sqlite3.connect

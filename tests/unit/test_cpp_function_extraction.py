@@ -13,7 +13,7 @@ import sqlite3
 import tree_sitter_cpp
 from tree_sitter import Language, Parser
 
-from tree_sitter_analyzer.ast_cache import ASTCache
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.cache.extraction import _extract_symbols
 
 _CPP_PARSER = Parser(Language(tree_sitter_cpp.language()))
@@ -74,7 +74,7 @@ def test_cpp_function_line_numbers_correct() -> None:
 def test_cpp_symbols_reach_sqlite(tmp_path) -> None:
     """C++ functions and methods must persist into ast_symbol_rows."""
     (tmp_path / "calc.cpp").write_text(CPP_SRC, encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     cache.index_project()
 
     con = sqlite3.connect(str(tmp_path / ".ast-cache" / "index.db"))

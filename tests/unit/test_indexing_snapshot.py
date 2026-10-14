@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache.indexer import walk_and_partition
 from tree_sitter_analyzer.indexing_snapshot import (
@@ -419,7 +420,7 @@ def test_ast_cache_discards_worker_result_changed_after_snapshot(tmp_path):
         walk_fn=lambda _root: (str(path),),
         language_fn=_python_language,
     )
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     real_worker = extraction._worker_index_file
 
     def worker_then_mutate(args):

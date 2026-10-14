@@ -1400,9 +1400,11 @@ async def test_full_orchestration_stamps_manifest_exactly_once(tmp_path):
 def test_final_stats_stamp_failure_does_not_delete_later_manifest(tmp_path):
     # PR #1253 review 3755736546: callers only downgrade stamper failures.
     import tree_sitter_analyzer.index_snapshot_schema as schema
+    from tests.unit._ast_cache_helpers import legacy_cache
     from tree_sitter_analyzer.ast_cache import ASTCache
 
-    cache = ASTCache(str(tmp_path))
+    # #1554：默认库首写前只读；预置清单须写在原地旧库上。
+    cache = legacy_cache(tmp_path)
     conn = cache.get_conn()
     conn.execute(
         "INSERT INTO ast_index_snapshot_manifest "

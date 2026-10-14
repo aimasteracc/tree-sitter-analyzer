@@ -19,6 +19,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.ast_cache import ASTCache
 
 
@@ -28,7 +29,7 @@ def _index(tmp_path: Path, files: dict[str, str]) -> Path:
     (proj / "__init__.py").write_text("# pkg\n")
     for name, body in files.items():
         (proj / name).write_text(body)
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_project()
     finally:
@@ -240,7 +241,6 @@ def test_lazy_context_construction_populates_builtin_methods(tmp_path: Path) -> 
         },
     )
 
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.synapse_resolver import ResolverContext
 
     cache = ASTCache(str(tmp_path))

@@ -11,6 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import CodeGraphStatusTool
 
@@ -695,12 +696,11 @@ class TestAuthoritativeSnapshotOracle:
 
     @staticmethod
     def _certified_cache(root):
-        from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
 
         source = root / "sample.py"
         source.write_text("def answer():\n    return 42\n")
-        cache = ASTCache(str(root))
+        cache = legacy_cache(root)
         cache.index_file(str(source))
         stamp_full_index_manifest(cache.get_conn(), str(root))
         cache.close()
@@ -894,12 +894,10 @@ class TestAuthoritativeSnapshotOracle:
 
     @pytest.mark.asyncio
     async def test_changed_index_rows_make_old_manifest_partial(self, tmp_path):
-        from tree_sitter_analyzer.ast_cache import ASTCache
-
         self._certified_cache(tmp_path)
         source = tmp_path / "sample.py"
         source.write_text("def answer():\n    return 43\n")
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(tmp_path)
         cache.index_file(str(source))
         cache.close()
 
@@ -1156,12 +1154,11 @@ class TestSnapshotOpenBoundaries:
 
     @staticmethod
     def _certified_cache(root):
-        from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
 
         source = root / "sample.py"
         source.write_text("def answer():\n    return 42\n")
-        cache = ASTCache(str(root))
+        cache = legacy_cache(root)
         cache.index_file(str(source))
         stamp_full_index_manifest(cache.get_conn(), str(root))
         cache.close()
@@ -1187,7 +1184,6 @@ class TestSnapshotOpenBoundaries:
         # PR #1253: intentional 100 MiB I/O can exceed 5 s under macOS xdist load;
         # this is a correctness boundary, not a per-call performance assertion.
         # Backup admission is byte-based, not a fixed page count.
-        from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.index_snapshot import read_existing_snapshot
         from tree_sitter_analyzer.index_snapshot_schema import (
             stamp_full_index_manifest,
@@ -1201,7 +1197,7 @@ class TestSnapshotOpenBoundaries:
         conn.close()
         source = tmp_path / "sample.py"
         source.write_text("value = 1\n")
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(tmp_path)
         cache.index_file(str(source))
         conn = cache.get_conn()
         conn.execute(

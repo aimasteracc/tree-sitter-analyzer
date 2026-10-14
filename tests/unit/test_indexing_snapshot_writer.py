@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from tree_sitter_analyzer.ast_cache import ASTCache
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.cache.indexer import walk_and_partition
 from tree_sitter_analyzer.indexing_snapshot import (
     IndexCandidateSnapshot,
@@ -73,7 +73,7 @@ def test_ast_cache_revalidates_each_result_at_write_point(tmp_path):
         walk_fn=lambda _root: (str(first), str(second)),
         language_fn=_python_language,
     )
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     real_insert = indexer.insert_index_row
 
     def insert_first_then_mutate_second(*args, **kwargs):
@@ -124,7 +124,7 @@ def test_unmaterialized_force_snapshot_does_not_publish_edges(tmp_path):
         walk_fn=lambda _root: (str(changed), str(stable)),
         language_fn=_python_language,
     )
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     real_worker = extraction._worker_index_file
 
     def mutate_first_after_worker(args):
@@ -430,7 +430,7 @@ def test_partial_projection_forces_full_file_repair_and_callee_rebind(tmp_path):
     source.write_text(
         "def target():\n    return 1\ndef caller():\n    return target()\n"
     )
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     cache.index_file(str(source))
     conn = cache.get_conn()
     conn.execute("DELETE FROM ast_symbol_rows WHERE name='caller'")
@@ -441,7 +441,7 @@ def test_partial_projection_forces_full_file_repair_and_callee_rebind(tmp_path):
     conn.commit()
     cache.close()
 
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     conn = cache.get_conn()
     constructor_rows = [
         tuple(row)

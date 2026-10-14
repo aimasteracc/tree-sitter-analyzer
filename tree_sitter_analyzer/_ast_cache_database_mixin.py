@@ -145,8 +145,16 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
             conn.close()
             self._local.conn = None
             conn = None
+        unindexed_uri = getattr(self, "_unindexed_uri", None)
         if conn is None:
-            if read_only:
+            if unindexed_uri is not None and database_path == getattr(
+                self, "_db_path", None
+            ):
+                # 首次发布前且无旧库：空库只在进程内，不在项目里落盘（#1554）。
+                conn = sqlite3.connect(unindexed_uri, uri=True, timeout=10)
+                if getattr(self, "_unindexed_sealed", False):
+                    conn.execute("PRAGMA query_only=ON")
+            elif read_only:
                 conn = sqlite3.connect(
                     Path(database_path).as_uri() + "?mode=ro", uri=True, timeout=10
                 )

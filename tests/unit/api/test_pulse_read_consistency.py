@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tests.unit.api._pulse_helpers import _seed_symbol
 from tree_sitter_analyzer.api.pulse import query_pulse
 
@@ -16,8 +17,6 @@ def test_pulse_wal_reindex_keeps_one_read_version(
     """PR #1352 P2：另一真实 WAL 连接重索引换 ID 后，整次只读 Pulse 必须保持同一版本。"""
     import sqlite3
 
-    from tree_sitter_analyzer.ast_cache import ASTCache
-
     source = tmp_path / "sample.py"
     importer = tmp_path / "consumer.py"
     source.write_text(
@@ -28,7 +27,7 @@ def test_pulse_wal_reindex_keeps_one_read_version(
         "import sample\n" if boundary == "identity" else "import elsewhere\n",
         encoding="utf-8",
     )
-    writer = ASTCache(str(tmp_path))
+    writer = legacy_cache(str(tmp_path))
     writer.index_file(str(source))
     writer.index_file(str(importer))
     db = writer.get_conn()

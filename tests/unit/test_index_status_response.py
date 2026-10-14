@@ -7,6 +7,7 @@ import sqlite3
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import CodeGraphStatusTool
 
 requires_posix_snapshot = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
@@ -23,25 +24,23 @@ class TestAuthoritativeSnapshotOracle:
 
     @staticmethod
     def _certified_cache(root):
-        from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
 
         source = root / "sample.py"
         source.write_text("def answer():\n    return 42\n")
-        cache = ASTCache(str(root))
+        cache = legacy_cache(str(root))
         cache.index_file(str(source))
         stamp_full_index_manifest(cache.get_conn(), str(root))
         cache.close()
 
     def test_collect_final_stats_can_stamp_exact_manifest(self, tmp_path):
-        from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.mcp.tools.full_index_tool import (
             CodeGraphFullIndexTool,
         )
 
         source = tmp_path / "sample.py"
         source.write_text("x = 1\n")
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         cache.index_file(str(source))
         cache.close()
 
@@ -57,12 +56,11 @@ class TestAuthoritativeSnapshotOracle:
         assert (result["total_files"], count) == (1, 1)
 
     def test_collect_final_stats_without_stamp_leaves_manifest_empty(self, tmp_path):
-        from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.mcp.tools.full_index_tool import (
             CodeGraphFullIndexTool,
         )
 
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         cache.close()
         result = CodeGraphFullIndexTool(str(tmp_path))._collect_final_stats()
 
@@ -85,12 +83,11 @@ class TestAuthoritativeSnapshotOracle:
     async def test_source_hash_matches_indexer_text_read_semantics(
         self, tmp_path, source_bytes
     ):
-        from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
 
         source = tmp_path / "sample.py"
         source.write_bytes(source_bytes)
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         cache.index_file(str(source))
         stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
         cache.close()
@@ -103,12 +100,11 @@ class TestAuthoritativeSnapshotOracle:
     @pytest.mark.asyncio
     async def test_invalid_utf8_source_is_immediately_certified(self, tmp_path):
         # PR #1253 review 3754914627: replay matches writer errors="replace".
-        from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
 
         source = tmp_path / "sample.py"
         source.write_bytes(b"value = '\xff'\r\n")
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         cache.index_file(str(source))
         stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
         cache.close()

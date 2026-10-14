@@ -25,6 +25,7 @@ from typing import Any
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.mcp.tools.callees_tool import CodeGraphCalleesTool
 from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
@@ -131,7 +132,7 @@ async def test_edges_without_built_marker_no_empty_index_hint(
         "def caller():\n    target()\n\ndef target():\n    return 1\n",
         encoding="utf-8",
     )
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_project(workers=0)
         assert cache.has_call_edges() is True
