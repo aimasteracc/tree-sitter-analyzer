@@ -298,7 +298,9 @@ def test_force_rebuild_later_frozen_worker_gets_fresh_read_deadline(
         ]
 
     monkeypatch.setattr(indexer, "index_parallel", delayed_parallel)
-    cache = ASTCache(str(tmp_path))
+    # #1554：冻结读截止时间属原地重建引擎；经版本路由时发布复核以
+    # INDEX_GENERATION_SOURCE_CHANGED 拒绝本测试的定制候选（CI ubuntu 3.11）。
+    cache = _fixtures.legacy_cache(tmp_path)
     try:
         result = cache.index_project(
             max_files=10, force=True, workers=2, candidate_snapshot=snapshot

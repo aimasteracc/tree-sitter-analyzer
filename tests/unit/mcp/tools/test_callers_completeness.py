@@ -66,7 +66,8 @@ def tool_with_edges(tmp_path):
     """A real cache with the call graph marked built, and its edges cleared."""
     source = tmp_path / "a.py"
     source.write_text("def target_symbol():\n    return 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    # #1554：默认库首写后只读发布；夹具需改写边表，故建原地写的旧库。
+    cache = legacy_cache(tmp_path)
     assert cache.index_file(str(source))["status"] == "indexed"
     conn = cache.get_conn()
     conn.execute("DELETE FROM edges")
