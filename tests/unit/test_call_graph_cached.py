@@ -3,6 +3,8 @@
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 from tree_sitter_analyzer.call_graph import (
     CachedCallGraph,
     CallGraph,
@@ -675,3 +677,38 @@ class TestCallGraphInternalAccessors:
         cg.build()
         unknown = FunctionRef("x.py", "nonexistent", 0, "python")
         assert cg.caller_refs_of(unknown) == []
+
+
+_SUBMODULE_ALIAS_PROJECT = {
+    "pkg/__init__.py": "",
+    "pkg/mod.py": "def f():\n    return 1\n",
+    # 调用方位于子目录：绝对导入不得按调用方目录拼接（#1579）。
+    "app/run.py": "from pkg import mod as m\n\n\ndef run():\n    return m.f()\n",
+}
+
+
+class TestSubmoduleAliasCallBinding:
+    """#1579：``from pkg import mod as m; m.f()`` 必须绑定到 ``pkg/mod.py``。"""
+
+    @pytest.mark.asyncio
+    async def test_callers_bind_submodule_alias_call_to_defining_module(self, tmp_path):
+        # #1579：持久化解析曾把该调用绑到 pkg/__init__.py（而非定义所在的 pkg/mod.py）。
+        from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+        from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+            CodeGraphFullIndexTool,
+        )
+
+        for rel, text in _SUBMODULE_ALIAS_PROJECT.items():
+            target = tmp_path / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text, encoding="utf-8")
+        indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
+            {"mode": "full", "max_files": 10}
+        )
+        assert indexed["published"] is True
+        result = await CodeGraphCallersTool(str(tmp_path)).execute(
+            {"function_name": "f", "include_bodies": False}
+        )
+        assert [
+            (c["name"], c["file"], c["callee_resolved_file"]) for c in result["callers"]
+        ] == [("run", "app/run.py", "pkg/mod.py")]

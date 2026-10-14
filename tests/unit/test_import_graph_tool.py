@@ -217,3 +217,29 @@ class TestCouplingMode:
         # default and is inferred, so it must NOT be in required.
         defn = CodeGraphImportGraphTool().get_tool_definition()
         assert "mode" not in defn["inputSchema"]["required"]
+
+
+class TestDependentsIncludeSubmoduleImporters:
+    """#1579：``from pkg import mod`` 的导入方必须出现在 pkg/mod.py 的 dependents 中。"""
+
+    @pytest.mark.asyncio
+    async def test_dependents_include_from_package_import_submodule(self, tmp_path):
+        # #1579：该形式曾只解析到 pkg/__init__.py，dependents 无标记地漏掉 app.py。
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        (tmp_path / "pkg").mkdir()
+        (tmp_path / "pkg" / "__init__.py").write_text("", encoding="utf-8")
+        (tmp_path / "pkg" / "mod.py").write_text(
+            "def f():\n    return 1\n", encoding="utf-8"
+        )
+        (tmp_path / "app.py").write_text(
+            "from pkg import mod as m\n\n\ndef run():\n    return m.f()\n",
+            encoding="utf-8",
+        )
+        cache = ASTCache(str(tmp_path))
+        cache.index_project(max_files=10)
+        cache.close()
+        result = await CodeGraphImportGraphTool(project_root=str(tmp_path)).execute(
+            {"mode": "dependents", "file_path": "pkg/mod.py"}
+        )
+        assert [d["source"] for d in result["dependents"]] == ["app.py"]

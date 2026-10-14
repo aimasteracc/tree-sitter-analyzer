@@ -26,6 +26,7 @@ from .constants import (
     JS_TS_LANGUAGES,
     JS_TS_MODULE_EXTS,
 )
+from .import_graph_submodules import python_submodule_targets_from_text
 from .languages.lang_extension_map import EXT_TO_LANG
 
 logger = logging.getLogger(__name__)
@@ -323,6 +324,8 @@ class ImportGraph:
             cache.close()
 
         self._project_files = set(imports_by_file.keys())
+        lookup = _file_lookup(self._project_files)
+        nodes = set(lookup)
 
         for source_file, imports in imports_by_file.items():
             if not isinstance(imports, list):
@@ -332,20 +335,31 @@ class ImportGraph:
                 if not isinstance(imp_text, str):
                     continue
                 resolved = self._resolve_import(imp_text, source_file)
-                if resolved is None or resolved == source_file:
-                    continue
-                edge = ImportEdge(
-                    source_file=source_file,
-                    target_file=resolved,
-                    import_text=imp_text,
-                    line=0,
-                )
-                self._edges.append(edge)
-                self._forward.setdefault(source_file, []).append(edge)
-                self._reverse.setdefault(resolved, []).append(edge)
+                targets = [] if resolved is None else [resolved]
+                targets += self._submodule_targets(imp_text, source_file, lookup, nodes)
+                for target in dict.fromkeys(targets):
+                    if target != source_file:
+                        self._add_edge(source_file, target, imp_text)
 
         self._built = True
         return self._make_result()
+
+    def _add_edge(self, source_file: str, target: str, import_text: str) -> None:
+        edge = ImportEdge(source_file, target, import_text, line=0)
+        self._edges.append(edge)
+        self._forward.setdefault(source_file, []).append(edge)
+        self._reverse.setdefault(target, []).append(edge)
+
+    @staticmethod
+    def _submodule_targets(
+        import_text: str, source_file: str, lookup: dict[str, str], nodes: set[str]
+    ) -> list[str]:
+        """``from pkg import sub`` 同时依赖 ``pkg/sub.py``（#1579，规则同 #1566）。"""
+        if EXT_TO_LANG.get(os.path.splitext(source_file)[1].lower()) != "python":
+            return []
+        source_rel = source_file.replace("\\", "/")
+        hits = python_submodule_targets_from_text(import_text, source_rel, nodes)
+        return [lookup[hit] for hit in hits]
 
     def _resolve_import(self, import_text: str, source_file: str) -> str | None:
         """Route an import statement to the resolver for its SOURCE language.
@@ -405,6 +419,12 @@ class ImportGraph:
             if os.path.isabs(file_path)
             else file_path
         )
+        if rel.startswith(".."):
+            # macOS 的 /var → /private/var：调用方传入的路径已 realpath 而根目录没有，
+            # relpath 会落到根目录之外并静默返回空依赖（#1579 macOS CI）。
+            rel = os.path.relpath(
+                os.path.realpath(file_path), os.path.realpath(self.project_root)
+            )
         known = self._project_files | self._forward.keys() | self._reverse.keys()
         return _match_file(rel, _file_lookup(known)) or rel
 
