@@ -20,6 +20,7 @@ from .codegraph_relation_tool import (
     CodeGraphRelationToolMixin,
     _is_stale_resolution,
     classify_callee_resolution,
+    label_graph_relations,
 )
 from .index_rebuild_signal import (
     is_index_rebuilding,
@@ -358,7 +359,9 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             callers = graph.callers_of(func_name, file_path)
             # #1578：仅同名匹配、无法绑定到目标的入边——它们存在时不能宣称 complete。
             name_only_inbound = len(graph.possible_callers_of(func_name, file_path))
-            self._enrich_callers_with_resolution(callers)
+            callers = label_graph_relations(
+                graph, func_name, file_path, callers, inbound=True
+            )
             # #981 defense-in-depth: the built marker can be a false-negative
             # (e.g. cleared while the index actually holds 125K call edges).
             # Trust an actual edge probe in addition to the marker so a missing
@@ -709,17 +712,3 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 )
             results.append(entry)
         return results, unattributed
-
-    @staticmethod
-    def _enrich_callers_with_resolution(
-        callers: list[dict[str, Any]],
-    ) -> None:
-        """Add callee_resolution and callee_resolved_file to graph-fallback results."""
-        for entry in callers:
-            if "callee_resolution" not in entry or "callee_resolved_file" not in entry:
-                callee_file = entry.get("file", "")
-                resolution, resolved_file = classify_callee_resolution(
-                    "", callee_file, callee_file
-                )
-                entry.setdefault("callee_resolution", resolution)
-                entry.setdefault("callee_resolved_file", resolved_file)

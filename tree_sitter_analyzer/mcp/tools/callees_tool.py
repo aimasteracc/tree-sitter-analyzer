@@ -20,6 +20,7 @@ from .codegraph_relation_tool import (
     CodeGraphRelationToolMixin,
     _is_stale_resolution,
     classify_callee_resolution,
+    label_graph_relations,
 )
 from .index_rebuild_signal import (
     is_index_rebuilding,
@@ -196,7 +197,9 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
             callees = graph.callees_of(func_name, file_path)
             if include_activation:
                 self._enrich_graph_callees_with_activation(callees)
-            self._enrich_callees_with_resolution(callees)
+            callees = label_graph_relations(
+                graph, func_name, file_path, callees, inbound=False
+            )
             # #981 defense-in-depth: the built marker can be a false-negative
             # (e.g. cleared while the index actually holds 125K call edges).
             # Trust an actual edge probe in addition to the marker so a missing
@@ -385,18 +388,6 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 activation_map if include_activation else {},
             )
         return results
-
-    def _enrich_callees_with_resolution(self, callees: list[dict[str, Any]]) -> None:
-        """Add callee_resolution and callee_resolved_file to graph-fallback results."""
-        for entry in callees:
-            callee_file = entry.get("file", "")
-            callee_name = entry.get("name", "")
-            if "callee_resolution" not in entry or "callee_resolved_file" not in entry:
-                resolution, resolved_file = classify_callee_resolution(
-                    callee_name, callee_file, ""
-                )
-                entry.setdefault("callee_resolution", resolution)
-                entry.setdefault("callee_resolved_file", resolved_file)
 
     def _resolve_via_enhanced(
         self,
