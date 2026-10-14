@@ -15,6 +15,7 @@ from typing import Any
 from ...utils import setup_logger
 from ._response_builder import build_response
 from .base_tool import BaseMCPTool
+from .callers_absence import assess_completeness
 from .codegraph_relation_tool import (
     _STALE_CACHE_WARNING,
     CodeGraphRelationToolMixin,
@@ -455,6 +456,17 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             completeness = "unknown"
         else:
             completeness = "complete"
+        # #1593 / #1594：调用边给出的 complete 还须通过新鲜度与非调用引用两道门。
+        absence = assess_completeness(
+            cache,
+            self.project_root,
+            func_name,
+            file_path,
+            completeness,
+            total_callers,
+            evidence,
+        )
+        completeness = absence.completeness
 
         result = build_response(
             verdict="INFO" if callers or total_callers else "NOT_FOUND",
@@ -466,6 +478,8 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             listed_cap=listed_cap,
             truncated=truncated,
             completeness=completeness,
+            completeness_reason=absence.reason,
+            **absence.fields,
             unresolved_inbound=unresolved_inbound,
             unresolved_in_declaring_files=unresolved_in_declaring_files,
             callers=callers,
@@ -528,7 +542,9 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 # the reason the list is not a census instead (RFC-0028 §1.1,
                 # §1.2).  A successfully-read 0 is not a failure to read, so the
                 # branches test `is None` rather than truthiness.
-                if unresolved_inbound:
+                if absence.hint:
+                    index_hint = absence.hint
+                elif unresolved_inbound:
                     index_hint = (
                         f"No resolved caller for {func_name!r}, and "
                         f"{unresolved_inbound} call edge(s) into it are "

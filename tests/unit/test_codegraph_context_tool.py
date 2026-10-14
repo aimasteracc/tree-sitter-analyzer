@@ -2128,3 +2128,49 @@ async def test_indexed_zero_symbols_can_report_not_found(tmp_path, empty_project
         cache.close()
         if tool._cache is not None:
             tool._cache.close()
+
+
+@pytest.mark.asyncio
+async def test_context_on_a_stale_index_carries_the_stale_marker(indexed_project):
+    # #1594：nav context 必须像 callers 一样声明其所依据的索引已落后于源码。
+    app = indexed_project / "app.py"
+    app.write_text(
+        app.read_text(encoding="utf-8") + "\ndef _p():\n    return handle_request(1)\n",
+        encoding="utf-8",
+    )
+    tool = CodeGraphContextTool(str(indexed_project))
+    try:
+        result = await tool.execute({"task": "get_user", "output_format": "json"})
+    finally:
+        if tool._cache is not None:
+            tool._cache.close()
+
+    assert result["source_evidence"] == {
+        "freshness": "stale",
+        "snapshot_id": None,
+        "source_generation": None,
+        "reason": "SOURCE_INDEX_MISMATCH",
+    }
+    assert result["agent_summary"]["summary_line"].endswith(" (index stale)")
+    assert result["next_step"].startswith(
+        "Source changed since the index was built: app.py."
+    )
+
+
+@pytest.mark.asyncio
+async def test_context_on_an_unchanged_index_is_scoped_not_stale(indexed_project):
+    # #1594：未编辑时只复核答案涉及的文件，因此是 unknown/SCOPED，而不是 stale。
+    tool = CodeGraphContextTool(str(indexed_project))
+    try:
+        result = await tool.execute({"task": "get_user", "output_format": "json"})
+    finally:
+        if tool._cache is not None:
+            tool._cache.close()
+
+    assert result["source_evidence"] == {
+        "freshness": "unknown",
+        "snapshot_id": None,
+        "source_generation": None,
+        "reason": "SOURCE_REVALIDATION_SCOPED",
+    }
+    assert "next_step" not in result

@@ -325,6 +325,42 @@ async def test_long_lived_nav_callers_without_reindex_are_marked_stale(
 
 
 @pytest.mark.asyncio
+async def test_stale_absence_is_never_complete(long_lived_nav) -> None:
+    # #1594：编辑后未重建索引时，0 callers 不能在 freshness=stale 下宣称 complete。
+    nav, root = long_lived_nav
+    probe = "\n    def _p(self):\n        return self.two()\n"
+    (root / "store.py").write_text(_STORE_SOURCE + probe, encoding="utf-8")
+
+    result = await nav.execute(
+        {"action": "callers", "symbol": "Store.two", "include_bodies": False}
+    )
+
+    assert (result["caller_count"], result["source_evidence"]) == (0, _STALE)
+    assert (result["completeness"], result["completeness_reason"]) == (
+        "unknown",
+        "SOURCE_INDEX_MISMATCH",
+    )
+    assert result["next_step"] == (
+        f"{_STALE_STEP} No resolved caller for 'Store.two', but the index is "
+        "stale for this answer, so this is not evidence of absence."
+    )
+
+
+@pytest.mark.asyncio
+async def test_stale_caller_list_is_a_lower_bound(long_lived_nav) -> None:
+    # #1594：过期索引上的非空调用方列表只是下界，不是普查。
+    nav, root = long_lived_nav
+    _add_probe_caller(root)
+
+    result = await nav.execute(dict(_CALLERS_QUERY))
+
+    assert (result["completeness"], result["completeness_reason"]) == (
+        "incomplete",
+        "SOURCE_INDEX_MISMATCH",
+    )
+
+
+@pytest.mark.asyncio
 async def test_new_symbol_absent_from_stale_index_is_not_a_spelling_error(
     long_lived_nav,
 ) -> None:

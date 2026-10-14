@@ -300,6 +300,13 @@ class CodeGraphContextTool(BaseMCPTool):
             from ..utils.auto_index_guard import empty_index_diagnostic
 
             result.update(empty_index_diagnostic(self._get_cache()))
+        # #1594：与 callers 相同，答案须声明其所依据的索引是否已落后于源码。
+        from .relation_freshness import apply_source_evidence, relation_source_evidence
+
+        evidence, stale_files = relation_source_evidence(
+            self._get_cache(), self.project_root, related_files, absence=not nodes
+        )
+        apply_source_evidence(result, evidence, stale_files)
 
         from ..utils.format_helper import apply_output_format_to_response
 
