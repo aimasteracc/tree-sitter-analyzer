@@ -9,7 +9,7 @@ external method tiers, and — MANDATORY — the no-cross-language-mis-wire moat
 
 from __future__ import annotations
 
-from tree_sitter_analyzer.ast_cache import ASTCache
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.synapse_resolver import ResolverContext, resolve_callee
 from tree_sitter_analyzer.synapse_resolver._context import build_resolver_context
 from tree_sitter_analyzer.synapse_resolver._registry import get_language_resolver
@@ -541,7 +541,7 @@ def _index_and_build(tmp_path, files: dict[str, str]):
     project.mkdir()
     for rel, body in files.items():
         (project / rel).write_text(body)
-    cache = ASTCache(str(project))
+    cache = legacy_cache(str(project))
     try:
         cache.index_project(max_files=100)
         resolver_ctx = build_resolver_context(cache)

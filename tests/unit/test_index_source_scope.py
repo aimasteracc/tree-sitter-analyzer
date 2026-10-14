@@ -7,6 +7,7 @@ import os
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import CodeGraphStatusTool
 
 requires_posix_snapshot = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
@@ -97,12 +98,11 @@ async def test_excluded_supported_file_does_not_consume_replay_max_files(tmp_pat
 @pytest.mark.asyncio
 async def test_invalid_persisted_scope_cannot_certify_complete(tmp_path):
     # PR #1253: malformed discovery policy is not trusted by status.
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
 
     source = tmp_path / "sample.py"
     source.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     cache.index_file(str(source))
     stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
     cache.get_conn().execute(

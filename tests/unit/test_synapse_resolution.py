@@ -22,6 +22,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.callee_resolution import CalleeResolver
 
@@ -38,7 +39,7 @@ def test_legacy_missing_caller_coordinate_cannot_resolve_ambiguous_self_call(tmp
         "class Second:\n    def run(self):\n        self.target()\n    def target(self):\n        pass\n",
         encoding="utf-8",
     )
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_file(str(source))
         db = cache.get_conn()
@@ -140,7 +141,7 @@ class TestSchemaMigration:
     def test_schema_migration_adds_columns(self, tmp_path: Path) -> None:
         """The unified ``edges`` table carries callee_symbol_id /
         callee_resolution / callee_resolved_file (B1.3), and ast_imports exists."""
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         try:
             with _open_db(cache) as conn:
                 # Resolution columns now live on the unified ``edges`` table.
@@ -184,7 +185,7 @@ class TestSchemaMigration:
         This guards the backfill path: rows written before the resolver
         runs must look exactly like rows the resolver tagged as 'unknown'.
         """
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         try:
             with _open_db(cache) as conn:
                 # Insert a CALLS edge with only the structural columns set; the
@@ -809,7 +810,7 @@ class TestRFC0002Monotonicity:
             "def helper():\n    return 42\n",
             encoding="utf-8",
         )
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         try:
             cache.index_project(max_files=10, workers=0)
             # Collect resolution after first index

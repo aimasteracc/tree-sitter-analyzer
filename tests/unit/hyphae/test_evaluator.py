@@ -48,11 +48,12 @@ def _names(rows):
 @pytest.mark.parametrize("pseudo", ["hot", "stale", "hotspot"])
 def test_temporal_damaged_store_never_returns_unfiltered_candidates(tmp_path, pseudo):
     """PR #1352：真实时序表损坏必须显式失败，不能把所有函数标成命中。"""
-    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tests.unit._ast_cache_helpers import legacy_cache
 
     source = tmp_path / "a.py"
     source.write_text("def live():\n    pass\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    # #1554：默认库首写后只读发布；损坏时序表须在原地写的旧库上构造。
+    cache = legacy_cache(tmp_path)
     try:
         cache.index_file(str(source))
         cache.get_conn().execute("DROP TABLE ast_symbol_activation")

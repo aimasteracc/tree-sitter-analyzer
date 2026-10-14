@@ -25,7 +25,7 @@ import pytest
 import tree_sitter_python
 from tree_sitter import Language, Parser
 
-from tree_sitter_analyzer.ast_cache import ASTCache
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.cache.extraction import _extract_symbols
 from tree_sitter_analyzer.synapse_resolver import parse_imports
 
@@ -224,7 +224,7 @@ class Widget:
 @pytest.fixture
 def indexed_db(tmp_path):
     (tmp_path / "sample.py").write_text(END_TO_END_SRC, encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     cache.index_project()
     con = sqlite3.connect(str(tmp_path / ".ast-cache" / "index.db"))
     try:

@@ -29,6 +29,17 @@ def generation_read_scope() -> Iterator[None]:
         _READERS.reset(token)
 
 
+def adopt_read_location(root: str, location: IndexLocation) -> None:
+    """本次调用自己发布的版本对同一调用的后续读取可见（读己之写）。
+
+    首次发布前绑定的是旧定位符；若仍沿用它，同一调用在写入后会去打开
+    （并创建）旧 ``index.db``（#1554）。其他写者的发布仍不改变当前绑定。
+    """
+    scope = _READERS.get()
+    if scope is not None:
+        scope[str(logical_index_path(root))] = location
+
+
 def current_read_location(root: str) -> IndexLocation | None:
     scope = _READERS.get()
     if scope is None:

@@ -6,7 +6,7 @@ import argparse
 
 import pytest
 
-from tree_sitter_analyzer.ast_cache import ASTCache
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.cli.argument_groups._analysis import _add_analysis_options
 from tree_sitter_analyzer.cli.argument_groups._mcp import (
     _add_mcp_index_management_options,
@@ -67,7 +67,7 @@ def test_ast_cache_cli_rejects_zero() -> None:
 def test_invalid_force_limit_is_rejected_before_cache_mutation(tmp_path) -> None:
     source = tmp_path / "app.py"
     source.write_text("value = 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_project(max_files=1, workers=0)
 

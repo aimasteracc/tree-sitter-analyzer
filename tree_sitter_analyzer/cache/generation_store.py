@@ -1,4 +1,4 @@
-"""隔离构建、完整父身份校验和只读版本会话；不自动迁移旧数据库。"""
+"""隔离构建、完整父身份校验和只读版本会话；旧库仅在首次写入时被复制采纳。"""
 
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ from ..project_graph import _language_from_ext
 from ..read_only_files import mark_read_only
 from ._win_fileops import IS_WINDOWS, replace_file
 from ._win_fileops import IndexWriterBusy as IndexWriterBusy  # 发布失败关闭的类型
+from .generation_bootstrap import adopt_legacy_database
 from .generation_routing import read_selector
 from .generation_selector import (
     GenerationSelector,
@@ -313,7 +314,10 @@ class GenerationStore:
         database.touch(exist_ok=False)
         info = database.stat()
         self._database_identities[selector.generation_id] = (info.st_dev, info.st_ino)
-        if candidate.parent is not None:
+        if candidate.parent is None:
+            # 首次发布采纳遗留旧库（#1554）；发布 CAS 照常拒绝过时候选。
+            adopt_legacy_database(Path(self.logical_path), database)
+        else:
             source = sqlite3.connect(
                 self.database(candidate.parent).as_uri() + "?mode=ro", uri=True
             )

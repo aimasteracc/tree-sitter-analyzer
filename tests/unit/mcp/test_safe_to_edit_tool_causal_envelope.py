@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 import tests.unit.mcp._safe_to_edit_tool_helpers as _fixtures
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.mcp.tools.utils import safe_to_edit_helpers as helpers
 
 tool = _fixtures.tool
@@ -23,12 +24,11 @@ _close_index_snapshot_registry = _fixtures._close_index_snapshot_registry
 def test_causal_envelope_dogfood_needs_one_analyzer_call(tmp_path: Path) -> None:
     import subprocess
 
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
 
     source = tmp_path / "app.py"
     source.write_text("def answer():\n    return 42\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     cache.index_project(max_files=20)
     stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
     cache.close()

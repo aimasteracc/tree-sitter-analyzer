@@ -28,6 +28,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.unit._ast_cache_helpers import engine_cache, legacy_cache
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache import build_state as bs
 from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import CodeGraphStatusTool
@@ -426,7 +427,7 @@ def test_marker_cleared_when_delete_phase_raises(tmp_path: Path, monkeypatch) ->
     healthy cache would report ``index_rebuilding`` for the whole TTL window.
     """
     _project(tmp_path)
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_project(max_files=10, workers=0)
 
     real_conn = cache.get_conn()
@@ -462,7 +463,7 @@ async def test_status_warns_when_rebuilding_with_partial_index(tmp_path: Path) -
     detectable at all.
     """
     _project(tmp_path)
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(tmp_path)
     cache.index_project(max_files=10, workers=0)
     bs.mark_build_in_progress(cache.get_conn())
 
@@ -483,7 +484,7 @@ async def test_status_distinguishes_rebuild_from_missing_index(tmp_path: Path) -
     a *second* rebuild on top of the running one.
     """
     _project(tmp_path)
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(tmp_path)
     cache.index_project(max_files=10, workers=0)
     # Simulate the mid-rebuild empty window: rows gone, marker set.
     conn = cache.get_conn()

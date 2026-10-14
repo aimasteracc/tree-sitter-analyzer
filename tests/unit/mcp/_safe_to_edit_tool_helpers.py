@@ -74,8 +74,11 @@ def _close_index_snapshot_registry():
 
 
 def _indexed_project(tmp_path: Path) -> Path:
-    """索引一个小项目，并返回解析后的根目录。"""
-    from tree_sitter_analyzer.ast_cache import ASTCache
+    """索引一个小项目，并返回解析后的根目录。
+
+    #1554：调用方直接读写 ``.ast-cache/index.db``，故建原地写的旧库。
+    """
+    from tests.unit._ast_cache_helpers import legacy_cache
 
     project = tmp_path / "proj"
     project.mkdir()
@@ -98,7 +101,7 @@ def _indexed_project(tmp_path: Path) -> Path:
         "    return UserService().get_user(1)\n",
         encoding="utf-8",
     )
-    cache = ASTCache(str(project))
+    cache = legacy_cache(project)
     cache.index_project(max_files=20)
     cache.close()
     return project.resolve()

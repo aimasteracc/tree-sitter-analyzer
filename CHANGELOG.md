@@ -8,6 +8,48 @@
   radius no longer return 0 results on Windows when the file is given as an
   absolute path or with `\` separators; lookups now match the `/`-keyed cache
   regardless of separator style (#1558).
+
+- Index writes on the default cache location go through the generation store
+  even before the first publication (RFC-0032 slice 1, #1554). Before, the
+  first writes (`ensure_indexed` behind `autoindex`/`refactor`/`visualization`/
+  `incremental_sync`, `ast_cache` `index`/`invalidate`, `index_file`,
+  `index_project`, direct `IncrementalSync`, persisted constraint checks)
+  changed `.ast-cache/index.db` in place. Replaying an obsolete candidate could
+  then delete newer rows and still exit 0. Each such write now creates and
+  publishes a generation. An obsolete replay raises
+  `INDEX_GENERATION_SUPERSEDED` and the index is unchanged, including when the
+  bytes are identical (ABA). What users see now:
+  - After the first write, `db_path` (and `get_stats()["db_path"]`) is the
+    active generation file
+    `.ast-cache/index-generations/generations/<id>/index.db`, and
+    `get_conn()` is read-only. v2.0.0 and later already did this for caches
+    published by a full index. Reopen the cache with `ASTCache(root)`; do not
+    pass the generation file as `db_path`.
+  - `.ast-cache/index.db` is no longer created. If it already exists, the
+    first write copies it into the first generation and never changes it after
+    that. Read-only calls neither create a generation nor copy the old file.
+    On a project that has never been indexed, `ASTCache(root)` reads an empty,
+    read-only in-memory index (raw `get_conn()` writes fail, as on published
+    caches), and `db_path` still reports `.ast-cache/index.db`.
+  - A write publishes the files that indexed even when other files fail
+    stably, as the in-place route did. A stable failure is one that retrying
+    the same bytes cannot fix: a missing optional grammar such as Swift or Lua,
+    or a parse failure. Before, after the first publication such a project
+    stopped updating. Per-file parse errors now carry
+    `"failure_kind": "stable"`. These files get no rows, and the snapshot
+    manifest and call-graph marker stay revoked, so `completeness` is never
+    `complete`. Transient failures, such as a denied read or a failed write,
+    still publish nothing and keep the previous generation.
+  - `IncrementalSync(ASTCache(root)).sync()` without a candidate now captures
+    its own candidate. It reports `completeness: complete`, as it already did
+    on published caches.
+  - Inside one MCP tool call, reads after that call's own successful write see
+    the new generation. Before, a published cache kept serving the generation
+    pinned at the start of the call.
+  - A generation sync that deletes files also invalidates the derived
+    knowledge-graph (Ladybug) mirror, as the in-place sync did.
+  Custom `db_path` caches still write in place (RFC-0032 slice 5).
+
 - Pulse responses now report in-field truncation: `field_truncation` (compact
   `ftr`) maps each list field cut to fewer items to `kept`, `total` and
   `at_least`. When a source limit was hit (requested `max_*` or the fixed

@@ -27,7 +27,6 @@ def test_force_rebuild_rejects_replaced_root_before_destructive_clear(
     # PR #1253 thread 3761703249: 来自已替换根目录的冻结文件不能
     # 授权清空原路径现在指向的缓存。
     import tree_sitter_analyzer.indexing_candidate_materialization as materialization
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.indexing_candidate_materialization import (
         cleanup_index_candidate_snapshot,
     )
@@ -36,7 +35,7 @@ def test_force_rebuild_rejects_replaced_root_before_destructive_clear(
     root.mkdir()
     source = root / "old.py"
     source.write_text("old = 1\n", encoding="utf-8")
-    cache = ASTCache(str(root))
+    cache = _fixtures.legacy_cache(root)
     cache.index_file(str(source))
     snapshot = build_index_candidate_snapshot(
         str(root),
@@ -106,7 +105,7 @@ def test_force_rebuild_root_swap_keeps_replacement_mirror_isolated(
     root.mkdir()
     source = root / "app.py"
     source.write_text("value = 1\n", encoding="utf-8")
-    cache = ASTCache(str(root))
+    cache = _fixtures.legacy_cache(root)
     cache.index_file(str(source))
     old_mirror = root / ".ast-cache" / "knowledge-graph.lbug"
     old_mirror.write_text("old mirror", encoding="utf-8")
@@ -231,7 +230,7 @@ def test_root_lease_close_error_still_runs_owned_cleanup(tmp_path, monkeypatch):
 
     source = tmp_path / "app.py"
     source.write_text("value = 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.legacy_cache(tmp_path)
     created_roots = []
     root_fds = set()
     armed = False

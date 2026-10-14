@@ -45,6 +45,55 @@ def cache(tmp_project):
     c.close()
 
 
+def engine_cache(root) -> ASTCache:
+    """直接驱动原地写引擎：默认定位符已改经版本存储写入（#1554）。
+
+    与版本路由的私有构建库一致：自定义库路径，并作为项目索引待发布。
+    """
+    built = ASTCache(
+        str(root), db_path=os.path.join(str(root), ".ast-cache", "build", "index.db")
+    )
+    built._publishes_project_index = True
+    return built
+
+
+def legacy_cache(root, db_path=None) -> ASTCache:
+    """原地写旧 ``.ast-cache/index.db`` 的缓存，供依赖旧库原地写入的测试构造状态。
+
+    #1554 起生产默认路由不再原地写旧库；此处显式关闭版本路由，以便继续验证
+    遗留旧库上的目录固定、镜像隔离、快照读取，以及直接读写旧库的测试夹具。
+    其他自定义 ``db_path`` 原样交给 ``ASTCache``（自定义路径本就原地写）。
+    """
+    real_root = os.path.realpath(os.path.abspath(str(root)))
+    legacy = os.path.join(real_root, ".ast-cache", "index.db")
+    if (
+        db_path is not None
+        and os.path.realpath(os.path.abspath(str(db_path))) != legacy
+    ):
+        return ASTCache(str(root), db_path=str(db_path))
+    os.makedirs(os.path.dirname(legacy), exist_ok=True)
+    sqlite3.connect(legacy).close()
+    built = ASTCache(str(root))
+    built._generation_managed = False
+    return built
+
+
+def write_legacy_index(built: ASTCache) -> None:
+    """把引擎库整库备份到旧 ``.ast-cache/index.db``，模拟首次发布前遗留的旧库。"""
+    target = sqlite3.connect(os.path.join(built.project_root, ".ast-cache", "index.db"))
+    try:
+        built.get_conn().backup(target)
+    finally:
+        target.close()
+
+
+@pytest.fixture
+def engine(tmp_project):
+    c = engine_cache(tmp_project)
+    yield c
+    c.close()
+
+
 def _query_plan(conn: sqlite3.Connection, sql: str, params: tuple[str, ...]) -> str:
     rows = conn.execute(f"EXPLAIN QUERY PLAN {sql}", params).fetchall()
     return " ".join(str(row[3]) for row in rows)

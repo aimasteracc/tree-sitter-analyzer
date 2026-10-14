@@ -42,9 +42,10 @@ def test_execute_exposes_verification_fields_for_agents(
     (tmp_path / "README.md").write_text("# Example\n", encoding="utf-8")
     db_path = tmp_path / ".ast-cache" / "index.db"
     if index_present:
-        from tree_sitter_analyzer.ast_cache import ASTCache
+        from tests.unit._ast_cache_helpers import legacy_cache
 
-        cache = ASTCache(str(tmp_path))
+        # #1554：只读构造不再新建旧库；“已有空索引”须显式建出旧库。
+        cache = legacy_cache(tmp_path)
         try:
             assert (
                 cache.get_conn()

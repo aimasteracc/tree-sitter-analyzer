@@ -8,6 +8,7 @@ import time
 from typing import Any
 
 from .ast_cache import _EXT_TO_LANG, _walk_source_files
+from .cache.publication_policy import FAILURE_KIND
 from .incremental_sync_support import SyncResult, file_changed, get_changes
 from .index_source_snapshot import (
     SourceScopeDescriptor,
@@ -541,7 +542,7 @@ class IncrementalSync:
         except Exception:
             conn.rollback()
             raise
-        if getattr(self._cache, "_uses_project_mirror", True):
+        if getattr(self._cache, "_owns_project_mirror", True):
             try:
                 from .cache.indexer import _invalidate_ladybug
 
@@ -668,6 +669,8 @@ class IncrementalSync:
         }
         if status == "error" and "reason" in index_result:
             detail["reason"] = index_result["reason"]
+        if status == "error" and FAILURE_KIND in index_result:
+            detail[FAILURE_KIND] = index_result[FAILURE_KIND]
         return detail
 
     def _reindex_modified(
@@ -715,6 +718,8 @@ class IncrementalSync:
         }
         if status == "error" and "reason" in index_result:
             detail["reason"] = index_result["reason"]
+        if status == "error" and FAILURE_KIND in index_result:
+            detail[FAILURE_KIND] = index_result[FAILURE_KIND]
         return detail
 
     def _index_logical_file(self, info: dict[str, Any]) -> dict[str, Any]:

@@ -85,7 +85,9 @@ POSIX 枚举通过固定父目录描述符和 no-follow 打开，并核对目录
 构建私有副本；`cache/generation_store.py` 在独立 SQLite 发布租约内核对父版本和源码，
 通过原子替换 `active.json` 发布。旧进程写入 `.ast-cache/index.db` 不影响新版本。
 `cache/generation_routing.py` 统一默认读路径；已发布 ASTCache 使用只读连接，显式修改
-也经私有副本发布。`cache/generation_reads.py` 在 MCP 调用内固定版本，下次调用刷新缓存读路径；
+也经私有副本发布。首次发布前的默认写入同样先引导版本（#1554）：`cache/generation_bootstrap.py`
+让从未索引的项目读进程内空库，首次写入把遗留的 `.ast-cache/index.db` 复制进首个版本，
+此后不再写旧库；只读调用不引导、不复制。`cache/generation_reads.py` 在 MCP 调用内固定版本，下次调用刷新缓存读路径；
 旧读会话继续可用，约束持久化也发布私有副本；当前不自动回收版本。
 同进程 watcher 从候选捕获到提交使用逻辑数据库共享锁；跨进程并发发布通过父身份
 比较拒绝过期候选。完成激活标记阻止选择器或版本目录丢失后退回旧库；首次激活中断仅允许

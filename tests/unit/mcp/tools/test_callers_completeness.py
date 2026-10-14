@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache.callgraph_state import mark_call_graph_built_strict
 from tree_sitter_analyzer.graph.edge_store import file_node, symbol_node
@@ -65,7 +66,8 @@ def tool_with_edges(tmp_path):
     """A real cache with the call graph marked built, and its edges cleared."""
     source = tmp_path / "a.py"
     source.write_text("def target_symbol():\n    return 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    # #1554：默认库首写后只读发布；夹具需改写边表，故建原地写的旧库。
+    cache = legacy_cache(tmp_path)
     assert cache.index_file(str(source))["status"] == "indexed"
     conn = cache.get_conn()
     conn.execute("DELETE FROM edges")
@@ -312,7 +314,7 @@ def test_unrecognised_resolution_marker_counts_as_unresolved(tmp_path) -> None:
     """
     source = tmp_path / "a.py"
     source.write_text("def target_symbol():\n    return 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         assert cache.index_file(str(source))["status"] == "indexed"
         conn = cache.get_conn()

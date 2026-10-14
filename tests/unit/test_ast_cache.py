@@ -21,6 +21,7 @@ from tree_sitter_analyzer.core.parser import Parser
 
 tmp_project = _fixtures.tmp_project
 cache = _fixtures.cache
+engine = _fixtures.engine
 method_project = _fixtures.method_project
 
 
@@ -114,16 +115,16 @@ class TestIndexFile:
         result = cache.index_file(f)
         assert result["status"] == "cached"
 
-    def test_content_unchanged_refreshes_file_metadata(self, cache, tmp_project):
+    def test_content_unchanged_refreshes_file_metadata(self, engine, tmp_project):
         f = str(tmp_project / "src" / "main.py")
-        cache.index_file(f)
-        conn = cache._get_conn()
+        engine.index_file(f)
+        conn = engine._get_conn()
         conn.execute(
             "UPDATE ast_index SET mtime_ns = 0 WHERE file_path = ?", ("src/main.py",)
         )
         conn.commit()
 
-        result = cache.index_file(f)
+        result = engine.index_file(f)
 
         assert result == {
             "file": "src/main.py",
@@ -131,14 +132,16 @@ class TestIndexFile:
             "reason": "content unchanged",
         }
 
-    def test_stale_extractor_version_reindexes_unchanged_file(self, cache, tmp_project):
+    def test_stale_extractor_version_reindexes_unchanged_file(
+        self, engine, tmp_project
+    ):
         f = str(tmp_project / "src" / "main.py")
-        cache.index_file(f)
-        conn = cache._get_conn()
+        engine.index_file(f)
+        conn = engine._get_conn()
         conn.execute("UPDATE ast_index SET extractor_version = 0")
         conn.commit()
 
-        result = cache.index_file(f)
+        result = engine.index_file(f)
 
         assert result["status"] == "indexed"
         version = conn.execute(
@@ -322,15 +325,15 @@ class TestStats:
         assert stats["total_symbols"] == 3
         assert stats["fts5_available"] is False
 
-    def test_stats_falls_back_when_symbol_rows_table_missing(self, cache):
-        cache.index_project()
-        if not cache.fts5_available:
+    def test_stats_falls_back_when_symbol_rows_table_missing(self, engine):
+        engine.index_project()
+        if not engine.fts5_available:
             pytest.skip("FTS5 not available")
 
-        conn = cache._get_conn()
+        conn = engine._get_conn()
         conn.execute("DROP TABLE ast_symbol_rows")
 
-        stats = cache.get_stats()
+        stats = engine.get_stats()
 
         assert stats["total_symbols"] == 3
 
@@ -379,7 +382,8 @@ class TestDbPersistence:
         stats1 = c1.get_stats()
         c1.close()
 
-        c2 = ASTCache(str(tmp_project), db_path=c1.db_path)
+        # #1554：首写后 db_path 指向只读发布版本，重新打开须走默认定位符。
+        c2 = ASTCache(str(tmp_project))
         stats2 = c2.get_stats()
         assert stats2["total_files"] == stats1["total_files"]
         c2.close()

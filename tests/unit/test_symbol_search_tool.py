@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from tests.unit import _navigation_test_support as nav_support
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.mcp.tools.symbol_search_tool import CodeGraphSymbolSearchTool
 
@@ -59,7 +60,7 @@ class TestCodeGraphSymbolSearchExecution:
 
         source = tmp_path / "app.py"
         source.write_text("def original(): return 1\n", encoding="utf-8")
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         tool = CodeGraphSymbolSearchTool(str(tmp_path))
         try:
             assert cache.index_file(str(source))["status"] == "indexed"
@@ -747,7 +748,7 @@ async def test_empty_index_does_not_claim_symbol_absence(tmp_path, indexed):
     source.write_text(
         "def authenticate_user(token): return bool(token)\n", encoding="utf-8"
     )
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     tool = CodeGraphSymbolSearchTool(str(tmp_path))
     try:
         if indexed:

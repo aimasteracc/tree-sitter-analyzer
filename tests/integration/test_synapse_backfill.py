@@ -23,6 +23,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer import ast_cache as ac
 from tree_sitter_analyzer.ast_cache import ASTCache
 
@@ -35,7 +36,7 @@ def seeded_project(tmp_path: Path) -> Path:
     (pkg / "__init__.py").write_text("# backfill test pkg\n")
     (pkg / "b.py").write_text("def baz():\n    pass\n")
     (pkg / "a.py").write_text("from .b import baz\n\ndef caller():\n    baz()\n")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_project()
     finally:
@@ -63,7 +64,7 @@ def test_backfill_no_reparse(
     seeded_project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """resolve_only=True populates the columns without calling the parser."""
-    cache = ASTCache(str(seeded_project))
+    cache = legacy_cache(str(seeded_project))
     try:
         _reset_resolution_columns(cache)
 

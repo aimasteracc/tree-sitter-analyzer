@@ -7,6 +7,8 @@ import sqlite3
 
 import pytest
 
+from tests.unit._ast_cache_helpers import engine_cache, legacy_cache
+
 requires_posix_fd = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
 
 
@@ -345,10 +347,9 @@ def test_compile_fts_detection_rejects_malformed_scalar():
 
 def test_required_fts_rejects_missing_table(tmp_path):
     # PR #1253 thread 3759606810: supported runtimes require the FTS projection.
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
 
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     conn = cache.get_conn()
     conn.execute("DROP TABLE ast_symbols_fts")
     result = symbol_projection_is_exact(conn, require_fts=True)
@@ -359,12 +360,11 @@ def test_required_fts_rejects_missing_table(tmp_path):
 
 def test_required_fts_rejects_same_count_wrong_rowid(tmp_path):
     # PR #1253 thread 3759606810: equal counts cannot hide missing/stale rowids.
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
 
     source = tmp_path / "app.py"
     source.write_text("def target():\n    return 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_file(str(source))
     conn = cache.get_conn()
     rowid = conn.execute("SELECT id FROM ast_symbol_rows").fetchone()[0]
@@ -404,10 +404,9 @@ def test_external_fts_delete_propagates_noncorruption_failure():
 
 def test_required_fts_rejects_legacy_contentless_schema(tmp_path):
     # PR #1253 thread 3759606810: payload exactness requires external content.
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
 
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     conn = cache.get_conn()
     conn.execute("DROP TABLE ast_symbols_fts")
     conn.execute(

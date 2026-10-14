@@ -13,6 +13,7 @@ self-contained resolver:
 
 from __future__ import annotations
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.synapse_resolver._registry import (
     get_language_resolver,
     registered_languages,
@@ -495,11 +496,9 @@ def _index_js(tmp_path, files: dict[str, str]):
     """Index *files* into a tmp project; return a row-factory sqlite conn."""
     import sqlite3
 
-    from tree_sitter_analyzer.ast_cache import ASTCache
-
     for name, body in files.items():
         (tmp_path / name).write_text(body)
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_project()
     finally:

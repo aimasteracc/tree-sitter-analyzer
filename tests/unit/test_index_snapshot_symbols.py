@@ -7,6 +7,7 @@ import sqlite3
 
 import pytest
 
+from tests.unit._ast_cache_helpers import engine_cache, legacy_cache
 from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import CodeGraphStatusTool
 
 requires_posix_fd = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
@@ -23,12 +24,11 @@ def _fd_is_closed(fd: int) -> bool:
 class TestSnapshotFailureContracts:
     @staticmethod
     def _certified_cache(root):
-        from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
 
         source = root / "sample.py"
         source.write_text("value = 1\n")
-        cache = ASTCache(str(root))
+        cache = legacy_cache(root)
         cache.index_file(str(source))
         stamp_full_index_manifest(cache.get_conn(), str(root))
         cache.close()
@@ -77,7 +77,6 @@ class TestSnapshotFailureContracts:
 
 def test_exact_v12_projection_certification_preserves_all_symbol_references(tmp_path):
     # PR #1253 thread 3756769301: certification must never renumber exact rows.
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_snapshot_symbols import (
         ensure_symbol_rows_backfilled,
     )
@@ -86,7 +85,7 @@ def test_exact_v12_projection_certification_preserves_all_symbol_references(tmp_
     source.write_text(
         "def target():\n    return 1\ndef caller():\n    return target()\n"
     )
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_file(str(source))
     conn = cache.get_conn()
     conn.execute(
@@ -158,12 +157,11 @@ class TestSnapshotProjectionCompleteness:
 
     @staticmethod
     def _certified_cache(root):
-        from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
 
         source = root / "sample.py"
         source.write_text("def answer():\n    return 42\n")
-        cache = ASTCache(str(root))
+        cache = legacy_cache(root)
         cache.index_file(str(source))
         stamp_full_index_manifest(cache.get_conn(), str(root))
         cache.close()

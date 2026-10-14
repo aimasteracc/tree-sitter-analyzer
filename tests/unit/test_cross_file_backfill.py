@@ -3,6 +3,7 @@
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cross_file_resolver import ResolvedEdge
 
@@ -55,7 +56,7 @@ def multi_file_project(tmp_path):
         "    print(result)\n"
     )
 
-    cache = ASTCache(str(project))
+    cache = legacy_cache(str(project))
     cache.index_project(max_files=100)
     yield project, cache
     cache.close()

@@ -11,6 +11,7 @@ import struct
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.api.semantic import (
     combined_score,
     cosine_similarity,
@@ -131,13 +132,12 @@ def test_incremental_space_rechecked_after_external_rpc(tmp_path, openai_transpo
     """PR #1352 P2：另一 WAL 连接在 provider 请求期间重建模型，旧请求不能再写入另一空间。"""
     from types import SimpleNamespace
 
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.embeddings.pipeline import (
         init_embeddings_db,
         run_pipeline,
     )
 
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         old = tmp_path / "old.py"
         old.write_text("def old():\n    pass\n", encoding="utf-8")

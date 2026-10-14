@@ -27,6 +27,7 @@ from .generation_store import (
     PreparedGeneration,
     permanent_rejections_only,
 )
+from .publication_policy import publishable_result, publishable_sync
 
 _T = TypeVar("_T")
 
@@ -49,6 +50,15 @@ def project_store(root: str, scope: SourceScopeDescriptor) -> GenerationStore:
     )
 
 
+def _first_publication(candidate: Any) -> bool:
+    """首次发布前旧路由原地保留部分结果（如缺少可选语法时的其余文件）。
+
+    无父版本可保护时，带单文件失败的结果照常发布，否则这类项目的自动索引
+    永远为空（#1554）；已发布项目只接受稳定单文件失败（见 publication_policy）。
+    """
+    return candidate.parent is None
+
+
 def mutate_published_cache(
     cache: Any,
     operation: Callable[[ASTCache], _T],
@@ -57,7 +67,7 @@ def mutate_published_cache(
     candidate_snapshot: IndexCandidateSnapshot | None = None,
     expected_path: Path | None = None,
 ) -> _T:
-    """已切换项目的显式单文件、重建和失效操作仍只能写私有副本。"""
+    """默认库的显式单文件、重建和失效操作只写私有副本，首次发布前亦然（#1554）。"""
     from ..ast_cache import ASTCache
     from .generation_store import Superseded
 
@@ -67,9 +77,11 @@ def mutate_published_cache(
             (lambda: candidate_snapshot) if candidate_snapshot is not None else None
         )
         try:
-            if expected_path is not None and (
-                candidate.parent is None
-                or store.database(candidate.parent) != expected_path
+            # 调用方读到的库必须仍是父版本；首次发布前即旧定位符本身（#1554）。
+            if expected_path is not None and expected_path != (
+                store.database(candidate.parent)
+                if candidate.parent is not None
+                else logical_index_path(cache.project_root)
             ):
                 raise Superseded("INDEX_GENERATION_SUPERSEDED")
             if candidate_snapshot is not None and (
@@ -83,12 +95,7 @@ def mutate_published_cache(
                 result = operation(writable)
             finally:
                 writable.close()
-            failed = isinstance(result, dict) and (
-                result.get("status") == "error"
-                or result.get("errors")
-                or result.get("backfill_errors")
-            )
-            if not failed:
+            if publishable_result(result) or _first_publication(candidate):
                 store.seal(selector)
                 store.publish(PreparedGeneration(candidate, selector, SyncResult()))
                 cache._adopt_published_generation()
@@ -119,17 +126,15 @@ def run_incremental_sync(
             raise Superseded("INDEX_GENERATION_SUPERSEDED")
         selector = store.begin(candidate)
         writable = ASTCache(cache.project_root, str(store.database(selector)))
+        writable._publishes_project_index = True
         try:
             arguments["candidate_snapshot"] = candidate.snapshot
             result = (sync_factory or IncrementalSync)(writable).sync(**arguments)
         finally:
             writable.close()
         permanent_cleanup = permanent_rejections_only(candidate.snapshot)
-        if (
-            (result.scope_complete or permanent_cleanup)
-            and not result.errors
-            and not result.backfill_errors
-            and not result.manifest_certification_failed
+        if _first_publication(candidate) or publishable_sync(
+            result, permanent_cleanup=permanent_cleanup
         ):
             store.seal(selector)
             store.publish(
@@ -232,7 +237,7 @@ def _publication_error(exc: Exception, root: str, phase: str) -> dict[str, Any]:
 
 
 def mutate_index_path(root: str, path: Path, operation: Callable[[Path], _T]) -> _T:
-    """派生数据持久化也只能修改私有副本，旧布局保留原调用语义。"""
+    """派生数据持久化也只能修改私有副本；首次发布前的旧库先被采纳再写（#1554）。"""
     from ..ast_cache import ASTCache
     from .generation_routing import resolve_index_location
 
@@ -240,7 +245,9 @@ def mutate_index_path(root: str, path: Path, operation: Callable[[Path], _T]) ->
     if not location.published:
         if location.path != path:
             raise ValueError("INDEX_GENERATION_PATH_MISMATCH")
-        return operation(path)
+        if path != logical_index_path(root):
+            # 索引操作内绑定的私有构建库，由外层操作负责发布。
+            return operation(path)
     cache = ASTCache(root)
     try:
         return mutate_published_cache(

@@ -8,9 +8,6 @@ import pytest
 
 import tests.unit._ast_cache_helpers as _fixtures
 from tests.unit._ast_cache_helpers import _OsProxy
-from tree_sitter_analyzer.ast_cache import (
-    ASTCache,
-)
 from tree_sitter_analyzer.indexing_snapshot import (
     build_index_candidate_snapshot,
 )
@@ -74,7 +71,7 @@ def test_owned_cleanup_failure_preserves_success_and_attempts_every_leaf(
 
     (tmp_path / "a.py").write_text("a = 1\n", encoding="utf-8")
     (tmp_path / "b.py").write_text("b = 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.legacy_cache(tmp_path)
     attempted: list[str] = []
     created: list[str] = []
     real_unlink = materialization.os.unlink

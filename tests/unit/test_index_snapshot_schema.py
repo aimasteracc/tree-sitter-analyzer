@@ -8,6 +8,8 @@ import threading
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
+
 requires_posix_fd = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
 pytestmark = requires_posix_fd
 
@@ -23,12 +25,11 @@ def _fd_is_closed(fd: int) -> bool:
 class TestSnapshotFailureContracts:
     @staticmethod
     def _certified_cache(root):
-        from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
 
         source = root / "sample.py"
         source.write_text("value = 1\n")
-        cache = ASTCache(str(root))
+        cache = legacy_cache(root)
         cache.index_file(str(source))
         stamp_full_index_manifest(cache.get_conn(), str(root))
         cache.close()
@@ -122,10 +123,9 @@ class TestSnapshotFailureContracts:
             schema._check_deadline(1.0)
 
     def test_manifest_stamp_rejects_nonbuilt_marker(self, tmp_path):
-        from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.index_snapshot_schema import stamp_full_index_manifest
 
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         try:
             conn = cache.get_conn()
             conn.execute(
@@ -278,11 +278,10 @@ def test_schema_inventory_table_count_is_bounded(monkeypatch):
 def test_manifest_stamp_blocks_concurrent_sqlite_epoch_mutation(tmp_path, monkeypatch):
     # PR #1253 review 3755216340: fingerprints and manifest share one writer lock.
     import tree_sitter_analyzer.index_snapshot_schema as schema
-    from tree_sitter_analyzer.ast_cache import ASTCache
 
     source = tmp_path / "sample.py"
     source.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(tmp_path)
     cache.index_file(str(source))
     schema.stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
     db_path = cache.db_path

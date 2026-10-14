@@ -17,6 +17,7 @@ from urllib.error import HTTPError
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cli.commands import codegraph_index_commands
 from tree_sitter_analyzer.cli.commands.codegraph_index_commands import (
@@ -91,7 +92,7 @@ def _seed_sqlite_knowledge_graph(
     """Persist a test snapshot in the canonical SQLite index shape."""
     import json
 
-    cache = ASTCache(str(project_root))
+    cache = legacy_cache(str(project_root))
     try:
         conn = cache.get_conn()
         file_nodes = {
@@ -354,7 +355,7 @@ def test_builder_edge_and_markdown_caps_cover_relationship_boundaries(
         "Missing `missing.py`, then `src/a.py` and `src/b.py`.\n",
         encoding="utf-8",
     )
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_project()
         EdgeStore(cache.get_conn()).upsert_edges(

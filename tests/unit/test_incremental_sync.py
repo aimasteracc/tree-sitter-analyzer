@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.unit._ast_cache_helpers import engine_cache
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.incremental_sync import IncrementalSync
 from tree_sitter_analyzer.index_source_snapshot import make_source_scope_descriptor
@@ -34,7 +35,7 @@ def project(tmp_path):
 
 @pytest.fixture
 def cache(project):
-    c = ASTCache(str(project))
+    c = engine_cache(project)
     yield c
     c.close()
 
@@ -193,7 +194,7 @@ def test_candidate_less_sync_is_operational_but_not_authoritative(tmp_path):
     # PR #1253 review 3762603012: a live walk cannot certify complete scope.
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     try:
         result = IncrementalSync(cache).sync()
         indexed = cache.lookup(str(path)) is not None
@@ -235,7 +236,7 @@ def test_noop_sync_repairs_incomplete_backfill_state(tmp_path):
 def test_fully_cached_legacy_marker_repairs_complete_pipeline(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_file(str(path))
     conn = cache.get_conn()
     conn.execute(
@@ -281,7 +282,7 @@ def test_snapshot_mutation_during_backfill_is_invalidated(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
     snapshot = _snapshot(tmp_path, path)
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     conn = cache.get_conn()
     columns = [
         tuple(row)
@@ -334,7 +335,7 @@ def test_deleted_target_cannot_be_reresolved_from_cached_context(tmp_path):
     caller.write_text(
         "from target import target\n\ndef caller():\n    return target()\n"
     )
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_project(workers=0)
     conn = cache.get_conn()
     before = conn.execute(
@@ -372,7 +373,7 @@ def test_late_deletion_keeps_marker_incomplete_until_callee_retarget(tmp_path):
     primary.write_text("def target():\n    return 1\n")
     fallback.write_text("def target():\n    return 2\n")
     caller.write_text("def caller():\n    return target()\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_project(workers=0)
     clear_call_graph_built_strict(cache.get_conn())
     snapshot = _snapshot(tmp_path, primary, fallback, caller)
@@ -425,7 +426,7 @@ def test_late_deletion_keeps_marker_incomplete_until_callee_retarget(tmp_path):
 
 def test_empty_incremental_scan_keeps_graph_incomplete(tmp_path):
     # PR #1172: zero live candidates are not a complete call graph.
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     try:
         result = IncrementalSync(cache).sync()
         outcome = (result.scanned, cache.call_graph_built())
@@ -939,7 +940,7 @@ class TestFailedFileCleanup:
 
         source = tmp_path / "flaky.py"
         source.write_text("def residue():\n    return 1\n")
-        cache = ASTCache(str(tmp_path))
+        cache = engine_cache(tmp_path)
         cache.index_file(str(source))
         conn = cache.get_conn()
         sync = IncrementalSync(cache)
@@ -978,7 +979,7 @@ def test_incremental_sync_preserves_snapshot_candidate_order(tmp_path):
     first.write_text("z = 1\n")
     second.write_text("a = 1\n")
     snapshot = _snapshot(tmp_path, first, second)
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     seen: list[str] = []
     original = cache.index_file
 
@@ -1024,7 +1025,7 @@ def test_incremental_sync_snapshot_error_clears_graph_complete_marker(tmp_path):
         errors=1,
         limited=0,
     )
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     mark_call_graph_built(cache.get_conn())
 
     try:
@@ -1044,7 +1045,7 @@ def test_incremental_sync_reports_mutation_during_processing(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
     snapshot = _snapshot(tmp_path, path)
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     original = cache.index_file
     callback_details: list[dict] = []
 
@@ -1085,7 +1086,7 @@ def test_late_reclassification_preserves_other_file_details(tmp_path):
     first.write_text("a = 1\n")
     second.write_text("b = 1\n")
     snapshot = _snapshot(tmp_path, first, second)
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     original = cache.index_file
 
     def mutate_first_after_second(file_path: str, language: str | None = None):
@@ -1125,7 +1126,7 @@ def test_incremental_sync_rolls_back_mutation_during_processing(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("import os\n\ndef before():\n    return os.getcwd()\n")
     snapshot = _snapshot(tmp_path, path)
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     original = cache.index_file
 
     def index_then_mutate(file_path: str, language: str | None = None):
@@ -1171,7 +1172,7 @@ def test_incremental_sync_detects_late_mutation_without_callback(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
     snapshot = _snapshot(tmp_path, path)
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     original = cache.index_file
 
     def index_then_mutate(file_path: str, language: str | None = None):
@@ -1196,7 +1197,7 @@ def test_incremental_sync_reports_preexisting_snapshot_change_to_callback(tmp_pa
     path.write_text("value = 1\n")
     snapshot = _snapshot(tmp_path, path)
     path.unlink()
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     callback_details: list[dict] = []
 
     try:
@@ -1224,7 +1225,7 @@ def test_preexisting_snapshot_modification_is_only_reported_as_skipped(tmp_path)
     # PR #1253 review 3754914626: selected mutations are not scope deletions.
     path = tmp_path / "app.py"
     path.write_text("import os\n\ndef before():\n    return os.getcwd()\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_file(str(path))
     snapshot = _snapshot(tmp_path, path)
     path.write_text("def after():\n    return 2\n")
@@ -1296,7 +1297,7 @@ def test_candidate_snapshot_prunes_cached_row_outside_selected_scope(tmp_path):
     outside = tmp_path / "outside.py"
     selected.write_text("selected = True\n")
     outside.write_text("outside = True\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_file(str(selected))
     cache.index_file(str(outside))
     snapshot = _snapshot(tmp_path, selected)
@@ -1317,7 +1318,7 @@ def test_preexisting_snapshot_deletion_runs_backfills_and_restores_marker(tmp_pa
     # PR #1253 review 3755143808: an unlinked selected path is a deletion.
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_file(str(path))
     mirror = tmp_path / ".ast-cache" / "knowledge-graph.lbug"
     mirror.write_text("stale mirror", encoding="utf-8")
@@ -1383,7 +1384,7 @@ def test_deletion_mirror_cleanup_failure_rejects_certification(tmp_path, monkeyp
 
     path = tmp_path / "app.py"
     path.write_text("value = 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_file(str(path))
     path.unlink()
     snapshot = _snapshot(tmp_path)
@@ -1462,7 +1463,7 @@ def test_custom_db_deletion_does_not_mutate_project_mirror(tmp_path, monkeypatch
 def test_preexisting_snapshot_mutation_removes_ladybug_mirror(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_file(str(path))
     snapshot = _snapshot(tmp_path, path)
     mirror = tmp_path / ".ast-cache" / "knowledge-graph.lbug"
@@ -1579,7 +1580,7 @@ def test_late_new_file_mutation_rolls_back_new_counter(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
     snapshot = _snapshot(tmp_path, path)
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     original = cache.index_file
 
     def index_then_mutate(file_path: str, language: str | None = None):
@@ -1603,7 +1604,7 @@ def test_late_disappearance_reclassifies_index_error_as_snapshot_change(tmp_path
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
     snapshot = _snapshot(tmp_path, path)
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     original = cache.index_file
 
     def disappear_before_index(file_path: str, language: str | None = None):
@@ -1635,7 +1636,7 @@ def test_late_disappearance_reclassifies_index_error_as_snapshot_change(tmp_path
 def test_late_updated_file_mutation_rolls_back_updated_counter(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_file(str(path))
     path.write_text("value = 2\n")
     snapshot = _snapshot(tmp_path, path)
@@ -1661,7 +1662,7 @@ def test_late_updated_file_mutation_rolls_back_updated_counter(tmp_path):
 def test_late_unchanged_file_mutation_rolls_back_unchanged_counter(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_file(str(path))
     snapshot = _snapshot(tmp_path, path)
 
@@ -1689,7 +1690,7 @@ def test_late_mutation_unresolves_edges_from_other_files(tmp_path):
     caller.write_text(
         "from target import target\n\ndef caller():\n    return target()\n"
     )
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_project(workers=0)
     snapshot = _snapshot(tmp_path, target, caller)
     sync = IncrementalSync(cache)
@@ -1788,7 +1789,7 @@ def test_incremental_stamp_failure_does_not_delete_manifest(tmp_path):
 
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_project(workers=0)
     snapshot = _snapshot(tmp_path, path)
     schema.stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
@@ -1998,7 +1999,7 @@ def test_frozen_incremental_uses_logical_key_and_language(tmp_path):
     frozen_path = snapshot.selected_entries[0].frozen_path
     assert frozen_path is not None
     path.write_text("def later_live_symbol():\n    return 2\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     try:
         result = IncrementalSync(cache).sync(
             max_files=10,
@@ -2269,7 +2270,7 @@ def test_truncated_unchanged_snapshot_clears_global_certification(tmp_path):
         walk_fn=lambda _root: (str(first), str(second)),
         language_fn=_python_language,
     )
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_file(str(first))
     conn = cache.get_conn()
     mark_call_graph_built(conn)
@@ -2301,7 +2302,7 @@ def test_real_file_certification_lifecycle(tmp_path, operation):
     # PR #1350：从真实 index_file 行出发，验证缓存、替换、删除和重新认证的持久状态。
     path = tmp_path / "app.py"
     path.write_text("def original(): return 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     try:
         with patch("time.time", return_value=1000):
             assert cache.index_file(str(path))["status"] == "indexed"
@@ -2352,7 +2353,7 @@ def test_certification_write_denial_cannot_report_complete(tmp_path):
     # PR #1350：真实 SQLite 拒绝认证字段更新时，必须撤销全局认证并报告错误。
     path = tmp_path / "app.py"
     path.write_text("def original(): return 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     try:
         cache.index_file(str(path))
         conn = cache.get_conn()
@@ -2403,7 +2404,7 @@ def test_failed_file_write_rolls_back_its_certification_only(tmp_path):
     good, bad = tmp_path / "good.py", tmp_path / "bad.py"
     good.write_text("def good(): return 1\n", encoding="utf-8")
     bad.write_text("def old_bad(): return 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     try:
         cache.index_file(str(good))
         cache.index_file(str(bad))
@@ -2448,7 +2449,7 @@ def test_late_source_mutation_resets_certification_through_sync(tmp_path):
     good, bad = tmp_path / "good.py", tmp_path / "bad.py"
     good.write_text("def good(): return 1\n", encoding="utf-8")
     bad.write_text("def original(): return 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     try:
         cache.index_file(str(good))
         cache.index_file(str(bad))
@@ -2493,7 +2494,7 @@ def test_failed_file_certification_reset_denial_rolls_back(tmp_path, truncated):
         tmp_path / name for name in ("a_good.py", "b_bad.py", "z_unseen.py")
     )
     good.write_text("def good(): return 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     try:
         with patch("time.time", return_value=1000):
             cache.index_file(str(good))

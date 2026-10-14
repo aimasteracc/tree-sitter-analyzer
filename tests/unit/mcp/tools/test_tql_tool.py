@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tests.unit.hyphae.test_evaluator import (
     FakeCache,
     FakeCacheWithConn,
@@ -281,6 +282,8 @@ def indexed_tql(tmp_path):
         encoding="utf-8",
     )
     tool = TqlExecuteTool(str(tmp_path))
+    # #1554：默认库首写后只读发布；失败场景需改写数据库，故注入原地写的旧库。
+    tool._cache = legacy_cache(tmp_path)
     cache = tool._get_cache()
     cache.index_file(str(source))
     yield tool, cache

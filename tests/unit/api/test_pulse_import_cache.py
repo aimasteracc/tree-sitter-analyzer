@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.api.pulse import query_pulse
 
 
@@ -25,13 +26,11 @@ class _BindingFetchCounter:
 
 
 def _indexed_two_file_project(tmp_path):
-    from tree_sitter_analyzer.ast_cache import ASTCache
-
     (tmp_path / "mod.py").write_text("def run():\n    pass\n", encoding="utf-8")
     (tmp_path / "consumer.py").write_text(
         "from mod import run\nrun()\n", encoding="utf-8"
     )
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     for name in ("mod.py", "consumer.py"):
         cache.index_file(str(tmp_path / name))
     return cache

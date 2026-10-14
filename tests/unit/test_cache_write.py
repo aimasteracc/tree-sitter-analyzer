@@ -7,13 +7,14 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
+
 
 def test_cached_project_cycle_drains_51_files_without_reparse(tmp_path, monkeypatch):
     """PR #1350/#1352：两个启用周期分别处理 50/1 个真实文件；缓存周期不重做解析或图回填。"""
     from unittest.mock import Mock
 
     from tree_sitter_analyzer import git_activation
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.cache import extraction, indexer
 
     for i in range(51):
@@ -28,7 +29,7 @@ def test_cached_project_cycle_drains_51_files_without_reparse(tmp_path, monkeypa
     monkeypatch.setattr(git_activation, "compute_symbol_activation", compute)
     monkeypatch.setattr(extraction, "_worker_index_file", parse_file)
     monkeypatch.setattr(indexer, "post_index_backfill", backfill)
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         first = cache.index_project(workers=0, include_activation=True)
         assert (first["indexed"], first["errors"], first["activation_flushed"]) == (
@@ -92,10 +93,9 @@ def test_cached_cycle_respects_activation_disable(
     from unittest.mock import Mock
 
     from tree_sitter_analyzer import git_activation
-    from tree_sitter_analyzer.ast_cache import ASTCache
 
     (tmp_path / "a.py").write_text("def run():\n    pass\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_project(workers=0, include_activation=True)
         db = cache.get_conn()
@@ -433,10 +433,9 @@ def test_real_migration_record_failure_can_retry_without_false_version(
     tmp_path, version, table, column, column_type, failure
 ):
     # PR #1350/#1352：版本写入失败时连 DDL 一并回滚，重试才允许发布列和版本。
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.cache import schema
 
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         conn = cache.get_conn()
         conn.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
@@ -496,14 +495,13 @@ def test_activation_sql_failure_leaves_retryable_rows_and_no_transaction(
     tmp_path, failure
 ):
     # PR #1350：真实 UPDATE 故障不能遗留打开事务，也不能把未计算数据标成 computed。
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.cache.write import _flush_pending_activations
 
     source = tmp_path / "app.py"
     source.write_text(
         "def first(): return 1\ndef second(): return 2\n", encoding="utf-8"
     )
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         assert cache.index_file(str(source))["status"] == "indexed"
         conn = cache.get_conn()
@@ -559,11 +557,10 @@ def test_activation_sql_failure_leaves_retryable_rows_and_no_transaction(
 
 def test_single_file_index_keeps_failed_activation_retryable(tmp_path):
     # PR #1350：辅助 git 信息写失败不撤销已成功的索引，也不能泄漏 SQLite 事务。
-    from tree_sitter_analyzer.ast_cache import ASTCache
 
     path = tmp_path / "app.py"
     path.write_text("def answer(): return 42\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         conn = cache.get_conn()
         conn.execute(
@@ -588,9 +585,9 @@ def test_single_file_index_keeps_failed_activation_retryable(tmp_path):
 
 def test_reopen_rejects_claimed_v15_without_activation_column(tmp_path):
     # PR #1350：版本号不能替代真实 schema，缺失 activation_state 必须在初始化边界拒绝。
-    from tree_sitter_analyzer.ast_cache import ASTCache, SchemaIntegrityError
+    from tree_sitter_analyzer.ast_cache import SchemaIntegrityError
 
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     db = cache.db_path
     cache.close()
     with sqlite3.connect(db) as conn:
@@ -601,18 +598,17 @@ def test_reopen_rejects_claimed_v15_without_activation_column(tmp_path):
     with pytest.raises(
         SchemaIntegrityError, match="ast_symbol_activation.activation_state"
     ):
-        reopened = ASTCache(str(tmp_path))
+        reopened = legacy_cache(str(tmp_path))
         reopened.close()
 
 
 def test_activation_read_permission_failure_is_reported(tmp_path):
     # PR #1350：真实 SQLite READ 拒绝仍保留待处理数据，且不能返回零错误。
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.cache.write import _flush_pending_activations
 
     path = tmp_path / "app.py"
     path.write_text("def answer(): return 42\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_file(str(path))
         conn = cache.get_conn()
@@ -646,7 +642,6 @@ def test_activation_driver_os_error_rolls_back_without_git_degradation(
     tmp_path, monkeypatch
 ):
     # PR #1350：驱动层在第二条统计写入抛出 OS 错误，不能遗留第一条更新或降级状态。
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.cache.write import _flush_pending_activations
 
     class InterruptibleConnection(sqlite3.Connection):
@@ -670,7 +665,7 @@ def test_activation_driver_os_error_rolls_back_without_git_degradation(
     )
     path = tmp_path / "app.py"
     path.write_text("def first(): return 1\ndef second(): return 2\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_file(str(path))
         conn = cache.get_conn()
@@ -700,9 +695,8 @@ def test_activation_driver_os_error_rolls_back_without_git_degradation(
 
 def test_post_index_flush_is_not_duplicated(tmp_path):
     # PR #1350/#1352：真实项目周期中图回填与激活各司其职，不能重复扫描激活队列。
-    from tree_sitter_analyzer.ast_cache import ASTCache
 
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         statements = []
         conn = cache.get_conn()
