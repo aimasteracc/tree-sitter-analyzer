@@ -1232,7 +1232,8 @@ class TestSnapshotOpenBoundaries:
         import tree_sitter_analyzer.index_snapshot as owner
 
         self._certified_cache(tmp_path)
-        monkeypatch.setattr(owner, "_CAPTURE_DEADLINE_SECONDS", -1.0)
+        # #1562：status 改用认证期限，经由它驱动超期。
+        monkeypatch.setattr(owner, "_CERTIFICATION_DEADLINE_SECONDS", -1.0)
 
         result = await CodeGraphStatusTool(str(tmp_path)).execute(
             {"output_format": "json"}
