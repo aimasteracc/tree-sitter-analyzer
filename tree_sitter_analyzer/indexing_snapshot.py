@@ -43,6 +43,7 @@ def walk_index_candidate_entries(
     project_root: str,
     *,
     excluded_dir_names: frozenset[str] = frozenset(),
+    discovery_seconds: float = _CANDIDATE_DISCOVERY_SECONDS,
 ) -> Iterable[str]:
     """Incrementally enumerate candidates while charging every directory entry."""
     return _walk_candidate_entries(
@@ -50,7 +51,7 @@ def walk_index_candidate_entries(
         excluded_dir_names=excluded_dir_names,
         entry_budget=_CANDIDATE_ENTRY_BUDGET,
         path_byte_budget=_CANDIDATE_PATH_BYTE_BUDGET,
-        discovery_seconds=_CANDIDATE_DISCOVERY_SECONDS,
+        discovery_seconds=discovery_seconds,
         budget_error=_CANDIDATE_DISCOVERY_BUDGET_ERROR,
     )
 
@@ -265,6 +266,7 @@ def build_index_candidate_snapshot(
     language_fn: Callable[[str], str | None],
     language_filter: str | None = None,
     materialize: bool = False,
+    discovery_seconds: float = _CANDIDATE_DISCOVERY_SECONDS,
 ) -> IndexCandidateSnapshot:
     """Walk once and freeze file ordering, scope decisions, and fingerprints.
 
@@ -288,7 +290,7 @@ def build_index_candidate_snapshot(
     discovered = selected = excluded = skipped = errors = limited = 0
     yielded = path_bytes = 0
     discovery_error: str | None = None
-    deadline = time.monotonic() + _CANDIDATE_DISCOVERY_SECONDS
+    deadline = time.monotonic() + discovery_seconds
 
     walker = iter(walk_fn(logical_root))
     while True:

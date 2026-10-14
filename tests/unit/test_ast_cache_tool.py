@@ -714,3 +714,41 @@ def test_index_mode_returns_typed_error_when_source_hash_budget_runs_out(
         result["published"],
         result["files_bound"],
     ) == (False, "INDEX_GENERATION_SOURCE_HASH_BUDGET_EXCEEDED", False, 0)
+
+
+def _index_while_editing(tmp_path, monkeypatch):
+    """构建期间改写源码，使发布复核见到真实变化。"""
+    import tree_sitter_analyzer.cache.indexer as indexer
+
+    source = tmp_path / "a.py"
+    source.write_text("def f():\n    return 1\n", encoding="utf-8")
+    original = indexer.run_index_project
+
+    def edit_then_index(*args, **kwargs):
+        source.write_text("def f():\n    return 12345\n", encoding="utf-8")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(indexer, "run_index_project", edit_then_index)
+    return asyncio.run(ASTCacheTool(str(tmp_path)).execute({"mode": "index"}))
+
+
+def test_index_mode_returns_typed_retryable_error_when_source_changes(
+    tmp_path, monkeypatch
+):
+    # Issue #1595: INDEX_GENERATION_SOURCE_CHANGED escaped as error_type=internal
+    # with "Review the error message"; it is retryable and names the change.
+    result = _index_while_editing(tmp_path, monkeypatch)
+    assert (
+        result["success"],
+        result["error_code"],
+        result["retryable"],
+        result["published"],
+        result["changes"],
+    ) == (False, "INDEX_GENERATION_SOURCE_CHANGED", True, False, ["modified: a.py"])
+
+
+def test_index_mode_source_change_leaves_no_orphan_generation(tmp_path, monkeypatch):
+    # Issue #1595: the failed build left a 336 MB generation behind.
+    _index_while_editing(tmp_path, monkeypatch)
+    generations = tmp_path / ".ast-cache" / "index-generations" / "generations"
+    assert list(generations.iterdir()) == []

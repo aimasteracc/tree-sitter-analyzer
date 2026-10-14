@@ -551,6 +551,7 @@ class ASTCacheTool(BaseMCPTool):
 
         if mode == "index":
             from ...cache.source_hash_budget import SourceHashBudgetExceeded
+            from ...cache.source_recheck import SourceChanged, source_changed_failure
 
             try:
                 return self._handle_index(arguments, cache)
@@ -559,6 +560,9 @@ class ASTCacheTool(BaseMCPTool):
                 from ...cache.generation_indexing import source_hash_budget_failure
 
                 return source_hash_budget_failure(exc)
+            except SourceChanged as exc:
+                # #1595：源码变化是可重试的类型化失败，不是 internal 错误。
+                return source_changed_failure(exc)
         if mode == "lookup":
             return self._handle_lookup(arguments, cache)
         if mode in ("search", "fts_search"):

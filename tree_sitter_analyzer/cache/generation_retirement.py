@@ -71,6 +71,17 @@ def _remove(storage: Path, directory: Path, sealed: bool) -> bool:
     return not directory.exists()
 
 
+def retire_unpublished(storage: Path, generation_id: str) -> bool:
+    """立即回收一个从未发布的失败构建版本，返回是否已删除（#1595）。
+
+    失败构建密封后与历史版本无法区分，会按“最新两个”保留策略再存活 24 小时
+    （dogfood 实测 336 MB 孤儿）。它从未进入选择器，没有读者依赖它；仍走墓碑→探测钉。
+    """
+    directory = storage / "generations" / generation_id
+    verdict = _verified(directory) if os.path.lexists(directory) else None
+    return verdict is not None and _remove(storage, directory, verdict[0])
+
+
 def retire_generations(
     storage: Path, active_id: str, *, now: float | None = None
 ) -> list[str]:
