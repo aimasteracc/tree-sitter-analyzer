@@ -776,6 +776,71 @@ async def test_certified_pulse_rejects_save_during_read(certified_pulse_project)
     assert evidence["freshness"] == "unknown"
 
 
+async def test_pulse_certification_deadline_names_next_step(
+    certified_pulse_project, monkeypatch
+):
+    # Issue #1561：RFC-0030 禁止发布未认证 Pulse；超出认证期限时须给出可执行下一步。
+    from tree_sitter_analyzer import index_snapshot
+    from tree_sitter_analyzer.api.pulse_evidence import CERTIFICATION_BOUND_NEXT_STEP
+
+    monkeypatch.setattr(index_snapshot, "_CERTIFICATION_DEADLINE_SECONDS", -1.0)
+
+    result = await PulseTool(str(certified_pulse_project)).execute(
+        {"file": "leaf.py", "symbol": "leaf"}
+    )
+
+    assert result == {
+        "success": False,
+        "error_code": "SOURCE_EVIDENCE_UNAVAILABLE",
+        "error": "Pulse source evidence unavailable: INDEX_SNAPSHOT_DEADLINE",
+        "source_evidence": {
+            "freshness": "unknown",
+            "snapshot_id": None,
+            "source_generation": None,
+            "reason": "INDEX_SNAPSHOT_DEADLINE",
+        },
+        "next_step": CERTIFICATION_BOUND_NEXT_STEP.format(
+            reason="INDEX_SNAPSHOT_DEADLINE"
+        ),
+    }
+
+
+async def test_certified_pulse_shares_one_certification_deadline(
+    certified_pulse_project, monkeypatch
+):
+    # Issue #1561：捕获与读后复核共用一个 60 秒绝对期限，复核不得另起预算。
+    from tree_sitter_analyzer import index_snapshot
+
+    observed: list[tuple[str, float]] = []
+    lease = index_snapshot.lease_existing_snapshot
+    verify = index_snapshot.verify_snapshot_source_current
+
+    def recording_lease(root, *, deadline):
+        observed.append(("lease", deadline))
+        return lease(root, deadline=deadline)
+
+    def recording_verify(snapshot, *, deadline):
+        observed.append(("verify", deadline))
+        return verify(snapshot, deadline=deadline)
+
+    monkeypatch.setattr(index_snapshot, "lease_existing_snapshot", recording_lease)
+    monkeypatch.setattr(
+        index_snapshot, "verify_snapshot_source_current", recording_verify
+    )
+    started = index_snapshot._clock()
+
+    result = await PulseTool(str(certified_pulse_project)).execute(
+        {"file": "leaf.py", "symbol": "leaf"}
+    )
+
+    assert (result["success"], [kind for kind, _ in observed]) == (
+        True,
+        ["lease", "verify"],
+    )
+    assert observed[0][1] == observed[1][1]
+    assert round(observed[0][1] - started) == 60
+
+
 @pytest.mark.parametrize("failure", ["query", "save"])
 async def test_certified_pulse_releases_readers_after_failure(
     certified_pulse_project, failure

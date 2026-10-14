@@ -126,22 +126,28 @@ _REQUIRED_COLUMNS = {
 _FINGERPRINT_DEADLINE_SECONDS = 5.0
 # 单次便携式扫描允许配置有限预算；超时不等同于源变化，也不能放行认证。
 _FINGERPRINT_DEADLINE_ENV = "TSA_FINGERPRINT_DEADLINE_SECONDS"
+# #1561：建库末尾的认证盖戳（索引指纹 + 源码捕获）共用一个绝对期限。
+# 实测 2,401 文件 / 479,899 行：索引指纹 18.2 秒、源码双遍扫描 5-9 秒，
+# 旧的 5 秒上限使约 700 文件以上的索引永远无法认证。120 秒覆盖行预算
+# (_FINGERPRINT_ROW_BUDGET = 2M 行，按实测速率约 76 秒) 的最坏情况；
+# 它限制的是写事务 (BEGIN IMMEDIATE) 的持锁时间，不是每次查询的延迟。
+_STAMP_DEADLINE_SECONDS = 120.0
 
 
 def _fingerprint_deadline_seconds() -> float:
-    """读取（可配置的）单次源指纹遍历墙钟上限，下限 1 秒防误配。"""
+    """读取（可配置的）认证盖戳墙钟上限，下限 1 秒防误配。"""
     # 测试会以 PortableOS 桩替换 os 模块强制走便携分支(无 environ);
     # 防御式读取,桩环境下回落默认值
     env = getattr(os, "environ", None)
     raw = env.get(_FINGERPRINT_DEADLINE_ENV, "") if env else ""
     if not raw:
-        return _FINGERPRINT_DEADLINE_SECONDS
+        return _STAMP_DEADLINE_SECONDS
     try:
         value = float(raw)
     except ValueError:
-        return _FINGERPRINT_DEADLINE_SECONDS
+        return _STAMP_DEADLINE_SECONDS
     if not math.isfinite(value):
-        return _FINGERPRINT_DEADLINE_SECONDS
+        return _STAMP_DEADLINE_SECONDS
     return max(1.0, value)
 
 
@@ -215,18 +221,19 @@ def stamp_full_index_manifest(
         root = os.path.realpath(os.path.abspath(project_root))
         scope = source_scope or make_source_scope_descriptor()
         scope_json = canonical_source_scope_descriptor(scope)
+        stamp_deadline = time.monotonic() + _fingerprint_deadline_seconds()
         source = source_fingerprint(conn, root)
-        index = index_fingerprint(conn, root)
+        index = index_fingerprint(conn, root, deadline=stamp_deadline)
         recorded = recorded_source_rows(conn)
         if os.name == "posix" and os.path.exists("/dev/fd"):
-            current = capture_current_source_snapshot(root, scope)
+            current = capture_current_source_snapshot(
+                root, scope, deadline=stamp_deadline
+            )
         else:
             from .portable_source_snapshot import capture_portable_source_snapshot
 
             current = capture_portable_source_snapshot(
-                root,
-                scope,
-                deadline=time.monotonic() + _fingerprint_deadline_seconds(),
+                root, scope, deadline=stamp_deadline
             )
         if current.state != "exact" or current.rows != recorded:
             # 携带具体原因(#1364 诊断):区分超时/不安全/行不一致三种死法

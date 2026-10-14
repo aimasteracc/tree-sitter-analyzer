@@ -222,11 +222,13 @@ def private_wal_database(
     deadline: float,
     byte_limit: int,
     check_deadline: Callable[[float], None],
+    content_key: list[str] | None = None,
 ) -> Iterator[tuple[str, int | None]]:
     """只用只读 fd 捕获稳定的主库与 WAL；SQLite 只能打开返回的私有路径。
 
     不复制 SHM，不获取源 SQLite 连接。两平台均要求句柄身份绑定、完整字节
     复核和前后身份一致；缺少能力时拒绝，不能退化成路径猜测。
+    给出 ``content_key`` 时追加私有副本各文件的 SHA-256（#1561 指纹备忘录键）。
     """
     if os.name == "nt" and _WINDOWS_WAL_SUPPORTED and _WAL_FD_COPY_SUPPORTED:
         from .index_snapshot_windows import pinned_windows_files
@@ -243,6 +245,7 @@ def private_wal_database(
                 deadline=deadline,
                 byte_limit=byte_limit,
                 check_deadline=check_deadline,
+                content_key=content_key,
             ) as copied:
                 yield copied
         return
@@ -325,6 +328,7 @@ def private_wal_database(
             deadline=deadline,
             byte_limit=byte_limit,
             check_deadline=check_deadline,
+            content_key=content_key,
         ) as copied:
             yield copied
 
@@ -338,6 +342,7 @@ def _copy_pinned_wal_files(
     deadline: float,
     byte_limit: int,
     check_deadline: Callable[[float], None],
+    content_key: list[str] | None = None,
 ) -> Iterator[tuple[str, int | None]]:
     """两平台共享完整字节复制、WAL 验证、预算和发布后复核。"""
     from .frozen_git_index import safe_external_temp_parent
@@ -429,6 +434,12 @@ def _copy_pinned_wal_files(
                     if wal_frames and not current_frames:
                         raise ValueError("CONCURRENT_WRITER")
                     wal_frames = current_frames
+        if content_key is not None:
+            # #1561：复制时已算出的完整字节摘要即索引指纹的内容寻址键。
+            content_key.extend(
+                f"{name}:{captured.hex()}"
+                for (name, _, _), captured in zip(files, hashes, strict=True)
+            )
         yield os.path.join(private, "index.db"), wal_frames
         # 跨主库/WAL 的完整复核发生在私有 SQLite 读取之后、发布能力之前。
         for (_, fd, expected), captured in zip(files, hashes, strict=True):
