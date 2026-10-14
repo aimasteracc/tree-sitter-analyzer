@@ -170,3 +170,28 @@ class _OsProxy:
 
     def __getattr__(self, name):
         return self._overrides.get(name, getattr(os, name))
+
+
+def without_grammar(monkeypatch, missing: str) -> None:
+    """让某个可选语法表现为未安装；直接改类方法，绕过进程内的可用性缓存（#1562/#1581）。"""
+    import tree_sitter_analyzer.core.parser as parser_module
+    from tree_sitter_analyzer.language_loader import LanguageLoader
+
+    installed = parser_module.is_grammar_installed
+    monkeypatch.setattr(
+        parser_module,
+        "is_grammar_installed",
+        lambda language: language != missing and installed(language),
+    )
+    available = LanguageLoader.is_language_available
+    load = LanguageLoader.load_language
+    monkeypatch.setattr(
+        LanguageLoader,
+        "is_language_available",
+        lambda self, language: language != missing and available(self, language),
+    )
+    monkeypatch.setattr(
+        LanguageLoader,
+        "load_language",
+        lambda self, language: None if language == missing else load(self, language),
+    )
