@@ -14,6 +14,10 @@ from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 from ....project_graph import BlastRadius, DependencyGraph
 from .call_graph_impact import compute_call_graph_impact
 from .change_impact_cached_graph import load_cached_dependency_graph
+from .change_impact_index_graph import (
+    dependency_graph_provenance,
+    load_verified_index_graph,
+)
 from .change_impact_response import (
     LARGE_DIRTY_DIFF_THRESHOLD,
     AgentSummaryContext,
@@ -432,6 +436,14 @@ def _load_dependency_graph(project_root: str | None) -> Any | None:
     cached = load_cached_dependency_graph(project_root)
     if cached is not None:
         return cached
+    try:
+        # Issue #1591：逐文件校验索引证据，避免每次从源码完整重建导入图。
+        verified = load_verified_index_graph(project_root)
+    except Exception:
+        logger.debug("verified index graph failed; rebuilding", exc_info=True)
+        verified = None
+    if verified is not None:
+        return verified
     try:
         return DependencyGraph(project_root or ".")
     except Exception:
@@ -913,6 +925,8 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
             agent_summary=agent_summary,
         )
     )
+    # Issue #1591：如实说明导入图证据来自索引、源码重建还是不可用。
+    result["dependency_graph"] = dependency_graph_provenance(graph)
 
     if call_graph_data is not None:
         result["call_graph_impact"] = call_graph_data
