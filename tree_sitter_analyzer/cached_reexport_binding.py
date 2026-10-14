@@ -103,9 +103,7 @@ class PackageReexportBinder:
         base_name: str,
         functions_by_file: dict[str, list[FunctionRef]],
     ) -> list[FunctionRef]:
-        """返回 ``receiver.base_name`` 在静态证据下的唯一定义；无法确定时返回空。"""
-        if not receiver or not resolved_file:
-            return []
+        """返回 ``receiver.base_name`` 在静态证据下的定义；无法确定时返回空。"""
         index = self._get_index()
         if index is None:
             return []

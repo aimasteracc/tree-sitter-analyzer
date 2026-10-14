@@ -208,18 +208,15 @@ def not_in_index_hint(
     """符号不在索引中时的提示；索引可能过期时不得归咎于拼写。
 
     ``indexed`` 为真表示符号有定义行（#1578）：此时零结果是关于调用边的事实，
-    不得说成"不在索引中"并建议重建索引。
+    不得说成"不在索引中"并建议重建索引。索引过期的提示由 ``apply_source_evidence``
+    统一前置，这里不重复。
     """
-    stale = evidence.get("freshness") == "stale"
     if indexed:
-        tail = (
-            " The index is stale, so this is not evidence of absence." if stale else ""
-        )
         return (
             f"{func_name!r} is defined in the index and no resolved call edge "
-            f"reaches it.{tail}"
+            "reaches it."
         )
-    if stale:
+    if evidence.get("freshness") == "stale":
         return (
             f"Symbol {func_name!r} is not in the index, but the index is stale, "
             "so this is not evidence of absence."
