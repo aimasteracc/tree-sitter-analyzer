@@ -10,22 +10,8 @@ from typing import Any
 
 from .cli.argument_validator import CLIArgumentValidator
 
-# Import command classes
-from .cli.commands import (
-    AdvancedCommand,
-    DefaultCommand,
-    PartialReadCommand,
-    QueryCommand,
-    StructureCommand,
-    SummaryCommand,
-    TableCommand,
-)
-from .cli.info_commands import (
-    DescribeQueryCommand,
-    ListQueriesCommand,
-    ShowExtensionsCommand,
-    ShowLanguagesCommand,
-)
+# 命令类（cli.commands / cli.info_commands）在选中命令时才导入：
+# 它们会拉起分析栈，``--version`` 等快速路径不应承担该开销。
 from .output_manager import output_error, output_info, output_list
 from .query_loader import query_loader
 
@@ -80,6 +66,13 @@ def _validate_command_arguments(args: argparse.Namespace) -> bool:
 
 def _create_info_command(args: argparse.Namespace) -> Any:
     """Create commands that do not require a file path."""
+    from .cli.info_commands import (
+        DescribeQueryCommand,
+        ListQueriesCommand,
+        ShowExtensionsCommand,
+        ShowLanguagesCommand,
+    )
+
     if getattr(args, "list_queries", False):
         return ListQueriesCommand(args)
     if getattr(args, "describe_query", None):
@@ -135,6 +128,16 @@ def _print_filter_help(args: argparse.Namespace | None = None) -> None:
 
 def _create_file_command(args: argparse.Namespace) -> Any:
     """Create the highest-priority file-analysis command for parsed arguments."""
+    from .cli.commands import (
+        AdvancedCommand,
+        DefaultCommand,
+        PartialReadCommand,
+        QueryCommand,
+        StructureCommand,
+        SummaryCommand,
+        TableCommand,
+    )
+
     command_specs = (
         ("partial_read", PartialReadCommand),
         ("table", TableCommand),
@@ -189,6 +192,7 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
 def main() -> None:
     """Main entry point for the CLI."""
     _set_cli_log_environment()
+    _exit_if_bare_version_request(sys.argv[1:])
     parser = create_argument_parser()
     args = parser.parse_args(_normalize_agent_command_aliases(sys.argv[1:]))
     _apply_format_alias(args)
@@ -206,6 +210,26 @@ def main_doctor() -> None:
     """Entry point for tree-sitter-analyzer-doctor CLI script."""
     sys.argv = [sys.argv[0], "--doctor"] + sys.argv[1:]
     main()
+
+
+def _exit_if_bare_version_request(argv: list[str]) -> None:
+    """``--version`` 快速路径：仅当参数恰为 ``["--version"]`` 时生效。
+
+    完整解析器会导入全部参数组（含 MCP 工具与缓存栈，数百个模块）。
+    此处用同一 formatter 与同一 ``%(prog)s`` 版本动作的最小解析器输出完全相同的
+    文本并以退出码 0 退出；其余参数组合仍走完整解析器，保持原有校验顺序。
+    """
+    if argv != ["--version"]:
+        return
+    from . import __version__
+
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {__version__}"
+    )
+    parser.parse_args(argv)
 
 
 def _set_cli_log_environment() -> None:
