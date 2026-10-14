@@ -7,6 +7,7 @@ import re
 from typing import Any
 
 from ...call_graph import CachedCallGraph, CallGraph
+from .relation_freshness import index_identity
 
 _STDLIB_TOP_LEVELS = frozenset(
     {
@@ -138,14 +139,17 @@ class CodeGraphRelationToolMixin:
     project_root: str | None
     _call_graph: CallGraph | None
     _data_source: str
+    _graph_index_identity: tuple[Any, ...] | None
 
     def _init_relation_state(self) -> None:
         self._call_graph = None
         self._data_source = "unknown"
+        self._graph_index_identity = None
 
     def _reset_relation_state(self) -> None:
         self._call_graph = None
         self._data_source = "unknown"
+        self._graph_index_identity = None
 
     def _try_get_cache(self) -> Any:
         try:
@@ -172,9 +176,14 @@ class CodeGraphRelationToolMixin:
             return False
 
     def _get_call_graph(self) -> CallGraph:
-        if self._call_graph is None:
-            if not self.project_root:
-                raise ValueError("Project root not set. Call set_project_path first.")
+        if not self.project_root:
+            raise ValueError("Project root not set. Call set_project_path first.")
+        # dogfood 2026-10-14：内存调用图绑定索引身份，重建索引或 generation
+        # 切换后立即失效；身份检查只做几条聚合 SQL，不遍历源码树。
+        # 身份在构建前记录：构建期间若有写入，下一次调用最多多重建一次。
+        identity = index_identity(self.project_root)
+        if self._call_graph is None or identity != self._graph_index_identity:
+            self._graph_index_identity = identity
             cache = self._try_get_cache()
             if cache is not None:
                 self._call_graph = CachedCallGraph(self.project_root, cache=cache)
