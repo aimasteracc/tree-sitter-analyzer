@@ -930,3 +930,39 @@ def test_is_collectible_caller_unknown_language_accepts() -> None:
     assert _is_collectible_caller("src/mod.rb", "anything", "ruby") is True
     # No language hint and an unrecognised extension also accepts.
     assert _is_collectible_caller("src/mod.xyz", "whatever", "") is True
+
+
+@pytest.mark.asyncio
+async def test_test_map_keeps_name_only_test_caller(tmp_path) -> None:
+    # #1559：测试经由 `store.publish()`（接收者未知）调用时，测试映射不能漏掉它。
+    from tests.unit._navigation_test_support import index_ambiguous_publish_project
+
+    root = await index_ambiguous_publish_project(tmp_path)
+    result = await build_nav_facade(project_root=root).execute(
+        {
+            "action": "test_map",
+            "symbol": "GenerationStore.publish",
+            "file_path": "gen_store.py",
+            "output_format": "json",
+        }
+    )
+    assert result["test_functions"] == ["tests/test_gen_store.py::test_publish_any"]
+
+
+@pytest.mark.asyncio
+async def test_test_map_marks_name_only_test_caller(tmp_path) -> None:
+    # #1559：仅凭同名匹配映射到的测试必须单独列出。
+    from tests.unit._navigation_test_support import index_ambiguous_publish_project
+
+    root = await index_ambiguous_publish_project(tmp_path)
+    result = await build_nav_facade(project_root=root).execute(
+        {
+            "action": "test_map",
+            "symbol": "GenerationStore.publish",
+            "file_path": "gen_store.py",
+            "output_format": "json",
+        }
+    )
+    assert result["name_only_test_functions"] == [
+        "tests/test_gen_store.py::test_publish_any"
+    ]

@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from .cached_edge_resolution import CachedEdgeResolver
+from .call_graph_possible import PossibleEdgesMixin
 from .callee_resolution import CalleeResolver
 from .constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
 from .constants import JS_TS_MODULE_EXTS
@@ -99,7 +100,7 @@ class FunctionRef:
         return d
 
 
-class CallGraph:
+class CallGraph(PossibleEdgesMixin):
     """
     Project-level function call graph.
 
@@ -119,8 +120,8 @@ class CallGraph:
         self._func_by_file: dict[str, list[FunctionRef]] = defaultdict(list)
         self._callees: dict[FunctionRef, list[FunctionRef]] = defaultdict(list)
         self._callers: dict[FunctionRef, list[FunctionRef]] = defaultdict(list)
-        # #1559/#1560：无法区分的同名候选不成为边，只用于死代码的保守可达性。
-        self._possible_callees: dict[FunctionRef, list[FunctionRef]] = defaultdict(list)
+        # #1559/#1560：无法区分的同名候选不成为边，只供安全类消费者过近似。
+        self._init_possible_edges()
         self._call_edges: list[tuple[FunctionRef, FunctionRef, int]] = []
         self._built = False
         self._file_imports: dict[str, dict[str, str]] = {}
@@ -483,14 +484,6 @@ class CallGraph:
         self.build()
         return list(self._callees.get(func, []))
 
-    def reachable_callee_refs_of(self, func: "FunctionRef") -> list["FunctionRef"]:
-        """确定的被调用方加上无法区分的同名候选（#1559/#1560）。
-
-        死代码分析必须保守：只经由模糊调用到达的函数不能被判为死代码。
-        """
-        self.build()
-        return [*self._callees.get(func, []), *self._possible_callees.get(func, [])]
-
     def caller_refs_of(self, func: "FunctionRef") -> list["FunctionRef"]:
         """Return callers of *func* as ``FunctionRef`` objects.
 
@@ -825,7 +818,7 @@ class CachedCallGraph(CallGraph):
 
             # #1559/#1560：优先采用持久化解析，模糊的裸名匹配不再扇出成边。
             targets = edge_resolver.resolve(edge, caller_file)
-            self._possible_callees[caller_ref].extend(targets.possible)
+            self._add_possible_edges(caller_ref, targets.possible)
             for callee_ref in targets.certain:
                 self._callees[caller_ref].append(callee_ref)
                 self._callers[callee_ref].append(caller_ref)

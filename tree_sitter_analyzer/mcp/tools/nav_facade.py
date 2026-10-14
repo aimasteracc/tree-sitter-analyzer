@@ -467,7 +467,7 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         # Non-collectible helpers (Python ``_run``, Go ``setupServer``, …) in
         # test files, paired with the target they were reached from, for a
         # deferred one-hop walk-up after all direct callers are known (#807).
-        helper_refs: list[tuple[Any, Any]] = []
+        helper_refs: list[tuple[Any, Any, bool]] = []
 
         def _add_to_set(file_path: str, name: str) -> None:
             key = f"{file_path}::{name}"
@@ -476,9 +476,16 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
                 test_funcs.append(key)
                 test_file_set.add(file_path)
 
-        def _record_edge(target: Any, file_path: str, name: str) -> None:
+        # #1559：测试选择过近似——仅凭同名匹配到达的测试也收录，并单独列出。
+        certain_keys: set[str] = set()
+        name_only_keys: set[str] = set()
+
+        def _record_edge(
+            target: Any, file_path: str, name: str, name_only: bool = False
+        ) -> None:
             """Count one (target → test) coverage edge, deduped per target."""
             nonlocal total_edge_count
+            (name_only_keys if name_only else certain_keys).add(f"{file_path}::{name}")
             edge_key = (target.qualified_name(), f"{file_path}::{name}")
             if edge_key in counted_edges:
                 return
@@ -486,16 +493,21 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             total_edge_count += 1
             _add_to_set(file_path, name)
 
+        def _test_callers(ref: Any) -> list[tuple[Any, bool]]:
+            possible = list(graph.possible_caller_refs_of(ref))
+            certain = [(c, False) for c in graph.caller_refs_of(ref)]
+            return [*certain, *((c, True) for c in possible)]
+
         for target in targets:
-            for ref in graph.caller_refs_of(target):
+            for ref, ref_name_only in _test_callers(target):
                 if not is_test_file(ref.file_path):
                     continue
                 if _is_collectible_caller(
                     ref.file_path, ref.name, getattr(ref, "language", "")
                 ):
-                    _record_edge(target, ref.file_path, ref.name)
+                    _record_edge(target, ref.file_path, ref.name, ref_name_only)
                 else:
-                    helper_refs.append((target, ref))
+                    helper_refs.append((target, ref, ref_name_only))
 
         # Bug #807: a direct caller in a test file whose name does not match the
         # language test convention (e.g. a Python ``_run`` helper or a Go
@@ -509,15 +521,20 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         # though the test appears once in test_functions. _record_edge dedupes
         # only per (target, test) — mirroring the direct-caller path which counts
         # a raw edge per (target, caller) pair before deduping the function set.
-        for target, helper in helper_refs:
-            for parent in graph.caller_refs_of(helper):
+        for target, helper, helper_name_only in helper_refs:
+            for parent, parent_name_only in _test_callers(helper):
                 if not is_test_file(parent.file_path):
                     continue
                 if not _is_collectible_caller(
                     parent.file_path, parent.name, getattr(parent, "language", "")
                 ):
                     continue
-                _record_edge(target, parent.file_path, parent.name)
+                _record_edge(
+                    target,
+                    parent.file_path,
+                    parent.name,
+                    helper_name_only or parent_name_only,
+                )
 
         test_funcs_sorted = sorted(test_funcs)
         test_files_sorted = sorted(test_file_set)
@@ -533,6 +550,9 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             "test_files": test_files_sorted,
             "test_functions": capped,
             "edge_count": total_edge_count,
+            "name_only_test_functions": sorted(name_only_keys - certain_keys)[
+                :_MAX_TEST_MAP
+            ],
             "unique_function_count": unique_function_count,
             "truncated": truncated,
             "agent_summary": {
