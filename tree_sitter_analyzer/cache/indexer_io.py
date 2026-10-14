@@ -103,11 +103,10 @@ def parse_and_write(
     # 即使不是冻结文件，也不能重新走路径/mtime 缓存，取回与当前摘要不符的旧树。
     result = cache.parser.parse_code(source_code, language, filename=abs_path)
     if not result.success:
-        return {
-            "file": rel_path,
-            "status": "error",
-            "reason": result.error_message or "parse failed",
-        }
+        # 解析器拒绝这份字节（如缺语法）属稳定失败，不冻结其余文件的发布（#1554）。
+        from .publication_policy import stable_failure
+
+        return stable_failure(rel_path, result.error_message or "parse failed")
     symbols = _extract_symbols(result.tree, source_code, language)
     imports = _extract_imports(symbols)
     structure = _extract_structure(symbols)

@@ -66,9 +66,15 @@ def _process_one_index_result(
     """Apply one worker result dict to stats and DB (in-place)."""
     if r["status"] in ("io_error", "parse_failed"):
         stats["errors"] += 1
-        stats["files"].append(
-            {"file": r["rel_path"], "status": "error", "reason": r["reason"]}
-        )
+        if r["status"] == "parse_failed":
+            # 工作进程解析失败同样绑定已捕获字节，属稳定失败（#1554）。
+            from .publication_policy import stable_failure
+
+            stats["files"].append(stable_failure(r["rel_path"], r["reason"]))
+        else:
+            stats["files"].append(
+                {"file": r["rel_path"], "status": "error", "reason": r["reason"]}
+            )
         return
     insert_fn(r, indexed_at, include_activation=activation_enabled)
     stats["indexed"] += 1

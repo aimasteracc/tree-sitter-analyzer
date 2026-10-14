@@ -403,10 +403,12 @@ def test_parse_and_write_returns_exact_parser_failure():
         14,
     )
 
+    # #1554：解析器拒绝同一字节属稳定失败，不冻结其余文件的发布。
     assert result == {
         "file": "bad.py",
         "status": "error",
         "reason": "invalid source",
+        "failure_kind": "stable",
     }
 
 

@@ -31,10 +31,15 @@
     On a project that has never been indexed, `ASTCache(root)` reads an empty,
     read-only in-memory index (raw `get_conn()` writes fail, as on published
     caches), and `db_path` still reports `.ast-cache/index.db`.
-  - The first publication keeps files that indexed when other files failed,
-    for example when an optional grammar such as Swift or Lua is missing, as
-    the in-place route did. Later writes on such a project publish only
-    results without errors, which is the existing published-cache rule.
+  - A write publishes the files that indexed even when other files fail
+    stably, as the in-place route did. A stable failure is one that retrying
+    the same bytes cannot fix: a missing optional grammar such as Swift or Lua,
+    or a parse failure. Before, after the first publication such a project
+    stopped updating. Per-file parse errors now carry
+    `"failure_kind": "stable"`. These files get no rows, and the snapshot
+    manifest and call-graph marker stay revoked, so `completeness` is never
+    `complete`. Transient failures, such as a denied read or a failed write,
+    still publish nothing and keep the previous generation.
   - `IncrementalSync(ASTCache(root)).sync()` without a candidate now captures
     its own candidate. It reports `completeness: complete`, as it already did
     on published caches.

@@ -55,6 +55,10 @@ also publishes a generation, including the first write on a never-published proj
 (RFC-0032 slice 1, #1554). No write creates or updates the legacy
 `.ast-cache/index.db`. If a legacy file already exists, the first write copies it
 into the first generation; read-only calls never create or copy one.
+A write still publishes when the only failures are stable per-file failures
+(`failure_kind: stable`: missing grammar or a parse failure on the captured bytes).
+Those files stay unindexed and uncertified, so completeness stays partial or
+unknown. Any transient failure keeps the previous generation active.
 
 Legacy `.ast-cache/index.db` remains separate, so old writers cannot modify the
 published generation. Existing read sessions retain their version; generations are

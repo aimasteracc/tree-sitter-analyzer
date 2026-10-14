@@ -27,6 +27,7 @@ from .generation_store import (
     PreparedGeneration,
     permanent_rejections_only,
 )
+from .publication_policy import publishable_result, publishable_sync
 
 _T = TypeVar("_T")
 
@@ -53,7 +54,7 @@ def _first_publication(candidate: Any) -> bool:
     """首次发布前旧路由原地保留部分结果（如缺少可选语法时的其余文件）。
 
     无父版本可保护时，带单文件失败的结果照常发布，否则这类项目的自动索引
-    永远为空（#1554）；已发布项目仍只发布无失败的结果。
+    永远为空（#1554）；已发布项目只接受稳定单文件失败（见 publication_policy）。
     """
     return candidate.parent is None
 
@@ -94,12 +95,7 @@ def mutate_published_cache(
                 result = operation(writable)
             finally:
                 writable.close()
-            failed = isinstance(result, dict) and (
-                result.get("status") == "error"
-                or result.get("errors")
-                or result.get("backfill_errors")
-            )
-            if not failed or _first_publication(candidate):
+            if publishable_result(result) or _first_publication(candidate):
                 store.seal(selector)
                 store.publish(PreparedGeneration(candidate, selector, SyncResult()))
                 cache._adopt_published_generation()
@@ -137,11 +133,8 @@ def run_incremental_sync(
         finally:
             writable.close()
         permanent_cleanup = permanent_rejections_only(candidate.snapshot)
-        if _first_publication(candidate) or (
-            (result.scope_complete or permanent_cleanup)
-            and not result.errors
-            and not result.backfill_errors
-            and not result.manifest_certification_failed
+        if _first_publication(candidate) or publishable_sync(
+            result, permanent_cleanup=permanent_cleanup
         ):
             store.seal(selector)
             store.publish(
