@@ -58,17 +58,28 @@ def _delete_file_rows_if_table_present(
         )
 
 
+#: 受某文件影响的调用边：解析到该文件，或调用名属于该文件声明的符号（#1562）。
+INCOMING_RESOLUTION_ROWS_SQL = (
+    "SELECT id, metadata FROM edges "
+    "WHERE kind = 'calls' AND callee_resolved_file = ? "
+    "UNION SELECT id, metadata FROM edges "
+    "WHERE kind = 'calls' AND callee_name IN ("
+    "SELECT name FROM ast_symbol_rows WHERE file_path = ?)"
+)
+
+
 def _reset_incoming_edge_resolutions(
     conn: sqlite3.Connection,
     rel_path: str,
 ) -> None:
-    """撤销指向旧代际或受该文件符号唯一性影响的调用解析。"""
-    rows = conn.execute(
-        "SELECT id, metadata FROM edges "
-        "WHERE kind = 'calls' AND (callee_resolved_file = ? OR callee_name IN ("
-        "SELECT name FROM ast_symbol_rows WHERE file_path = ?))",
-        (rel_path, rel_path),
-    ).fetchall()
+    """撤销指向旧代际或受该文件符号唯一性影响的调用解析。
+
+    #1562：两个条件分成 UNION 两支，各走 ``idx_edges_resolved`` 与
+    ``idx_edges_callee_name``。原先的 ``OR`` 让规划器退回 ``idx_edges_kind``，
+    每个文件都扫描全部调用边，首次索引因此随边数二次增长（62,263 条边时
+    每次查询 252 ms，UNION 为 0.55 ms，结果集逐行一致）。
+    """
+    rows = conn.execute(INCOMING_RESOLUTION_ROWS_SQL, (rel_path, rel_path)).fetchall()
     for row in rows:
         metadata = json.loads(row["metadata"] or "{}")
         metadata.update(

@@ -740,3 +740,33 @@ dogfood 2026-10-14：同一 MCP 服务器内 `nav action=callers` 建索引后�
 `tests/unit/test_codegraph_callees_tool.py` 用同一个长寿命 nav 实例固定：重建索引后答案
 反映新调用者；未重建时 `source_evidence.freshness == "stale"` 且 next_step 给出刷新命令；
 新符号缺席时不归咎拼写；索引未变时内存调用图对象被复用。
+
+## 2026-10 — 进程级资源按文件重建，修一处不等于修完
+
+### Context
+
+#1562（dogfood 2026-10-14）：`index action=cache mode=index` 在 2398 个文件上耗时 3119 s。
+对 920 个文件的顺序索引做 cProfile（Windows 11，机器高负载）：总计 584 s，其中
+`_annotate_canonical_complexity` 每个文件新建一个 `PluginManager`，重扫
+`importlib.metadata.entry_points()`，占 293 s（146,280 次元数据读取）。
+`complexity_heatmap` 早已因同一缺陷修过一次，修复只落在那一处。同一次剖析里，
+`_reset_incoming_edge_resolutions` 的 `kind = 'calls' AND (A OR B IN (...))` 让规划器退回
+`idx_edges_kind`，每个文件扫描全部调用边：62,263 条边时每次查询 252 ms，改为 UNION
+两支各走专用索引后为 0.55 ms。两处修复后同一顺序索引降到 178 s（CPU 352 s → 147 s）。
+
+### Lessons learned
+
+1. **由安装环境决定的对象是进程级的。** 插件注册表、语法加载器、entry point 扫描不随
+   被处理的文件变化，在每文件路径上构造它们就是 O(文件数) 的重复 I/O。
+2. **修一个调用点时，搜遍同一构造。** `PluginManager()` 在仓库里有 9 处直接构造；只修
+   热图那一处，索引路径里的同一模式继续存在。修复时先 grep 全部调用点并判断哪些在
+   每文件循环里。
+3. **`OR` 连接的不同列条件会让 SQLite 放弃两条索引。** 每文件执行的查询必须用
+   `EXPLAIN QUERY PLAN` 固定，否则随边表增长退化为二次复杂度，而功能测试全绿。
+
+### Required guardrail
+
+`tests/unit/test_ast_extraction.py` 的 `test_plugin_manager_is_built_once_per_process`
+固定多次标注只构造一个 `PluginManager`；`tests/unit/test_cache_write.py` 的
+`test_incoming_resolution_lookup_uses_both_edge_indexes` 固定查询计划只走
+`idx_edges_resolved` 与 `idx_edges_callee_name`。

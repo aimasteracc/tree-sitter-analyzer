@@ -719,3 +719,52 @@ def test_post_index_flush_is_not_duplicated(tmp_path):
         assert conn.in_transaction is False
     finally:
         cache.close()
+
+
+def test_incoming_resolution_lookup_uses_both_edge_indexes(tmp_path):
+    """#1562：受影响边查询必须走两个专用索引，不能按 kind 扫全部调用边。
+
+    原 ``OR`` 写法让规划器选择 ``idx_edges_kind``，首次索引随边数二次增长
+    （62,263 条边时每次查询 252 ms）。这是查询计划的不变量，不是耗时上限。
+    """
+    from tree_sitter_analyzer.cache.write import INCOMING_RESOLUTION_ROWS_SQL
+
+    (tmp_path / "a.py").write_text("def f():\n    g()\n\ndef g():\n    pass\n", "utf-8")
+    cache = legacy_cache(str(tmp_path))
+    try:
+        cache.index_project(workers=0)
+        plan = [
+            row[3]
+            for row in cache.get_conn().execute(
+                "EXPLAIN QUERY PLAN " + INCOMING_RESOLUTION_ROWS_SQL, ("a.py", "a.py")
+            )
+            if str(row[3]).startswith("SEARCH edges")
+        ]
+    finally:
+        cache.close()
+    assert plan == [
+        "SEARCH edges USING INDEX idx_edges_resolved (callee_resolved_file=?)",
+        "SEARCH edges USING INDEX idx_edges_callee_name (callee_name=? AND kind=?)",
+    ]
+
+
+def test_reindexing_a_callee_file_resets_its_incoming_resolutions(tmp_path):
+    """#1562：UNION 改写后，指向被重写文件的调用边仍被撤销为 unknown。"""
+    from tree_sitter_analyzer.cache.write import _reset_incoming_edge_resolutions
+
+    (tmp_path / "a.py").write_text("from b import g\n\ndef f():\n    g()\n", "utf-8")
+    (tmp_path / "b.py").write_text("def g():\n    pass\n", "utf-8")
+    cache = legacy_cache(str(tmp_path))
+    try:
+        cache.index_project(workers=0)
+        conn = cache.get_conn()
+        query = (
+            "SELECT callee_resolution, callee_resolved_file FROM edges "
+            "WHERE kind = 'calls' AND callee_name = 'g'"
+        )
+        before = [tuple(r) for r in conn.execute(query)]
+        _reset_incoming_edge_resolutions(conn, "b.py")
+        after = [tuple(r) for r in conn.execute(query)]
+    finally:
+        cache.close()
+    assert (before, after) == ([("project", "b.py")], [("unknown", "")])
