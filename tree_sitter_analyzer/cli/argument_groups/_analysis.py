@@ -495,6 +495,14 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--ast-cache-include-details",
+        action="store_true",
+        help=(
+            "List every per-file detail for --ast-cache index, including "
+            "unchanged files (default: counts + at most 50 changed/errored files)"
+        ),
+    )
+    parser.add_argument(
         "--watch",
         action="store_true",
         help="Start background file watcher for auto-sync (shortcut for --ast-cache --ast-cache-mode watch_start)",

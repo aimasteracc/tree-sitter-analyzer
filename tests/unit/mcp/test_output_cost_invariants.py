@@ -404,3 +404,118 @@ def test_outline_wide_class_methods_bounded_by_cap(tmp_path) -> None:
     assert cls["methods_listed"] == DEFAULT_OUTLINE_CLASSES_CAP
     assert result["method_count"] == 500  # pre-cap total stays honest
     assert result["truncated"] is True
+
+
+# ── #1582: index action=cache mode=index — 未变文件默认不再逐个列出 ─────────────
+#
+# dogfood round 2（2026-10-14）：2417 文件仓库上只改 1 个文件的增量 index 仍返回
+# 320 KB，因为 ``files`` 明细逐个列出全部未变文件。修复后默认只列变化/出错文件，
+# 完整明细需 ``include_details=true``。
+# 实测（50 / 500 文件，改 1 个文件后的增量 run）：
+#   修复前 4133 B / 33388 B（随文件数线性增长）
+#   修复后 1189 B / 1195 B（差值只来自计数数字的位数）
+
+
+def _index_one_file_change(root, n: int, **extra) -> dict:
+    """建 n 个文件的项目，全量 index 后改 1 个文件，返回增量 index 响应。"""
+    from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
+
+    root.mkdir()
+    for i in range(n):
+        (root / f"m{i:04d}.py").write_text(f"def f{i}():\n    return {i}\n")
+    tool = ASTCacheTool(str(root))
+    asyncio.run(tool.execute({"mode": "index", **extra}))
+    (root / "m0000.py").write_text("def f0():\n    return 'changed'\n")
+    return asyncio.run(tool.execute({"mode": "index", **extra}))
+
+
+def test_index_one_file_incremental_size_independent_of_file_count(
+    tmp_path, monkeypatch
+) -> None:
+    """#1582 差分不变量：1 文件增量响应字节与项目文件总数无关（N=20 与 N=80）。
+
+    两个 N 的计数数字位数相同，所以字节必须完全相等；再精确钉住字节数。
+    N=80 会越过 64 个候选的进程池阈值，固定单进程以免测试被进程启动拖慢。
+    """
+    monkeypatch.setenv("TSA_INDEX_WORKERS", "0")
+    small = _index_one_file_change(tmp_path / "small", 20)
+    large = _index_one_file_change(tmp_path / "large", 80)
+
+    small_bytes = len(json.dumps(small, ensure_ascii=False))
+    large_bytes = len(json.dumps(large, ensure_ascii=False))
+    differing = {
+        key: (small.get(key), large.get(key))
+        for key in sorted(set(small) | set(large))
+        if json.dumps(small.get(key)) != json.dumps(large.get(key))
+    }
+    assert small_bytes == large_bytes, differing
+    assert large_bytes == 1189
+    assert [(d["file"], d["status"]) for d in large["files"]] == [
+        ("m0000.py", "indexed")
+    ]
+    assert (
+        large["indexed"],
+        large["cached"],
+        large["files_total"],
+        large["files_listed"],
+        large["files_truncated"],
+        large["unchanged_omitted"],
+    ) == (1, 79, 1, 1, False, 79)
+
+
+def test_index_include_details_restores_full_file_list(tmp_path) -> None:
+    """#1582：include_details=true 是显式 opt-in，返回含未变文件的完整明细。"""
+    full = _index_one_file_change(tmp_path / "p", 5, include_details=True)
+    assert sorted(d["status"] for d in full["files"]) == ["cached"] * 4 + ["indexed"]
+    assert (full["files_total"], full["files_listed"], full["unchanged_omitted"]) == (
+        5,
+        5,
+        0,
+    )
+    assert "files_next_step" not in full
+
+
+def test_index_files_projection_lists_errors_first_and_reports_truncation() -> None:
+    """#1582：超过上限时错误优先列出，截断计数如实报告，输入字典不被修改。"""
+    from tree_sitter_analyzer.mcp.tools.ast_cache_index_view import (
+        INDEX_FILES_CAP,
+        project_index_files,
+    )
+
+    indexed = [{"file": f"i{i}.py", "status": "indexed"} for i in range(60)]
+    cached = [{"file": f"c{i}.py", "status": "cached"} for i in range(7)]
+    errors = [{"file": "bad.py", "status": "error", "reason": "x"}]
+    raw = {"indexed": 60, "files": indexed + cached + errors}
+
+    projected = project_index_files(raw, include_details=False)
+
+    assert projected["files"][0] == errors[0]
+    assert projected["files"][1:] == indexed[: INDEX_FILES_CAP - 1]
+    assert (
+        projected["files_total"],
+        projected["files_listed"],
+        projected["files_cap"],
+        projected["files_truncated"],
+        projected["unchanged_omitted"],
+    ) == (61, 50, 50, True, 7)
+    assert projected["files_next_step"].startswith("pass include_details=true")
+    assert len(raw["files"]) == 68
+    assert project_index_files({"indexed": 1}, include_details=False) == {"indexed": 1}
+
+
+def test_index_include_details_validation_and_cli_twin() -> None:
+    """#1582：include_details 必须是布尔值；CLI --ast-cache-include-details 透传。"""
+    import argparse
+
+    import pytest
+
+    from tree_sitter_analyzer.cli.commands.mcp_commands._specs_core import (
+        _CORE_SPECS,
+    )
+    from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
+
+    with pytest.raises(ValueError, match="include_details must be a boolean"):
+        ASTCacheTool().validate_arguments({"mode": "index", "include_details": "yes"})
+    spec = next(s for s in _CORE_SPECS if s.flag_name == "ast_cache")
+    args = argparse.Namespace(ast_cache_include_details=True)
+    assert spec.build_tool_args(args, "json")["include_details"] is True
