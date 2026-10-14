@@ -559,15 +559,16 @@ def test_agent核心profile路由存在且业务动作仍为85() -> None:
 
 
 def test_全部direct_action_schema均为有效JSONSchema() -> None:
-    """全部 direct route 都应可发现；bespoke route 应明确报告不可用。"""
+    """direct route 与已声明 schema 的 bespoke route 可发现；其余 bespoke 明确不可用。"""
     from jsonschema import Draft202012Validator
 
     from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
 
     facades, _by_name = create_tool_registry(None)
     direct_count = 0
-    bespoke_count = 0
-    for _facade_name, facade in facades:
+    declared: list[str] = []
+    unavailable_count = 0
+    for facade_name, facade in facades:
         for action in facade.action_map:
             result = asyncio.run(
                 facade.execute({"action": "help", "target_action": action})
@@ -579,11 +580,72 @@ def test_全部direct_action_schema均为有效JSONSchema() -> None:
             result = asyncio.run(
                 facade.execute({"action": "help", "target_action": action})
             )
+            if result["schema_status"] == "available":
+                Draft202012Validator.check_schema(result["action_schema"])
+                declared.append(f"{facade_name}.{action}")
+                continue
             assert result["error_code"] == "ACTION_SCHEMA_UNAVAILABLE"
-            assert result["schema_status"] == "unavailable"
-            bespoke_count += 1
+            unavailable_count += 1
 
-    assert (direct_count, bespoke_count) == (76, 9)
+    # #1562：nav 的 callers/callees/context 曾返回 ACTION_SCHEMA_UNAVAILABLE。
+    assert (direct_count, sorted(declared), unavailable_count) == (
+        76,
+        ["nav.callees", "nav.callers", "nav.context"],
+        6,
+    )
+
+
+def _nav_help_schema(target_action: str) -> dict[str, Any]:
+    from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
+
+    _facades, by_name = create_tool_registry(None)
+    result = asyncio.run(
+        by_name["nav"].execute({"action": "help", "target_action": target_action})
+    )
+    return result["action_schema"]
+
+
+def test_nav_callers_help_schema只声明路由真实转发的参数() -> None:
+    # Issue #1562: help for nav callers returned ACTION_SCHEMA_UNAVAILABLE.
+    schema = _nav_help_schema("callers")
+    assert sorted(schema["properties"]) == [
+        "action",
+        "file_path",
+        "function_name",
+        "include_bodies",
+        "limit",
+        "output_format",
+        "scope",
+        "symbol",
+    ]
+
+
+def test_nav_callers_help_schema接受symbol别名与scope() -> None:
+    # Issue #1562: the declared schema must accept the call agents actually make.
+    from jsonschema import Draft202012Validator
+
+    validator = Draft202012Validator(_nav_help_schema("callers"))
+    call = {"action": "callers", "symbol": "run", "scope": "graph"}
+    assert list(validator.iter_errors(call)) == []
+
+
+def test_nav_context_help_schema要求task或symbol或query之一() -> None:
+    # Issue #1562: context accepts task, symbol or query; none is required alone.
+    from jsonschema import Draft202012Validator
+
+    validator = Draft202012Validator(_nav_help_schema("context"))
+    accepted = [
+        list(validator.iter_errors({"action": "context", key: "auth flow"}))
+        for key in ("task", "symbol", "query")
+    ]
+    rejected = list(validator.iter_errors({"action": "context"}))
+    assert (accepted, len(rejected)) == ([[], [], []], 1)
+
+
+def test_register_bespoke_schema拒绝非bespoke动作() -> None:
+    facade, _inner = _discovery_facade()
+    with pytest.raises(ValueError, match="'symbol' is not a bespoke action"):
+        facade.register_bespoke_schema("symbol", {"type": "object"})
 
 
 @pytest.mark.parametrize(

@@ -317,19 +317,19 @@ def _suggest_next_action(file_path: str, smells: list[dict[str, Any]]) -> str:
     """Suggest the next action for D/F grade files."""
     if any(s["smell"] == "long_method" for s in smells):
         return (
-            f"Call refactoring_suggestions(file_path='{file_path}') "
+            f"Call edit action=refactor file_path='{file_path}' "
             f"for precise extraction plans with code skeletons"
         )
 
     if any(s["smell"] == "oversized_file" for s in smells):
         return (
-            f"Call refactoring_suggestions(file_path='{file_path}') "
+            f"Call edit action=refactor file_path='{file_path}' "
             f"to identify extraction targets, then split into focused modules"
         )
 
     return (
-        f"Call refactoring_suggestions(file_path='{file_path}') "
-        f"for specific fixes, then re-run check_file_health to verify"
+        f"Call edit action=refactor file_path='{file_path}' "
+        f"for specific fixes, then re-run health action=file to verify"
     )
 
 
@@ -369,7 +369,7 @@ def _build_refactor_agent_action(
     return {
         "priority": _agent_action_priority(grade, smells),
         "reason": _agent_action_reason(grade, weakest_dimension, smells),
-        "mcp_command": f"refactoring_suggestions(file_path='{file_path}')",
+        "mcp_command": f"edit action=refactor file_path='{file_path}'",
         "cli_command": _refactor_cli_command(file_path),
         "post_edit_commands": [
             _file_health_cli_command(file_path),

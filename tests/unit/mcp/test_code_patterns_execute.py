@@ -328,11 +328,12 @@ class TestExecuteWorkflowHint:
             assert "Critical issues found" in hint
 
     @pytest.mark.asyncio
-    async def test_hint_mentions_refactoring_suggestions(self, tmp_path):
+    async def test_hint_mentions_edit_refactor_action(self, tmp_path):
+        # #1562：提示必须指向可调用的 edit action=refactor，而非退役工具名。
         fp = _make_python_with_anti_patterns(tmp_path)
         tool = CodePatternsTool(str(tmp_path))
         result = await tool.execute({"file_path": fp})
-        assert "refactoring_suggestions" in result["smart_workflow_hint"]
+        assert "edit action=refactor" in result["smart_workflow_hint"]
 
     @pytest.mark.asyncio
     async def test_hint_warns_when_no_critical(self, tmp_path):

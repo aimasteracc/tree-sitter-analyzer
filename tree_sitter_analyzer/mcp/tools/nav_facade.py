@@ -48,6 +48,12 @@ from typing import Any
 from ... import read_existing_access as read_access
 from ...constants import JS_TS_MODULE_EXTS
 from .facade_tool import FacadeTool
+from .nav_facade_help import (
+    CONTEXT_KEYS,
+    GRAPH_RELATION_KEYS,
+    POINT_RELATION_KEYS,
+    register_nav_help_schemas,
+)
 
 # RFC-0014 Phase B: cap for test_map test_functions list (matches _MAX_LISTED).
 _MAX_TEST_MAP = 50
@@ -342,16 +348,8 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         """
         # Build the projected args set that context inner accepts.
         # RFC-0006: include_graph added for progressive disclosure opt-in.
-        inner_keys = (
-            "task",
-            "max_nodes",
-            "max_code_blocks",
-            "output_format",
-            "include_graph",
-            *("access_mode", "snapshot_id", "source_generation"),
-        )
         context_args: dict[str, Any] = {
-            k: v for k, v in args.items() if k in inner_keys
+            k: v for k, v in args.items() if k in CONTEXT_KEYS
         }
         # Normalize: if ``task`` not provided, fall back to ``symbol`` or ``query``.
         if not context_args.get("task"):
@@ -365,53 +363,23 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         scope = args.pop("scope", "point")
         if scope == "graph":
             # Inject mode=callers for the call-graph inner; project to its schema.
-            graph_args = {
-                k: v
-                for k, v in args.items()
-                if k in ("function_name", "file_path", "depth", "output_format")
-            }
+            graph_args = {k: v for k, v in args.items() if k in GRAPH_RELATION_KEYS}
             graph_args["mode"] = "callers"
             return await callers_graph.execute(graph_args)
         # scope=point (default): use the dedicated callers tool.
         # limit is forwarded so callers=point honours the budget cap.
-        point_args = {
-            k: v
-            for k, v in args.items()
-            if k
-            in (
-                "function_name",
-                "file_path",
-                "limit",
-                "include_bodies",
-                "output_format",
-            )
-        }
+        point_args = {k: v for k, v in args.items() if k in POINT_RELATION_KEYS}
         return await callers_point.execute(point_args)
 
     async def _callees_route(args: dict[str, Any]) -> Any:
         """R4: scope=point → direct callees; scope=graph → call-graph traversal."""
         scope = args.pop("scope", "point")
         if scope == "graph":
-            graph_args = {
-                k: v
-                for k, v in args.items()
-                if k in ("function_name", "file_path", "depth", "output_format")
-            }
+            graph_args = {k: v for k, v in args.items() if k in GRAPH_RELATION_KEYS}
             graph_args["mode"] = "callees"
             return await callees_graph.execute(graph_args)
         # limit is forwarded so callees=point honours the budget cap.
-        point_args = {
-            k: v
-            for k, v in args.items()
-            if k
-            in (
-                "function_name",
-                "file_path",
-                "limit",
-                "include_bodies",
-                "output_format",
-            )
-        }
+        point_args = {k: v for k, v in args.items() if k in POINT_RELATION_KEYS}
         return await callees_point.execute(point_args)
 
     async def _test_map_route(args: dict[str, Any]) -> Any:
@@ -679,5 +647,6 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
     facade.register_bespoke_inner(callees_graph)
     # RFC-0014 Phase B: impact_inner holds the shared CachedCallGraph.
     facade.register_bespoke_inner(impact_inner)
+    register_nav_help_schemas(facade, callers_point, callees_point, context_inner)
 
     return facade

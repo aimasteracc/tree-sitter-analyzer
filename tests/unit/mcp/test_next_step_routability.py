@@ -115,6 +115,8 @@ def test_the_harvest_is_not_vacuous() -> None:
 
     2026-09-19 实测：171 个常量、16 个路由名标记。合法改变词汇或文案时必须
     明确更新计数；宽松下界会让采集范围大幅缩水后仍然通过。
+    #1562（2026-10-14）：next_step 改用 `edit action=refactor` 门面写法，
+    旧工具名 `refactoring_suggestions` 标记消失，计数 16 → 15。
     """
     harvest = _next_step_strings()
     assert len(harvest) == 171, (
@@ -123,8 +125,8 @@ def test_the_harvest_is_not_vacuous() -> None:
         "no longer matching how next_step is assigned"
     )
     tokens = _vocabulary_tokens(harvest)
-    assert len(tokens) == 16, (
-        f"expected 16 route-name tokens across {len(harvest)} strings, found "
+    assert len(tokens) == 15, (
+        f"expected 15 route-name tokens across {len(harvest)} strings, found "
         f"{len(tokens)}; update this constant if the vocabulary changed, "
         "otherwise the tokenizer has drifted and the invariant below no longer "
         "constrains anything"

@@ -410,9 +410,9 @@ def _stop_condition_for(suggestion: dict[str, Any]) -> str:
 
     if suggestion.get("precise_plan"):
         name = suggestion.get("name", "this suggestion")
-        return f"Re-run refactoring_suggestions and confirm {name} no longer appears."
+        return f"Re-run edit action=refactor and confirm {name} no longer appears."
 
-    return "Re-run refactoring_suggestions and confirm the suggestion count drops."
+    return "Re-run edit action=refactor and confirm the suggestion count drops."
 
 
 def _dedupe_tests(commands: list[str]) -> list[str]:

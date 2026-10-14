@@ -505,7 +505,8 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             if not has_any_call_edges:
                 index_hint = (
                     "Call-graph index is empty or has not been built yet. "
-                    "Run `tree-sitter-analyzer --full-index` first, then retry."
+                    "Build it with MCP `index action=full` (CLI: "
+                    "`tree-sitter-analyzer --full-index`), then retry."
                 )
             elif completeness != "complete":
                 # "Not in the index" may only describe a genuine absence.  Name
@@ -576,7 +577,8 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 )
             as_next_step = result.get("next_step") or (
                 f"No callers found for '{func_name}'. "
-                "Check spelling or run --full-index to build the call graph."
+                "Check spelling, or build the call graph with MCP "
+                "`index action=full` (CLI: --full-index)."
             )
         else:
             as_summary_line = f"callers: {func_name!r} has {total_callers} caller(s)"

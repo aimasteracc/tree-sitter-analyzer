@@ -153,7 +153,7 @@ def build_class_split_recipe(
     )
     recipe["candidate_groups"] = responsibility_groups[:5]
     recipe["stop_condition"] = (
-        f"Re-run refactoring_suggestions and confirm {cls['name']} no longer exceeds "
+        f"Re-run edit action=refactor and confirm {cls['name']} no longer exceeds "
         "the class-size threshold."
     )
     return recipe

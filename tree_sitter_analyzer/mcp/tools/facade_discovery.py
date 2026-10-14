@@ -67,7 +67,43 @@ def build_action_schema(action: str, inner: Any) -> dict[str, Any] | None:
     schema = _inner_input_schema(inner)
     if schema is None:
         return None
+    return _facade_schema(action, schema)
 
+
+def build_bespoke_action_schema(
+    action: str,
+    inner: Any,
+    *,
+    keep: tuple[str, ...],
+    extra_properties: dict[str, Any] | None = None,
+    required_any_of: tuple[str, ...] = (),
+) -> dict[str, Any] | None:
+    """#1562：为 bespoke 路由派生与其真实转发参数一致的 schema。
+
+    bespoke 闭包只转发 ``keep`` 中的参数，因此 schema 只声明这些参数加上
+    闭包自己消费的 ``extra_properties``；``required_any_of`` 表示其中任一即可
+    满足必填（如 context 的 task/symbol/query）。
+    """
+    schema = _inner_input_schema(inner)
+    if schema is None:
+        return None
+    properties = {
+        name: spec for name, spec in schema["properties"].items() if name in keep
+    }
+    properties.update(deepcopy(extra_properties or {}))
+    schema["properties"] = properties
+    required = [name for name in schema.get("required") or [] if name in properties]
+    if required_any_of:
+        required = [name for name in required if name not in required_any_of]
+        schema["allOf"] = [
+            {"anyOf": [{"required": [name]} for name in required_any_of]}
+        ]
+    schema["required"] = required
+    return _facade_schema(action, schema)
+
+
+def _facade_schema(action: str, schema: dict[str, Any]) -> dict[str, Any]:
+    """在 inner schema 副本上补 action 选择器、输出格式与符号别名。"""
     properties = schema["properties"]
     properties["action"] = {
         "type": "string",
@@ -148,6 +184,7 @@ def build_help_response(
     bespoke_actions: set[str],
     arguments: dict[str, Any],
     target_action: Any = None,
+    bespoke_schemas: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """返回帮助摘要，或指定 direct action 的机器可读调用 schema。"""
     allowed_help_arguments = ["action", "output_format", "target_action"]
@@ -191,7 +228,16 @@ def build_help_response(
             message=f"unknown target_action {target_action!r}",
             available_actions=available_actions,
         )
-    if isinstance(target_action, str) and target_action in bespoke_actions:
+    declared = (
+        (bespoke_schemas or {}).get(target_action)
+        if isinstance(target_action, str)
+        else None
+    )
+    if (
+        isinstance(target_action, str)
+        and target_action in bespoke_actions
+        and declared is None
+    ):
         response = _error_response(
             facade_name,
             target_action,
@@ -206,7 +252,9 @@ def build_help_response(
         return response
 
     action_schema = None
-    if isinstance(target_action, str):
+    if declared is not None:
+        action_schema = deepcopy(declared)
+    elif isinstance(target_action, str):
         action_schema = build_action_schema(target_action, action_map[target_action])
         if action_schema is None:
             response = _error_response(
