@@ -935,8 +935,9 @@ class TestAuthoritativeSnapshotOracle:
         connections = []
         registered = set(owner.REGISTRY._entries)
 
-        def mutate_after_copy(conn, deadline):
-            evidence, exact = copy_evidence(conn, deadline)
+        def mutate_after_copy(conn, deadline, *memo_key):
+            # #1561：透传内容寻址备忘录键，保持真实复制路径不变。
+            evidence, exact = copy_evidence(conn, deadline, *memo_key)
             connections.extend([conn, evidence])
             if change == "source_edit":
                 source.write_text("def answer():\n    return 43\n", encoding="utf-8")
