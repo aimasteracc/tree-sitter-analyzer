@@ -437,7 +437,7 @@ def test_manifest_writer_uses_portable_source_certifier(
     monkeypatch.setattr(schema, "os", PortableOS())
     monkeypatch.setattr(schema, "strict_call_graph_marker", lambda _conn: True)
     monkeypatch.setattr(
-        schema, "index_fingerprint", lambda *_args: "sha256:" + "a" * 64
+        schema, "index_fingerprint", lambda *_args, **_kwargs: "sha256:" + "a" * 64
     )
     monkeypatch.setattr(
         schema, "source_fingerprint", lambda *_args: "sha256:" + "b" * 64
@@ -482,4 +482,57 @@ def test_manifest_writer_uses_portable_source_certifier(
     ).fetchone()
     assert tuple(row) == (schema.os.path.realpath(str(tmp_path)), 1, 2)
     assert len(observed) == 1
+    conn.close()
+
+
+def test_manifest_writer_shares_one_stamp_deadline(tmp_path, monkeypatch) -> None:
+    # Issue #1561：旧的 5 秒指纹上限使 ~700 文件以上的索引永远无法盖戳认证；
+    # 索引指纹与源码捕获共用一个绝对期限，不得各自续借预算。
+    import time
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+    import tree_sitter_analyzer.portable_source_snapshot as portable
+
+    class PortableOS:
+        name = "nt"
+        path = schema.os.path
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        schema.SCHEMA_V13_INDEX_SNAPSHOT
+        + "CREATE TABLE ast_index(file_path TEXT, content_hash TEXT, language TEXT);"
+    )
+    rows = frozenset({("sample.py", "hash", "python")})
+    conn.execute("INSERT INTO ast_index VALUES ('sample.py', 'hash', 'python')")
+    deadlines: list[float] = []
+    monkeypatch.delenv("TSA_FINGERPRINT_DEADLINE_SECONDS", raising=False)
+    monkeypatch.setattr(schema, "os", PortableOS())
+    monkeypatch.setattr(schema, "strict_call_graph_marker", lambda _conn: True)
+    monkeypatch.setattr(
+        schema,
+        "index_fingerprint",
+        lambda _conn, _root, *, deadline: (
+            deadlines.append(deadline) or "sha256:" + "a" * 64
+        ),
+    )
+    monkeypatch.setattr(
+        schema, "source_fingerprint", lambda *_args: "sha256:" + "b" * 64
+    )
+    monkeypatch.setattr(schema, "recorded_source_rows", lambda _conn: rows)
+    monkeypatch.setattr(
+        portable,
+        "capture_portable_source_snapshot",
+        lambda _root, _scope, *, deadline: (
+            deadlines.append(deadline)
+            or SimpleNamespace(state="exact", rows=rows, reason=None)
+        ),
+    )
+    started = time.monotonic()
+
+    schema.stamp_full_index_manifest(conn, str(tmp_path))
+
+    assert (len(deadlines), deadlines[0] == deadlines[1]) == (2, True)
+    assert round(deadlines[0] - started) == 120
     conn.close()

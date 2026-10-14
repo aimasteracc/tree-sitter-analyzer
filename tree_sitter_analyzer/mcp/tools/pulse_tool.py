@@ -34,6 +34,9 @@ class PulseTool(BaseMCPTool):
             "description": (
                 "Get source-certified context for one symbol: callers, "
                 "callees, git heat, imports, siblings, comments. "
+                "Certification re-hashes every indexed source within a 60 s "
+                "per-call bound; above it the call fails with "
+                "INDEX_SNAPSHOT_DEADLINE and a next_step. "
                 f"Compact key legend: {COMPACT_LEGEND}. "
                 "Formats: skeletal (~200 tok, scan), compact (default ~500 tok), "
                 "verbose (~2000 tok, deep review). "

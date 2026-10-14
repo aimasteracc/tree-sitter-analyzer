@@ -307,6 +307,45 @@ class TestCodeGraphSymbolResolveExecution:
         assert result["source_evidence"]["snapshot_id"] is not None
         assert result["source_evidence"]["source_generation"] is not None
 
+    async def test_certification_deadline_degrades_to_uncertified_definition(
+        self, tmp_path, monkeypatch
+    ):
+        # Issue #1561：整仓认证超出捕获期限时返回未认证定义与下一步，而非 ERROR。
+        from tree_sitter_analyzer import index_snapshot
+        from tree_sitter_analyzer.api.pulse_evidence import (
+            CERTIFICATION_BOUND_NEXT_STEP,
+        )
+        from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+            CodeGraphFullIndexTool,
+        )
+
+        (tmp_path / "sample.py").write_text(
+            "def target():\n    return 1\n", encoding="utf-8"
+        )
+        indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
+            {"mode": "full", "max_files": 10}
+        )
+        assert indexed["published"] is True
+        monkeypatch.setattr(index_snapshot, "_CERTIFICATION_DEADLINE_SECONDS", -1.0)
+
+        tool = CodeGraphSymbolResolveTool(str(tmp_path))
+        result = await tool.execute({"symbol": "target", "output_format": "json"})
+
+        assert (result["success"], result["verdict"], result["definition_count"]) == (
+            True,
+            "WARN",
+            1,
+        )
+        assert result["source_evidence"] == {
+            "freshness": "unknown",
+            "snapshot_id": None,
+            "source_generation": None,
+            "reason": "INDEX_SNAPSHOT_DEADLINE",
+        }
+        assert result["next_step"] == CERTIFICATION_BOUND_NEXT_STEP.format(
+            reason="INDEX_SNAPSHOT_DEADLINE"
+        )
+
     async def test_uncertified_resolve_cannot_claim_not_found(self, indexed_project):
         tool = CodeGraphSymbolResolveTool(str(indexed_project))
         result = await tool.execute(

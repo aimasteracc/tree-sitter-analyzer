@@ -341,6 +341,10 @@ class CodeGraphSymbolSearchTool(BaseMCPTool):
             result["next_step"] = (
                 "Build or synchronize the project index, then repeat search.symbol."
             )
+        # #1561：认证超出上限时，坐标仍可用，但须明确告知未认证及下一步。
+        bound_step = exc.next_step()
+        if result.get("success") is True and bound_step is not None:
+            result["next_step"] = bound_step
 
     def _search(
         self,

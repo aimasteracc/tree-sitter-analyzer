@@ -4,7 +4,7 @@ Measured on 2026-09-07 (auto-audited by
 `tests/contracts/test_large_test_file_inventory.py` — the inventory must
 match reality or CI fails). The threshold is 800 lines.
 
-## Current Files Over Threshold (49)
+## Current Files Over Threshold (50)
 
 | Lines | File | Note |
 |---:|---|---|
@@ -53,6 +53,7 @@ match reality or CI fails). The threshold is 800 lines.
 | 847 | `tests/unit/test_ast_diff_scenarios.py` | |
 | 833 | `tests/unit/test_codegraph_impact_tool.py` | |
 | 823 | `tests/unit/mcp/tools/test_pulse_tool.py` | tracked: #1414 — two warm-index admission regressions stay with the existing Pulse suite (T-1); temporary growth from 791 lines. Follow-up must split by behavior under the controlled migration contract, preserving all cases and mutation evidence. |
+| 830 | `tests/unit/test_symbol_search_tool.py` | tracked: #1561 - the certification-bound degrade regression stays with the existing search-symbol suite (T-1); temporary growth from 798 lines. Follow-up must split by behavior under the controlled migration contract. |
 | 822 | `tests/unit/cli/test_install_skills.py` | |
 | 821 | `tests/unit/test_wire_owner_contract.py` | |
 | 814 | `tests/unit/languages/test_java_formatter.py` | |

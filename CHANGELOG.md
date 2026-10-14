@@ -9,6 +9,18 @@
   (keeping the 2 newest sealed ones under 24 h old), including killed writers'
   builds. On a 10-file project, 20 writes leave 3 generations (1.1 MB), not 20 (7.6 MB).
 
+- `search action=symbol`, `nav action=pulse` and `nav action=resolve` no longer
+  fail with `INDEX_SNAPSHOT_DEADLINE` on every call for repositories of a few
+  thousand files (#1561). Measured on this repository (2,412 files, Windows),
+  all three now return `fresh` answers. Changes: the end-of-index
+  certification stamp gets one 120 s budget (the old 5 s fingerprint limit
+  meant no index above about 700 files was ever certified). The index
+  fingerprint and symbol-projection verdict are cached per process, keyed by
+  the SHA-256 of the captured database bytes. A certified call (capture, read
+  and after-read check) has one 60 s bound. Above that bound, search and
+  resolve return uncertified coordinates (`WARN`, `freshness=unknown`), and
+  pulse returns its RFC-0030 error. Both include a `next_step`.
+
 - `health action=imports` (`dependents` / `dependencies`) and import blast
   radius no longer return 0 results on Windows when the file is given as an
   absolute path or with `\` separators; lookups now match the `/`-keyed cache

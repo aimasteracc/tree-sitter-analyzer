@@ -491,7 +491,7 @@ class TestFingerprintDeadlineConfig:
         )
 
         monkeypatch.setenv("TSA_FINGERPRINT_DEADLINE_SECONDS", value)
-        assert _fingerprint_deadline_seconds() == 5.0
+        assert _fingerprint_deadline_seconds() == 120.0
 
     def test_环境变量覆盖生效且有下限(self, monkeypatch):
         from tree_sitter_analyzer.index_snapshot_schema import (
@@ -503,13 +503,13 @@ class TestFingerprintDeadlineConfig:
         monkeypatch.setenv("TSA_FINGERPRINT_DEADLINE_SECONDS", "0.1")
         assert _fingerprint_deadline_seconds() == 1.0  # 下限保护
 
-    def test_误配回退默认5秒(self, monkeypatch):
+    def test_误配回退默认值(self, monkeypatch):
         from tree_sitter_analyzer.index_snapshot_schema import (
             _fingerprint_deadline_seconds,
         )
 
         monkeypatch.setenv("TSA_FINGERPRINT_DEADLINE_SECONDS", "not-a-number")
-        assert _fingerprint_deadline_seconds() == 5.0
+        assert _fingerprint_deadline_seconds() == 120.0
 
     def test_未设置用默认值(self, monkeypatch):
         from tree_sitter_analyzer.index_snapshot_schema import (
@@ -517,4 +517,4 @@ class TestFingerprintDeadlineConfig:
         )
 
         monkeypatch.delenv("TSA_FINGERPRINT_DEADLINE_SECONDS", raising=False)
-        assert _fingerprint_deadline_seconds() == 5.0
+        assert _fingerprint_deadline_seconds() == 120.0
