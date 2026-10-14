@@ -372,6 +372,9 @@ class TestGetCallEdgesParity:
             "callee_line",
             "file_path",
             "language",
+            # #1559/#1560 re-pin：内存调用图需要持久化解析列来绑定目标。
+            "callee_resolution",
+            "callee_resolved_file",
         }
         for row in rows:
             assert set(row.keys()) == expected_keys

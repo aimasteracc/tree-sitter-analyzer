@@ -34,6 +34,18 @@ _MAX_DEPTH = 10
 # tool-result token budget. The agent gets a representative head + the true
 # counts + a truncation flag; the full list is one callers/callees call away.
 _MAX_LISTED = 50
+_NAME_ONLY = "name_only"
+
+
+def _impact_callers(
+    graph: CallGraph, ref: FunctionRef
+) -> tuple[list[FunctionRef], set[FunctionRef]]:
+    """影响分析用的调用方：确定的加上仅同名匹配的（#1559，过近似）。
+
+    返回 (全部调用方, 其中仅同名匹配的集合)，后者用于在输出中标记。
+    """
+    possible = list(graph.possible_caller_refs_of(ref))
+    return [*graph.caller_refs_of(ref), *possible], set(possible)
 
 
 def _partition_refs(
@@ -66,7 +78,8 @@ def _compute_transitive_callers(
         current, d = queue.popleft()
         if d >= max_depth:
             continue
-        for caller in graph.caller_refs_of(current):
+        callers, name_only = _impact_callers(graph, current)
+        for caller in callers:
             if not include_tests and is_test_file(caller.file_path):
                 continue  # filter before to_dict()
             key = caller.qualified_name()
@@ -74,6 +87,8 @@ def _compute_transitive_callers(
                 visited.add(key)
                 entry = caller.to_dict()
                 entry["distance"] = d + 1
+                if caller in name_only:
+                    entry["match"] = _NAME_ONLY
                 result.append(entry)
                 queue.append((caller, d + 1))
                 if len(result) >= _MAX_TRANSITIVE:
@@ -169,7 +184,8 @@ def _compute_risk_score(
     ambiguous = candidate_count > 1 and file_path is None
 
     target = targets[0]
-    all_callers = graph.caller_refs_of(target)
+    # #1559：fan_in 含仅同名匹配的调用方，判定不能因丢弃模糊调用而变 SAFE。
+    all_callers, name_only_callers = _impact_callers(graph, target)
     all_callees = graph.callee_refs_of(target)
     prod_callers, test_callers = _partition_refs(all_callers)
     prod_callees, test_callees = _partition_refs(all_callees)
@@ -191,6 +207,9 @@ def _compute_risk_score(
     elif fan_in >= 3:
         score += 10
     factors["fan_in"] = fan_in
+    name_only_fan_in = sum(1 for c in prod_callers if c in name_only_callers)
+    if name_only_fan_in:
+        factors["name_only_callers"] = name_only_fan_in
 
     if cross_file_callers >= 5:
         score += 25
@@ -277,7 +296,8 @@ def _blast_radius_for_functions(
                 current, d = queue.popleft()
                 if d >= depth:
                     continue
-                for caller in graph.caller_refs_of(current):
+                callers, name_only = _impact_callers(graph, current)
+                for caller in callers:
                     key = caller.qualified_name()
                     if key not in visited:
                         visited.add(key)
@@ -286,14 +306,15 @@ def _blast_radius_for_functions(
                         caller_set.add(caller.name)
                         from_dict = current.to_dict()
                         to_dict = caller.to_dict()
-                        propagation_chains.append(
-                            {
-                                "from": from_dict,
-                                "to": to_dict,
-                                "direction": "upstream",
-                                "depth": d + 1,
-                            }
-                        )
+                        chain = {
+                            "from": from_dict,
+                            "to": to_dict,
+                            "direction": "upstream",
+                            "depth": d + 1,
+                        }
+                        if caller in name_only:
+                            chain["match"] = _NAME_ONLY
+                        propagation_chains.append(chain)
                         queue.append((caller, d + 1))
 
                 for callee in graph.callee_refs_of(current):
@@ -616,7 +637,9 @@ class CodeGraphImpactTool(BaseMCPTool):
         depth: int,
         include_tests: bool = False,
     ) -> dict[str, Any]:
-        direct_callers = graph.callers_of(func_name, file_path)
+        # #1559：影响面过近似——确定的调用方之后附上仅同名匹配的调用方（带标记）。
+        possible_callers = list(graph.possible_callers_of(func_name, file_path))
+        direct_callers = [*graph.callers_of(func_name, file_path), *possible_callers]
         direct_callees = graph.callees_of(func_name, file_path)
         transitive_callers = _compute_transitive_callers(
             graph, func_name, file_path, max_depth=depth, include_tests=include_tests
@@ -651,6 +674,7 @@ class CodeGraphImpactTool(BaseMCPTool):
             "transitive_callers": transitive_callers[:_MAX_LISTED],
             "transitive_callees": transitive_callees[:_MAX_LISTED],
             "direct_caller_count": len(direct_callers),
+            "possible_caller_count": len(possible_callers),
             "direct_callee_count": len(direct_callees),
             "transitive_caller_count": len(transitive_callers),
             "transitive_callee_count": len(transitive_callees),

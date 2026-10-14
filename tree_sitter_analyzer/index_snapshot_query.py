@@ -135,9 +135,11 @@ class CertifiedSnapshotCache:
         return result
 
     def get_call_edges(self) -> list[dict[str, Any]]:
+        # #1559/#1560：带上持久化解析列，内存调用图不再按裸名重新猜测。
         rows = self.get_conn().execute(
             "SELECT caller_name, file_path AS caller_file, caller_line, "
-            "callee_name, callee_full, callee_line, file_path, language "
+            "callee_name, callee_full, callee_line, file_path, language, "
+            "callee_resolution, callee_resolved_file "
             "FROM edges WHERE kind='calls'"
         )
         return [dict(row) for row in rows]

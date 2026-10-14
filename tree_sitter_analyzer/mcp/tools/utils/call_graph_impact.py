@@ -62,6 +62,8 @@ class CallGraphImpactResult:
     functions_analyzed: int = 0
     total_upstream: int = 0
     total_downstream: int = 0
+    # #1559：total_upstream 中仅凭同名匹配得到的调用方数量。
+    total_possible_upstream: int = 0
     high_risk_functions: list[str] = field(default_factory=list)
     cross_file_callers: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     cross_file_callees: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
@@ -72,6 +74,7 @@ class CallGraphImpactResult:
         return {
             "functions_analyzed": self.functions_analyzed,
             "total_upstream_callers": self.total_upstream,
+            "possible_upstream_callers": self.total_possible_upstream,
             "total_downstream_callees": self.total_downstream,
             "high_risk_functions": self.high_risk_functions[:20],
             "cross_file_callers": self.cross_file_callers,
@@ -139,10 +142,15 @@ def compute_call_graph_impact(
             func_name = func["name"]
             func_line = func.get("line", 0)
 
-            callers = cg.callers_of(func_name, file_path=changed_file)
+            # #1559：上游影响过近似——仅同名匹配的调用方也计入（带 match 标记）。
+            possible = list(cg.possible_callers_of(func_name, file_path=changed_file))
+            callers = [*cg.callers_of(func_name, file_path=changed_file), *possible]
             cross_file_callers = [
                 c for c in callers if c.get("file", "") not in changed_set
             ]
+            result.total_possible_upstream += sum(
+                1 for c in possible if c.get("file", "") not in changed_set
+            )
 
             callees = cg.callees_of(func_name, file_path=changed_file)
             cross_file_callees = [
@@ -180,8 +188,9 @@ def compute_call_graph_impact(
                 )
 
             if impact.fan_in >= 5:
+                name_only = f", name_only={len(possible)}" if possible else ""
                 result.high_risk_functions.append(
-                    f"{changed_file}:{func_name} (fan_in={impact.fan_in})"
+                    f"{changed_file}:{func_name} (fan_in={impact.fan_in}{name_only})"
                 )
 
             result.function_impacts.append(impact.to_dict())

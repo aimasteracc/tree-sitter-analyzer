@@ -19,6 +19,8 @@ from collections.abc import Set as AbstractSet
 from pathlib import Path
 from typing import Any
 
+from .cached_edge_resolution import CachedEdgeResolver
+from .call_graph_possible import PossibleEdgesMixin
 from .callee_resolution import CalleeResolver
 from .constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
 from .constants import JS_TS_MODULE_EXTS
@@ -98,7 +100,7 @@ class FunctionRef:
         return d
 
 
-class CallGraph:
+class CallGraph(PossibleEdgesMixin):
     """
     Project-level function call graph.
 
@@ -118,6 +120,8 @@ class CallGraph:
         self._func_by_file: dict[str, list[FunctionRef]] = defaultdict(list)
         self._callees: dict[FunctionRef, list[FunctionRef]] = defaultdict(list)
         self._callers: dict[FunctionRef, list[FunctionRef]] = defaultdict(list)
+        # #1559/#1560：无法区分的同名候选不成为边，只供安全类消费者过近似。
+        self._init_possible_edges()
         self._call_edges: list[tuple[FunctionRef, FunctionRef, int]] = []
         self._built = False
         self._file_imports: dict[str, dict[str, str]] = {}
@@ -792,6 +796,13 @@ class CachedCallGraph(CallGraph):
             if name_map:
                 file_import_map[file_path] = name_map
 
+        edge_resolver = CachedEdgeResolver(
+            functions_by_name=self._func_by_name,
+            functions_by_file=self._func_by_file,
+            file_import_map=file_import_map,
+        )
+        if self._callee_resolver is None:
+            self._callee_resolver = edge_resolver.callee_resolver
         for edge in edges:
             caller_file = edge["caller_file"]
             caller_candidates = self._func_by_name.get(edge["caller_name"], [])
@@ -805,22 +816,10 @@ class CachedCallGraph(CallGraph):
             if caller_ref is None:
                 continue
 
-            if self._callee_resolver is None:
-                self._callee_resolver = CalleeResolver(
-                    functions_by_name=self._func_by_name,
-                    functions_by_file=self._func_by_file,
-                    name_to_source=file_import_map,
-                )
-
-            resolved = [
-                ref
-                for ref, _confidence in self._callee_resolver.resolve_items(
-                    edge["callee_name"],
-                    caller_file,
-                )
-            ]
-
-            for callee_ref in resolved:
+            # #1559/#1560：优先采用持久化解析，模糊的裸名匹配不再扇出成边。
+            targets = edge_resolver.resolve(edge, caller_file)
+            self._add_possible_edges(caller_ref, targets.possible)
+            for callee_ref in targets.certain:
                 self._callees[caller_ref].append(callee_ref)
                 self._callers[callee_ref].append(caller_ref)
                 self._call_edges.append(

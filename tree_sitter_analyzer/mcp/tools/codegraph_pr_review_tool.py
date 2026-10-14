@@ -711,24 +711,26 @@ class CodeGraphPRReviewTool(BaseMCPTool):
                     or name_file_count.get(anchor_name, 0)
                     >= _AMBIGUOUS_NAME_FILE_THRESHOLD
                 )
+                # #1559：受影响范围过近似——仅同名匹配的调用方也列出并标记。
+                name_only = list(graph.possible_caller_refs_of(anchor_ref))
+                upstream = [*graph.caller_refs_of(anchor_ref), *name_only]
                 if not anchor_is_generic:
-                    for caller in graph.caller_refs_of(anchor_ref):
+                    for caller in upstream:
                         key = caller.qualified_name()
                         if key not in seen:
                             seen.add(key)
-                            candidates.append(
-                                {
-                                    "function": caller.name,
-                                    "file": caller.file_path,
-                                    "language": caller.language,
-                                    "direction": "upstream",
-                                    "line": caller.start_line,
-                                }
-                            )
+                            entry = {
+                                "function": caller.name,
+                                "file": caller.file_path,
+                                "language": caller.language,
+                                "direction": "upstream",
+                                "line": caller.start_line,
+                            }
+                            if caller in name_only:
+                                entry["match"] = "name_only"
+                            candidates.append(entry)
                 else:
-                    ambiguous_anchor_dropped += graph.caller_refs_of(
-                        anchor_ref
-                    ).__len__()
+                    ambiguous_anchor_dropped += len(upstream)
 
                 # Downstream callees: filter by anchor being called from the changed file
                 for callee in graph.callee_refs_of(anchor_ref):

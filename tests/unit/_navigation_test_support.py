@@ -254,3 +254,37 @@ def build_many_relation_project(tmp_path: Path, relation: str) -> str:
             encoding="utf-8",
         )
     return str(tmp_path)
+
+
+AMBIGUOUS_PUBLISH_PROJECT = {
+    "gen_store.py": (
+        "class GenerationStore:\n    def publish(self, item):\n        return item\n"
+    ),
+    "registry.py": (
+        "class Registry:\n    def publish(self, item):\n        return item\n"
+    ),
+    "app.py": (
+        "import gen_store\nimport registry\n\n\n"
+        "def relay(x):\n    return x.publish(1)\n"
+    ),
+    "tests/test_gen_store.py": (
+        "import gen_store\nfrom app import relay\n\n\n"
+        "def test_relay():\n"
+        "    assert relay(gen_store.GenerationStore()) == 1\n\n\n"
+        "def test_publish_any(store):\n"
+        "    assert store.publish(2) == 2\n"
+    ),
+}
+
+
+async def index_ambiguous_publish_project(root: Path) -> str:
+    """#1559：两个类都定义 publish，`x.publish()` 的接收者无法解析。"""
+    for rel, text in AMBIGUOUS_PUBLISH_PROJECT.items():
+        target = root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+    indexed = await CodeGraphFullIndexTool(str(root)).execute(
+        {"mode": "full", "max_files": 20}
+    )
+    assert indexed["published"] is True
+    return str(root)

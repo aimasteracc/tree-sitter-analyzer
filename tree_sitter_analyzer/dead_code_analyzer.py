@@ -190,7 +190,8 @@ def find_transitive_dead_code(
         func, depth = queue.popleft()
         if depth >= max_depth:
             continue
-        for callee in graph.callee_refs_of(func):
+        # #1559/#1560：模糊的同名候选也算可达，不能把它们判为死代码。
+        for callee in graph.reachable_callee_refs_of(func):
             if callee not in alive and callee in all_funcs:
                 alive.add(callee)
                 queue.append((callee, depth + 1))

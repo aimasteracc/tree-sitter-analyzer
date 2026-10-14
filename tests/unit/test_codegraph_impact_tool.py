@@ -831,3 +831,69 @@ class TestImpactVerdictCriticalLevel:
         # blast_radius result shape has no "level" key; preserve its existing
         # INFO fallthrough (this fix must not change blast_radius semantics).
         assert _impact_verdict({"total_affected_functions": 5}) == "INFO"
+
+
+class TestNameOnlyCallersStayInImpact:
+    """#1559：模糊候选不进入精确答案，但影响 / 风险必须过近似地保留它们。"""
+
+    @staticmethod
+    async def _function_impact(tmp_path, mode: str = "function_impact"):
+        from tests.unit._navigation_test_support import (
+            index_ambiguous_publish_project,
+        )
+
+        root = await index_ambiguous_publish_project(tmp_path)
+        return await CodeGraphImpactTool(root).execute(
+            {
+                "mode": mode,
+                "function_name": "GenerationStore.publish",
+                "file_path": "gen_store.py",
+            }
+        )
+
+    @pytest.mark.asyncio
+    async def test_function_impact_keeps_name_only_caller(self, tmp_path):
+        # #1559：`x.publish()` 可能调用 GenerationStore.publish，影响面不能丢掉它。
+        result = await self._function_impact(tmp_path)
+        assert [c["name"] for c in result["direct_callers"]] == [
+            "relay",
+            "test_publish_any",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_function_impact_marks_name_only_caller(self, tmp_path):
+        # #1559：过近似得到的调用方必须在输出中标明只是同名匹配。
+        result = await self._function_impact(tmp_path)
+        assert (
+            [c["match"] for c in result["direct_callers"]],
+            result["possible_caller_count"],
+        ) == (["name_only", "name_only"], 2)
+
+    @pytest.mark.asyncio
+    async def test_risk_score_counts_name_only_caller(self, tmp_path):
+        # #1559：风险评分的 fan_in 含同名匹配调用方，判定不能因丢弃而变 SAFE。
+        result = await self._function_impact(tmp_path, mode="risk_score")
+        assert (
+            result["factors"]["fan_in"],
+            result["factors"]["name_only_callers"],
+        ) == (
+            1,
+            1,
+        )
+
+    @pytest.mark.asyncio
+    async def test_blast_radius_keeps_name_only_caller_file(self, tmp_path):
+        # #1559：爆炸半径必须包含经由模糊调用到达的文件。
+        from tests.unit._navigation_test_support import (
+            index_ambiguous_publish_project,
+        )
+
+        root = await index_ambiguous_publish_project(tmp_path)
+        result = await CodeGraphImpactTool(root).execute(
+            {
+                "mode": "blast_radius",
+                "function_names": ["GenerationStore.publish"],
+                "file_path": "gen_store.py",
+            }
+        )
+        assert result["files_at_risk"]["app.py"] == ["relay"]
