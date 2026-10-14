@@ -18,6 +18,7 @@ from ..index_symbol_projection import (
 from ..index_symbol_projection import (
     upsert_symbol_projection_state,
 )
+from .symbol_comments import delete_file_symbol_comments as _delete_symbol_comments
 
 logger = logging.getLogger(__name__)
 _COMMIT_MSG_CACHE: OrderedDict[tuple[str, str], tuple[float, str | None]] = (
@@ -33,17 +34,6 @@ def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
         ).fetchone()
         is not None
     )
-
-
-def _delete_symbol_comments(conn: sqlite3.Connection, rel_path: str) -> None:
-    """显式清除旧定义的注释；不能依赖所有 SQLite 调用方都启用外键级联。"""
-    if _table_exists(conn, "ast_symbol_comments"):
-        conn.execute(
-            "DELETE FROM ast_symbol_comments WHERE symbol_id IN "
-            "(SELECT id FROM ast_symbol_rows WHERE file_path=?) "
-            "OR NOT EXISTS (SELECT 1 FROM ast_symbol_rows s WHERE s.id=ast_symbol_comments.symbol_id)",
-            (rel_path,),
-        )
 
 
 def _delete_file_rows_if_table_present(

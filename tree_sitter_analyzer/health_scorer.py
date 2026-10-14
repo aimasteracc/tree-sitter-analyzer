@@ -857,7 +857,7 @@ def score_dependencies(file_path: str) -> float:
     if language is not None and language not in _DEPENDENCY_ANALYZABLE_LANGS:
         return _NEUTRAL_DEP_SCORE
     try:
-        import concurrent.futures
+        from .bounded_graph_build import build_within
 
         path = Path(file_path).resolve()
         project_root = find_project_root(path)
@@ -866,12 +866,15 @@ def score_dependencies(file_path: str) -> float:
         root_key = str(project_root)
         graph = graphs.get(root_key) if graphs is not None else None
         if graph is None:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                fut = ex.submit(_build_dep_graph, root_key)
-                try:
-                    graph = fut.result(timeout=_DEP_GRAPH_TIMEOUT_S)
-                except concurrent.futures.TimeoutError:
-                    return _score_deps_fallback(file_path)
+            # 单文件评分超时即回退，不再等待被丢弃的整图（#1602）。
+            graph = build_within(
+                _build_dep_graph,
+                root_key,
+                _DEP_GRAPH_TIMEOUT_S,
+                wait_after_timeout=graphs is not None,
+            )
+            if graph is None:
+                return _score_deps_fallback(file_path)
             if graphs is not None:
                 graphs[root_key] = graph
 
