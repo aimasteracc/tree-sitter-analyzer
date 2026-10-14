@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from .discovery_budget import discovery_deadline
 from .index_candidate_walker import (
     CandidateDiscoveryBudgetExceeded as _CandidateDiscoveryBudgetExceeded,
 )
@@ -33,7 +34,6 @@ _SOURCE_TOO_LARGE = "supported source exceeds byte limit"
 _PERMANENT_SOURCE_REJECTIONS = frozenset({_SOURCE_NONREGULAR, _SOURCE_TOO_LARGE})
 _CANDIDATE_ENTRY_BUDGET = 100_000
 _CANDIDATE_PATH_BYTE_BUDGET = 16 * 1024 * 1024
-_CANDIDATE_DISCOVERY_SECONDS = 5.0
 _CANDIDATE_DISCOVERY_BUDGET_ERROR = "INDEX_CANDIDATE_DISCOVERY_BUDGET"
 
 SnapshotDecision = Literal["selected", "excluded", "skipped", "error"]
@@ -43,7 +43,7 @@ def walk_index_candidate_entries(
     project_root: str,
     *,
     excluded_dir_names: frozenset[str] = frozenset(),
-    discovery_seconds: float = _CANDIDATE_DISCOVERY_SECONDS,
+    discovery_seconds: float | None = None,
 ) -> Iterable[str]:
     """Incrementally enumerate candidates while charging every directory entry."""
     return _walk_candidate_entries(
@@ -266,7 +266,7 @@ def build_index_candidate_snapshot(
     language_fn: Callable[[str], str | None],
     language_filter: str | None = None,
     materialize: bool = False,
-    discovery_seconds: float = _CANDIDATE_DISCOVERY_SECONDS,
+    discovery_seconds: float | None = None,
 ) -> IndexCandidateSnapshot:
     """Walk once and freeze file ordering, scope decisions, and fingerprints.
 
@@ -290,7 +290,7 @@ def build_index_candidate_snapshot(
     discovered = selected = excluded = skipped = errors = limited = 0
     yielded = path_bytes = 0
     discovery_error: str | None = None
-    deadline = time.monotonic() + discovery_seconds
+    started = time.monotonic()
 
     walker = iter(walk_fn(logical_root))
     while True:
@@ -318,6 +318,7 @@ def build_index_candidate_snapshot(
         # validation, or de-duplication can continue the loop.  In particular,
         # an infinite stream of unsupported names must remain bounded.
         yielded += 1
+        deadline = discovery_deadline(started, yielded, discovery_seconds)
         try:
             raw_path_text = str(raw_path)
             path_bytes += len(raw_path_text.encode("utf-8", errors="surrogatepass"))

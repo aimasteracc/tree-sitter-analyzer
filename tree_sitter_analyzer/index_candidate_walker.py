@@ -8,6 +8,7 @@ import time
 from collections.abc import Iterable
 from typing import Any
 
+from .discovery_budget import discovery_deadline
 from .ignore_rules import IgnoreRules
 from .ignore_rules import is_gitignored as _is_gitignored
 from .ignore_rules import load_ignore_rules as _load_ignore_rules
@@ -30,12 +31,12 @@ def walk_candidate_entries(
     excluded_dir_names: frozenset[str],
     entry_budget: int,
     path_byte_budget: int,
-    discovery_seconds: float,
+    discovery_seconds: float | None,
     budget_error: str,
     start_relative: str = "",
 ) -> Iterable[str]:
     """Yield non-directories while charging every entry before filtering."""
-    deadline = time.monotonic() + discovery_seconds
+    started = time.monotonic()
     entry_count = 0
     path_bytes = 0
     scan_relative, ignore_rules, scope_ignored = _scope_ignore_rules(
@@ -55,7 +56,7 @@ def walk_candidate_entries(
             excluded_dir_names,
             entry_budget,
             path_byte_budget,
-            deadline,
+            (started, discovery_seconds),
             budget_error,
         )
         return
@@ -106,7 +107,8 @@ def walk_candidate_entries(
             if (
                 entry_count > entry_budget
                 or path_bytes > path_byte_budget
-                or time.monotonic() > deadline
+                or time.monotonic()
+                > discovery_deadline(started, entry_count, discovery_seconds)
             ):
                 raise CandidateDiscoveryBudgetExceeded(budget_error)
             try:
@@ -225,7 +227,7 @@ def _walk_path_entries(
     excluded_dir_names: frozenset[str],
     entry_budget: int,
     path_byte_budget: int,
-    deadline: float,
+    budget: tuple[float, float | None],
     budget_error: str,
 ) -> Iterable[str]:
     """Non-POSIX fallback; secure snapshot capture is unsupported on this path."""
@@ -259,7 +261,8 @@ def _walk_path_entries(
             if (
                 entry_count > entry_budget
                 or path_bytes > path_byte_budget
-                or time.monotonic() > deadline
+                or time.monotonic()
+                > discovery_deadline(budget[0], entry_count, budget[1])
             ):
                 raise CandidateDiscoveryBudgetExceeded(budget_error)
             try:
