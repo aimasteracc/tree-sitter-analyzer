@@ -37,13 +37,23 @@ from .generation_selector import (
     InvalidGenerationSelector,
     decode_generation_selector,
 )
+from .source_hash_budget import (
+    SOURCE_HASH_BYTE_BUDGET,
+    SOURCE_HASH_MAX_SECONDS_ONE_FILE,
+    SourceHashBudgetExceeded,
+    source_hash_budget_seconds,
+)
 
 _PATH_ONLY_SOURCE = os.name != "posix"
 logger = logging.getLogger(__name__)
 
 
 def _bind_source_hashes(snapshot: IndexCandidateSnapshot) -> IndexCandidateSnapshot:
-    """路径平台也绑定候选内容摘要，禁止同元数据改写逃过发布复核。"""
+    """路径平台也绑定候选内容摘要，禁止同元数据改写逃过发布复核。
+
+    任一文件超出预算即抛 ``SourceHashBudgetExceeded``：不返回部分绑定的快照，
+    因此不完整的候选既不能开始构建也不能发布（RFC-0032）。
+    """
     if not _PATH_ONLY_SOURCE:
         return snapshot
     from ..index_source_stream import hash_source_at
@@ -51,20 +61,34 @@ def _bind_source_hashes(snapshot: IndexCandidateSnapshot) -> IndexCandidateSnaps
 
     entries = []
     counters = {"input": 0, "output": 0}
-    deadline = time.monotonic() + 30
+    selected = sum(
+        1
+        for entry in snapshot.entries
+        if entry.decision == "selected" and entry.fingerprint is not None
+    )
+    overall_deadline = time.monotonic() + source_hash_budget_seconds(selected)
+    bound = 0
     for entry in snapshot.entries:
         if entry.decision == "selected" and entry.fingerprint is not None:
             before = os.lstat(entry.abs_path)
-            _, digest, clean = hash_source_at(
-                None,
-                entry.abs_path,
-                before,
-                deadline,
-                counters,
-                512 * 1024 * 1024,
-                _marker,
-                _same,
+            deadline = min(
+                overall_deadline,
+                time.monotonic() + SOURCE_HASH_MAX_SECONDS_ONE_FILE,
             )
+            try:
+                _, digest, clean = hash_source_at(
+                    None,
+                    entry.abs_path,
+                    before,
+                    deadline,
+                    counters,
+                    SOURCE_HASH_BYTE_BUDGET,
+                    _marker,
+                    _same,
+                )
+            except (TimeoutError, OverflowError) as exc:
+                raise SourceHashBudgetExceeded(selected, bound) from exc
+            bound += 1
             if not clean or entry.fingerprint != type(entry.fingerprint).from_stat(
                 before
             ):

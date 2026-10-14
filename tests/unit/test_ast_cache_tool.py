@@ -689,3 +689,28 @@ class TestAstCacheSearchTruncated:
             # limit=2 — raw_results has 1 row < 2, so truncated must be False
             result = await tool.execute({"mode": "search", "query": "a", "limit": 2})
         assert result["truncated"] is False
+
+
+def test_index_mode_returns_typed_error_when_source_hash_budget_runs_out(
+    tmp_path, monkeypatch
+):
+    # Issue #1562: a raw TimeoutError escaped `index action=cache mode=index`
+    # on a 2400-file Windows checkout; the tool must answer with a typed error.
+    import tree_sitter_analyzer.cache.generation_store as owner
+    import tree_sitter_analyzer.index_source_stream as stream
+    import tree_sitter_analyzer.portable_source_snapshot  # noqa: F401 先于补丁导入
+
+    (tmp_path / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+
+    def exhausted(*_args):
+        raise TimeoutError
+
+    monkeypatch.setattr(owner, "_PATH_ONLY_SOURCE", True)
+    monkeypatch.setattr(stream, "hash_source_at", exhausted)
+    result = asyncio.run(ASTCacheTool(str(tmp_path)).execute({"mode": "index"}))
+    assert (
+        result["success"],
+        result["error_code"],
+        result["published"],
+        result["files_bound"],
+    ) == (False, "INDEX_GENERATION_SOURCE_HASH_BUDGET_EXCEEDED", False, 0)

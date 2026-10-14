@@ -537,7 +537,15 @@ class ASTCacheTool(BaseMCPTool):
         cache = self._get_cache()
 
         if mode == "index":
-            return self._handle_index(arguments, cache)
+            from ...cache.source_hash_budget import SourceHashBudgetExceeded
+
+            try:
+                return self._handle_index(arguments, cache)
+            except SourceHashBudgetExceeded as exc:
+                # #1562：预算耗尽返回类型化失败，绝不让裸异常越过 MCP 边界。
+                from ...cache.generation_indexing import source_hash_budget_failure
+
+                return source_hash_budget_failure(exc)
         if mode == "lookup":
             return self._handle_lookup(arguments, cache)
         if mode in ("search", "fts_search"):
