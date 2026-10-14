@@ -210,6 +210,7 @@ def build_agent_summary_only_response(result: dict[str, Any]) -> dict[str, Any]:
         "local_verification_command",
         "low_impact_focused_test_command",
         "ci_verification_command",
+        "dependency_graph",
     ):
         value = result.get(key, summary.get(key))
         if value:

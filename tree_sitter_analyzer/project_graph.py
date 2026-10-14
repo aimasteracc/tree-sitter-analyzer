@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from ._bounded_read import read_at_most
 from .constants import (
     EXCLUDE_DIRS,
     GRAPH_SOURCE_EXTS,
@@ -375,6 +376,24 @@ _IMPORT_RESOLVERS: dict[str, Callable[[str, str, set[str], bool], str | None]] =
 }
 
 
+def iter_graph_source_files(
+    project_root: Path, supported_exts: set[str], exclude_dirs: Iterable[str]
+) -> list[Path]:
+    """依赖图节点的唯一遍历规则；索引复用路径共用它以保证节点集一致（Issue #1591）。"""
+    excluded = set(exclude_dirs)
+    files: list[Path] = []
+    for root, dirs, names in os.walk(project_root):
+        dirs[:] = [
+            name for name in dirs if name not in excluded and not name.startswith(".")
+        ]
+        for name in names:
+            if name.startswith("."):
+                continue
+            if Path(name).suffix.lower() in supported_exts:
+                files.append(Path(root) / name)
+    return files
+
+
 # ============================================================
 # DependencyGraph
 # ============================================================
@@ -461,7 +480,7 @@ class DependencyGraph:
                     path = Path(directory) / name
                     with path.open("rb") as stream:
                         before = os.fstat(stream.fileno())
-                        content = stream.read(64 * 1024 * 1024 + 1)
+                        content = read_at_most(stream, 64 * 1024 * 1024)
                         after = os.fstat(stream.fileno())
                     if len(content) > 64 * 1024 * 1024 or (
                         before.st_dev,
@@ -500,19 +519,9 @@ class DependencyGraph:
 
     def _iter_source_files(self, supported_exts: set[str]) -> list[Path]:
         """Return source files while pruning generated and hidden work dirs."""
-        files: list[Path] = []
-        for root, dirs, names in os.walk(self.project_root):
-            dirs[:] = [
-                name
-                for name in dirs
-                if name not in self._EXCLUDE_DIRS and not name.startswith(".")
-            ]
-            for name in names:
-                if name.startswith("."):
-                    continue
-                if Path(name).suffix.lower() in supported_exts:
-                    files.append(Path(root) / name)
-        return files
+        return iter_graph_source_files(
+            self.project_root, supported_exts, self._EXCLUDE_DIRS
+        )
 
     def _build(self) -> None:
         """Scan project directory and build the dependency graph."""

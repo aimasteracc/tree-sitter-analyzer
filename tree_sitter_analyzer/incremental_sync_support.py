@@ -52,10 +52,11 @@ class SyncResult:
 
 def file_content_hash(path: str) -> str:
     """使用与索引写入端相同的编码检测及换行归一化。"""
+    from ._bounded_read import read_at_most
     from .indexing_snapshot import _INDEX_SOURCE_BYTE_LIMIT, decode_index_source
 
     with open(path, "rb") as source:
-        data = source.read(_INDEX_SOURCE_BYTE_LIMIT + 1)
+        data = read_at_most(source, _INDEX_SOURCE_BYTE_LIMIT)
     if len(data) > _INDEX_SOURCE_BYTE_LIMIT:
         raise OSError("source exceeds indexing byte limit")
     return hashlib.sha256(decode_index_source(data).encode("utf-8")).hexdigest()

@@ -144,27 +144,32 @@ def _cached_index_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     result = []
     for row in rows:
         item = dict(row)
-        payload = json.loads(item["symbols_json"])
-        imports = json.loads(item["imports_json"])
-        if (
-            item["extractor_version"] != _AST_CACHE_EXTRACTOR_VERSION
-            or not isinstance(payload, dict)
-            or payload.get("truncated_depth") is not False
-            or payload.get("import_projection_complete") is not True
-            or payload.get("syntax_error") is not False
-            or not isinstance(imports, list)
-            or any(
-                not isinstance(entry, str)
-                and (
-                    not isinstance(entry, dict)
-                    or not isinstance(entry.get("text"), str)
-                )
-                for entry in imports
-            )
-        ):
+        if not row_is_admissible(item):
             return []
         result.append(item)
     return result
+
+
+def row_is_admissible(item: dict[str, Any]) -> bool:
+    """单行索引证据是否完整可信；JSON 损坏同样不可信（Issue #1591 逐行复用）。"""
+    try:
+        payload = json.loads(item["symbols_json"])
+        imports = json.loads(item["imports_json"])
+    except (TypeError, ValueError):
+        return False
+    return not (
+        item["extractor_version"] != _AST_CACHE_EXTRACTOR_VERSION
+        or not isinstance(payload, dict)
+        or payload.get("truncated_depth") is not False
+        or payload.get("import_projection_complete") is not True
+        or payload.get("syntax_error") is not False
+        or not isinstance(imports, list)
+        or any(
+            not isinstance(entry, str)
+            and (not isinstance(entry, dict) or not isinstance(entry.get("text"), str))
+            for entry in imports
+        )
+    )
 
 
 def _add_cached_import_edges(
