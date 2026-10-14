@@ -12,6 +12,17 @@
   Pass `include_details=true` (CLI `--ast-cache-include-details`) for the old
   full list. A 1-file incremental run on 500 files went from 33,388 B to 1,195 B,
   and its size no longer depends on the project's file count.
+- `edit action=impact` (CLI `--change-impact`) no longer repeats the same
+  verification command over and over (#1582). Dogfood measured a ~100 KB
+  response with one ~2.2 KB pytest command appearing 17 times. Top-level command
+  fields (`verification_command`, `test_command`, `pytest_command`,
+  `focused_test_command`, `local_verification_command`, `ci_verification_command`,
+  ...) are unchanged. `agent_summary` now keeps only `verification_command`;
+  the other command mirrors stay at the top level, where the compact
+  `agent_summary_only` view already reads them. `next_step`, `stop_condition`
+  and `queue_ledger.handoff` still inline commands of up to 200 characters, and
+  refer to longer ones by field name. A deterministic 60-test response went
+  from 34,336 B to 19,334 B (`agent_summary` 17,616 B to 2,614 B).
 
 - Index generations no longer pile up on disk (RFC-0032 slice 6, #1554): after
   each publication TSA removes every generation that is neither active nor pinned
