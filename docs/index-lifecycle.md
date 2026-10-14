@@ -61,8 +61,13 @@ Those files stay unindexed and uncertified, so completeness stays partial or
 unknown. Any transient failure keeps the previous generation active.
 
 Legacy `.ast-cache/index.db` remains separate, so old writers cannot modify the
-published generation. Existing read sessions retain their version; generations are
-currently retained without automatic garbage collection. Use the status response
+published generation. Existing read sessions retain their version: every TSA read
+connection and every in-progress build holds a cross-process pin under
+`index-generations/pins/` (RFC-0032 slice 6). After each successful publication the
+writer retires, within a 1 s budget, every generation that is neither active nor
+pinned. It keeps at most the 2 newest sealed generations younger than 24 h, and always
+removes unsealed directories left by killed writers. Directories that are not
+verified generation directories (wrong name, link or reparse point) are never touched. Use the status response
 `cache_path` or `cache.generation_routing.resolve_index_path()` for direct reads.
 
 **Use when:** after a `git pull`, rebase, or large refactor — any time many

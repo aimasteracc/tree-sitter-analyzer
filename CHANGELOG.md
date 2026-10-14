@@ -4,6 +4,13 @@
 
 ### Fixed
 
+- Index generations no longer pile up on disk (RFC-0032 slice 6, #1554). After
+  each publication, TSA now removes, within 1 s, every generation that is neither
+  active nor pinned. It keeps the 2 newest sealed ones younger than 24 h. Builds
+  left by killed writers are removed too. Read connections and builds pin their
+  generation across processes (`index-generations/pins/`). On a 10-file project,
+  20 writes now leave 3 generations (1.1 MB) instead of 20 (7.6 MB).
+
 - `health action=imports` (`dependents` / `dependencies`) and import blast
   radius no longer return 0 results on Windows when the file is given as an
   absolute path or with `\` separators; lookups now match the `/`-keyed cache

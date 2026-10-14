@@ -124,6 +124,14 @@ class ASTCacheSurface:
         raise NotImplementedError
 
 
+def _release_thread_pin(local: Any) -> None:
+    """释放本线程连接所持的版本钉；连接换绑或关闭时调用。"""
+    pin = getattr(local, "pin", None)
+    local.pin = None
+    if pin is not None:
+        pin.release()
+
+
 class ASTCacheDatabaseMixin(ASTCacheSurface):
     """Thread-local connections, migrations, and schema verification."""
 
@@ -145,6 +153,7 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
             conn.close()
             self._local.conn = None
             conn = None
+            _release_thread_pin(self._local)
         unindexed_uri = getattr(self, "_unindexed_uri", None)
         if conn is None:
             if unindexed_uri is not None and database_path == getattr(
@@ -155,6 +164,11 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
                 if getattr(self, "_unindexed_sealed", False):
                     conn.execute("PRAGMA query_only=ON")
             elif read_only:
+                # 连接存续期间钉住所读版本，回收者不得删除（RFC-0032 slice 6）。
+                from .cache.generation_pins import pin_database
+
+                _release_thread_pin(self._local)
+                self._local.pin = pin_database(Path(database_path))
                 conn = sqlite3.connect(
                     Path(database_path).as_uri() + "?mode=ro", uri=True, timeout=10
                 )
@@ -246,6 +260,7 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
             if conn is not None:
                 conn.close()
                 self._local.conn = None
+            _release_thread_pin(self._local)
         finally:
             cache_dir_fd = getattr(self, "_cache_dir_fd", None)
             if cache_dir_fd is not None:
