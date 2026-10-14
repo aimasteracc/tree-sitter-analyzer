@@ -41,6 +41,7 @@ from ..utils.error_sanitizer import (
 )
 from ..utils.format_helper import apply_output_format_to_response
 from .base_tool import BaseMCPTool
+from .full_index_grammar import missing_grammar_next_step
 
 logger = setup_logger(__name__)
 
@@ -710,6 +711,17 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 **stats,
             }
             result["scope_complete"] = manifest_certified
+            # #1562：缺少可选语法属稳定失败，允许发布，但不认证完整性。
+            # 独立的清单认证失败仍阻止发布（PR #1350）；success 仍只表示已认证。
+            result["stable_failures_only"] = bool(
+                grammar_only_errors
+                and not snapshot_warning
+                and manifest_warning is None
+                and not stats.get("manifest_certification_failed", False)
+                and int(stats.get("certification_errors", 0)) == 0
+            )
+            if result["stable_failures_only"]:
+                result["agent_summary"]["next_step"] = missing_grammar_next_step(phases)
 
             from ...indexing_candidate_materialization import (
                 release_index_candidate_snapshot,
