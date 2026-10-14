@@ -11,16 +11,14 @@ _ID = "0123456789abcdef0123456789abcdef"
 
 
 def test_live_pin_is_detected_until_released(tmp_path):
-    from tree_sitter_analyzer.cache.generation_pins import (
-        has_live_pin,
-        pin_directory,
-        pin_generation,
-    )
+    from tree_sitter_analyzer.cache import generation_pins as pins
 
-    pin = pin_generation(tmp_path, _ID)
-    live = has_live_pin(pin_directory(tmp_path, _ID))
+    directory = pins.pin_directory(tmp_path, _ID)
+    pin = pins.pin_generation(tmp_path, _ID)
+    # PR #1567 CI：持有中的钉文件须可被他人读取（Windows 字节锁曾阻断遍历读取）。
+    live, content = pins.has_live_pin(directory), pin.path.read_bytes()
     pin.release()
-    assert (live, has_live_pin(pin_directory(tmp_path, _ID))) == (True, False)
+    assert (live, content, pins.has_live_pin(directory)) == (True, b"", False)
 
 
 def test_tombstone_makes_new_pin_back_off(tmp_path):
@@ -29,10 +27,8 @@ def test_tombstone_makes_new_pin_back_off(tmp_path):
     directory = pins.pin_directory(tmp_path, _ID)
     directory.mkdir(parents=True)
     (directory / pins.TOMBSTONE).touch()
-    assert (pins.pin_generation(tmp_path, _ID), pins.has_live_pin(directory)) == (
-        None,
-        False,
-    )
+    assert pins.pin_generation(tmp_path, _ID) is None
+    assert pins.has_live_pin(directory) is False
 
 
 def test_only_managed_generation_paths_are_pinned(tmp_path):

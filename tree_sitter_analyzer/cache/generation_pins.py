@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import sys
@@ -32,6 +33,8 @@ def pin_directory(storage: Path, generation_id: str) -> Path:
 def _lock(descriptor: int) -> bool:
     try:
         if sys.platform == "win32":  # pragma: no cover - Windows
+            # 锁 EOF 之后的字节：Windows 字节锁会阻断他人读取，空文件内容须仍可读。
+            os.lseek(descriptor, 1 << 30, os.SEEK_SET)
             msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
         else:  # pragma: no cover - POSIX
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -58,10 +61,8 @@ class GenerationPin:
                 pass
 
     def __del__(self) -> None:
-        try:
+        with contextlib.suppress(Exception):
             self.release()
-        except Exception:
-            return
 
 
 def pin_generation(storage: Path, generation_id: str) -> GenerationPin | None:
@@ -83,11 +84,10 @@ def pin_generation(storage: Path, generation_id: str) -> GenerationPin | None:
 def pin_database(database: Path) -> GenerationPin | None:
     """钉住 ``<存储>/generations/<ID>/index.db``；其他路径不是托管版本，不建钉。"""
     generation = database.parent
-    if database.name != "index.db" or generation.parent.name != "generations":
-        return None
-    if not GENERATION_ID.fullmatch(generation.name):
-        return None
-    return pin_generation(generation.parent.parent, generation.name)
+    if database.name == "index.db" and generation.parent.name == "generations":
+        if GENERATION_ID.fullmatch(generation.name):
+            return pin_generation(generation.parent.parent, generation.name)
+    return None
 
 
 def has_live_pin(directory: Path) -> bool:
