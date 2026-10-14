@@ -19,7 +19,7 @@ from ..incremental_sync import IncrementalSync
 from ..incremental_sync_support import SyncResult
 from ..index_source_scope import SourceScopeDescriptor, make_source_scope_descriptor
 from ..indexing_snapshot import (
-    _PERMANENT_SOURCE_REJECTIONS,
+    _CANDIDATE_DISCOVERY_SECONDS,
     IndexCandidateSnapshot,
     build_index_candidate_snapshot,
     walk_index_candidate_entries,
@@ -30,7 +30,7 @@ from ._win_fileops import IS_WINDOWS, replace_file
 from ._win_fileops import IndexWriterBusy as IndexWriterBusy  # 发布失败关闭的类型
 from .generation_bootstrap import adopt_legacy_database
 from .generation_pins import GenerationPin, pin_generation
-from .generation_retirement import retire_generations
+from .generation_retirement import retire_generations, retire_unpublished
 from .generation_routing import read_selector
 from .generation_selector import (
     GenerationSelector,
@@ -43,6 +43,14 @@ from .source_hash_budget import (
     SourceHashBudgetExceeded,
     source_hash_budget_seconds,
 )
+from .source_recheck import (
+    SOURCE_CHANGED,
+    SourceChanged,
+    check_publication_sources,
+    recheck_discovery_seconds,
+)
+from .source_recheck import permanent_rejections_only as permanent_rejections_only
+from .source_recheck import source_contents as _source_contents
 
 _PATH_ONLY_SOURCE = os.name != "posix"
 logger = logging.getLogger(__name__)
@@ -92,7 +100,7 @@ def _bind_source_hashes(snapshot: IndexCandidateSnapshot) -> IndexCandidateSnaps
             if not clean or entry.fingerprint != type(entry.fingerprint).from_stat(
                 before
             ):
-                raise RuntimeError("INDEX_GENERATION_SOURCE_CHANGED")
+                raise SourceChanged(SOURCE_CHANGED, [f"modified: {entry.rel_path}"])
             entry = replace(
                 entry, fingerprint=replace(entry.fingerprint, content_hash=digest)
             )
@@ -123,17 +131,6 @@ class PreparedGeneration:
     selector: GenerationSelector
     result: SyncResult
     allow_permanent_rejections: bool = False
-
-
-def permanent_rejections_only(snapshot: IndexCandidateSnapshot) -> bool:
-    """只有已明确永久拒绝的路径允许发布清理结果，不能包含临时发现失败。"""
-    errors = [entry for entry in snapshot.entries if entry.decision == "error"]
-    return (
-        bool(errors)
-        and not snapshot.discovery_error
-        and snapshot.errors == len(errors)
-        and all(entry.reason in _PERMANENT_SOURCE_REJECTIONS for entry in errors)
-    )
 
 
 def _flush_directory(path: Path) -> None:
@@ -167,19 +164,6 @@ def _write_atomic(path: Path, data: bytes) -> None:
         _flush_directory(path.parent)
     finally:
         temporary.unlink(missing_ok=True)
-
-
-def _source_contents(snapshot: IndexCandidateSnapshot) -> tuple[object, ...]:
-    """通用 DTO 比较忽略摘要和描述符链，发布边界必须显式纳入二者。"""
-    return tuple(
-        (
-            entry.rel_path,
-            (entry.fingerprint.content_hash, entry.fingerprint.descriptor_chain)
-            if entry.fingerprint is not None
-            else None,
-        )
-        for entry in snapshot.selected_entries
-    )
 
 
 class GenerationStore:
@@ -254,15 +238,20 @@ class GenerationStore:
             raise Superseded("INDEX_GENERATION_FOREIGN_STORE")
         return self.storage / "generations" / selector.generation_id / "index.db"
 
-    def _snapshot(self) -> IndexCandidateSnapshot:
+    def _snapshot(
+        self, discovery_seconds: float = _CANDIDATE_DISCOVERY_SECONDS
+    ) -> IndexCandidateSnapshot:
         return build_index_candidate_snapshot(
             str(self.root),
             max_files=self.scope.certification_max_files,
             exclude_patterns=self.scope.effective_excludes,
             walk_fn=lambda root: walk_index_candidate_entries(
-                root, excluded_dir_names=frozenset(EXCLUDE_DIRS)
+                root,
+                excluded_dir_names=frozenset(EXCLUDE_DIRS),
+                discovery_seconds=discovery_seconds,
             ),
             language_fn=_language_from_ext,
+            discovery_seconds=discovery_seconds,
         )
 
     def _publication_parent(self) -> GenerationSelector | None:
@@ -409,55 +398,48 @@ class GenerationStore:
     def prepare(self, candidate: GenerationCandidate) -> PreparedGeneration:
         """复制已发布父数据库，再执行真实 TSA 增量同步，失败不会触碰父版本。"""
         selector = self.begin(candidate)
-        database = self.database(selector)
-        cache = ASTCache(str(self.root), str(database))
         try:
-            result = IncrementalSync(cache).sync(
-                max_files=self.scope.certification_max_files,
-                exclude_patterns=self.scope.effective_excludes,
-                candidate_snapshot=candidate.snapshot,
-                source_scope=self.scope,
-            )
-            if (
-                not result.scope_complete
-                or result.errors
-                or result.backfill_errors
-                or result.manifest_certification_failed
-            ):
-                raise RuntimeError("INDEX_GENERATION_INCOMPLETE")
-            checkpoint = cache.get_conn().execute("PRAGMA wal_checkpoint(TRUNCATE)")
-            if checkpoint.fetchone()[0] != 0:
-                raise RuntimeError("INDEX_GENERATION_CHECKPOINT_BUSY")
-        finally:
-            cache.close()
-        self.seal(selector)
+            cache = ASTCache(str(self.root), str(self.database(selector)))
+            try:
+                result = IncrementalSync(cache).sync(
+                    max_files=self.scope.certification_max_files,
+                    exclude_patterns=self.scope.effective_excludes,
+                    candidate_snapshot=candidate.snapshot,
+                    source_scope=self.scope,
+                )
+                if (
+                    not result.scope_complete
+                    or result.errors
+                    or result.backfill_errors
+                    or result.manifest_certification_failed
+                ):
+                    raise RuntimeError("INDEX_GENERATION_INCOMPLETE")
+                checkpoint = cache.get_conn().execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                if checkpoint.fetchone()[0] != 0:
+                    raise RuntimeError("INDEX_GENERATION_CHECKPOINT_BUSY")
+            finally:
+                cache.close()
+            self.seal(selector)
+        except BaseException:
+            self.abandon(selector)  # #1595：失败构建立即回收
+            raise
         return PreparedGeneration(candidate, selector, result)
 
     def publish(self, prepared: PreparedGeneration) -> GenerationSelector:
         """发布前重新校验完整父身份及源码，原子替换唯一活动选择器。"""
-        with self._lease():
+        with self._lease(), self.abandoning(prepared.selector):
             self._admit(prepared.candidate)
-            current = self._snapshot()
             previous = prepared.candidate.snapshot
-            if (
-                current != previous
-                or _source_contents(_bind_source_hashes(current))
-                != (
-                    prepared.candidate.source_contents
-                    if prepared.candidate.source_contents is not None
-                    else _source_contents(previous)
-                )
-                or current.root_identity != previous.root_identity
-                or (
-                    current.errors
-                    and not (
-                        prepared.allow_permanent_rejections
-                        and permanent_rejections_only(current)
-                    )
-                )
-                or current.discovery_error
-            ):
-                raise RuntimeError("INDEX_GENERATION_SOURCE_CHANGED")
+            current = self._snapshot(recheck_discovery_seconds(previous))
+            check_publication_sources(
+                previous,
+                current,
+                prepared.candidate.source_contents
+                if prepared.candidate.source_contents is not None
+                else _source_contents(previous),
+                lambda: _source_contents(_bind_source_hashes(current)),
+                allow_permanent_rejections=prepared.allow_permanent_rejections,
+            )
             database = self.database(prepared.selector)
             if not database.is_file():
                 raise FileNotFoundError("INDEX_GENERATION_DATABASE_MISSING")
@@ -472,6 +454,32 @@ class GenerationStore:
                 _write_atomic(activated, b"1\n")
             self._retire(prepared.selector)
             return prepared.selector
+
+    @contextmanager
+    def abandoning(self, selector: GenerationSelector) -> Iterator[None]:
+        """离开时回收未发布的私有构建（异常或结果不可发布）；已发布时为空操作。"""
+        try:
+            yield
+        finally:
+            self.abandon(selector)
+
+    def abandon(self, selector: GenerationSelector) -> None:
+        """失败或放弃发布的构建立即释放构建钉并回收，绝不触碰活动版本（#1595）。
+
+        成功发布时 ``_retire`` 已取走构建钉，因此本方法对已发布版本是空操作。
+        """
+        if selector.generation_id not in self._build_pins:
+            return
+        try:
+            if self.active_selector() == selector:
+                return
+        except (OSError, InvalidGenerationSelector):
+            return  # 无法确认活动版本时宁可留给常规回收
+        self._build_pins.pop(selector.generation_id).release()
+        try:
+            retire_unpublished(self.storage, selector.generation_id)
+        except OSError:
+            logger.warning("abandoned generation retirement failed", exc_info=True)
 
     def _retire(self, active: GenerationSelector) -> None:
         """发布后在租约内有界回收；失败只记录，已完成的发布不回滚。"""

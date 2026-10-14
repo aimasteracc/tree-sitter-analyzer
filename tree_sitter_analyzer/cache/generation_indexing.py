@@ -33,8 +33,17 @@ from .source_hash_budget import (
     SourceHashBudgetExceeded,
     source_hash_budget_next_step,
 )
+from .source_recheck import SourceChanged, source_changed_failure
 
 _T = TypeVar("_T")
+_SOURCE_CHANGED_KEYS = (
+    "error_code",
+    "retryable",
+    "changes",
+    "changes_total",
+    "changes_truncated",
+    "next_step",
+)
 
 
 def project_store(root: str, scope: SourceScopeDescriptor) -> GenerationStore:
@@ -95,15 +104,16 @@ def mutate_published_cache(
             ):
                 raise Superseded("INDEX_GENERATION_SUPERSEDED")
             selector = store.begin(candidate)
-            writable = ASTCache(cache.project_root, str(store.database(selector)))
-            try:
-                result = operation(writable)
-            finally:
-                writable.close()
-            if publishable_result(result) or _first_publication(candidate):
-                store.seal(selector)
-                store.publish(PreparedGeneration(candidate, selector, SyncResult()))
-                cache._adopt_published_generation()
+            with store.abandoning(selector):  # #1595：未发布即回收
+                writable = ASTCache(cache.project_root, str(store.database(selector)))
+                try:
+                    result = operation(writable)
+                finally:
+                    writable.close()
+                if publishable_result(result) or _first_publication(candidate):
+                    store.seal(selector)
+                    store.publish(PreparedGeneration(candidate, selector, SyncResult()))
+                    cache._adopt_published_generation()
             return result
 
         finally:
@@ -130,27 +140,28 @@ def run_incremental_sync(
         ):
             raise Superseded("INDEX_GENERATION_SUPERSEDED")
         selector = store.begin(candidate)
-        writable = ASTCache(cache.project_root, str(store.database(selector)))
-        writable._publishes_project_index = True
-        try:
-            arguments["candidate_snapshot"] = candidate.snapshot
-            result = (sync_factory or IncrementalSync)(writable).sync(**arguments)
-        finally:
-            writable.close()
-        permanent_cleanup = permanent_rejections_only(candidate.snapshot)
-        if _first_publication(candidate) or publishable_sync(
-            result, permanent_cleanup=permanent_cleanup
-        ):
-            store.seal(selector)
-            store.publish(
-                PreparedGeneration(
-                    candidate,
-                    selector,
-                    result,
-                    allow_permanent_rejections=permanent_cleanup,
+        with store.abandoning(selector):  # #1595：未发布即回收
+            writable = ASTCache(cache.project_root, str(store.database(selector)))
+            writable._publishes_project_index = True
+            try:
+                arguments["candidate_snapshot"] = candidate.snapshot
+                result = (sync_factory or IncrementalSync)(writable).sync(**arguments)
+            finally:
+                writable.close()
+            permanent_cleanup = permanent_rejections_only(candidate.snapshot)
+            if _first_publication(candidate) or publishable_sync(
+                result, permanent_cleanup=permanent_cleanup
+            ):
+                store.seal(selector)
+                store.publish(
+                    PreparedGeneration(
+                        candidate,
+                        selector,
+                        result,
+                        allow_permanent_rejections=permanent_cleanup,
+                    )
                 )
-            )
-            cache._adopt_published_generation()
+                cache._adopt_published_generation()
         return result
 
     finally:
@@ -195,32 +206,33 @@ async def run_full_index(
             selector = store.begin(candidate)
         except (OSError, ValueError, RuntimeError) as exc:
             return _publication_error(exc, root, "generation_publication")
-        with private_index(
-            root, store.database(selector), verify=store._verify_directories
-        ):
-            entered = True
-            result = await tool._execute_in_place(
-                arguments, candidate.snapshot, started_at=started_at
-            )
-        # #1562：只有稳定单文件失败（如缺少可选语法）时照常发布，完整性如实标为
-        # incomplete；与 publication_policy 对 index_project/sync 的规则一致。
-        stable_only = result.get("stable_failures_only") is True
-        if not stable_only and (
-            not result.get("success") or not result.get("scope_complete")
-        ):
-            result["success"] = False
-            result["published"] = False
-            return result
-        try:
-            store.seal(selector)
-            store.publish(PreparedGeneration(candidate, selector, SyncResult()))
-        except (OSError, ValueError, RuntimeError) as exc:
-            failure = _publication_error(exc, root, "generation_publication")
+        with store.abandoning(selector):  # #1595：未发布即回收
+            with private_index(
+                root, store.database(selector), verify=store._verify_directories
+            ):
+                entered = True
+                result = await tool._execute_in_place(
+                    arguments, candidate.snapshot, started_at=started_at
+                )
+            # #1562：只有稳定单文件失败（如缺少可选语法）时照常发布，完整性如实标为
+            # incomplete；与 publication_policy 对 index_project/sync 的规则一致。
+            stable_only = result.get("stable_failures_only") is True
+            if not stable_only and (
+                not result.get("success") or not result.get("scope_complete")
+            ):
+                result["success"] = False
+                result["published"] = False
+                return result
             try:
-                failure["published"] = store.active_selector() == selector
-            except (OSError, ValueError):
-                failure["published"] = None
-            return failure
+                store.seal(selector)
+                store.publish(PreparedGeneration(candidate, selector, SyncResult()))
+            except (OSError, ValueError, RuntimeError) as exc:
+                failure = _publication_error(exc, root, "generation_publication")
+                try:
+                    failure["published"] = store.active_selector() == selector
+                except (OSError, ValueError):
+                    failure["published"] = None
+                return failure
         result["published"] = True
         if stable_only and not result.get("scope_complete"):
             # 已发布但未认证：success 保持 False（PR #1350），完整性如实为 incomplete。
@@ -276,6 +288,10 @@ def _publication_error(exc: Exception, root: str, phase: str) -> dict[str, Any]:
         # #1562：预算耗尽是可重试的类型化失败，而不是一条裸异常文本。
         failure["error_code"] = SOURCE_HASH_BUDGET_EXCEEDED
         failure["next_step"] = source_hash_budget_next_step(exc)
+    elif isinstance(exc, SourceChanged):
+        # #1595：源码变化/复核未完成可直接重试，并给出有界差异清单。
+        typed = source_changed_failure(exc)
+        failure.update({key: typed[key] for key in _SOURCE_CHANGED_KEYS})
     return failure
 
 

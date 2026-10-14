@@ -110,7 +110,7 @@ def test_content_change_with_equal_metadata_prevents_publication(store, monkeypa
     )
     current = replace(current, entries=(same_metadata,))
     assert current == original
-    monkeypatch.setattr(store, "_snapshot", lambda: current)
+    monkeypatch.setattr(store, "_snapshot", lambda *_args: current)
     with pytest.raises(RuntimeError, match="SOURCE_CHANGED"):
         store.publish(prepared)
     assert store.active_selector() == first

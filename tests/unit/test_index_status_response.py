@@ -183,15 +183,7 @@ class TestAuthoritativeSnapshotOracle:
         databases = list(
             (tmp_path / ".ast-cache/index-generations/generations").glob("*/index.db")
         )
-        assert len(databases) == 1
-        conn = sqlite3.connect(databases[0])
-        marker = conn.execute(
-            "SELECT building FROM ast_build_state WHERE id=1"
-        ).fetchone()[0]
-        manifest_count = conn.execute(
-            "SELECT COUNT(*) FROM ast_index_snapshot_manifest"
-        ).fetchone()[0]
-        conn.close()
+        # #1595：未发布的失败构建立即回收，不再作为孤儿版本留存。
         assert (
             result["success"],
             result["verdict"],
@@ -199,8 +191,7 @@ class TestAuthoritativeSnapshotOracle:
             result["manifest_warning"],
             result["certification_errors"],
             result["scope_complete"],
-            manifest_count,
-            marker,
+            databases,
         ) == (
             False,
             "WARN",
@@ -208,8 +199,7 @@ class TestAuthoritativeSnapshotOracle:
             "INDEX_MANIFEST_CERTIFICATION_FAILED",
             1,
             False,
-            0,
-            0,
+            [],
         )
 
     @pytest.mark.asyncio
@@ -284,26 +274,17 @@ class TestAuthoritativeSnapshotOracle:
         databases = list(
             (tmp_path / ".ast-cache/index-generations/generations").glob("*/index.db")
         )
-        assert len(databases) == 1
-        conn = sqlite3.connect(databases[0])
-        manifest_count = conn.execute(
-            "SELECT COUNT(*) FROM ast_index_snapshot_manifest"
-        ).fetchone()[0]
-        rows = conn.execute(
-            "SELECT id, built FROM ast_call_graph_state ORDER BY id"
-        ).fetchall()
-        conn.close()
         status = await CodeGraphStatusTool(str(tmp_path)).execute(
             {"access_mode": "read_existing", "output_format": "json"}
         )
+        # #1595：未发布的失败构建立即回收，不再作为孤儿版本留存。
         assert (
             result["success"],
             result["verdict"],
             result["phases"]["incremental_sync"]["backfill_errors"],
             result["phases"]["incremental_sync"]["completeness"],
-            manifest_count,
-            rows,
-        ) == (False, "WARN", 1, "incomplete", 0, [(1, 0), (2, 0)])
+            databases,
+        ) == (False, "WARN", 1, "incomplete", [])
         assert (status["completeness"], status["oracle_reason"]) == (
             "unknown",
             "MISSING_INDEX",
