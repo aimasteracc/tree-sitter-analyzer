@@ -268,7 +268,7 @@ def test_cli_codemap_flag_count_matches_the_real_parser() -> None:
 _LESSONS_PATH = PROJECT_ROOT / "docs" / "AI_LESSONS.md"
 
 #: 合并资源生命周期、认证读取、索引遍历、信任路线图、约束容量与验证选择教训，只读连接不等于只读文件教训，以及导航图须绑定索引身份教训后实测为 23 条；新增教训时必须同步更新。
-_LESSON_ENTRY_COUNT = 23
+_LESSON_ENTRY_COUNT = 24
 
 _LESSON_SECTIONS = ("### Context", "### Lessons learned", "### Required guardrail")
 _LESSON_TITLE = re.compile(r"^## \d{4}-\d{2} — \S")

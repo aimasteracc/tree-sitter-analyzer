@@ -248,6 +248,29 @@ class TestAnnotateCanonicalComplexity:
 
         assert symbols == [{"kind": "function", "name": "run", "line": 1}]
 
+    def test_plugin_manager_is_built_once_per_process(self, monkeypatch):
+        """#1562: a PluginManager per file rescanned entry points for every file."""
+        from tree_sitter_analyzer.cache import _symbol_metrics
+        from tree_sitter_analyzer.plugins.manager import PluginManager
+
+        built: list[object] = []
+        original_init = PluginManager.__init__
+
+        def counting_init(self) -> None:
+            built.append(self)
+            original_init(self)
+
+        monkeypatch.setattr(PluginManager, "__init__", counting_init)
+        monkeypatch.setattr(PluginManager, "get_plugin", lambda _self, _lang: None)
+        _symbol_metrics._shared_plugin_manager.cache_clear()
+        try:
+            for _ in range(3):
+                _symbol_metrics._annotate_canonical_complexity([], None, "", "python")
+        finally:
+            _symbol_metrics._shared_plugin_manager.cache_clear()
+
+        assert len(built) == 1
+
 
 # ---------------------------------------------------------------------------
 # _extract_parent_classes()
