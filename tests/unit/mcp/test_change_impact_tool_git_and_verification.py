@@ -789,6 +789,9 @@ def test_mixed_mapping_summary_requires_known_tests_before_default():
 
     assert summary["verification_command"] == join_verification_steps(steps)
     assert strategy["verification_steps"] == steps
+    # #1582：多步总长超过内联上限时，stop_condition 按字段名引用有序的
+    # verification_steps（上一行已断言其顺序：已知测试在默认门禁之前）。
     assert summary["stop_condition"] == (
-        "All verification steps pass in order: " + "; ".join(steps) + "."
+        "All verification steps pass in order: the 3 `verification_steps` "
+        f"({len('; '.join(steps))} chars)."
     )

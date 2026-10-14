@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from .change_impact_command_refs import command_ref, drop_mirrored_commands, steps_ref
 from .verification_command import join_verification_steps
 
 LARGE_DIRTY_DIFF_THRESHOLD = 25
@@ -356,7 +357,11 @@ def _queue_ledger_handoff(
 ) -> str:
     """Build one compact queue handoff sentence."""
     scope = ", ".join(scope_paths)
-    verification = verification_command or "none"
+    verification = (
+        command_ref("verification_command", verification_command)
+        if verification_command
+        else "none"
+    )
     return (
         f"scope={scope}; scoped_changed={len(scoped_changed_files)}; "
         f"out_of_scope_dirty={len(out_of_scope)}; verification={verification}"
@@ -433,6 +438,8 @@ def build_change_impact_response(
         value = strategy.get(key)
         if value:
             response[key] = value
+    # #1582：摘要块只保留规范的 verification_command，其余命令以顶层为唯一来源。
+    response["agent_summary"] = drop_mirrored_commands(agent_summary, response)
     from ....verification_plan import attach_commands
 
     return attach_commands(response, context)
@@ -442,19 +449,28 @@ def _agent_next_step(verification: dict[str, Any], strategy: dict[str, Any]) -> 
     """Return one concise next action for agent decision-making."""
     if not verification["test_required"]:
         return "Run git diff --check; pytest is not required for docs-only changes."
+    # #1582：长命令按字段名引用，避免在文案里整段重复。
     local = strategy.get("local_verification_command")
     if local:
+        local_ref = command_ref("local_verification_command", local)
         ci = strategy.get("ci_verification_command")
         if ci and ci != local:
             return (
-                f"Run low-impact local verification: {local}; keep {ci} "
+                f"Run low-impact local verification: {local_ref}; keep "
+                f"{command_ref('ci_verification_command', ci)} "
                 "for CI or queue boundary."
             )
-        return f"Run low-impact local verification: {local}"
+        return f"Run low-impact local verification: {local_ref}"
     focused = strategy.get("focused_test_command")
     if focused and focused != verification["verification_command"]:
-        return f"Run focused verification first: {focused}"
-    return f"Run verification: {verification['verification_command']}"
+        return (
+            "Run focused verification first: "
+            f"{command_ref('focused_test_command', focused)}"
+        )
+    return (
+        "Run verification: "
+        f"{command_ref('verification_command', verification['verification_command'])}"
+    )
 
 
 def _agent_stop_condition(
@@ -470,34 +486,34 @@ def _agent_stop_condition(
         return (
             "docs-only change: git diff --check passes and no runtime files are added."
         )
+    # #1582：与 next_step 相同，长命令只引用字段名。
     local = strategy.get("local_verification_command")
+    default = command_ref("default_test_command", verification["default_test_command"])
     if local:
+        local_ref = command_ref("local_verification_command", local)
         ci = strategy.get("ci_verification_command")
         if ci and ci != local:
             return (
-                f"{local} exits successfully locally; {ci} remains the CI "
+                f"{local_ref} exits successfully locally; "
+                f"{command_ref('ci_verification_command', ci)} remains the CI "
                 "or queue-boundary command."
             )
-        return f"{local} exits successfully locally."
+        return f"{local_ref} exits successfully locally."
     steps = strategy.get("verification_steps") or [verification["verification_command"]]
     if len(steps) > 1:
-        completion = "All verification steps pass in order: " + "; ".join(steps)
+        completion = "All verification steps pass in order: " + steps_ref(steps)
         if risk == "high" and verification["default_test_command"] not in steps:
-            return (
-                completion
-                + f"; run {verification['default_test_command']} at the queue boundary."
-            )
+            return completion + f"; run {default} at the queue boundary."
         return completion + "."
     if (
         risk == "high"
         and verification["verification_command"] != verification["default_test_command"]
     ):
         return (
-            f"{verification['verification_command']} passes; run "
-            f"{verification['default_test_command']} at the queue boundary."
+            f"{command_ref('verification_command', verification['verification_command'])}"
+            f" passes; run {default} at the queue boundary."
         )
-    steps = strategy.get("verification_steps") or [verification["verification_command"]]
-    return f"{steps[-1]} exits successfully."
+    return f"{command_ref('verification_command', steps[-1])} exits successfully."
 
 
 def _effective_verification_command(

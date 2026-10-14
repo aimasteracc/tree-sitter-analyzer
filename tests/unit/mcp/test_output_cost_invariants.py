@@ -519,3 +519,117 @@ def test_index_include_details_validation_and_cli_twin() -> None:
     spec = next(s for s in _CORE_SPECS if s.flag_name == "ast_cache")
     args = argparse.Namespace(ast_cache_include_details=True)
     assert spec.build_tool_args(args, "json")["include_details"] is True
+
+
+# ── #1582: edit action=impact — 同一条验证命令不再重复十余次 ──────────────────
+#
+# dogfood round 2（2026-10-14）：完整 impact 响应约 100 KB，同一条 ~2.2 KB 的
+# pytest 命令出现 17 次。修复后顶层契约字段取值不变，agent_summary 只保留规范的
+# verification_command，文案中的长命令按字段名引用。
+
+
+def _impact_response_with_long_command(n_tests: int) -> dict:
+    """确定性的 local_low_impact 完整响应：n_tests 个测试目标拼成一条长命令。"""
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_response import (
+        AgentSummaryContext,
+        ChangeImpactResponseContext,
+        build_agent_summary,
+        build_change_impact_response,
+    )
+
+    tests = [f"tests/unit/test_feature_{i:03d}.py" for i in range(n_tests)]
+    focused = "uv run pytest " + " ".join(tests) + " -q"
+    local = "uv run pytest " + " ".join(tests) + " -n 2 -q"
+    verification = {
+        "test_required": True,
+        "test_runner": "pytest",
+        "default_test_command": "uv run pytest -q",
+        "pytest_required": True,
+        "verification_command": focused,
+        "verification_reason": "changed Python source",
+    }
+    strategy = {
+        "focused_test_command": focused,
+        "low_impact_focused_test_command": local,
+        "local_verification_command": local,
+        "ci_verification_command": focused,
+        "resource_profile": "local_low_impact",
+        "verification_strategy": "local_low_impact_focused_then_ci",
+        "verification_steps": [local],
+        "verification_hint": "run the focused tests",
+    }
+    changed = ["src/core.py"]
+    summary = build_agent_summary(
+        AgentSummaryContext(
+            risk="medium",
+            changed_files=changed,
+            scope_paths=None,
+            verification=verification,
+            strategy=strategy,
+            affected_count=n_tests,
+            tests_to_run_count=n_tests,
+        )
+    )
+    request = SimpleNamespace(
+        mode="diff", scope_paths=None, changed_files=changed, diff_stat=""
+    )
+    return build_change_impact_response(
+        ChangeImpactResponseContext(
+            request=request,
+            risk="medium",
+            affected=set(),
+            file_impacts=[],
+            visible_tests=tests[:20],
+            all_tests=tests,
+            verification=verification,
+            strategy=strategy,
+            test_mapping={},
+            agent_summary=summary,
+        )
+    )
+
+
+def test_impact_long_command_appears_once_per_contract_field() -> None:
+    """#1582 结构不变量：长命令只出现在顶层契约字段与 agent_summary.verification_command。"""
+    response = _impact_response_with_long_command(60)
+    local = response["local_verification_command"]
+    focused = response["focused_test_command"]
+    text = json.dumps(response, ensure_ascii=False)
+
+    # 顶层 verification/test/pytest/local/low_impact 5 处 + verification_steps[0]
+    # 1 处 + 摘要 verification_command 1 处；修复前为 11 处。
+    assert text.count(local) == 7
+    # 顶层 focused 与 ci 各 1 处；摘要与文案不再重复。
+    assert text.count(focused) == 2
+    summary = response["agent_summary"]
+    assert summary["verification_command"] == local
+    assert summary["next_step"] == (
+        f"Run low-impact local verification: `local_verification_command` "
+        f"({len(local)} chars); keep `ci_verification_command` ({len(focused)} "
+        "chars) for CI or queue boundary."
+    )
+    assert [key for key in summary if key.endswith("_command")] == [
+        "verification_command"
+    ]
+    # 精简视图从顶层读取命令字段，去重后读取特定字段的消费者不受影响。
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_response import (
+        build_agent_summary_only_response,
+    )
+
+    compact = build_agent_summary_only_response(response)
+    assert (
+        compact["local_verification_command"],
+        compact["ci_verification_command"],
+        compact["focused_test_command"],
+    ) == (local, focused, focused)
+
+
+def test_impact_response_bytes_pinned_after_dedup() -> None:
+    """#1582 字节不变量：60 个测试目标的确定性响应，修复前后字节精确钉住。
+
+    实测 2026-10-14：修复前 34336 B，修复后 19334 B（-43.7%）。
+    """
+    response = _impact_response_with_long_command(60)
+    assert len(json.dumps(response, ensure_ascii=False)) == 19334
