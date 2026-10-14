@@ -338,7 +338,7 @@ def test_status_lag_scans_snapshot_canonical_root(tmp_path, monkeypatch):
     )
 
     @contextmanager
-    def lease(_project_root):
+    def lease(_project_root, **_kwargs):
         yield snapshot
 
     monkeypatch.setattr(response.index_snapshot, "lease_existing_snapshot", lease)
@@ -391,7 +391,7 @@ def test_p04_status_retains_acquired_identity_after_stats_failure(monkeypatch):
     )
 
     @contextmanager
-    def lease(_project_root):
+    def lease(_project_root, **_kwargs):
         yield snapshot
 
     monkeypatch.setattr(response.index_snapshot, "lease_existing_snapshot", lease)
@@ -449,7 +449,7 @@ def test_partial_completeness_hint_is_returned(monkeypatch):
     )
 
     @contextmanager
-    def lease(_project_root):
+    def lease(_project_root, **_kwargs):
         yield snapshot
 
     monkeypatch.setattr(response.index_snapshot, "lease_existing_snapshot", lease)

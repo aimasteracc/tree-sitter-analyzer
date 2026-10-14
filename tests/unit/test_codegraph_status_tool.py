@@ -137,7 +137,9 @@ class TestLagCompatibility:
             1,
         )
         monkeypatch.setattr(
-            owner, "lease_existing_snapshot", lambda _root: nullcontext(snapshot)
+            owner,
+            "lease_existing_snapshot",
+            lambda _root, **_kwargs: nullcontext(snapshot),
         )
         monkeypatch.setattr(
             owner,
@@ -180,7 +182,9 @@ class TestLagCompatibility:
             1,
         )
         monkeypatch.setattr(
-            owner, "lease_existing_snapshot", lambda _root: nullcontext(snapshot)
+            owner,
+            "lease_existing_snapshot",
+            lambda _root, **_kwargs: nullcontext(snapshot),
         )
         monkeypatch.setattr(
             owner,
