@@ -11,6 +11,7 @@ Key classes:
 
 import hashlib
 import os
+import threading
 from collections import defaultdict, deque
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -416,6 +417,7 @@ class DependencyGraph:
     """
 
     _global_cache: dict[str, "DependencyGraph"] = {}
+    _built: threading.Event | None = None
 
     def __new__(cls, project_root: str) -> "DependencyGraph":
         # 完整内容与项目路径决定复用；无法读取时仅构建，不复用。
@@ -424,11 +426,15 @@ class DependencyGraph:
             return cls._global_cache[key]
 
         instance = super().__new__(cls)
+        # 实例在构建前即入缓存；并发调用者须等构建完成，不能读到半成品（#1602）。
+        instance._built = threading.Event()
         cls._global_cache[key or project_root] = instance
         return instance
 
     def __init__(self, project_root: str) -> None:
         if hasattr(self, "_initialized") and self._initialized:  # type: ignore[has-type]
+            if self._built is not None:
+                self._built.wait()
             return
 
         self.project_root = Path(project_root).resolve()
@@ -452,8 +458,11 @@ class DependencyGraph:
         )
 
         self._initialized = True
-
-        self._build()
+        try:
+            self._build()
+        finally:
+            if self._built is not None:
+                self._built.set()
 
     @staticmethod
     def _cache_key_for(project_root: str) -> str | None:
