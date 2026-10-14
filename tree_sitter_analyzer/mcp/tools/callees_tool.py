@@ -253,7 +253,8 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
             if not has_any_call_edges:
                 index_hint = (
                     "Call-graph index is empty or has not been built yet. "
-                    "Run `tree-sitter-analyzer --full-index` first, then retry."
+                    "Build it with MCP `index action=full` (CLI: "
+                    "`tree-sitter-analyzer --full-index`), then retry."
                 )
             else:
                 index_hint = not_in_index_hint(func_name, evidence)
@@ -267,7 +268,8 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
             as_summary_line = f"callees: {func_name!r} calls 0 function(s)"
             as_next_step = result.get("next_step") or (
                 f"No callees found for '{func_name}'. "
-                "Check spelling or run --full-index to build the call graph."
+                "Check spelling, or build the call graph with MCP "
+                "`index action=full` (CLI: --full-index)."
             )
         else:
             as_summary_line = (

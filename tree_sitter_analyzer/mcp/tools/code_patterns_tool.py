@@ -225,12 +225,12 @@ def _build_code_patterns_response(
     if critical_count:
         verdict = "UNSAFE"
         next_step = (
-            "refactoring_suggestions for concrete fix recipes — start with "
+            "edit action=refactor for concrete fix recipes — start with "
             "critical findings"
         )
     elif warning_count:
         verdict = "CAUTION"
-        next_step = "refactoring_suggestions or address warnings before shipping"
+        next_step = "edit action=refactor or address warnings before shipping"
     else:
         verdict = "SAFE"
         next_step = "no patterns flagged — proceed with planned change"
@@ -256,7 +256,7 @@ def _build_code_patterns_response(
         "smart_workflow_hint": (
             f"Found {len(filtered)} pattern(s) in {file_path}. "
             + hint_critical
-            + "Use refactoring_suggestions for concrete fix recipes."
+            + "Use edit action=refactor for concrete fix recipes."
         ),
         "summary_line": summary_line,
         "agent_summary": {

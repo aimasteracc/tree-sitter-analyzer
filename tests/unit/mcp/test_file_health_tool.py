@@ -148,7 +148,8 @@ def test_file_health_result_includes_direct_agent_commands_for_smells() -> None:
     assert action["reason"] == "grade C with actionable smell(s): long_method"
     assert (
         action["mcp_command"]
-        == "refactoring_suggestions(file_path='src/needs work.py')"
+        # #1562：next_step 必须指向真实存在的门面动作，而非已退役的工具名。
+        == "edit action=refactor file_path='src/needs work.py'"
     )
     assert action["cli_command"] == (
         "uv run python -m tree_sitter_analyzer "
