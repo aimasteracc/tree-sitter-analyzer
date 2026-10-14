@@ -212,3 +212,104 @@ def test_python_f_string_interpolation_is_kept() -> None:
     text = _strip_comments_and_prose('x = f"{w.size}"\ny = "size of w"\n', "python")
 
     assert _reference_lines(text, re.compile(r"(?<![\w$])size(?![\w$])")) == [1]
+
+
+@pytest.mark.parametrize(
+    ("completeness", "callers"),
+    [("unknown", 0), ("incomplete", 3), ("complete", 3)],
+)
+def test_only_an_edge_complete_absence_is_rechecked(completeness, callers) -> None:
+    # #1593：非 complete 的答案与非空列表都原样返回，不做额外扫描。
+    from tree_sitter_analyzer.mcp.tools.callers_absence import assess_completeness
+
+    scoped = {"freshness": "unknown", "reason": "SOURCE_REVALIDATION_SCOPED"}
+    verdict = assess_completeness(None, ".", "f", None, completeness, callers, scoped)
+
+    assert (verdict.completeness, verdict.reason, verdict.fields) == (
+        completeness,
+        None,
+        {},
+    )
+
+
+def test_unreadable_declarations_are_unchecked_not_complete() -> None:
+    # #1593：声明行读取失败不是“没有引用”。
+    from tree_sitter_analyzer.mcp.tools.callers_absence import assess_completeness
+
+    scoped = {"freshness": "unknown", "reason": "SOURCE_REVALIDATION_SCOPED"}
+    verdict = assess_completeness(object(), ".", "W.f", None, "complete", 0, scoped)
+
+    assert (verdict.completeness, verdict.reason) == (
+        "unknown",
+        "NON_CALL_REFERENCES_UNCHECKED",
+    )
+    assert verdict.fields == {
+        "non_call_references": None,
+        "non_call_reference_sites": None,
+    }
+
+
+@pytest.mark.asyncio
+async def test_named_file_keeps_the_reference_check(widget_root) -> None:
+    # #1593：点名声明文件只收窄声明范围，不跳过非调用引用扫描。
+    result = await CodeGraphCallersTool(widget_root).execute(
+        {
+            "function_name": "Widget._style",
+            "file_path": "widget.py",
+            "include_bodies": False,
+        }
+    )
+
+    assert (result["completeness"], result["non_call_references"]) == ("unknown", 1)
+
+
+def test_unreadable_source_file_is_not_an_empty_scan(tmp_path) -> None:
+    # #1593：任一同语言文件不可读时，扫描结果为 None 而不是部分结果。
+    import time
+
+    from tree_sitter_analyzer.mcp.tools.callers_absence import _files_containing
+
+    (tmp_path / "a.py").write_text("x = w.size\n", encoding="utf-8")
+    files = [("a.py", "python"), ("gone.py", "python")]
+
+    assert (
+        _files_containing(str(tmp_path), files, b"size", time.monotonic() + 5) is None
+    )
+
+
+def test_attribute_writes_count_but_bare_assignments_do_not() -> None:
+    # #1593：`w.size = 1` 是对属性的使用；局部变量赋值与关键字实参不是。
+    import re
+
+    from tree_sitter_analyzer.mcp.tools.callers_absence import (
+        _reference_lines,
+        _strip_comments_and_prose,
+    )
+
+    source = "w.size = 1\nsize = 2\nf(size=3)\nok = a.size + b.size\n"
+    text = _strip_comments_and_prose(source, "ruby")
+
+    assert text == source
+    assert _reference_lines(text, re.compile(r"(?<![\w$])size(?![\w$])")) == [1, 4]
+
+
+def test_accessor_check_reads_decorators_on_either_side(tmp_path) -> None:
+    # #1593：声明行可能指向装饰器行本身；缺失文件与越界行号不判为访问器。
+    from tree_sitter_analyzer.mcp.tools.callers_absence import _is_accessor
+
+    (tmp_path / "p.py").write_text(
+        "class P:\n    @x.setter\n    def x(self, v):\n        pass\n", encoding="utf-8"
+    )
+
+    assert _is_accessor(str(tmp_path), [("p.py", 2, "python")], "x") is True
+    assert _is_accessor(str(tmp_path), [("p.py", 99, "python")], "x") is False
+    assert _is_accessor(str(tmp_path), [("gone.py", 1, "python")], "x") is False
+
+
+def test_describe_names_three_sites_then_counts_the_rest() -> None:
+    # #1593：提示点名前三个位置，其余以数量给出。
+    from tree_sitter_analyzer.mcp.tools.callers_absence import _describe
+
+    sites = [{"file": "a.py", "line": n} for n in range(1, 6)]
+
+    assert _describe(sites) == "a.py:1; a.py:2; a.py:3; and 2 more"
