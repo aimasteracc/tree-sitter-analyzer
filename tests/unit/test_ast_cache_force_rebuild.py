@@ -231,3 +231,115 @@ def test_force_without_materialized_evidence_preserves_existing_cache(
     after = [tuple(row) for row in cache.get_conn().execute("SELECT * FROM ast_index")]
     assert (result["verdict"], result["indexed"], after) == ("WARN", 0, before)
     cache.close()
+
+
+@pytest.mark.parametrize(
+    ("change", "expected"),
+    [
+        ({"limited": 1}, "INDEX_CANDIDATE_TRUNCATED_BY_MAX_FILES"),
+        ({"discovery_error": "walk failed"}, "INDEX_CANDIDATE_DISCOVERY_FAILED"),
+        ({"discovered": 99}, "INDEX_CANDIDATE_DISCOVERY_UNRECONCILED"),
+    ],
+)
+def test_unsupported_materialization_reports_the_real_blocking_reason(
+    tmp_path, monkeypatch, change, expected
+):
+    # Issue #1562: on Windows `index action=full mode=full` was refused with
+    # SECURE_MATERIALIZATION_UNSUPPORTED, although that platform runs the legacy
+    # data plane; the real cause (here: truncation) was never named.
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+    from tree_sitter_analyzer.cache.indexer_snapshot import (
+        _unsafe_force_snapshot_result,
+    )
+
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=_python_language,
+    )
+    snapshot = replace(
+        snapshot, frozen_error="SECURE_MATERIALIZATION_UNSUPPORTED", **change
+    )
+    monkeypatch.setattr(
+        materialization, "secure_candidate_materialization_supported", lambda: False
+    )
+    result = _unsafe_force_snapshot_result(snapshot, False)
+    assert [detail["reason"] for detail in result["files"]] == [expected]
+
+
+def test_supported_platform_keeps_reporting_its_frozen_error(tmp_path, monkeypatch):
+    # Issue #1562: only the legacy (Windows) platform rewrites the reason.
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+    from tree_sitter_analyzer.cache.indexer_snapshot import (
+        _unsafe_force_snapshot_result,
+    )
+
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=_python_language,
+    )
+    snapshot = replace(snapshot, frozen_error="INDEX_CANDIDATE_MATERIALIZATION_BUDGET")
+    monkeypatch.setattr(
+        materialization, "secure_candidate_materialization_supported", lambda: True
+    )
+    result = _unsafe_force_snapshot_result(snapshot, False)
+    assert [detail["reason"] for detail in result["files"]] == [
+        "INDEX_CANDIDATE_MATERIALIZATION_BUDGET"
+    ]
+
+
+def test_unsupported_materialization_with_file_errors_lists_only_those_files(
+    tmp_path, monkeypatch
+):
+    # Issue #1562: per-file discovery errors explain the refusal on their own;
+    # no misleading platform-wide reason is appended.
+    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
+    from tree_sitter_analyzer.cache.indexer_snapshot import (
+        _unsafe_force_snapshot_result,
+    )
+
+    source = tmp_path / "app.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    snapshot = build_index_candidate_snapshot(
+        str(tmp_path),
+        max_files=10,
+        exclude_patterns=frozenset(),
+        walk_fn=lambda _root: (str(source),),
+        language_fn=_python_language,
+    )
+    failed = replace(snapshot.entries[0], decision="error", reason="unreadable")
+    snapshot = replace(
+        snapshot,
+        entries=(failed,),
+        selected=snapshot.selected - 1,
+        errors=1,
+        frozen_error="SECURE_MATERIALIZATION_UNSUPPORTED",
+    )
+    monkeypatch.setattr(
+        materialization, "secure_candidate_materialization_supported", lambda: False
+    )
+    result = _unsafe_force_snapshot_result(snapshot, False)
+    assert [(d["file"], d["reason"]) for d in result["files"]] == [
+        ("app.py", "unreadable")
+    ]
+
+
+def test_missing_snapshot_reports_missing_frozen_evidence():
+    # Issue #1562: the reason helper keeps the pre-existing answer without a snapshot.
+    from tree_sitter_analyzer.cache.indexer_snapshot import (
+        _unsafe_force_snapshot_result,
+    )
+
+    result = _unsafe_force_snapshot_result(None, False)
+    assert [detail["reason"] for detail in result["files"]] == [
+        "INDEX_CANDIDATE_FROZEN_EVIDENCE_MISSING"
+    ]
