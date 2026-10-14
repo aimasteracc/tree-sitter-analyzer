@@ -8,7 +8,7 @@ from contextlib import nullcontext
 
 import pytest
 
-from tests.unit._ast_cache_helpers import legacy_cache
+from tests.unit._ast_cache_helpers import legacy_cache, without_grammar
 from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import (
     CodeGraphStatusTool,
 )
@@ -380,3 +380,64 @@ async def test_explicit_mode_enriches_older_status_payload(monkeypatch) -> None:
             }
         ],
     }
+
+
+_SWIFT_INSTALL = 'pip install "tree-sitter-analyzer[swift]"'
+_SWIFT_REASON = f"Swift grammar not installed — {_SWIFT_INSTALL}"
+
+
+@pytest.fixture
+def project_with_swift_file(tmp_path, monkeypatch):
+    """两个 Python 文件可正常入索引，一个 Swift 文件因缺少可选语法而稳定失败。"""
+    (tmp_path / "a.py").write_text("def leaf():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text(
+        "from a import leaf\n\n\ndef top():\n    return leaf()\n", encoding="utf-8"
+    )
+    (tmp_path / "greet.swift").write_text(
+        'func greet() -> String { return "hi" }\n', encoding="utf-8"
+    )
+    without_grammar(monkeypatch, "swift")
+    return tmp_path
+
+
+async def _index_then_status(root) -> dict:
+    from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
+
+    await ASTCacheTool(str(root)).execute({"mode": "index"})
+    return await CodeGraphStatusTool(str(root)).execute({"output_format": "json"})
+
+
+@pytest.mark.asyncio
+async def test_status_with_missing_grammar_stays_partial(project_with_swift_file):
+    # Issue #1581: 被排除的文件不入索引，绝不宣称 complete。
+    result = await _index_then_status(project_with_swift_file)
+    assert (result["completeness"], result["total_files"]) == ("partial", 2)
+
+
+@pytest.mark.asyncio
+async def test_status_with_missing_grammar_names_the_excluded_file(
+    project_with_swift_file,
+):
+    # Issue #1581: 状态答复列出被排除的文件与原因。
+    result = await _index_then_status(project_with_swift_file)
+    assert (result["excluded_files"], result["excluded_file_count"]) == (
+        [{"file": "greet.swift", "language": "swift", "reason": _SWIFT_REASON}],
+        1,
+    )
+
+
+@pytest.mark.asyncio
+async def test_status_with_missing_grammar_says_install_not_rerun(
+    project_with_swift_file,
+):
+    # Issue #1581: 旧提示"Re-run full indexing"重跑后依旧 partial，形成循环。
+    result = await _index_then_status(project_with_swift_file)
+    assert result["agent_summary"]["next_step"] == (
+        "The index stays partial because 1 file(s) need an optional grammar that "
+        "is not installed (greet.swift). Re-running indexing without it reproduces "
+        f"the same partial index. To certify the index: {_SWIFT_INSTALL}, then run "
+        "index action=full. Until then certified reads (pulse, project-wide graph "
+        "queries) refuse, and answers about the excluded files stay unknown; "
+        "search action=symbol and nav action=resolve still return uncertified "
+        "coordinates."
+    )

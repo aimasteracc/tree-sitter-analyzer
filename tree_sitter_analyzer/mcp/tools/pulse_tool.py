@@ -20,6 +20,7 @@ from typing import Any
 
 from ...api.pulse_evidence import PulseSourceError, certified_pulse_connection
 from ...api.serialization import COMPACT_LEGEND
+from ...index_grammar_exclusions import with_exclusions
 from .base_tool import BaseMCPTool
 
 
@@ -171,7 +172,8 @@ class PulseTool(BaseMCPTool):
                     max_comments=max_comments,
                 )
         except PulseSourceError as exc:
-            return exc.to_response()
+            # #1581：缺少可选语法导致的未认证，下一步写明安装什么而非重跑索引。
+            return with_exclusions(exc.to_response(), self.project_root)
         except Exception as exc:
             return {"success": False, "error": f"pulse query failed: {exc}"}
 
@@ -329,7 +331,8 @@ class PulseBatchTool(BaseMCPTool):
                         )
 
         except PulseSourceError as exc:
-            return exc.to_response()
+            # #1581：缺少可选语法导致的未认证，下一步写明安装什么而非重跑索引。
+            return with_exclusions(exc.to_response(), self.project_root)
 
         if truncated_count > 0:
             results.append({"warning": f"{truncated_count} targets truncated"})

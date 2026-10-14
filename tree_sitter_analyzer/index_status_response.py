@@ -8,6 +8,7 @@ from typing import Any
 from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 
 from . import index_lag, index_snapshot
+from .index_grammar_exclusions import explain_incomplete
 from .index_snapshot import ACTION_VERSION
 from .mcp.tools._response_builder import build_response
 from .mcp.utils.format_helper import apply_output_format_to_response
@@ -110,12 +111,23 @@ def build_index_status_response(
         if snapshot.canonical_root and snapshot.snapshot_id
         else None
     )
+    # #1581：缺少可选语法的文件是稳定失败，重跑索引不会改变结果；下一步改为
+    # 安装对应 extra。完整性如实保持非 complete，不对未入索引的文件宣称完整。
+    exclusions = (
+        None
+        if complete
+        else explain_incomplete(
+            snapshot.canonical_root or project_root, snapshot.reason
+        )
+    )
     if complete:
         hint = (
             "Index is complete. Use nav/search normally; snapshot IDs are "
             "process-local audit tokens owned internally for future reader "
             "composition, not caller inputs."
         )
+    elif exclusions is not None:
+        hint = exclusions.next_step()
     elif snapshot.completeness == "partial":
         # Phase B-3: partial = some files certified (certified_at IS NOT NULL)
         # but no full manifest.  Useful for incremental reads; not authoritative
@@ -178,6 +190,9 @@ def build_index_status_response(
         },
     )
     result.update(_storage_fields(stats))
+    if exclusions is not None:
+        result["excluded_files"] = exclusions.payload()
+        result["excluded_file_count"] = len(exclusions.files)
     if stats.get("schema_version") is not None:
         result["schema_version"] = stats["schema_version"]
     if include_access_evidence:
