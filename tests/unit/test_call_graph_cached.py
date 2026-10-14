@@ -208,6 +208,128 @@ class TestCachedCallGraphImportResolution:
         assert funcs[0]["end_line"] == 20
 
 
+_TWO_PUBLISH_FUNCTIONS = [
+    {"name": "run", "file": "app.py", "line": 1, "language": "python"},
+    {
+        "name": "publish",
+        "file": "gen.py",
+        "line": 2,
+        "language": "python",
+        "class": "GenerationStore",
+    },
+    {
+        "name": "publish",
+        "file": "reg.py",
+        "line": 2,
+        "language": "python",
+        "class": "Registry",
+    },
+]
+
+
+def _publish_edge(callee_full: str, **resolution: str) -> dict:
+    return {
+        "caller_name": "run",
+        "caller_file": "app.py",
+        "caller_line": 1,
+        "callee_name": "publish",
+        "callee_full": callee_full,
+        "callee_line": 3,
+        **resolution,
+    }
+
+
+class TestCachedCallGraphNoBareNameFanout:
+    """#1559/#1560：缓存边优先采用持久化解析，模糊裸名不扇出成边。"""
+
+    @staticmethod
+    def _graph(functions, edges) -> CachedCallGraph:
+        cache = MagicMock()
+        cache.get_functions.return_value = functions
+        cache.get_call_edges.return_value = edges
+        cache.get_imports.return_value = {}
+        cg = CachedCallGraph("/tmp/project", cache=cache)
+        cg.build()
+        return cg
+
+    def test_persisted_resolution_binds_only_its_file(self):
+        # #1559：持久化解析到 gen.py 的边只挂到 GenerationStore.publish。
+        edge = _publish_edge(
+            "store.publish",
+            callee_resolution="project",
+            callee_resolved_file="gen.py",
+        )
+        cg = self._graph(_TWO_PUBLISH_FUNCTIONS, [edge])
+        assert [(c["file"], c["line"]) for c in cg.callees_of("run")] == [("gen.py", 2)]
+
+    def test_ambiguous_global_match_creates_no_edge(self):
+        # #1559：接收者未知且有两个同名候选时不猜测。
+        edge = _publish_edge("target.publish", callee_resolution="unknown")
+        cg = self._graph(_TWO_PUBLISH_FUNCTIONS, [edge])
+        assert cg.callees_of("run") == []
+
+    def test_ambiguous_candidates_stay_reachable_for_dead_code(self):
+        # #1559：模糊候选不成为边，但死代码分析仍视其为可达。
+        edge = _publish_edge("target.publish", callee_resolution="unknown")
+        cg = self._graph(_TWO_PUBLISH_FUNCTIONS, [edge])
+        run = next(f for f in cg.function_refs() if f.name == "run")
+        assert sorted(f.file_path for f in cg.reachable_callee_refs_of(run)) == [
+            "gen.py",
+            "reg.py",
+        ]
+
+    def test_class_qualified_call_binds_its_receiver(self):
+        # #1559：`Registry.publish(...)` 的接收者就是类名，可以唯一确定。
+        edge = _publish_edge("Registry.publish")
+        cg = self._graph(_TWO_PUBLISH_FUNCTIONS, [edge])
+        assert [c["file"] for c in cg.callees_of("run")] == ["reg.py"]
+
+    def test_builtin_resolution_is_not_a_project_callee(self):
+        # #1560：持久化为 stdlib 的 `dataclasses.replace` 不能挂到项目的 replace。
+        functions = [
+            {"name": "run", "file": "app.py", "line": 1, "language": "python"},
+            {"name": "replace", "file": "plan.py", "line": 4, "language": "python"},
+        ]
+        edge = {
+            **_publish_edge("dataclasses.replace", callee_resolution="stdlib"),
+            "callee_name": "replace",
+        }
+        cg = self._graph(functions, [edge])
+        assert cg.callees_of("run") == []
+
+    def test_unknown_receiver_skips_unique_global_candidate(self):
+        # #1560：项目里只有一个 `get`，`d.get(...)` 也不能断定调用的是它。
+        functions = [
+            {"name": "run", "file": "app.py", "line": 1, "language": "python"},
+            {
+                "name": "get",
+                "file": "box.py",
+                "line": 2,
+                "language": "python",
+                "class": "Box",
+            },
+        ]
+        edge = {**_publish_edge("d.get"), "callee_name": "get"}
+        cg = self._graph(functions, [edge])
+        assert cg.callees_of("run") == []
+
+    def test_self_call_binds_unique_mixin_method(self):
+        # #1559：`self.helper()` 指向唯一的 mixin 方法时仍然绑定。
+        functions = [
+            {"name": "run", "file": "app.py", "line": 1, "language": "python"},
+            {
+                "name": "helper",
+                "file": "mixins.py",
+                "line": 7,
+                "language": "python",
+                "class": "HelperMixin",
+            },
+        ]
+        edge = {**_publish_edge("self.helper"), "callee_name": "helper"}
+        cg = self._graph(functions, [edge])
+        assert [c["file"] for c in cg.callees_of("run")] == ["mixins.py"]
+
+
 # ============================================================
 # FunctionRef end_line tests
 # ============================================================

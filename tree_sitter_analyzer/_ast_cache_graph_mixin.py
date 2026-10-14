@@ -68,13 +68,18 @@ class ASTCacheGraphMixin(ASTCacheSurface):
     """Stable call-edge and graph-query API."""
 
     def get_call_edges(self) -> list[dict[str, Any]]:
-        """Return legacy-compatible CALLS rows from unified EdgeStore."""
+        """Return legacy-compatible CALLS rows from unified EdgeStore.
+
+        #1559/#1560：同时返回持久化解析列，内存调用图据此绑定目标，
+        不再按裸名重新猜测。
+        """
         try:
             rows = (
                 self._get_conn()
                 .execute(
                     "SELECT caller_name, file_path AS caller_file, caller_line, "
-                    "callee_name, callee_full, callee_line, file_path, language "
+                    "callee_name, callee_full, callee_line, file_path, language, "
+                    "callee_resolution, callee_resolved_file "
                     "FROM edges WHERE kind = 'calls'"
                 )
                 .fetchall()

@@ -759,3 +759,47 @@ class TestBodyInliningDegrades:
         definition = result["definition"]
         assert "bodied_count" not in definition
         assert "body_cap" not in definition
+
+
+_BUDGET_FIXTURE = {
+    "box.py": (
+        "class Box:\n"
+        "    def get(self, key):\n        return key\n\n"
+        "    def append(self, value):\n        return value\n"
+    ),
+    "bag.py": (
+        "class Bag:\n"
+        "    def get(self, key):\n        return key\n\n"
+        "    def append(self, value):\n        return value\n"
+    ),
+    "budget.py": (
+        "import dataclasses\n\n\n"
+        "def apply_budget(d, xs, cfg):\n"
+        "    value = d.get('k')\n"
+        "    xs.append(value)\n"
+        "    return dataclasses.replace(cfg, value=value)\n"
+    ),
+}
+
+
+class TestHierarchyCalleesNoBareNameFanout:
+    """#1560：对非项目接收者的 get/append/replace 调用不得被映射到项目同名方法。"""
+
+    @pytest.mark.asyncio
+    async def test_builtin_receiver_calls_are_not_project_callees(self, tmp_path):
+        # #1560：`d.get` / `xs.append` / `dataclasses.replace` 的接收者不是项目类型，
+        # 旧实现按裸名把它们分别挂到 Box/Bag 的同名方法上。
+        from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+            CodeGraphFullIndexTool,
+        )
+
+        for name, text in _BUDGET_FIXTURE.items():
+            (tmp_path / name).write_text(text, encoding="utf-8")
+        indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
+            {"mode": "full", "max_files": 10}
+        )
+        assert indexed["published"] is True
+        result = await CodeGraphNavigateTool(str(tmp_path)).execute(
+            {"symbol": "apply_budget", "mode": "hierarchy", "output_format": "json"}
+        )
+        assert result["hierarchy"]["callees"] == []
