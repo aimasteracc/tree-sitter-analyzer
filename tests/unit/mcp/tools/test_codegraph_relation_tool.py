@@ -26,6 +26,7 @@ from tree_sitter_analyzer.mcp.tools.codegraph_relation_tool import (
     _STALE_CACHE_WARNING,
     _is_stale_resolution,
     index_never_resolved,
+    label_graph_relations,
 )
 
 # 被查询符号的调用方多为"接收者未知"的方法调用，且项目中有两个同名 `run`：
@@ -208,3 +209,119 @@ def test_index_never_resolved_is_false_when_edges_table_unreadable() -> None:
     cache = _ProbeCache([])
     cache.get_conn().execute("DROP TABLE edges")
     assert index_never_resolved(cache) is False
+
+
+# #1586：内存调用图回退路径上，每条边的 callee_resolution 必须如实反映边本身
+# ——同文件目标为 local，跨文件目标为 project；不得一律 unknown，也不得把同文件
+# 目标标成 project。
+_LABEL_SOURCES = {
+    "helper.py": "def helper():\n    return 1\n",
+    "worker.py": (
+        "from helper import helper\n\n\n"
+        "def _local():\n    return 2\n\n\n"
+        "def build():\n    _local()\n    return helper()\n"
+    ),
+    "service.py": (
+        "class Service:\n"
+        "    def run(self):\n        return 1\n\n"
+        "    def boot(self):\n        return self.run()\n"
+    ),
+}
+
+
+@pytest.fixture(params=["cache", "parse"])
+def fallback_root(request: pytest.FixtureRequest, tmp_path: Path) -> Path:
+    """两条内存回退路径：已建索引但调用图标记为假，以及完全无索引的现场解析。"""
+    for name, text in _LABEL_SOURCES.items():
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    if request.param == "cache":
+        _build_index(tmp_path)
+    return tmp_path
+
+
+def _labels(entries: list[dict]) -> list[tuple[str, str, str]]:
+    return sorted(
+        (e["name"], e["callee_resolution"], e["callee_resolved_file"]) for e in entries
+    )
+
+
+async def _fallback_execute(tool, monkeypatch, function_name: str) -> dict:
+    monkeypatch.setattr(tool, "_cache_call_graph_built", lambda _cache: False)
+    return await tool.execute({"function_name": function_name, "output_format": "json"})
+
+
+@pytest.mark.asyncio
+async def test_fallback_callers_label_same_file_target_local(
+    fallback_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # #1586：旧实现给分类器传空的被调用名，回退路径上每个条目都成了 unknown。
+    tool = CodeGraphCallersTool(str(fallback_root))
+    result = await _fallback_execute(tool, monkeypatch, "_local")
+
+    assert _labels(result["callers"]) == [("build", "local", "worker.py")]
+
+
+@pytest.mark.asyncio
+async def test_fallback_callers_label_cross_file_target_project(
+    fallback_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # #1586：跨文件目标为 project，解析文件是目标所在文件而非调用方文件。
+    tool = CodeGraphCallersTool(str(fallback_root))
+    result = await _fallback_execute(tool, monkeypatch, "helper")
+
+    assert _labels(result["callers"]) == [("build", "project", "helper.py")]
+
+
+@pytest.mark.asyncio
+async def test_qualified_callers_label_self_method_local(
+    fallback_root: Path,
+) -> None:
+    # #1586：限定名 `Class.method` 总是走内存调用图。
+    tool = CodeGraphCallersTool(str(fallback_root))
+    result = await tool.execute(
+        {"function_name": "Service.run", "output_format": "json"}
+    )
+
+    assert _labels(result["callers"]) == [("boot", "local", "service.py")]
+
+
+@pytest.mark.asyncio
+async def test_fallback_callees_label_local_and_project(
+    fallback_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # #1586 / round-2 dogfood：同文件被调用方曾被误标为 project。
+    tool = CodeGraphCalleesTool(str(fallback_root))
+    result = await _fallback_execute(tool, monkeypatch, "build")
+
+    assert _labels(result["callees"]) == [
+        ("_local", "local", "worker.py"),
+        ("helper", "project", "helper.py"),
+    ]
+
+
+class _EdgelessGraph:
+    """没有任何边的图：目标存在，但不连接到任何调用方。"""
+
+    def resolve_targets(self, func_name, file_path=None):
+        return ["target"]
+
+    def caller_refs_of(self, target):
+        return []
+
+
+def test_entry_without_backing_edge_is_unknown_not_guessed() -> None:
+    # #1586：找不到对应边时如实标 unknown，不再把条目自身文件冒充解析文件。
+    entries = [{"name": "orphan", "file": "a.py", "line": 3}]
+    labelled = label_graph_relations(
+        _EdgelessGraph(), "target", None, entries, inbound=True
+    )
+
+    assert labelled == [
+        {
+            "name": "orphan",
+            "file": "a.py",
+            "line": 3,
+            "callee_resolution": "unknown",
+            "callee_resolved_file": "",
+        }
+    ]

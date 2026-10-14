@@ -175,6 +175,51 @@ def classify_callee_resolution(
     return "unknown", callee_resolved_file
 
 
+def label_graph_relations(
+    graph: Any,
+    func_name: str,
+    file_path: str | None,
+    entries: list[dict[str, Any]],
+    *,
+    inbound: bool,
+) -> list[dict[str, Any]]:
+    """#1586：按内存调用图中的真实边为回退结果标注 ``callee_resolution``。
+
+    内存图只保存确定的边（#1568：模糊候选只进入 ``possible_*``），每条边都已
+    绑定到一个项目内函数，所以被调用方的定义文件就是边的解析文件，交给
+    :func:`classify_callee_resolution` 判定 local / project，与 SQL 路径同一口径。
+    ``inbound`` 为真时 ``entries`` 是调用方（被调用方为查询目标），否则是被调用方。
+    找不到对应边的条目如实标为 ``unknown``，不猜解析文件。返回新列表。
+    """
+    edges: dict[tuple[str, str, int], tuple[str, str, str]] = {}
+    for target in graph.resolve_targets(func_name, file_path):
+        neighbours = (
+            graph.caller_refs_of(target) if inbound else graph.callee_refs_of(target)
+        )
+        for ref in neighbours:
+            callee, caller = (target, ref) if inbound else (ref, target)
+            edges.setdefault(
+                (ref.file_path, ref.name, ref.start_line),
+                (callee.name, callee.file_path, caller.file_path),
+            )
+    labelled: list[dict[str, Any]] = []
+    for entry in entries:
+        edge = edges.get(
+            (entry.get("file", ""), entry.get("name", ""), entry.get("line", 0))
+        )
+        resolution, resolved_file = (
+            classify_callee_resolution(*edge) if edge else ("unknown", "")
+        )
+        labelled.append(
+            {
+                **entry,
+                "callee_resolution": resolution,
+                "callee_resolved_file": resolved_file,
+            }
+        )
+    return labelled
+
+
 class CodeGraphRelationToolMixin:
     """Shared cache and graph bootstrap for caller/callee compatibility tools."""
 
