@@ -47,7 +47,12 @@ def test_count_source_files_skips_excluded_and_hidden_dirs(tmp_path) -> None:
         (tmp_path / skipped).mkdir()
         (tmp_path / skipped / "x.py").write_text("x = 1\n", encoding="utf-8")
     (tmp_path / "notes.txt").write_text("not source\n", encoding="utf-8")
+    (tmp_path / ".hidden_file.py").write_text("x = 1\n", encoding="utf-8")
     assert budget.count_source_files(str(tmp_path)) == 2
+
+
+def test_index_missing_response_without_project_root_is_none() -> None:
+    assert budget.index_missing_response(None, "callers", function="x") is None
 
 
 def test_count_source_files_stops_at_limit(tmp_path) -> None:
@@ -122,3 +127,19 @@ async def test_callers_without_index_within_budget_still_parses(tmp_path) -> Non
     root = _write_project(tmp_path, 2)
     result = await CodeGraphCallersTool(root).execute({"function_name": "target"})
     assert (result["data_source"], result["caller_count"]) == ("parse", 2)
+
+
+@pytest.mark.asyncio
+async def test_callees_without_index_within_budget_still_parses(tmp_path) -> None:
+    root = _write_project(tmp_path, 2)
+    result = await CodeGraphCalleesTool(root).execute(
+        {"function_name": "caller_0", "file_path": "mod_0.py"}
+    )
+    assert (result["data_source"], result["callee_count"]) == ("parse", 1)
+
+
+@pytest.mark.asyncio
+async def test_caller_tree_without_index_within_budget_still_parses(tmp_path) -> None:
+    root = _write_project(tmp_path, 2)
+    result = await CodeGraphCallerTreeTool(root).execute({"symbol": "target"})
+    assert (result["data_source"], result["verdict"]) == ("parse", "INFO")
