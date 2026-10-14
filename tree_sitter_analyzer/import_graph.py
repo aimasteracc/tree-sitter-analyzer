@@ -393,39 +393,40 @@ class ImportGraph:
             cycles=self._detect_cycles(),
         )
 
-    def dependents_of(self, file_path: str) -> list[dict[str, Any]]:
-        """Find all files that import the given file (reverse deps)."""
-        if not self._built:
-            self.build()
+    def _graph_key(self, file_path: str) -> str:
+        """把调用方路径映射为图中实际使用的缓存键（忽略分隔符风格）。
+
+        缓存键使用 ``/``；Windows 上绝对路径经 ``relpath`` 或调用方传入的相对路径
+        会带 ``\\``，直接查表必然落空并静默返回 0 个依赖（#1558, dogfood 2026-10-14）。
+        未命中任何已知文件时原样返回，保持"未知文件 → 空结果"的既有语义。
+        """
         rel = (
             os.path.relpath(os.path.abspath(file_path), self.project_root)
             if os.path.isabs(file_path)
             else file_path
         )
-        edges = self._reverse.get(rel, [])
+        known = self._project_files | self._forward.keys() | self._reverse.keys()
+        return _match_file(rel, _file_lookup(known)) or rel
+
+    def dependents_of(self, file_path: str) -> list[dict[str, Any]]:
+        """Find all files that import the given file (reverse deps)."""
+        if not self._built:
+            self.build()
+        edges = self._reverse.get(self._graph_key(file_path), [])
         return [e.to_dict() for e in edges]
 
     def dependencies_of(self, file_path: str) -> list[dict[str, Any]]:
         """Find all files that the given file imports (forward deps)."""
         if not self._built:
             self.build()
-        rel = (
-            os.path.relpath(os.path.abspath(file_path), self.project_root)
-            if os.path.isabs(file_path)
-            else file_path
-        )
-        edges = self._forward.get(rel, [])
+        edges = self._forward.get(self._graph_key(file_path), [])
         return [e.to_dict() for e in edges]
 
     def blast_radius(self, file_path: str, max_depth: int = 10) -> dict[str, Any]:
         """Compute transitive reverse deps — all files affected by changing this file."""
         if not self._built:
             self.build()
-        rel = (
-            os.path.relpath(os.path.abspath(file_path), self.project_root)
-            if os.path.isabs(file_path)
-            else file_path
-        )
+        rel = self._graph_key(file_path)
         visited: set[str] = set()
         frontier = [rel]
         depth_map: dict[str, int] = {rel: 0}

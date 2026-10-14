@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- `health action=imports` (`dependents` / `dependencies`) and import blast
+  radius no longer return 0 results on Windows when the file is given as an
+  absolute path or with `\` separators; lookups now match the `/`-keyed cache
+  regardless of separator style (#1558).
 - Pulse responses now report in-field truncation: `field_truncation` (compact
   `ftr`) maps each list field cut to fewer items to `kept`, `total` and
   `at_least`. When a source limit was hit (requested `max_*` or the fixed

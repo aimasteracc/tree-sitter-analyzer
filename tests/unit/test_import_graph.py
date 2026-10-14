@@ -199,6 +199,28 @@ class TestImportGraphQueries:
         g = _graph([("a.py", "b.py")])
         assert g.dependents_of("nope.py") == []
 
+    def test_dependents_of_matches_backslash_relative_path(self) -> None:
+        # #1558 (dogfood 2026-10-14)：Windows 风格路径查询 "/" 缓存键曾静默返回 0。
+        g = _graph([("pkg/a.py", "pkg/c.py"), ("pkg/b.py", "pkg/c.py")])
+        sources = {d["source"] for d in g.dependents_of("pkg\\c.py")}
+        assert sources == {"pkg/a.py", "pkg/b.py"}
+
+    def test_dependents_of_matches_absolute_path(self) -> None:
+        # #1558：MCP 工具解析为绝对路径后，Windows 上 relpath 产生 "\\" 分隔符。
+        g = _graph([("pkg/a.py", "pkg/c.py")])
+        absolute = os.path.join(ROOT, "pkg", "c.py")
+        assert [d["source"] for d in g.dependents_of(absolute)] == ["pkg/a.py"]
+
+    def test_dependencies_of_matches_backslash_relative_path(self) -> None:
+        # #1558：正向依赖同样按分隔符无关的键查找。
+        g = _graph([("pkg/a.py", "pkg/b.py")])
+        assert [d["target"] for d in g.dependencies_of("pkg\\a.py")] == ["pkg/b.py"]
+
+    def test_blast_radius_matches_backslash_relative_path(self) -> None:
+        # #1558：影响面计算的起点键也必须命中 "/" 缓存键。
+        g = _graph([("pkg/b.py", "pkg/c.py"), ("pkg/a.py", "pkg/b.py")])
+        assert g.blast_radius("pkg\\c.py")["transitive_dependents"] == 2
+
     def test_blast_radius_transitive(self) -> None:
         # c <- b <- a  (changing c affects b and a)
         g = _graph([("b.py", "c.py"), ("a.py", "b.py")])
