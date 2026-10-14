@@ -28,6 +28,11 @@ from .generation_store import (
     permanent_rejections_only,
 )
 from .publication_policy import publishable_result, publishable_sync
+from .source_hash_budget import (
+    SOURCE_HASH_BUDGET_EXCEEDED,
+    SourceHashBudgetExceeded,
+    source_hash_budget_next_step,
+)
 
 _T = TypeVar("_T")
 
@@ -220,13 +225,38 @@ async def run_full_index(
             release_index_candidate_snapshot(candidate.snapshot)
 
 
+def source_hash_budget_failure(exc: SourceHashBudgetExceeded) -> dict[str, Any]:
+    """``index action=cache`` 等直接写入口的类型化失败答复（#1562）。"""
+    next_step = source_hash_budget_next_step(exc)
+    summary_line = (
+        f"index not published: source-hash budget exhausted after "
+        f"{exc.bound}/{exc.selected} files"
+    )
+    return {
+        "success": False,
+        "verdict": "ERROR",
+        "published": False,
+        "error_code": SOURCE_HASH_BUDGET_EXCEEDED,
+        "error": SOURCE_HASH_BUDGET_EXCEEDED,
+        "files_selected": exc.selected,
+        "files_bound": exc.bound,
+        "next_step": next_step,
+        "summary_line": summary_line,
+        "agent_summary": {
+            "verdict": "ERROR",
+            "summary_line": summary_line,
+            "next_step": next_step,
+        },
+    }
+
+
 def _publication_error(exc: Exception, root: str, phase: str) -> dict[str, Any]:
     from ..mcp.utils.error_sanitizer import bounded_safe_error_message
 
     error, truncated = bounded_safe_error_message(exc, root)
     if phase == "candidate_discovery":
         error = "Candidate discovery failed: " + error
-    return {
+    failure: dict[str, Any] = {
         "success": False,
         "verdict": "ERROR",
         "published": False,
@@ -234,6 +264,11 @@ def _publication_error(exc: Exception, root: str, phase: str) -> dict[str, Any]:
         "error": error,
         "error_truncated": truncated,
     }
+    if isinstance(exc, SourceHashBudgetExceeded):
+        # #1562：预算耗尽是可重试的类型化失败，而不是一条裸异常文本。
+        failure["error_code"] = SOURCE_HASH_BUDGET_EXCEEDED
+        failure["next_step"] = source_hash_budget_next_step(exc)
+    return failure
 
 
 def mutate_index_path(root: str, path: Path, operation: Callable[[Path], _T]) -> _T:

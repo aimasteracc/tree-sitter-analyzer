@@ -498,3 +498,92 @@ def test_path_platform_hashes_do_not_change_indexer_candidate_metadata(
     )
     prepared = store.prepare(candidate)
     assert store.publish(prepared) == store.active_selector()
+
+
+def _many_file_snapshot(store, count):
+    for i in range(count):
+        (store.root / f"m{i:03}.py").write_text(f"v = {i}\n", encoding="utf-8")
+    return store._snapshot()
+
+
+def _fake_hash_clock(monkeypatch, seconds_per_file):
+    """按文件推进的假时钟：模拟 Windows 上受打开延迟支配的摘要绑定。"""
+    import tree_sitter_analyzer.cache.generation_store as owner
+    import tree_sitter_analyzer.index_source_stream as stream
+
+    # 先导入：它在模块顶层按名绑定 hash_source_at，补丁期间首次导入会永久捕获替身。
+    import tree_sitter_analyzer.portable_source_snapshot  # noqa: F401
+
+    clock = {"now": 0.0}
+
+    def slow_hash(_fd, _name, _before, deadline, *_rest):
+        clock["now"] += seconds_per_file
+        if clock["now"] > deadline:
+            raise TimeoutError
+        return "", "digest", True
+
+    monkeypatch.setattr(owner, "_PATH_ONLY_SOURCE", True)
+    monkeypatch.setattr(owner, "time", SimpleNamespace(monotonic=lambda: clock["now"]))
+    monkeypatch.setattr(stream, "hash_source_at", slow_hash)
+    return owner
+
+
+def test_source_hash_binding_budget_scales_with_file_count(store, monkeypatch):
+    # Issue #1562 (regression from #1554/#1565): one 30 s deadline covered every
+    # file, so 400 files at 90 ms each (measured ~17 ms on an idle Windows box)
+    # raised a raw TimeoutError before the first index could publish.
+    snapshot = _many_file_snapshot(store, 399)
+    owner = _fake_hash_clock(monkeypatch, 0.09)
+    bound = owner._bind_source_hashes(snapshot)
+    assert len(bound.selected_entries) == 400
+
+
+def test_source_hash_budget_exhaustion_is_typed_and_counts_bound_files(
+    store, monkeypatch
+):
+    # Issue #1562: exhaustion must fail closed with a typed error, not TimeoutError.
+    snapshot = _many_file_snapshot(store, 399)
+    owner = _fake_hash_clock(monkeypatch, 1.0)
+    with pytest.raises(owner.SourceHashBudgetExceeded) as caught:
+        owner._bind_source_hashes(snapshot)
+    # 预算 = 30 + 0.1 * 400 = 70 s；第 71 个文件越界，已绑定 70 个。
+    assert (caught.value.selected, caught.value.bound) == (400, 70)
+
+
+def test_publish_time_budget_exhaustion_keeps_parent_generation(store, monkeypatch):
+    # Issue #1562: RFC-0032 — a candidate whose re-binding fails must not publish.
+    import tree_sitter_analyzer.cache.generation_store as owner
+    import tree_sitter_analyzer.index_source_stream as stream
+    import tree_sitter_analyzer.portable_source_snapshot  # noqa: F401 先于补丁导入
+
+    monkeypatch.setattr(owner, "_PATH_ONLY_SOURCE", True)
+    first = store.sync()
+    (store.root / "a.py").write_text("def changed(): return 1\n", encoding="utf-8")
+    prepared = store.prepare(store.capture())
+
+    def exhausted(*_args):
+        raise TimeoutError
+
+    monkeypatch.setattr(stream, "hash_source_at", exhausted)
+    with pytest.raises(owner.SourceHashBudgetExceeded):
+        store.publish(prepared)
+    assert store.active_selector() == first
+
+
+def test_full_index_publication_error_carries_typed_budget_code():
+    # Issue #1562: index action=full reports the typed code and a next_step.
+    from tree_sitter_analyzer.cache.generation_indexing import _publication_error
+    from tree_sitter_analyzer.cache.generation_store import SourceHashBudgetExceeded
+
+    failure = _publication_error(
+        SourceHashBudgetExceeded(2400, 1800), "/repo", "candidate_discovery"
+    )
+    assert (failure["error_code"], failure["published"], failure["next_step"]) == (
+        "INDEX_GENERATION_SOURCE_HASH_BUDGET_EXCEEDED",
+        False,
+        "Nothing was published: binding source hashes stopped after 1800 of 2400 "
+        "files because the 270 s budget ran out (usually slow file opens on a "
+        "loaded machine or an antivirus scan). Retry the same index call; if it "
+        "fails again, narrow the scope with `index action=full "
+        "exclude_patterns=[...]` or max_files.",
+    )
