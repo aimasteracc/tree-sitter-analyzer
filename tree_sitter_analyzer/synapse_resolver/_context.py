@@ -8,6 +8,7 @@ from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
 
 from ..callee_resolution import CalleeResolver
+from ..project_graph import python_submodule_import_targets
 from ._constants import (
     BUILTIN_QUALIFIED_PY,
     BUILTINS_PY,
@@ -330,12 +331,23 @@ def _local_name_as_submodule(
     * ``from . import b``        — local_name='b',  alias_of=''   → caller_dir/b.py
     * ``from . import b as bb``  — local_name='bb', alias_of='b'  → caller_dir/b.py
     * ``from .pkg import b``     — local_name='b',  alias_of=''   → caller_dir/pkg/b.py
+    * ``from pkg import b as bb`` — local_name='bb', alias_of='b'  → pkg/b.py
 
     The lookup module name is ``alias_of`` when present, else ``local_name``.
     """
     if not local_name:
         return ""
     lookup_name = alias_of or local_name
+    if not module_path.startswith("."):
+        # 绝对导入按包路径定位，不能拼接调用方目录；复用 #1566 的子模块规则（#1579）。
+        targets = python_submodule_import_targets(
+            module_path,
+            (lookup_name,),
+            caller_file,
+            set(module_to_file.values()),
+            False,
+        )
+        return targets[0] if targets else ""
     caller_dir = os.path.dirname(caller_file).replace(os.sep, "/")
     leading_dots = 0
     for ch in module_path:
