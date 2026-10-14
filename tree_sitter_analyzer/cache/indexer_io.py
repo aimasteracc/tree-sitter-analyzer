@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, cast
 if TYPE_CHECKING:
     pass
 
+from .._bounded_read import read_at_most
 from ..indexing_limits import normalize_index_max_files
 from ..indexing_snapshot import (
     _INDEX_SOURCE_BYTE_LIMIT,
@@ -53,7 +54,8 @@ def check_cache_or_read(
             if stat.st_size > _INDEX_SOURCE_BYTE_LIMIT:
                 raise OSError("source exceeds indexing byte limit")
             with open(abs_path, "rb") as f:
-                data = f.read(_INDEX_SOURCE_BYTE_LIMIT + 1)
+                # #1592：按文件大小读取，避免每个文件都预分配 64 MiB 缓冲。
+                data = read_at_most(f, _INDEX_SOURCE_BYTE_LIMIT)
             if len(data) > _INDEX_SOURCE_BYTE_LIMIT:
                 raise OSError("source exceeds indexing byte limit")
             source_code = decode_index_source(data)
