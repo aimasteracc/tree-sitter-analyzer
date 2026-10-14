@@ -307,9 +307,14 @@ def test_module_exports_exact_focused_surface() -> None:
 def test_candidate_captures_share_one_absolute_discovery_deadline(
     tmp_path, monkeypatch
 ):
-    # PR #1253 thread 3757429372: each file consumes the outer five-second budget.
-    import tree_sitter_analyzer.indexing_snapshot as snapshot_module
+    # PR #1253 thread 3757429372: each file consumes the outer discovery budget.
+    # #1601: the budget scales per charged entry but stays anchored at one start.
+    from types import SimpleNamespace
 
+    import tree_sitter_analyzer.indexing_snapshot as snapshot_module
+    from tree_sitter_analyzer.discovery_budget import discovery_deadline
+
+    monkeypatch.setattr(snapshot_module, "time", SimpleNamespace(monotonic=lambda: 7.0))
     sources = [tmp_path / "a.py", tmp_path / "b.py"]
     for source in sources:
         source.write_text("value = 1\n")
@@ -328,10 +333,9 @@ def test_candidate_captures_share_one_absolute_discovery_deadline(
         language_fn=_python_language,
     )
 
-    assert (snapshot.selected, deadlines[0], deadlines[1]) == (
+    assert (snapshot.selected, deadlines) == (
         2,
-        deadlines[0],
-        deadlines[0],
+        [discovery_deadline(7.0, 1, None), discovery_deadline(7.0, 2, None)],
     )
 
 
