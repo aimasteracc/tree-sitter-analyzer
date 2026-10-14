@@ -370,7 +370,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         )
 
         warnings_list: list[str] = []
-        if _is_stale_resolution(callers):
+        if _is_stale_resolution(callers, cache):
             warnings_list.append(_STALE_CACHE_WARNING)
 
         # Honest-truncation cap: record total before slicing so agents know

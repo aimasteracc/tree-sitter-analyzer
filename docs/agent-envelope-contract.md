@@ -133,14 +133,14 @@ EOF
 {
   "success": true,
   "verdict": "INFO",
-  "data_source": "parse",
+  "data_source": "sql",
   "function": "build_response",
   "caller_count": 39,
   "callers_listed": 3,
   "listed_cap": 3,
   "truncated": true,
   "warnings": [
-    "stale_cache: most edges have callee_resolution='unknown'. Run `uv run tree-sitter-analyzer --ast-cache --ast-cache-mode index --ast-cache-force` or rebuild with `--mode resolve` to populate Synapse resolution columns."
+    "stale_cache: this index holds call edges but none was ever resolved (callee_resolution='unknown' everywhere; built before Synapse resolution or the resolution pass never ran). Run `uv run tree-sitter-analyzer --ast-cache --ast-cache-mode index --ast-cache-force` to rebuild the index and populate Synapse resolution columns."
   ],
   "next_step": "showing 3 of 39 callers — raise limit, or qualify with ClassName.method to narrow (dynamic-dispatch names like 'execute' have huge fan-in). Each caller/callee's source body is inlined under 'body' — answer directly, no Read needed. Coordinate-only entries beyond the top-N can be Read on demand."
 }
