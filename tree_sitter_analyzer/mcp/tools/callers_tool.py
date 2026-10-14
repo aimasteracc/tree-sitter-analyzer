@@ -316,6 +316,11 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
 
         unattributed_call_sites = 0
         cache = bound_cache if bound_cache is not None else self._try_get_cache()
+        refusal = self._parse_fallback_refusal(cache, "callers", function=func_name)
+        if refusal is not None:
+            from ..utils.format_helper import apply_output_format_to_response
+
+            return apply_output_format_to_response(refusal, output_format)
         call_graph_built = (
             self._cache_call_graph_built(cache) if cache is not None else False
         )
