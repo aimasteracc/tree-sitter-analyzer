@@ -21,14 +21,20 @@ def stable_failure(rel_path: str, reason: str) -> dict[str, Any]:
     return {"file": rel_path, "status": "error", "reason": reason, FAILURE_KIND: STABLE}
 
 
-def stable_failures_only(details: Iterable[Mapping[str, Any]], errors: int) -> bool:
-    """每个错误计数都对应一条带文件的稳定失败项；无明细的错误一律视为临时。"""
-    failures = [detail for detail in details if detail.get("status") == "error"]
+def stable_failures_only(details: Iterable[Any], errors: int) -> bool:
+    """每个错误计数都对应一条带文件的稳定失败项；无明细或畸形明细一律视为临时。"""
+    failures = [
+        detail
+        for detail in details
+        if not isinstance(detail, Mapping) or detail.get("status") == "error"
+    ]
     return (
         bool(failures)
         and errors == len(failures)
         and all(
-            detail.get(FAILURE_KIND) == STABLE and detail.get("file")
+            isinstance(detail, Mapping)
+            and detail.get(FAILURE_KIND) == STABLE
+            and bool(detail.get("file"))
             for detail in failures
         )
     )

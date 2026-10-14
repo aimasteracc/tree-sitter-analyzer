@@ -159,7 +159,9 @@ def test_stable_failures_only_requires_every_error_to_be_a_stable_file_detail():
         stable_failures_only([stable, transient], 2),
         stable_failures_only([fileless], 1),
         stable_failures_only([], 0),
-    ) == (True, False, False, False, False)
+        # PR #1565 CI：畸形明细（字符串、None）不能抛错，须失败闭合。
+        stable_failures_only([stable, "path=/etc/shadow", None], 1),
+    ) == (True, False, False, False, False, False)
 
 
 @pytest.mark.parametrize("route", ["sync", "index_project"])
