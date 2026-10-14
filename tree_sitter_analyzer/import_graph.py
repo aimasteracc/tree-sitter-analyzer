@@ -419,6 +419,12 @@ class ImportGraph:
             if os.path.isabs(file_path)
             else file_path
         )
+        if rel.startswith(".."):
+            # macOS 的 /var → /private/var：调用方传入的路径已 realpath 而根目录没有，
+            # relpath 会落到根目录之外并静默返回空依赖（#1579 macOS CI）。
+            rel = os.path.relpath(
+                os.path.realpath(file_path), os.path.realpath(self.project_root)
+            )
         known = self._project_files | self._forward.keys() | self._reverse.keys()
         return _match_file(rel, _file_lookup(known)) or rel
 
