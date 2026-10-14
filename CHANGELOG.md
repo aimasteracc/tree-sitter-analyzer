@@ -4,6 +4,15 @@
 
 ### Fixed
 
+- `index action=cache mode=index` (CLI `--ast-cache --ast-cache-mode index`) no
+  longer lists every unchanged file (#1582). The `files` detail now omits
+  `status=cached` entries by default and lists at most 50 changed/errored files,
+  errors first, with honest counts `files_total` / `files_listed` / `files_cap` /
+  `files_truncated` / `unchanged_omitted`. The top-level counters are unchanged.
+  Pass `include_details=true` (CLI `--ast-cache-include-details`) for the old
+  full list. A 1-file incremental run on 500 files went from 33,388 B to 1,195 B,
+  and its size no longer depends on the project's file count.
+
 - Index generations no longer pile up on disk (RFC-0032 slice 6, #1554): after
   each publication TSA removes every generation that is neither active nor pinned
   (keeping the 2 newest sealed ones under 24 h old), including killed writers'

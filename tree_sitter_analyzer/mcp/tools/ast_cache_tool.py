@@ -21,6 +21,7 @@ from ...incremental_sync import IncrementalSync
 from ...indexing_limits import normalize_index_max_files
 from ...utils import setup_logger
 from ._validators import invalid_enum_error
+from .ast_cache_index_view import project_index_files
 from .base_tool import BaseMCPTool, _canonicalize_verdict, mirror_summary_line
 
 logger = setup_logger(__name__)
@@ -438,6 +439,16 @@ class ASTCacheTool(BaseMCPTool):
                     ),
                     "default": False,
                 },
+                "include_details": {
+                    "type": "boolean",
+                    "description": (
+                        "index (project): list every per-file detail, including "
+                        "unchanged cached files. Default false returns counts plus "
+                        "at most 50 changed/errored files with files_total / "
+                        "files_listed / files_truncated / unchanged_omitted (#1582)."
+                    ),
+                    "default": False,
+                },
                 "poll_interval": {
                     "type": "number",
                     "description": (
@@ -504,6 +515,8 @@ class ASTCacheTool(BaseMCPTool):
             raise ValueError(f"file_path is required for mode '{mode}'")
         if mode in ("search", "fts_search") and not arguments.get("query"):
             raise ValueError(f"query is required for {mode} mode")
+        if not isinstance(arguments.get("include_details", False), bool):
+            raise ValueError("include_details must be a boolean")
         arguments["max_files"] = normalize_index_max_files(arguments.get("max_files"))
         return True
 
@@ -596,6 +609,10 @@ class ASTCacheTool(BaseMCPTool):
                 f"symbols={symbols} force={bool(force)}"
             )
             next_step = "ast_cache mode=stats to confirm the index size"
+            # #1582：默认省略未变文件并限制明细条数，完整列表需显式 opt-in。
+            result = project_index_files(
+                result, include_details=bool(arguments.get("include_details", False))
+            )
         return _build_ast_cache_envelope("index", result, summary_line, next_step)
 
     def _handle_lookup(self, arguments: dict[str, Any], cache: Any) -> dict[str, Any]:
