@@ -10,8 +10,6 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, cast
 
-from .._bounded_read import read_at_most
-
 _IS_WINDOWS = os.name == "nt"
 
 
@@ -84,7 +82,10 @@ class _Fingerprint:
                 change_before = _change_time(stream.fileno(), before)
                 if not stat.S_ISREG(before.st_mode):
                     return None
-                # #1592：按文件大小读取，避免每个文件都预分配 64 MiB 缓冲。
+                # #1592：按文件大小读取，避免每个文件都预分配 64 MiB 缓冲；延迟导入以免
+                # 增加 MCP initialize 时加载的模块集合。
+                from .._bounded_read import read_at_most
+
                 content = read_at_most(stream, 64 * 1024 * 1024)
                 after = os.fstat(stream.fileno())
                 change_after = _change_time(stream.fileno(), after)
