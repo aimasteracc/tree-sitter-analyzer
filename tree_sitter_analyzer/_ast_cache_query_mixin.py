@@ -155,6 +155,24 @@ class ASTCacheQueryMixin(ASTCacheSurface):
             result[row["file_path"]] = [entry for entry in entries if entry]
         return result
 
+    def get_import_entries(self) -> dict[str, list[dict[str, Any]]]:
+        """#1596：每个文件的 import 条目 ``{"text", "line"}``；旧格式行号为 0。"""
+        rows = (
+            self._get_conn()
+            .execute("SELECT file_path, imports_json FROM ast_index")
+            .fetchall()
+        )
+        result: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            entries = [
+                {"text": entry.get("text", ""), "line": int(entry.get("line") or 0)}
+                if isinstance(entry, dict)
+                else {"text": entry, "line": 0}
+                for entry in json.loads(row["imports_json"])
+            ]
+            result[row["file_path"]] = [entry for entry in entries if entry["text"]]
+        return result
+
     def get_symbols_by_kind(
         self,
         kind: str,

@@ -26,6 +26,7 @@ from .constants import (
     JS_TS_LANGUAGES,
     JS_TS_MODULE_EXTS,
 )
+from .import_dependents import import_entries
 from .import_graph_submodules import python_submodule_targets_from_text
 from .languages.lang_extension_map import EXT_TO_LANG
 
@@ -319,7 +320,8 @@ class ImportGraph:
             return ImportGraphResult()
 
         try:
-            imports_by_file = cache.get_imports()
+            # #1596：带行号读取，依赖条目不再一律报告 line 0。
+            imports_by_file = import_entries(cache)
         finally:
             cache.close()
 
@@ -337,15 +339,18 @@ class ImportGraph:
                 resolved = self._resolve_import(imp_text, source_file)
                 targets = [] if resolved is None else [resolved]
                 targets += self._submodule_targets(imp_text, source_file, lookup, nodes)
+                line = int(imp.get("line") or 0) if isinstance(imp, dict) else 0
                 for target in dict.fromkeys(targets):
                     if target != source_file:
-                        self._add_edge(source_file, target, imp_text)
+                        self._add_edge(source_file, target, imp_text, line)
 
         self._built = True
         return self._make_result()
 
-    def _add_edge(self, source_file: str, target: str, import_text: str) -> None:
-        edge = ImportEdge(source_file, target, import_text, line=0)
+    def _add_edge(
+        self, source_file: str, target: str, import_text: str, line: int = 0
+    ) -> None:
+        edge = ImportEdge(source_file, target, import_text, line=line)
         self._edges.append(edge)
         self._forward.setdefault(source_file, []).append(edge)
         self._reverse.setdefault(target, []).append(edge)
