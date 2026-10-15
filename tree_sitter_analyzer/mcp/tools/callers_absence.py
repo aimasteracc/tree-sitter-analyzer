@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ...discovery_budget import DISCOVERY_SECONDS_PER_ENTRY
+from .callers_dispatch import DECORATED_REASON, registered_hint, registering_decorator
 from .callers_target import NOT_DEFINED_REASON, not_defined_hint, resolve_target
 from .callers_target import UNCHECKED_REASON as TARGET_UNCHECKED_REASON
 from .relation_freshness import SCOPED_REASON
@@ -200,6 +201,11 @@ def _assess_absence(
             "this as absence."
         )
         return AbsenceVerdict("unknown", NON_CALL_REASON, hint, fields)
+    # #1596：守卫按名收窄后，注册表分发须由装饰器登记门兜底。
+    decorator = registering_decorator(project_root, declarations or [])
+    if decorator is not None:
+        hint = registered_hint(func_name, decorator)
+        return AbsenceVerdict("unknown", DECORATED_REASON, hint, fields)
     return AbsenceVerdict("complete", None, None, fields)
 
 
