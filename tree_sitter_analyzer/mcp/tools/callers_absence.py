@@ -27,7 +27,18 @@ from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import dataclass, field
 from typing import Any
 
+from ...discovery_budget import DISCOVERY_SECONDS_PER_ENTRY
+from .callers_target import NOT_DEFINED_REASON, not_defined_hint, resolve_target
+from .callers_target import UNCHECKED_REASON as TARGET_UNCHECKED_REASON
 from .relation_freshness import SCOPED_REASON
+from .unindexed_sources import FILES_CAP as UNINDEXED_FILES_CAP
+from .unindexed_sources import UNCHECKED_REASON as UNINDEXED_UNCHECKED_REASON
+from .unindexed_sources import (
+    UNINDEXED_REASON,
+    unchecked_hint,
+    unindexed_hint,
+    unindexed_source_files,
+)
 
 #: 找到非调用引用（属性访问、裸名、字符串名）。
 NON_CALL_REASON = "NON_CALL_REFERENCES"
@@ -40,7 +51,8 @@ ACCESSOR_REASON = "ACCESSOR_NOT_CALL_EDGES"
 _SITES_CAP = 5
 #: hint 中内联点名的位置数。
 _SITES_NAMED = 3
-#: 同语言源码扫描的整体期限；超出即为 unknown，不以部分结果冒充普查。
+#: 同语言源码扫描的基础期限；超出即为 unknown，不以部分结果冒充普查。
+#: #1609：固定 2 s 在负载下约 3% 的答案随机降级，因此再按文件数线性放宽。
 _SCAN_DEADLINE_SECONDS = 2.0
 #: 并行读取的线程数。
 _READ_WORKERS = 8
@@ -134,19 +146,36 @@ def _freshness_hint(func_name: str, evidence: dict[str, Any]) -> str:
 def _assess_absence(
     cache: Any, project_root: str, func_name: str, file_path: str | None
 ) -> AbsenceVerdict:
-    """0 个调用方：访问器与非调用引用都不存在时才保留 ``complete``。"""
+    """0 个调用方：目标已定义、无新文件、访问器与非调用引用都不存在时才保留 complete。"""
+    # #1606：精确（限定）目标必须解析到已索引定义，否则 0 不是不存在的证据。
+    target = resolve_target(cache, project_root, func_name, file_path)
+    fields: dict[str, Any] = {
+        "target_defined": target.defined,
+        "close_matches": list(target.close_matches),
+    }
+    if not target.defined:
+        reason = (
+            TARGET_UNCHECKED_REASON if target.defined is None else NOT_DEFINED_REASON
+        )
+        return AbsenceVerdict(
+            "unknown", reason, not_defined_hint(func_name, target), fields
+        )
     bare = func_name.rpartition(".")[2]
     owner = func_name.rpartition(".")[0]
     declarations = _declarations(cache, bare, owner, file_path)
+    if declarations is not None:
+        new_files_verdict = _new_files_gap(
+            cache, project_root, func_name, declarations, fields
+        )
+        if new_files_verdict is not None:
+            return new_files_verdict
     sites = (
         None
         if declarations is None
         else _non_call_sites(cache, project_root, bare, declarations)
     )
-    fields: dict[str, Any] = {
-        "non_call_references": None if sites is None else len(sites),
-        "non_call_reference_sites": None if sites is None else sites[:_SITES_CAP],
-    }
+    fields["non_call_references"] = None if sites is None else len(sites)
+    fields["non_call_reference_sites"] = None if sites is None else sites[:_SITES_CAP]
     if declarations and _is_accessor(project_root, declarations, bare):
         hint = (
             f"{func_name!r} is a property/accessor: it is read by attribute "
@@ -172,6 +201,31 @@ def _assess_absence(
         )
         return AbsenceVerdict("unknown", NON_CALL_REASON, hint, fields)
     return AbsenceVerdict("complete", None, None, fields)
+
+
+def _new_files_gap(
+    cache: Any,
+    project_root: str,
+    func_name: str,
+    declarations: list[tuple[str, int, str]],
+    fields: dict[str, Any],
+) -> AbsenceVerdict | None:
+    """#1607：同语言中尚未入索引的新文件可能就是调用方；无新文件时返回 None。"""
+    languages = frozenset(language for _file, _line, language in declarations)
+    new_files = unindexed_source_files(cache, project_root, languages)
+    fields["unindexed_source_files"] = (
+        None if new_files is None else new_files[:UNINDEXED_FILES_CAP]
+    )
+    fields["unindexed_source_files_total"] = (
+        None if new_files is None else len(new_files)
+    )
+    if new_files is None:
+        hint = unchecked_hint(func_name)
+        return AbsenceVerdict("unknown", UNINDEXED_UNCHECKED_REASON, hint, fields)
+    if new_files:
+        hint = unindexed_hint(func_name, languages, new_files)
+        return AbsenceVerdict("unknown", UNINDEXED_REASON, hint, fields)
+    return None
 
 
 def _describe(sites: list[dict[str, Any]]) -> str:
@@ -219,6 +273,11 @@ def _declarations(
     return narrowed
 
 
+def scan_budget_seconds(files: int) -> float:
+    """#1609：扫描 ``files`` 个文件的总期限，按 discovery_budget 的每项成本放宽。"""
+    return _SCAN_DEADLINE_SECONDS + DISCOVERY_SECONDS_PER_ENTRY * files
+
+
 def _non_call_sites(
     cache: Any,
     project_root: str,
@@ -229,7 +288,7 @@ def _non_call_sites(
     languages = sorted({language for _file, _line, language in declarations})
     if not languages:
         return []
-    deadline = time.monotonic() + _SCAN_DEADLINE_SECONDS
+    started = time.monotonic()
     try:
         conn = cache.get_conn()
         marks = ",".join("?" * len(languages))
@@ -249,6 +308,7 @@ def _non_call_sites(
         }
     except (sqlite3.Error, AttributeError):
         return None
+    deadline = started + scan_budget_seconds(len(files))
     hits = _files_containing(project_root, files, bare.encode("utf-8"), deadline)
     if hits is None:
         return None

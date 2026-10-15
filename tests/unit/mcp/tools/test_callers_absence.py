@@ -46,6 +46,9 @@ async def widget_root(tmp_path):
 
     (tmp_path / "widget.py").write_text(_WIDGET, encoding="utf-8")
     (tmp_path / "touch.js").write_text(_OTHER_LANGUAGE, encoding="utf-8")
+    (tmp_path / "gadget.py").write_text(
+        "class Gadget:\n    def spin(self):\n        return 2\n"
+    )
     indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
         {"mode": "full", "max_files": 10}
     )
@@ -232,8 +235,8 @@ def test_only_an_edge_complete_absence_is_rechecked(completeness, callers) -> No
     )
 
 
-def test_unreadable_declarations_are_unchecked_not_complete() -> None:
-    # #1593：声明行读取失败不是“没有引用”。
+def test_unreadable_definition_is_unchecked_not_complete() -> None:
+    # #1606：定义行读取失败时存在性未知，不是“已定义且无人调用”。
     from tree_sitter_analyzer.mcp.tools.callers_absence import assess_completeness
 
     scoped = {"freshness": "unknown", "reason": "SOURCE_REVALIDATION_SCOPED"}
@@ -241,9 +244,35 @@ def test_unreadable_declarations_are_unchecked_not_complete() -> None:
 
     assert (verdict.completeness, verdict.reason) == (
         "unknown",
+        "SYMBOL_DEFINITION_UNCHECKED",
+    )
+    assert verdict.fields == {"target_defined": None, "close_matches": []}
+    assert verdict.hint == (
+        "Whether 'W.f' is defined in the index could not be read, so 0 callers "
+        "is not evidence of absence."
+    )
+
+
+def test_unreadable_declarations_are_unchecked_not_complete(monkeypatch) -> None:
+    # #1593：目标已定义但声明行读取失败，仍不是“没有引用”。
+    from tree_sitter_analyzer.mcp.tools import callers_absence
+    from tree_sitter_analyzer.mcp.tools.callers_target import TargetResolution
+
+    monkeypatch.setattr(
+        callers_absence, "resolve_target", lambda *_args: TargetResolution(True)
+    )
+    scoped = {"freshness": "unknown", "reason": "SOURCE_REVALIDATION_SCOPED"}
+    verdict = callers_absence.assess_completeness(
+        object(), ".", "W.f", None, "complete", 0, scoped
+    )
+
+    assert (verdict.completeness, verdict.reason) == (
+        "unknown",
         "NON_CALL_REFERENCES_UNCHECKED",
     )
     assert verdict.fields == {
+        "target_defined": True,
+        "close_matches": [],
         "non_call_references": None,
         "non_call_reference_sites": None,
     }
@@ -313,3 +342,159 @@ def test_describe_names_three_sites_then_counts_the_rest() -> None:
     sites = [{"file": "a.py", "line": n} for n in range(1, 6)]
 
     assert _describe(sites) == "a.py:1; a.py:2; a.py:3; and 2 more"
+
+
+# --- #1606：目标必须解析到索引中的定义，否则 0 不是“不存在”的证据 ---
+
+_REFRESH = "`index action=cache mode=index` (CLI: `--ast-cache --ast-cache-mode index`)"
+
+
+@pytest.mark.asyncio
+async def test_unknown_class_qualifier_is_not_defined(widget_root) -> None:
+    # #1606：`NoSuchClass.unused` 不存在；不得答 complete，也不得说“已在索引中定义”。
+    result = await _callers(widget_root, "NoSuchClass.unused")
+
+    assert (result["caller_count"], result["completeness"]) == (0, "unknown")
+    assert result["completeness_reason"] == "SYMBOL_NOT_DEFINED"
+    assert result["target_defined"] is False
+    assert result["close_matches"] == ["Widget.unused"]
+    assert result["next_step"] == (
+        "Symbol 'NoSuchClass.unused' is not in the index (no indexed definition "
+        "matches it), so 0 callers is not evidence of absence. Close matches: Widget.unused. Retry with one of "
+        "them; if the symbol was added since the last index, run "
+        "`index action=cache mode=index` (CLI: `--ast-cache --ast-cache-mode "
+        "index`) first."
+    )
+
+
+@pytest.mark.asyncio
+async def test_real_class_without_the_method_is_not_defined(widget_root) -> None:
+    # #1606：`Gadget` 真实存在但没有定义 `unused`，同样不是确定的不存在。
+    result = await _callers(widget_root, "Gadget.unused")
+
+    assert (result["completeness"], result["completeness_reason"]) == (
+        "unknown",
+        "SYMBOL_NOT_DEFINED",
+    )
+    assert result["close_matches"] == ["Widget.unused"]
+
+
+@pytest.mark.asyncio
+async def test_unknown_bare_name_is_not_defined(widget_root) -> None:
+    # #1606：完全不存在的名字与真正的 0 不能是同一个答案。
+    result = await _callers(widget_root, "no_such_function_xyz")
+
+    assert (result["verdict"], result["completeness"]) == ("NOT_FOUND", "unknown")
+    assert result["completeness_reason"] == "SYMBOL_NOT_DEFINED"
+    assert result["close_matches"] == []
+    # #1606：拼写相近的已索引符号作为候选给出。
+    misspelled = await _callers(widget_root, "unusd")
+    assert (misspelled["completeness_reason"], misspelled["close_matches"]) == (
+        "SYMBOL_NOT_DEFINED",
+        ["unused"],
+    )
+
+
+# --- #1607：索引之后新增的同语言源码可能就是调用方 ---
+
+
+@pytest.mark.asyncio
+async def test_new_unindexed_file_blocks_complete(widget_root) -> None:
+    # #1607：新文件调用了 `Widget.unused`，但尚未入索引；不得答 complete。
+    from pathlib import Path
+
+    (Path(widget_root) / "late.py").write_text(
+        "def late(w):\n    return w.unused()\n", encoding="utf-8"
+    )
+
+    result = await _callers(widget_root, "Widget.unused")
+
+    assert (result["caller_count"], result["completeness"]) == (0, "unknown")
+    assert result["completeness_reason"] == "UNINDEXED_SOURCE_FILES"
+    assert result["unindexed_source_files"] == ["late.py"]
+    assert result["unindexed_source_files_total"] == 1
+    assert result["next_step"] == (
+        "No resolved caller for 'Widget.unused', but 1 python source file(s) "
+        "were added since the last index and were not checked: late.py. Run "
+        "`index action=cache mode=index` (CLI: `--ast-cache --ast-cache-mode "
+        "index`) to index them, then retry."
+    )
+
+
+@pytest.mark.asyncio
+async def test_new_file_of_another_language_keeps_complete(widget_root) -> None:
+    # #1607：另一种语言的新文件不可能调用 Python 方法；被忽略的目录也不计入。
+    # #1606：存在且无人引用的方法仍为 complete，并标明目标已定义。
+    from pathlib import Path
+
+    root = Path(widget_root)
+    (root / "late.js").write_text("function f(w) { return w.unused(); }\n")
+    (root / "node_modules").mkdir()
+    (root / "node_modules" / "vendored.py").write_text("x = w.unused()\n")
+
+    result = await _callers(widget_root, "Widget.unused")
+
+    assert (result["completeness"], result["completeness_reason"]) == (
+        "complete",
+        None,
+    )
+    assert (result["target_defined"], result["close_matches"]) == (True, [])
+    assert result["unindexed_source_files"] == []
+
+
+@pytest.mark.asyncio
+async def test_new_file_listing_over_budget_is_unknown(
+    widget_root, monkeypatch
+) -> None:
+    # #1607：预算内列不完目录时只能答 unknown，不得假定没有新文件。
+    from tree_sitter_analyzer.mcp.tools import unindexed_sources
+
+    monkeypatch.setattr(unindexed_sources, "_ENTRY_BUDGET", 1)
+
+    result = await _callers(widget_root, "Widget.unused")
+
+    assert (result["completeness"], result["completeness_reason"]) == (
+        "unknown",
+        "UNINDEXED_SOURCE_UNCHECKED",
+    )
+    assert result["unindexed_source_files"] is None
+    assert result["next_step"] == (
+        "No resolved caller for 'Widget.unused', but whether source files were "
+        "added since the last index could not be checked within budget, so this "
+        f"is not evidence of absence. Run {_REFRESH}, then retry."
+    )
+
+
+def test_unindexed_hint_names_three_files_then_counts_the_rest() -> None:
+    # #1607：next_step 点名前三个新文件，其余以数量给出。
+    from tree_sitter_analyzer.mcp.tools.unindexed_sources import unindexed_hint
+
+    hint = unindexed_hint("f", frozenset({"python"}), ["a.py", "b.py", "c.py", "d"])
+    assert hint == (
+        "No resolved caller for 'f', but 4 python source file(s) were added since "
+        "the last index and were not checked: a.py, b.py, c.py and 1 more. Run "
+        f"{_REFRESH} to index them, then retry."
+    )
+
+
+def test_reference_scan_budget_scales_with_file_count() -> None:
+    # #1609：固定 2 s 在负载下随机降级；期限按扫描文件数线性放宽，空集仍为 2 s。
+    from tree_sitter_analyzer.mcp.tools.callers_absence import scan_budget_seconds
+
+    assert (scan_budget_seconds(0), scan_budget_seconds(1700)) == (2.0, 19.0)
+
+
+def test_defined_lookup_requires_the_method_inside_the_class(tmp_path) -> None:
+    # #1606：限定名的所有者既可以是类，也可以是声明该符号的模块名。
+    from tree_sitter_analyzer.mcp.tools.callers_target import _defined, _relative
+
+    conn = type("C", (), {"execute": lambda *_a: [("a.py", 1, 10)]})()
+    outside = [("a.py", 30, 31, "python")]
+    assert [
+        _defined(conn, [("a.py", 3, 4, "python")], "Widget"),
+        _defined(conn, outside, "Widget"),
+        _defined(conn, outside, "a"),
+        _defined(conn, [("b.go", 30, 31, "go")], "Widget"),
+        _defined(conn, [], ""),
+    ] == [True, False, True, True, False]
+    assert _relative(str(tmp_path), str(tmp_path / "x" / "y.py")) == "x/y.py"
