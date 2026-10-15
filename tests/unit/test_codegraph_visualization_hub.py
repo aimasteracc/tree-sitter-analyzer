@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from tree_sitter_analyzer.mcp.tools.codegraph_visualization_hub import (
     CodeGraphVisualizationHub,
     query_flow_uml_facet,
@@ -97,3 +99,24 @@ def test_query_flow_uml_facet_clamps_invalid_direction_and_edges() -> None:
     assert facet["metadata"]["direction"] == "LR"
     assert facet["edge_count"] == 1
     assert facet["truncated"] is True
+
+
+@pytest.mark.slow_ok  # 两次真实索引（首建 + 刷新）即被测行为
+@pytest.mark.asyncio
+async def test_hub_call_graph_sees_new_caller_after_in_server_refresh(tmp_path):
+    # Issue #1611：可视化 hub 记忆化的调用图在刷新索引后不再更新。
+    from tests.unit._index_refresh_support import (
+        add_caller_and_refresh,
+        make_indexed_project,
+    )
+
+    project = await make_indexed_project(tmp_path)
+    hub = CodeGraphVisualizationHub(str(project))
+    hub.call_graph().build()
+    await add_caller_and_refresh(project)
+    graph = hub.call_graph()
+    graph.build()
+    assert sorted(c["name"] for c in graph.callers_of("target")) == [
+        "new_caller",
+        "old_caller",
+    ]

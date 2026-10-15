@@ -1355,3 +1355,25 @@ class TestCoverageToolMethods:
                 },
             )
         assert result.get("pr_url") == "https://github.com/owner/repo/pull/42"
+
+
+@pytest.mark.slow_ok  # 两次真实索引（首建 + 刷新）即被测行为
+@pytest.mark.asyncio
+async def test_pr_review_call_graph_impact_sees_new_caller_after_refresh(tmp_path):
+    # Issue #1611：PR 影响分析（测试选择依据）在刷新后仍用旧调用图。
+    from tests.unit._index_refresh_support import (
+        add_caller_and_refresh,
+        make_indexed_project,
+    )
+
+    project = await make_indexed_project(tmp_path)
+    tool = CodeGraphPRReviewTool(str(project))
+    tool._analyze_call_graph_impact(["app.py"])
+    await add_caller_and_refresh(project)
+    result = tool._analyze_call_graph_impact(["app.py"])
+    upstream = sorted(
+        f["function"]
+        for f in result["affected_functions"]
+        if f["direction"] == "upstream"
+    )
+    assert upstream == ["new_caller", "old_caller"]

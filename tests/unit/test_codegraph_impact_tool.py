@@ -897,3 +897,26 @@ class TestNameOnlyCallersStayInImpact:
             }
         )
         assert result["files_at_risk"]["app.py"] == ["relay"]
+
+
+@pytest.mark.slow_ok  # 两次真实索引（首建 + 刷新）即被测行为
+@pytest.mark.asyncio
+async def test_impact_sees_new_caller_after_in_server_refresh(tmp_path):
+    # Issue #1611：同一实例在刷新索引后仍用旧调用图，SAFE 判定漏掉新调用者。
+    from tests.unit._index_refresh_support import (
+        add_caller_and_refresh,
+        make_indexed_project,
+    )
+    from tree_sitter_analyzer.mcp.tools.codegraph_impact_tool import (
+        CodeGraphImpactTool,
+    )
+
+    project = await make_indexed_project(tmp_path)
+    tool = CodeGraphImpactTool(str(project))
+    await tool.execute({"function_name": "target"})
+    await add_caller_and_refresh(project)
+    result = await tool.execute({"function_name": "target"})
+    assert sorted(c["name"] for c in result["direct_callers"]) == [
+        "new_caller",
+        "old_caller",
+    ]

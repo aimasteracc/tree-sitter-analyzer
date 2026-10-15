@@ -23,6 +23,7 @@ from ...call_graph import CachedCallGraph, CallGraph, FunctionRef
 from ...utils import setup_logger
 from ...utils.test_detection import is_test_file
 from .base_tool import BaseMCPTool
+from .index_bound_graph import index_bound_graph, reset_index_bound_graph
 
 logger = setup_logger(__name__)
 
@@ -356,7 +357,7 @@ class CodeGraphImpactTool(BaseMCPTool):
         super().__init__(project_root)
 
     def _on_project_root_changed(self, project_root: str | None) -> None:
-        self._call_graph = None
+        reset_index_bound_graph(self)
 
     def _try_get_cache(self) -> Any:
         try:
@@ -374,15 +375,16 @@ class CodeGraphImpactTool(BaseMCPTool):
         return None
 
     def _get_call_graph(self) -> CallGraph:
-        if self._call_graph is None:
-            if not self.project_root:
-                raise ValueError("Project root not set. Call set_project_path first.")
-            cache = self._try_get_cache()
-            if cache is not None:
-                self._call_graph = CachedCallGraph(self.project_root, cache=cache)
-            else:
-                self._call_graph = CallGraph(self.project_root)
-        return self._call_graph
+        # #1611：调用图绑定索引身份，同一服务器内刷新索引后即重建。
+        return index_bound_graph(self, self.project_root, self._build_call_graph)
+
+    def _build_call_graph(self) -> CallGraph:
+        if not self.project_root:
+            raise ValueError("Project root not set. Call set_project_path first.")
+        cache = self._try_get_cache()
+        if cache is not None:
+            return CachedCallGraph(self.project_root, cache=cache)
+        return CallGraph(self.project_root)
 
     def get_call_graph(self) -> CallGraph:
         """Public alias for _get_call_graph() — use this instead of accessing _call_graph."""
