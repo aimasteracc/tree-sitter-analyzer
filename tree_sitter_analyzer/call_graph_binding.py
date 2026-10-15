@@ -34,9 +34,14 @@ def pick_caller_ref(
     return candidates[0] if candidates else None
 
 
-def ref_identity(ref: FunctionRef) -> tuple[str, str, int]:
+#: ``ref_identity`` 返回的身份键类型：(文件, 名字, 定义行)。
+RefIdentity = tuple[str, str, int]
+
+
+def ref_identity(ref: FunctionRef) -> RefIdentity:
     """调用方 / 被调方的去重键：与 ``FunctionRef.__eq__`` 一致（文件、名字、定义行）。
 
     ``qualified_name()`` 在没有 receiver 时只有 ``file:name``，会合并同名函数。
+    所有对 FunctionRef 去重的地方（影响面、PR 审查、可视化等，#1619）共用此键。
     """
     return (ref.file_path, ref.name, ref.start_line)

@@ -15,6 +15,7 @@ CodeGraph parity: equivalent to CodeGraph's code intelligence overview.
 from typing import Any, cast
 
 from ...call_graph import CachedCallGraph, CallGraph
+from ...call_graph_binding import RefIdentity, ref_identity
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
 from .index_bound_graph import index_bound_graph, reset_index_bound_graph
@@ -276,7 +277,7 @@ def _compute_depth_distribution(graph: CallGraph) -> dict[str, Any]:
     pass linear by memoizing per function reference and by capping at the
     public distribution bucket limit.
     """
-    func_depths: dict[str, int] = {}
+    func_depths: dict[RefIdentity, int] = {}  # #1619：按身份，同名不覆盖
     memo: dict[Any, int] = {}
     visiting: set[Any] = set()
     depth_cap = 10
@@ -305,7 +306,7 @@ def _compute_depth_distribution(graph: CallGraph) -> dict[str, Any]:
 
     for func in graph.function_refs():
         d = _chain_depth(func)
-        func_depths[func.qualified_name()] = d
+        func_depths[ref_identity(func)] = d
 
     if not func_depths:
         return {

@@ -920,3 +920,52 @@ async def test_impact_sees_new_caller_after_in_server_refresh(tmp_path):
         "new_caller",
         "old_caller",
     ]
+
+
+class TestSameNameRefsStayDistinct:
+    """#1619：同一文件中无 receiver 的同名函数（嵌套 ``inner``）不得在影响面中合并。"""
+
+    @pytest.mark.asyncio
+    async def test_transitive_callers_keep_both_same_name_callers(self, tmp_path):
+        # #1619：两个嵌套 `inner` 都调用 apply_budget，按 qualified_name 去重会丢掉第二个。
+        from tests.unit._navigation_test_support import (
+            index_same_name_nested_project,
+        )
+
+        root = await index_same_name_nested_project(tmp_path)
+        result = await CodeGraphImpactTool(root).execute(
+            {"function_name": "apply_budget"}
+        )
+        assert [
+            (c["name"], c["line"], c["distance"]) for c in result["transitive_callers"]
+        ] == [
+            ("inner", 14, 1),
+            ("inner", 20, 1),
+            ("outer_a", 13, 2),
+            ("outer_b", 19, 2),
+        ]
+
+    def test_transitive_callees_keep_both_same_name_callees(self):
+        # #1619：被调方去重同样按身份（文件、名字、定义行），两个同名 `inner` 都保留。
+        graph = MagicMock()
+        seed = _make_func("seed", "pulse.py", 1)
+        inner_a = _make_func("inner", "pulse.py", 5)
+        inner_b = _make_func("inner", "pulse.py", 9)
+        graph.resolve_targets.return_value = [seed]
+        callees_map = {seed: [inner_a, inner_b]}
+        graph.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
+        result = _compute_transitive_callees(graph, "seed")
+        assert [(r["name"], r["line"]) for r in result] == [("inner", 5), ("inner", 9)]
+
+    @pytest.mark.asyncio
+    async def test_blast_radius_counts_both_same_name_functions(self, tmp_path):
+        # #1619：apply_budget、两个 inner、log_a、log_b、outer_a、outer_b 共 7 个。
+        from tests.unit._navigation_test_support import (
+            index_same_name_nested_project,
+        )
+
+        root = await index_same_name_nested_project(tmp_path)
+        result = await CodeGraphImpactTool(root).execute(
+            {"mode": "blast_radius", "function_names": ["apply_budget"]}
+        )
+        assert result["total_affected_functions"] == 7

@@ -1377,3 +1377,24 @@ async def test_pr_review_call_graph_impact_sees_new_caller_after_refresh(tmp_pat
         if f["direction"] == "upstream"
     )
     assert upstream == ["new_caller", "old_caller"]
+
+
+@pytest.mark.asyncio
+async def test_pr_review_call_graph_impact_keeps_same_name_callers(tmp_path):
+    # Issue #1619：两个嵌套同名 `inner`（无 receiver）都调用 apply_budget，
+    # 按 qualified_name 去重会丢掉第二个，测试选择因此漏选。
+    from tests.unit._navigation_test_support import index_same_name_nested_project
+
+    root = await index_same_name_nested_project(tmp_path)
+    result = CodeGraphPRReviewTool(root)._analyze_call_graph_impact(["pulse.py"])
+    upstream = sorted(
+        (f["function"], f["line"])
+        for f in result["affected_functions"]
+        if f["direction"] == "upstream"
+    )
+    assert upstream == [
+        ("inner", 14),
+        ("inner", 20),
+        ("outer_a", 13),
+        ("outer_b", 19),
+    ]

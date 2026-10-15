@@ -342,6 +342,31 @@ class TestVisualizeIndexedProject:
         assert "mermaid" in result
         assert "helper" in result["mermaid"]
 
+    @pytest.mark.asyncio
+    async def test_function_mode_walks_both_same_name_seeds(self, tmp_path) -> None:
+        # #1619：两个嵌套同名 `inner` 都是种子；按 qualified_name 去重会跳过第二个，
+        # 它独有的被调函数 log_b 就从图中消失。
+        from tests.unit._navigation_test_support import (
+            index_same_name_nested_project,
+        )
+
+        root = await index_same_name_nested_project(tmp_path)
+        result = await CodeGraphVisualizeTool(root).execute(
+            {
+                "mode": "function",
+                "function": "inner",
+                "depth": 3,
+                "visualization_format": "sigma",
+                "output_format": "json",
+            }
+        )
+        assert [n["attributes"]["symbol"] for n in result["graph"]["nodes"]] == [
+            "apply_budget",
+            "inner",
+            "log_a",
+            "log_b",
+        ]
+
 
 class TestBug786TruncatedFlag:
     """Bug #786: when edge collection is capped at max_edges, the response

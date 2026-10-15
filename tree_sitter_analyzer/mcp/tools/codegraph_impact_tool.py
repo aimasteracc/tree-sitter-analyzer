@@ -20,6 +20,7 @@ from collections import deque
 from typing import Any
 
 from ...call_graph import CachedCallGraph, CallGraph, FunctionRef
+from ...call_graph_binding import RefIdentity, ref_identity
 from ...utils import setup_logger
 from ...utils.test_detection import is_test_file
 from .base_tool import BaseMCPTool
@@ -71,7 +72,7 @@ def _compute_transitive_callers(
     include_tests: bool = False,
 ) -> list[dict[str, Any]]:
     targets = graph.resolve_targets(func_name, file_path)
-    visited: set[str] = set()
+    visited: set[RefIdentity] = set()  # #1619：按身份去重，同名不合并
     result: list[dict[str, Any]] = []
     queue: deque[tuple[FunctionRef, int]] = deque((t, 0) for t in targets)
 
@@ -83,7 +84,7 @@ def _compute_transitive_callers(
         for caller in callers:
             if not include_tests and is_test_file(caller.file_path):
                 continue  # filter before to_dict()
-            key = caller.qualified_name()
+            key = ref_identity(caller)
             if key not in visited:
                 visited.add(key)
                 entry = caller.to_dict()
@@ -105,7 +106,7 @@ def _compute_transitive_callees(
     include_tests: bool = False,
 ) -> list[dict[str, Any]]:
     targets = graph.resolve_targets(func_name, file_path)
-    visited: set[str] = set()
+    visited: set[RefIdentity] = set()  # #1619：按身份去重
     result: list[dict[str, Any]] = []
     queue: deque[tuple[FunctionRef, int]] = deque((t, 0) for t in targets)
 
@@ -116,7 +117,7 @@ def _compute_transitive_callees(
         for callee in graph.callee_refs_of(current):
             if not include_tests and is_test_file(callee.file_path):
                 continue  # filter before to_dict()
-            key = callee.qualified_name()
+            key = ref_identity(callee)
             if key not in visited:
                 visited.add(key)
                 entry = callee.to_dict()
@@ -280,18 +281,18 @@ def _blast_radius_for_functions(
     file_path: str | None = None,
     depth: int = 5,
 ) -> dict[str, Any]:
-    all_affected: set[str] = set()
+    all_affected: set[RefIdentity] = set()  # #1619：按身份计数
     propagation_chains: list[dict[str, Any]] = []
     files_at_risk: dict[str, set[str]] = {}
 
     for func_name in function_names:
         targets = graph.resolve_targets(func_name, file_path)
         for target in targets:
-            start_key = target.qualified_name()
+            start_key = ref_identity(target)
             all_affected.add(start_key)
 
             queue: deque[tuple[FunctionRef, int]] = deque([(target, 0)])
-            visited: set[str] = {start_key}
+            visited: set[RefIdentity] = {start_key}
 
             while queue:
                 current, d = queue.popleft()
@@ -299,7 +300,7 @@ def _blast_radius_for_functions(
                     continue
                 callers, name_only = _impact_callers(graph, current)
                 for caller in callers:
-                    key = caller.qualified_name()
+                    key = ref_identity(caller)
                     if key not in visited:
                         visited.add(key)
                         all_affected.add(key)
@@ -319,7 +320,7 @@ def _blast_radius_for_functions(
                         queue.append((caller, d + 1))
 
                 for callee in graph.callee_refs_of(current):
-                    key = callee.qualified_name()
+                    key = ref_identity(callee)
                     if key not in visited:
                         visited.add(key)
                         all_affected.add(key)

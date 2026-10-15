@@ -142,6 +142,31 @@ class TestFindTransitiveDeadCode:
 
         assert dead == []
 
+    def test_live_same_name_callee_not_listed_as_dead(self) -> None:
+        # #1619：死函数 inner@5 与活函数 inner@9 同名且无 receiver；按 qualified_name
+        # 判断时，orphan 调用的活 inner@9 被误列为死被调方。
+        from unittest.mock import MagicMock
+
+        from tree_sitter_analyzer.call_graph import FunctionRef
+
+        main = FunctionRef("m.py", "main", 1, "python")
+        inner_dead = FunctionRef("m.py", "inner", 5, "python")
+        inner_live = FunctionRef("m.py", "inner", 9, "python")
+        orphan = FunctionRef("m.py", "orphan", 13, "python")
+        callees_map = {main: [inner_live], orphan: [inner_live]}
+        graph = MagicMock()
+        graph.function_refs.return_value = [main, inner_dead, inner_live, orphan]
+        graph.reachable_callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
+        graph.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
+        graph.caller_refs_of.return_value = []
+
+        dead = find_transitive_dead_code(graph)
+
+        assert {item.function.start_line: item.dead_callees for item in dead} == {
+            5: [],
+            13: [],
+        }
+
 
 # ---------------------------------------------------------------------------
 # find_unused_imports

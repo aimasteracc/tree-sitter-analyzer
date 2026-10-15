@@ -29,6 +29,7 @@ from tree_sitter_analyzer.languages.language_family import (
 
 from ...ast_diff import ASTDiffer
 from ...call_graph import CachedCallGraph, CallGraph
+from ...call_graph_binding import RefIdentity, ref_identity
 from ...pr_url import check_gh_available, fetch_pr_diff, parse_pr_url
 from ...project_graph import _language_from_ext
 from ...semantic_change_classifier import SemanticChangeClassifier
@@ -699,7 +700,7 @@ class CodeGraphPRReviewTool(BaseMCPTool):
         # defined in the changed file (e.g. determine_visibility: defined in 5+
         # files — callers of this function are unreliable bare-name binds).
         candidates: list[dict[str, Any]] = []
-        seen: set[str] = set()
+        seen: set[RefIdentity] = set()  # #1619：按身份去重，同名不合并
         ambiguous_anchor_dropped = 0
 
         for fp in changed_files:
@@ -718,7 +719,7 @@ class CodeGraphPRReviewTool(BaseMCPTool):
                 upstream = [*graph.caller_refs_of(anchor_ref), *name_only]
                 if not anchor_is_generic:
                     for caller in upstream:
-                        key = caller.qualified_name()
+                        key = ref_identity(caller)
                         if key not in seen:
                             seen.add(key)
                             entry = {
@@ -736,7 +737,7 @@ class CodeGraphPRReviewTool(BaseMCPTool):
 
                 # Downstream callees: filter by anchor being called from the changed file
                 for callee in graph.callee_refs_of(anchor_ref):
-                    key = callee.qualified_name()
+                    key = ref_identity(callee)
                     if key not in seen:
                         seen.add(key)
                         candidates.append(
