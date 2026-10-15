@@ -326,6 +326,55 @@ information. Over-counting only holds a symbol at `incomplete`, while
 under-counting certifies absence over a real edge — so the amendment removes only
 the cases where the exclusion is provable, and the ratchet above is unchanged.
 
+#### §1.2 amendment 2 — the guard matches on name when nothing calls the symbol (#1596)
+
+Measured in dogfood rounds 3 and 4 (2026-10-15): module-level functions answered
+`unknown` 18/18 and 12/12, including ones nothing referenced. Any unresolved
+attribute call in the declaring file (`"\n".join`, `header.get`) was treated as
+something that could target the function, even though its attribute name differs.
+
+When the symbol has **0 callers**, an unresolved site now gates the file only if
+it could name the symbol: its callee text ends in the symbol's name, or the name
+is computed (`getattr(x, name)`, any subscript such as `HANDLERS[name]` or
+`globals()[...]`, `vars(`, `eval(` and similar). A literal `getattr(x, "n")`
+gates only when `n` is the symbol's name. Sites ruled out this way are reported in
+`excluded_sites` with `reason_code: names_other_symbol`, so the two lists still
+partition one scan.
+
+**Why this is a proof, not a relaxation.** A call site with a different name can
+reach the symbol only through a value: an alias (`f = target`), a callback
+argument, a container entry, or a decorator that registers it. The first three
+are name references, which the non-call reference gate (#1593) scans for in every
+indexed same-language file before 0 can be `complete`. The fourth is covered by a
+new gate: a declaration with a decorator that may register it answers `unknown`
+with `DECORATOR_MAY_REGISTER`. The non-call reference gate runs only when there
+are 0 callers, so the narrowing applies only then; a symbol with callers keeps
+the original guard.
+
+**Re-landing after dogfood round 5 (#1622, #1623, #1624).** The first version of
+this amendment (#1614) was reverted (#1626) because three gaps let it certify
+absence over real uses:
+
+- Module-scope call sites (`X = f()`, class bodies, `if __name__ == "__main__"`,
+  module-level lambdas and comprehensions, decorator arguments and factories)
+  were not counted as callers. They are now listed as `<module>` callers (#1628).
+- Names in code strings and config files (`"pkg.mod:f"`, `exec("m.f()")`,
+  `pyproject.toml`, workflow YAML) were not scanned. They now are (#1629).
+- Decorators were read by scanning consecutive `@` lines, and the wrapper
+  exemption matched on the bare name. Multi-line decorators, a comment between
+  decorator and definition, and a project's own `def cache(fn):
+  HANDLERS.append(fn)` used as `@cache` all passed. Decorators are now read
+  from the definition's syntax tree (Python `ast` `decorator_list`; tree-sitter
+  decorator/annotation nodes for other languages). A decorator is exempt only if
+  it resolves, through the file's imports, to a known wrapper-only decorator
+  (`functools.lru_cache`/`cache`/`wraps`, builtin
+  `staticmethod`/`classmethod`/`property`, `abc.abstractmethod`,
+  `typing.overload`, `dataclasses.dataclass`, `contextlib.contextmanager`, and
+  similar). A name bound in the file, a relative or star import, or a name with
+  two possible origins is not exempt, and non-Python annotations are never
+  exempt. A declaration whose decorators cannot be read (syntax error,
+  unreadable file, grammar unavailable) is treated as possibly registered.
+
 #### §1.3 — Carry the evidence, not only the count
 
 **Problem.** §1.1 adds `completeness`, and §1.2 makes it precise, but the caller

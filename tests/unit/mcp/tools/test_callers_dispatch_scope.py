@@ -1,0 +1,422 @@
+"""#1596：RFC-0028 §1.2 作用域守卫只计入“可能点名目标”的未解析调用点。
+
+实测（dogfood 第 3/4 轮）：模块级函数 18/18、12/12 永远答 ``unknown``，即使
+确实无人引用——声明文件里任意一个 ``"\\n".join`` / ``header.get`` 都被当作
+可能指向它的调用。属性名与目标名不同的调用点不可能调用目标：经由别名、回调或
+字典到达目标都需要一次按名引用，而 0 调用方时非调用引用门（#1593）会扫描它。
+计算式分发（``getattr(x, name)``、``HANDLERS[name]``、``globals()[...]``）
+不点名任何符号，仍然保留守卫。
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from tree_sitter_analyzer.mcp.tools.callers_decorators import DECORATED_REASON
+from tree_sitter_analyzer.mcp.tools.callers_dispatch import (
+    NAMES_OTHER_REASON,
+    could_name_target,
+    partition_by_target,
+)
+from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+
+#: 只有内建/局部变量属性调用的模块：没有任何东西能点名 ``lonely``。
+_PLAIN = (
+    "def lonely(items):\n"
+    '    return "x".join(items)\n\n\n'
+    "def reader(d, header):\n"
+    '    value = d.get("k")\n'
+    '    return header.get("h"), value\n'
+)
+#: 含反射分发的模块：``getattr(mod, name)()`` 可能就是 ``lonely`` 的调用方。
+_DISPATCH = (
+    "import sys\n\n\n"
+    "def lonely(items):\n"
+    '    return "x".join(items)\n\n\n'
+    "def dispatch(name):\n"
+    "    mod = sys.modules[__name__]\n"
+    "    return getattr(mod, name)()\n"
+)
+#: 别名调用：``alias()`` 名字不同，但 ``alias = lonely`` 是一次按名引用。
+_ALIAS = (
+    "def lonely(items):\n"
+    '    return "x".join(items)\n\n\n'
+    "def run(items):\n"
+    "    alias = lonely\n"
+    "    return alias(items)\n"
+)
+
+
+#: 项目内两处同名 `get` / `join`：属性调用无法绑定，记为未解析（复现 dogfood 现象）。
+_AMBIGUOUS = (
+    "class Store:\n"
+    "    def get(self, k):\n"
+    "        return k\n\n"
+    "    def join(self, xs):\n"
+    "        return xs\n\n\n"
+    "class Cache:\n"
+    "    def get(self, k):\n"
+    "        return k\n\n"
+    "    def join(self, xs):\n"
+    "        return xs\n"
+)
+
+
+async def _index(root, source: str) -> str:
+    return await _index_files(root, {"mod.py": source})
+
+
+async def _index_files(root, files: dict[str, str]) -> str:
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    for rel_path, text in {"store.py": _AMBIGUOUS, **files}.items():
+        path = root / rel_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    indexed = await CodeGraphFullIndexTool(str(root)).execute(
+        {"mode": "full", "max_files": 20}
+    )
+    assert indexed["published"] is True
+    return str(root)
+
+
+async def _callers(root: str, name: str) -> dict:
+    return await CodeGraphCallersTool(root).execute(
+        {"function_name": name, "include_bodies": False}
+    )
+
+
+@pytest.mark.asyncio
+async def test_unreferenced_module_function_answers_complete(tmp_path) -> None:
+    # #1596：未解析调用只有 `"x".join` / `d.get` / `header.get`，均不可能点名 lonely。
+    root = await _index(tmp_path, _PLAIN)
+
+    result = await _callers(root, "lonely")
+
+    assert (result["caller_count"], result["completeness"]) == (0, "complete")
+    assert result["completeness_reason"] is None
+    assert result["unresolved_in_declaring_files"] == 0
+    assert result["unresolved_sites"] == []
+    # 被排除的点仍可审计：§1.3 要求“不是普查”的反面也能复核。
+    assert result["excluded_by_reason"] == {NAMES_OTHER_REASON: 3}
+    assert [s["callee"] for s in result["excluded_sites"]] == [
+        '"x".join',
+        "d.get",
+        "header.get",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_other_names_still_gate_when_callers_exist(tmp_path) -> None:
+    # #1596：有调用方时非调用引用门不运行，因此不按名收窄，原守卫保持不变。
+    root = await _index(tmp_path, _PLAIN + "\n\ndef user():\n    return lonely([])\n")
+
+    result = await _callers(root, "lonely")
+
+    assert (result["caller_count"], result["completeness"]) == (1, "incomplete")
+    assert result["unresolved_in_declaring_files"] == 3
+    assert result["excluded_by_reason"] == {}
+
+
+@pytest.mark.asyncio
+async def test_reflective_dispatch_in_declaring_file_keeps_the_guard(
+    tmp_path,
+) -> None:
+    # #1596：`getattr(mod, name)()` 的名字是计算出来的，可能就是 lonely。
+    root = await _index(tmp_path, _DISPATCH)
+
+    result = await _callers(root, "lonely")
+
+    assert result["completeness"] == "unknown"
+    assert [s["mechanism"] for s in result["unresolved_sites"]] == ["reflection"]
+
+
+@pytest.mark.asyncio
+async def test_aliased_call_is_caught_by_the_reference_gate(tmp_path) -> None:
+    # #1596：名字不同的 `alias()` 不再守卫文件，但 `alias = lonely` 是非调用引用。
+    root = await _index(tmp_path, _ALIAS)
+
+    result = await _callers(root, "lonely")
+
+    assert result["completeness"] == "unknown"
+    assert result["completeness_reason"] == "NON_CALL_REFERENCES"
+    assert result["non_call_reference_sites"] == [{"file": "mod.py", "line": 6}]
+
+
+#: 注册表分发：`@register` 登记后由名字不同的 `handler()` 调用。
+_REGISTERED = (
+    "import functools\n\n"
+    "HANDLERS = []\n\n\n"
+    "def register(func):\n"
+    "    HANDLERS.append(func)\n"
+    "    return func\n\n\n"
+    "@register\n"
+    "def lonely(items):\n"
+    '    return "x".join(items)\n\n\n'
+    "@functools.lru_cache(maxsize=1)\n"
+    "def cached(items):\n"
+    "    return items\n\n\n"
+    "def fire(items):\n"
+    "    for handler in HANDLERS:\n"
+    "        handler(items)\n"
+)
+
+
+@pytest.mark.asyncio
+async def test_registering_decorator_blocks_complete(tmp_path) -> None:
+    # #1596：`@register` 可能把目标登记进注册表，0 调用方不是不存在的证据。
+    root = await _index(tmp_path, _REGISTERED)
+
+    result = await _callers(root, "lonely")
+
+    assert (result["caller_count"], result["completeness"]) == (0, "unknown")
+    assert result["completeness_reason"] == DECORATED_REASON
+    assert result["next_step"] == (
+        "No resolved caller for 'lonely', but it is decorated with `@register`, "
+        "which may register it for dispatch the call graph does not record, so "
+        "this is not evidence of absence."
+    )
+
+
+@pytest.mark.asyncio
+async def test_passive_decorator_keeps_complete(tmp_path) -> None:
+    # #1596：`lru_cache` 只包装、不登记，真正无人调用时仍答 complete。
+    root = await _index(tmp_path, _REGISTERED)
+
+    result = await _callers(root, "cached")
+
+    assert (result["caller_count"], result["completeness"]) == (0, "complete")
+
+
+@pytest.mark.parametrize(
+    ("callee", "expected"),
+    [
+        ('"\\n".join', False),
+        ("header.get", False),
+        ("self.handle", False),
+        ("extractors.run", False),
+        ("local_helper", False),
+        ("make().run", False),
+        ("lonely", True),
+        ("self.lonely", True),
+        ("pkg.mod.lonely", True),
+        ("make().lonely", True),
+        ('getattr(mod, "lonely")', True),
+        ('getattr(mod, "other")', False),
+        ("getattr(mod, name)", True),
+        ("getattr(importlib.import_module(m), c).run", True),
+        ("HANDLERS[name]", True),
+        ('HANDLERS["read"]', True),
+        ('globals()["x"]', True),
+        ("vars(obj).get", True),
+        ("make()()", True),
+        ("", True),
+    ],
+)
+def test_could_name_target_matches_name_or_computed_dispatch(
+    callee: str, expected: bool
+) -> None:
+    # #1596：同名，或名字在运行时计算出来，才可能指向目标。
+    assert could_name_target(callee, "lonely") is expected
+
+
+def test_partition_moves_other_names_to_excluded_without_mutating() -> None:
+    # #1596：被排除的点带上原因码，原始列表保持不变。
+    sites = [
+        {"file": "m.py", "line": 3, "callee": "d.get", "classification": "unresolved"},
+        {
+            "file": "m.py",
+            "line": 5,
+            "callee": "HANDLERS[k]",
+            "classification": "unresolved",
+        },
+    ]
+
+    kept, excluded = partition_by_target(sites, "lonely")
+
+    assert kept == [sites[1]]
+    assert excluded == [
+        {
+            "file": "m.py",
+            "line": 3,
+            "callee": "d.get",
+            "classification": "excluded",
+            "reason_code": NAMES_OTHER_REASON,
+        }
+    ]
+    assert sites[0]["classification"] == "unresolved"
+
+
+# ---------------------------------------------------------------------------
+# #1596 / #1614 / #1623：dogfood 第 5 轮（2026-10-16）的危险假“不存在”形状。
+# #1614 让它们答成 `complete, 0`，#1626 因此回滚；重新落地时每一种都必须不是
+# `complete, 0`。对照组仍须答 `complete, 0`（有用性）。
+# ---------------------------------------------------------------------------
+
+#: 目标函数：函数体只有一个无关的未解析调用。
+_TARGET = 'def target(items):\n    return "x".join(items)\n'
+
+#: 模块作用域调用形状（#1622）：调用方应列为 ``<module>``。
+_MODULE_SCOPE = {
+    "assignment": _TARGET + "\n\nX = target([])\n",
+    "class_body": _TARGET + "\n\nclass Holder:\n    attr = target([])\n",
+    "if_main": _TARGET + '\n\nif __name__ == "__main__":\n    target([])\n',
+    "lambda": _TARGET + "\n\nRUN = lambda: target([])\n",
+    "comprehension": _TARGET + "\n\nVALUES = [target([]) for _ in range(2)]\n",
+    "decorator_argument": (
+        _TARGET + "\n\ndef deco(value):\n    return lambda fn: fn\n\n\n"
+        "@deco(target([]))\ndef other():\n    return 1\n"
+    ),
+}
+
+#: 项目内的登记器：把函数存进注册表，之后以名字不同的 ``handler()`` 分发。
+_REGISTRY = (
+    "HANDLERS = []\n\n\n"
+    "def register(*names):\n"
+    "    def wrap(func):\n"
+    "        HANDLERS.append(func)\n"
+    "        return func\n"
+    "    return wrap\n\n\n"
+    "def fire():\n"
+    "    for handler in HANDLERS:\n"
+    "        handler([])\n"
+)
+
+#: 装饰器登记形状（#1623）：旧的逐行扫描看不到前两种，按裸名豁免了第三种。
+_DECORATED = {
+    "multi_line": _REGISTRY + '\n\n@register(\n    "multi",\n)\n' + _TARGET,
+    "comment_separated": _REGISTRY + '\n\n@register("x")\n# 说明\n' + _TARGET,
+    "project_cache": (
+        "HANDLERS = []\n\n\n"
+        "def cache(fn):\n"
+        "    HANDLERS.append(fn)\n"
+        "    return fn\n\n\n"
+        "@cache\n" + _TARGET
+    ),
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("shape", sorted(_MODULE_SCOPE))
+async def test_module_scope_call_lists_module_caller(tmp_path, shape: str) -> None:
+    # #1622/#1628：模块作用域调用点计为 `<module>` 调用方，不再是 `complete, 0`。
+    root = await _index_files(tmp_path, {"mod.py": _MODULE_SCOPE[shape]})
+
+    result = await _callers(root, "target")
+
+    assert result["caller_count"] == 1
+    assert [c["name"] for c in result["callers"]] == ["<module>"]
+
+
+#: 装饰器工厂 `@mod.factory("x")`：导入时调用 factory，并登记 handler。
+_FACTORY_FILES = {
+    "mod.py": (
+        "REGISTRY = {}\n\n\n"
+        "def factory(name):\n"
+        "    def wrap(fn):\n"
+        "        REGISTRY[name] = fn\n"
+        "        return fn\n"
+        "    return wrap\n"
+    ),
+    "user.py": 'import mod\n\n\n@mod.factory("x")\ndef handler():\n    return 1\n',
+}
+
+
+@pytest.mark.asyncio
+async def test_decorator_factory_lists_module_caller(tmp_path) -> None:
+    # #1622/#1628：`@mod.factory("x")` 在导入时调用 factory。
+    root = await _index_files(tmp_path, _FACTORY_FILES)
+
+    result = await _callers(root, "factory")
+
+    assert result["caller_count"] == 1
+    assert [c["name"] for c in result["callers"]] == ["<module>"]
+
+
+@pytest.mark.asyncio
+async def test_handler_registered_by_decorator_factory_is_unknown(tmp_path) -> None:
+    # #1623：被 `@mod.factory("x")` 登记的 handler，装饰器可能登记它。
+    root = await _index_files(tmp_path, _FACTORY_FILES)
+
+    result = await _callers(root, "handler")
+
+    assert (result["caller_count"], result["completeness"]) == (0, "unknown")
+    assert result["completeness_reason"] == DECORATED_REASON
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("shape", sorted(_DECORATED))
+async def test_registering_decorator_shapes_block_complete(
+    tmp_path, shape: str
+) -> None:
+    # #1623：装饰器从 AST 读取；项目自定义的 `cache` 不是 functools.cache。
+    root = await _index_files(tmp_path, {"mod.py": _DECORATED[shape]})
+
+    result = await _callers(root, "target")
+
+    assert (result["caller_count"], result["completeness"]) == (0, "unknown")
+    assert result["completeness_reason"] == DECORATED_REASON
+
+
+#: 字符串与配置文件中的引用（#1624/#1629）：grep 能找到，absence 不得更弱。
+_TEXT_REFERENCES = {
+    "toml_entry_point": {
+        "pyproject.toml": '[project.scripts]\ntool = "pkg.mod:target"\n',
+    },
+    "colon_string": {
+        "loader.py": 'SPEC = "pkg.mod:target"\n',
+    },
+    "exec_string": {
+        "runner.py": 'exec("mod.target([])")\n',
+    },
+    "workflow_yml": {
+        ".github/workflows/ci.yml": "jobs:\n  t:\n    steps:\n"
+        "      - run: python -c 'import mod; mod.target([])'\n",
+    },
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("shape", sorted(_TEXT_REFERENCES))
+async def test_text_references_block_complete(tmp_path, shape: str) -> None:
+    # #1624/#1629：入口点、导入串、exec 串、workflow 中的名字都是可能的引用。
+    root = await _index_files(tmp_path, {"mod.py": _TARGET, **_TEXT_REFERENCES[shape]})
+
+    result = await _callers(root, "target")
+
+    assert (result["caller_count"], result["completeness"]) == (0, "unknown")
+    assert result["completeness_reason"] == "NON_CALL_REFERENCES"
+    assert result["non_call_references"] == 1
+
+
+@pytest.mark.asyncio
+async def test_unreferenced_function_with_unrelated_calls_answers_complete(
+    tmp_path,
+) -> None:
+    # #1596 对照组：只有 `"x".join` / `d.get` 这类无关未解析调用，答 complete。
+    plain = _TARGET + '\n\ndef reader(d):\n    return d.get("k")\n'
+    root = await _index_files(tmp_path, {"mod.py": plain})
+
+    result = await _callers(root, "target")
+
+    assert (result["caller_count"], result["completeness"]) == (0, "complete")
+    assert result["completeness_reason"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "decorated",
+    [
+        "import functools\n\n\n@functools.lru_cache(maxsize=1)\n",
+        "from functools import lru_cache\n\n\n@lru_cache\n",
+        "import functools as ft\n\n\n@ft.lru_cache(\n    maxsize=None,\n)\n",
+    ],
+)
+async def test_known_wrapper_decorator_keeps_complete(tmp_path, decorated: str) -> None:
+    # #1623 对照组：经导入解析到 functools.lru_cache，只包装不登记，仍答 complete。
+    root = await _index_files(tmp_path, {"mod.py": decorated + _TARGET})
+
+    result = await _callers(root, "target")
+
+    assert (result["caller_count"], result["completeness"]) == (0, "complete")
+    assert result["completeness_reason"] is None
