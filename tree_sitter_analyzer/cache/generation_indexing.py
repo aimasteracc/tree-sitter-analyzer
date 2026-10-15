@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 import stat
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 if TYPE_CHECKING:
     from ..ast_cache import ASTCache
@@ -17,6 +17,11 @@ from ..incremental_sync_support import SyncResult
 from ..index_source_scope import SourceScopeDescriptor, make_source_scope_descriptor
 from ..indexing_candidate_materialization import release_index_candidate_snapshot
 from ..indexing_snapshot import IndexCandidateSnapshot
+from .generation_noop import (
+    index_run_unchanged,
+    same_certified_content,
+    unpublished_result,
+)
 from .generation_routing import (
     generation_storage_path,
     logical_index_path,
@@ -61,6 +66,19 @@ def project_store(root: str, scope: SourceScopeDescriptor) -> GenerationStore:
         str(storage),
         scope=scope,
         logical_path=str(logical_index_path(root)),
+    )
+
+
+def _unchanged(
+    store: GenerationStore, candidate: Any, selector: Any, run_unchanged: bool
+) -> bool:
+    """#1631：运行零写入且控制表与已认证父版本相同，才可放弃发布。"""
+    return (
+        run_unchanged
+        and candidate.parent is not None
+        and same_certified_content(
+            store.database(candidate.parent), store.database(selector)
+        )
     )
 
 
@@ -121,10 +139,17 @@ def mutate_published_cache(
                         result = operation(writable)
                 finally:
                     writable.close()
+                if snapshot_operation is not None and _unchanged(
+                    store, candidate, selector, index_run_unchanged(result)
+                ):
+                    # #1631：零变化的增量项目索引不发布，私有副本随 abandoning 回收。
+                    return cast(_T, unpublished_result(cast(Mapping[str, Any], result)))
                 if publishable_result(result) or _first_publication(candidate):
                     store.seal(selector)
                     store.publish(PreparedGeneration(candidate, selector, SyncResult()))
                     cache._adopt_published_generation()
+                    if snapshot_operation is not None and isinstance(result, Mapping):
+                        result = cast(_T, {**result, "published": True})
             return result
 
         finally:

@@ -770,3 +770,30 @@ dogfood 2026-10-14：同一 MCP 服务器内 `nav action=callers` 建索引后�
 固定多次标注只构造一个 `PluginManager`；`tests/unit/test_cache_write.py` 的
 `test_incoming_resolution_lookup_uses_both_edge_indexes` 固定查询计划只走
 `idx_edges_resolved` 与 `idx_edges_callee_name`。
+
+## 2026-10 — 保留上限必须在真实长驻读者存在时测量
+
+### Context
+
+#1631（dogfood round 6，2026-10-16）：#1567 承诺“active + 至多 2 个已密封版本”，
+单元测试也一直是绿的，但真实 MCP 服务器里 index + 3 次刷新后磁盘上有 4 份 339 MB 的
+`index.db`，本机磁盘 10-14..16 多次耗尽。两个原因叠加：(1) `indexed=0 removed=0` 的
+无变化刷新也复制并发布一份完整副本；(2) 读过旧版本的长驻工具实例（impact 的
+`CachedCallGraph`）调用结束后仍持有线程本地只读连接与版本钉，只要不再被调用，该版本
+永远不能回收，保留数因此变成 active + 2 + 空闲读者数。40 文件夹具实测：无变化刷新 5 次
+由 3 份降到 1 份；空闲 impact 读者 + 3 次变化刷新由 4 份降到 3 份。
+
+### Lessons learned
+
+1. **保留上限是对“整个进程”的承诺。** 只用短命读者或无读者测出的上限，不能代表长驻
+   服务器；测试必须包含一个读过旧版本后保持空闲的长寿命工具实例。
+2. **按调用解析版本的读者，调用之间不需要持有旧版本。** 下一次调用本就会换绑；空闲时
+   提前释放与换绑语义相同，但必须排除仍在进行中的调用所绑定的版本。
+3. **“刷新”不等于“发布”。** 运行结果为零变化、且认证清单（覆盖全部查询可见行的
+   `index_fingerprint`）与父版本逐行相同时，发布新版本只是复制磁盘。
+
+### Required guardrail
+
+`tests/unit/test_generation_retirement.py` 经公共路由 `index action=cache mode=index`
+固定：5 次无变化刷新后仍只有 1 个版本且 `publication_reason == "INDEX_UNCHANGED"`；
+空闲的长驻 nav 实例不再钉住旧版本；进行中的读者所用版本绝不被回收。
