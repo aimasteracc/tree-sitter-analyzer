@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from tree_sitter_analyzer.call_graph import CachedCallGraph, FunctionRef
+from tree_sitter_analyzer.call_graph import CachedCallGraph, CallGraph, FunctionRef
 from tree_sitter_analyzer.call_graph_binding import pick_caller_ref
 from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
 
@@ -88,8 +88,6 @@ def test_pick_caller_ref_prefers_the_exact_definition_line() -> None:
 
 def test_callers_of_does_not_merge_same_name_refs_without_receiver() -> None:
     # #1596：没有 receiver 的同名函数（例如两个嵌套 `inner`）按定义行区分。
-    from tree_sitter_analyzer.call_graph import CallGraph
-
     graph = CallGraph(".")
     target = _ref("apply_budget", 1, 2)
     inner_a = _ref("inner", 5, 6)
@@ -99,3 +97,35 @@ def test_callers_of_does_not_merge_same_name_refs_without_receiver() -> None:
     graph._built = True
 
     assert [c["line"] for c in graph.callers_of("apply_budget")] == [5, 9]
+
+
+def _nested_graph() -> CallGraph:
+    """#1619：run → 两个同名嵌套 inner（无 receiver），各自再调用 log_a / log_b。"""
+    graph = CallGraph(".")
+    run = _ref("run", 1, 2)
+    inner_a, inner_b = _ref("inner", 5, 6), _ref("inner", 9, 10)
+    graph._func_by_name["run"].append(run)
+    graph._func_by_file["pulse.py"].append(run)
+    graph._callees[run].extend([inner_a, inner_b])
+    graph._callees[inner_a].append(_ref("log_a", 13, 14))
+    graph._callees[inner_b].append(_ref("log_b", 17, 18))
+    graph._callers[run].extend([inner_a, inner_b])
+    graph._built = True
+    return graph
+
+
+def test_call_chain_keeps_both_same_name_callees() -> None:
+    # #1619：边去重键按身份；按 qualified_name 时 run->inner 只走一次，丢掉 log_b。
+    chain = _nested_graph().call_chain("run", depth=2)
+
+    assert [(e["callee"]["name"], e["callee"]["line"]) for e in chain] == [
+        ("inner", 5),
+        ("inner", 9),
+        ("log_a", 13),
+        ("log_b", 17),
+    ]
+
+
+def test_file_impact_counts_both_same_name_callers() -> None:
+    # #1619：file_impact 的上游去重按身份，两个同名嵌套 inner 都计入。
+    assert _nested_graph().file_impact("pulse.py")["upstream_count"] == 2

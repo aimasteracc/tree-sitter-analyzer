@@ -297,6 +297,20 @@ class TestComputeDepthDistribution:
         assert dist["capped"] is True
         assert dist["distribution"]["depth_10+"] == 3
 
+    def test_same_name_functions_each_counted(self):
+        # #1619：两个同名嵌套 inner（无 receiver）按 qualified_name 作键会互相覆盖。
+        inner_a = FunctionRef("m.py", "inner", 5, "python")
+        inner_b = FunctionRef("m.py", "inner", 9, "python")
+        leaf = FunctionRef("m.py", "leaf", 13, "python")
+        callees_map = {inner_a: [leaf]}
+        graph = MagicMock()
+        graph.function_refs.return_value = [inner_a, inner_b, leaf]
+        graph.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
+
+        dist = _compute_depth_distribution(graph)
+
+        assert dist["distribution"] == {"depth_0": 2, "depth_1": 1}
+
 
 class TestComputeModuleCoupling:
     def test_coupling_cross_file_only(self, tool):

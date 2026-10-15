@@ -46,6 +46,7 @@ from __future__ import annotations
 from typing import Any
 
 from ... import read_existing_access as read_access
+from ...call_graph_binding import RefIdentity, ref_identity
 from ...constants import JS_TS_MODULE_EXTS
 from .facade_tool import FacadeTool
 from .nav_facade_help import (
@@ -431,7 +432,8 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         # both a direct caller AND (via a helper) a walk-up parent of the SAME
         # target is not double-counted — while a DIFFERENT target sharing the
         # same test still counts its own genuine coverage edge (P2 undercount).
-        counted_edges: set[tuple[str, str]] = set()
+        # #1619：目标按身份（文件、名字、定义行）区分，同名嵌套函数不合并。
+        counted_edges: set[tuple[RefIdentity, str]] = set()
         # Non-collectible helpers (Python ``_run``, Go ``setupServer``, …) in
         # test files, paired with the target they were reached from, for a
         # deferred one-hop walk-up after all direct callers are known (#807).
@@ -454,7 +456,7 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             """Count one (target → test) coverage edge, deduped per target."""
             nonlocal total_edge_count
             (name_only_keys if name_only else certain_keys).add(f"{file_path}::{name}")
-            edge_key = (target.qualified_name(), f"{file_path}::{name}")
+            edge_key = (ref_identity(target), f"{file_path}::{name}")
             if edge_key in counted_edges:
                 return
             counted_edges.add(edge_key)

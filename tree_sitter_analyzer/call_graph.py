@@ -21,7 +21,7 @@ from typing import Any
 
 from .cached_edge_resolution import CachedEdgeResolver
 from .cached_reexport_binding import PackageReexportBinder
-from .call_graph_binding import pick_caller_ref, ref_identity
+from .call_graph_binding import RefIdentity, pick_caller_ref, ref_identity
 from .call_graph_possible import PossibleEdgesMixin
 from .callee_resolution import CalleeResolver
 from .constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
@@ -369,7 +369,7 @@ class CallGraph(PossibleEdgesMixin):
         """
         self.build()
         targets = self._resolve_targets(func_name, file_path)
-        seen: set[tuple[str, str, int]] = set()
+        seen: set[RefIdentity] = set()
         result: list[dict[str, Any]] = []
         for target in targets:
             for caller in self._callers.get(target, []):
@@ -395,7 +395,7 @@ class CallGraph(PossibleEdgesMixin):
         """
         self.build()
         targets = self._resolve_targets(func_name, file_path)
-        seen: set[tuple[str, str, int]] = set()
+        seen: set[RefIdentity] = set()
         result: list[dict[str, Any]] = []
         for target in targets:
             for callee in self._callees.get(target, []):
@@ -422,7 +422,7 @@ class CallGraph(PossibleEdgesMixin):
         self.build()
         targets = self._resolve_targets(func_name, file_path)
         result: list[dict[str, Any]] = []
-        visited: set[str] = set()
+        visited: set[tuple[RefIdentity, RefIdentity]] = set()
         queue: deque[tuple[FunctionRef, int]] = deque((t, 0) for t in targets)
 
         while queue:
@@ -430,7 +430,7 @@ class CallGraph(PossibleEdgesMixin):
             if d >= depth:
                 continue
             for callee in self._callees.get(current, []):
-                key = f"{current.qualified_name()}->{callee.qualified_name()}"
+                key = (ref_identity(current), ref_identity(callee))  # #1619
                 if key not in visited:
                     visited.add(key)
                     result.append(
@@ -569,16 +569,16 @@ class CallGraph(PossibleEdgesMixin):
         funcs = self._func_by_file.get(file_path, [])
         upstream: list[dict[str, Any]] = []
         downstream: list[dict[str, Any]] = []
-        seen_up: set[str] = set()
-        seen_down: set[str] = set()
+        seen_up: set[RefIdentity] = set()  # #1619：按身份去重
+        seen_down: set[RefIdentity] = set()
         for func in funcs:
             for caller in self._callers.get(func, []):
-                key = caller.qualified_name()
+                key = ref_identity(caller)
                 if key not in seen_up:
                     seen_up.add(key)
                     upstream.append(caller.to_dict())
             for callee in self._callees.get(func, []):
-                key = callee.qualified_name()
+                key = ref_identity(callee)
                 if key not in seen_down:
                     seen_down.add(key)
                     downstream.append(callee.to_dict())

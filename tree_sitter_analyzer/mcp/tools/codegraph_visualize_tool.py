@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from ...call_graph import CallGraph, FunctionRef
+from ...call_graph_binding import RefIdentity, ref_identity
 from ...utils import setup_logger
 from ..utils.format_helper import apply_output_format_to_response
 from ._response_builder import build_error, build_response
@@ -302,7 +303,7 @@ class CodeGraphVisualizeTool(BaseMCPTool):
 
         edges: list[tuple[FunctionRef, FunctionRef]] = []
         seen_edges: set[tuple[str, str]] = set()
-        visited: set[str] = set()
+        visited: set[RefIdentity] = set()  # #1619：按身份，同名不合并
 
         from collections import deque
 
@@ -312,10 +313,10 @@ class CodeGraphVisualizeTool(BaseMCPTool):
 
         while queue and len(seen_edges) < max_edges:
             current, d = queue.popleft()
-            qname = current.qualified_name()
-            if qname in visited:
+            ident = ref_identity(current)
+            if ident in visited:
                 continue
-            visited.add(qname)
+            visited.add(ident)
 
             cur_id = _safe_node_id(current.name, current.file_path)
 

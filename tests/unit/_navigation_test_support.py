@@ -288,3 +288,30 @@ async def index_ambiguous_publish_project(root: Path) -> str:
     )
     assert indexed["published"] is True
     return str(root)
+
+
+#: #1619：两个嵌套的同名 ``inner``（无 receiver，qualified_name 相同），各自调用
+#: ``apply_budget`` 并各有一个独有的被调函数（``log_a`` / ``log_b``）。
+SAME_NAME_NESTED_SOURCE = (
+    "def apply_budget(x):\n    return x\n\n\n"
+    "def log_a(x):\n    return x\n\n\n"
+    "def log_b(x):\n    return x\n\n\n"
+    "def outer_a(a):\n"
+    "    def inner(b):\n"
+    "        return apply_budget(log_a(b))\n"
+    "    return inner(a)\n\n\n"
+    "def outer_b(a):\n"
+    "    def inner(b):\n"
+    "        return apply_budget(log_b(b))\n"
+    "    return inner(a)\n"
+)
+
+
+async def index_same_name_nested_project(root: Path) -> str:
+    """#1619：建立只含 ``pulse.py``（两个同名嵌套 ``inner``）的项目并完成索引。"""
+    (root / "pulse.py").write_text(SAME_NAME_NESTED_SOURCE, encoding="utf-8")
+    indexed = await CodeGraphFullIndexTool(str(root)).execute(
+        {"mode": "full", "max_files": 10}
+    )
+    assert indexed["published"] is True
+    return str(root)
