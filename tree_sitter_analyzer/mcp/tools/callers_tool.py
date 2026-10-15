@@ -16,6 +16,7 @@ from ...utils import setup_logger
 from ._response_builder import build_response
 from .base_tool import BaseMCPTool
 from .callers_absence import assess_completeness
+from .callers_dispatch import narrow_to_target
 from .codegraph_relation_tool import (
     _STALE_CACHE_WARNING,
     CodeGraphRelationToolMixin,
@@ -427,13 +428,19 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # declares this symbol" has to re-read the file to act; a caller given the
         # sites and their mechanisms can go straight to them.
         declaring_sites = _declaring_file_unresolved(cache, func_name, file_path)
-        unresolved_in_declaring_files = (
-            None if declaring_sites is None else len(declaring_sites)
-        )
         # The complement of the sites above: what was ruled out, and on what
         # grounds. Without it, "this file is not a census" cannot be checked
         # against "this file is a browser asset full of builtin attribute calls".
         excluded_sites = _declaring_file_excluded(cache, func_name, file_path)
+        # #1596：0 调用方时非调用引用门（#1593）会扫描别名与回调，守卫只需计入
+        # 可能点名目标的调用点（同名或计算式分发）；有调用方时保持原守卫。
+        if not total_callers and self.project_root:
+            declaring_sites, excluded_sites = narrow_to_target(
+                declaring_sites, excluded_sites, count_name
+            )
+        unresolved_in_declaring_files = (
+            None if declaring_sites is None else len(declaring_sites)
+        )
 
         if unresolved_inbound is None or unresolved_in_declaring_files is None:
             completeness = "unknown"

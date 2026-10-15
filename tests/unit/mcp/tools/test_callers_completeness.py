@@ -374,11 +374,16 @@ async def test_builtin_receiver_call_does_not_gate_the_file(tool_with_edges) -> 
             "string-keyed dispatch",
         ),
         ("getattr(self, name)", "getattr(self, name)", "reflection"),
-        ("self.handle", "self.handle", "own-class attribute"),
-        ("cls.build", "cls.build", "classmethod attribute"),
-        ("extractors.run", "extractors.run", "receiver is a local variable"),
-        ("local_helper", "local_helper", "bare name in scope"),
-        ("original", "original", "bare name bound at runtime"),
+        # #1596 重新固定：0 调用方时守卫按名收窄，同名的调用点才可能点名目标；
+        # 名字不同的别名调用（`original = target_symbol`）由非调用引用门负责，
+        # 见 test_callers_dispatch_scope.py。
+        ("self.target_symbol", "self.target_symbol", "own-class attribute"),
+        ("cls.target_symbol", "cls.target_symbol", "classmethod attribute"),
+        (
+            "extractors.target_symbol",
+            "extractors.target_symbol",
+            "receiver is a local variable",
+        ),
     ],
 )
 async def test_potentially_local_callee_still_gates_the_file(
@@ -388,7 +393,8 @@ async def test_potentially_local_callee_still_gates_the_file(
 
     These are the cases §1.2 exists for.  Narrowing may only remove callees it
     can *prove* cannot target the file; a receiver that is a local variable
-    (`extractors.run`) may well be a project object, so it stays counted.
+    (`extractors.target_symbol`) may well be a project object, so it stays
+    counted.
     """
     tool, conn = tool_with_edges
     _insert_call(

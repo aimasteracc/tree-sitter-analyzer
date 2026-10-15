@@ -326,6 +326,32 @@ information. Over-counting only holds a symbol at `incomplete`, while
 under-counting certifies absence over a real edge — so the amendment removes only
 the cases where the exclusion is provable, and the ratchet above is unchanged.
 
+#### §1.2 amendment 2 — the guard matches on name when nothing calls the symbol (#1596)
+
+Measured in dogfood rounds 3 and 4 (2026-10-15): module-level functions answered
+`unknown` 18/18 and 12/12, including ones nothing referenced. Any unresolved
+attribute call in the declaring file (`"\n".join`, `header.get`) was treated as
+something that could target the function, even though its attribute name differs.
+
+When the symbol has **0 callers**, an unresolved site now gates the file only if
+it could name the symbol: its callee text ends in the symbol's name, or the name
+is computed (`getattr(x, name)`, any subscript such as `HANDLERS[name]` or
+`globals()[...]`, `vars(`, `eval(` and similar). A literal `getattr(x, "n")`
+gates only when `n` is the symbol's name. Sites ruled out this way are reported in
+`excluded_sites` with `reason_code: names_other_symbol`, so the two lists still
+partition one scan.
+
+**Why this is a proof, not a relaxation.** A call site with a different name can
+reach the symbol only through a value: an alias (`f = target`), a callback
+argument, a container entry, or a decorator that registers it. The first three
+are name references, which the non-call reference gate (#1593) scans for in every
+indexed same-language file before 0 can be `complete`. The fourth is covered by a
+new gate: a declaration with a decorator that may register it (anything outside a
+short list of wrapper-only decorators such as `staticmethod` or `lru_cache`)
+answers `unknown` with `DECORATOR_MAY_REGISTER`. The non-call reference gate runs
+only when there are 0 callers, so the narrowing applies only then; a symbol with
+callers keeps the original guard.
+
 #### §1.3 — Carry the evidence, not only the count
 
 **Problem.** §1.1 adds `completeness`, and §1.2 makes it precise, but the caller
