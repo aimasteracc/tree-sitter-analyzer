@@ -33,6 +33,7 @@ from .function_extraction import (
 )
 from .import_extractors import walk_imports
 from .languages.lang_extension_map import EXT_TO_LANG
+from .module_scope_caller import MODULE_SCOPE, is_module_caller, module_caller_ref
 from .project_graph import _language_from_ext
 
 # Derived (not hardcoded) from EXT_TO_LANG — the project's single source
@@ -99,6 +100,8 @@ class FunctionRef:
         }
         if self.receiver:
             d["receiver"] = self.receiver
+        if is_module_caller(self.name):
+            d["scope"] = MODULE_SCOPE  # #1622：模块作用域伪调用方
         return d
 
 
@@ -210,11 +213,12 @@ class CallGraph(PossibleEdgesMixin):
         )
 
         # Pass 2: resolve calls against the fully-populated index.
-        for rel_path, _abs_path, _language, file_funcs, calls in per_file:
+        for rel_path, _abs_path, language, file_funcs, calls in per_file:
             for call in calls:
-                caller_ref = self._find_enclosing_func(file_funcs, call["line"])
-                if caller_ref is None:
-                    continue
+                # #1622：无外围函数的调用点归属 ``<module>`` 伪调用方，不再丢弃。
+                caller_ref = self._find_enclosing_func(
+                    file_funcs, call["line"]
+                ) or module_caller_ref(rel_path, call["line"], language)
 
                 callee_refs = self._resolve_callee(call, rel_path, rel_to_abs)
 
@@ -809,12 +813,7 @@ class CachedCallGraph(CallGraph):
             self._callee_resolver = edge_resolver.callee_resolver
         for edge in edges:
             caller_file = edge["caller_file"]
-            # #1596：同文件同名的调用方按定义行区分，不再取第一个同名函数。
-            caller_ref = pick_caller_ref(
-                self._func_by_name.get(edge["caller_name"], []),
-                caller_file,
-                int(edge.get("caller_line") or 0),
-            )
+            caller_ref = _edge_caller_ref(self._func_by_name, edge, caller_file)
             if caller_ref is None:
                 continue
 
@@ -829,3 +828,23 @@ class CachedCallGraph(CallGraph):
                 )
 
         self._built = True
+
+
+def _edge_caller_ref(
+    func_by_name: dict[str, list[FunctionRef]], edge: dict[str, Any], caller_file: str
+) -> FunctionRef | None:
+    """调用边的调用方：模块作用域调用点（#1622）为 ``<module>``，否则按 #1596 绑定。
+
+    缺调用行的模块作用域边无法给出坐标，返回 None（与修复前一致地跳过）。
+    """
+    if not edge.get("caller_name"):
+        call_line = int(edge.get("callee_line") or 0)
+        if call_line < 1:
+            return None
+        return module_caller_ref(caller_file, call_line, edge.get("language") or "")
+    # #1596：同文件同名的调用方按定义行区分，不再取第一个同名函数。
+    return pick_caller_ref(
+        func_by_name.get(edge["caller_name"], []),
+        caller_file,
+        int(edge.get("caller_line") or 0),
+    )

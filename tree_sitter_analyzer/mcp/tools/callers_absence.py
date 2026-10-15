@@ -22,12 +22,14 @@ import os
 import re
 import sqlite3
 import time
+from collections.abc import Set as AbstractSet
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import dataclass, field
 from typing import Any
 
 from ...discovery_budget import DISCOVERY_SECONDS_PER_ENTRY
+from .callers_call_lines import call_edge_lines
 from .callers_target import NOT_DEFINED_REASON, not_defined_hint, resolve_target
 from .callers_target import UNCHECKED_REASON as TARGET_UNCHECKED_REASON
 from .relation_freshness import SCOPED_REASON
@@ -308,6 +310,10 @@ def _non_call_sites(
         }
     except (sqlite3.Error, AttributeError):
         return None
+    # #1622：调用位置只有在确有调用边时才可跳过；读不到边即无法复核。
+    edge_lines = call_edge_lines(cache, bare)
+    if edge_lines is None:
+        return None
     deadline = started + scan_budget_seconds(len(files))
     hits = _files_containing(project_root, files, bare.encode("utf-8"), deadline)
     if hits is None:
@@ -316,7 +322,8 @@ def _non_call_sites(
     sites: list[dict[str, Any]] = []
     for rel_path, language, data in hits:
         text = _strip_comments_and_prose(data.decode("utf-8", "replace"), language)
-        for line in _reference_lines(text, pattern):
+        covered = edge_lines.get(rel_path, frozenset())
+        for line in _reference_lines(text, pattern, covered):
             if (rel_path, line) not in declared_lines:
                 sites.append({"file": rel_path, "line": line})
     return sites
@@ -394,24 +401,31 @@ def _strip_comments_and_prose(text: str, language: str) -> str:
     return lexeme.sub(_replace, text)
 
 
-def _reference_lines(text: str, pattern: re.Pattern[str]) -> list[int]:
-    """名字不处于调用位置、也不是裸名赋值 / 关键字实参的出现行（去重、有序）。"""
-    newlines: list[int] | None = None
+def _reference_lines(
+    text: str,
+    pattern: re.Pattern[str],
+    call_lines: AbstractSet[int] | None = None,
+) -> list[int]:
+    """名字不处于已覆盖的调用位置、也不是裸名赋值 / 关键字实参的出现行（去重、有序）。
+
+    ``call_lines`` 为该文件中确有调用边的行（#1622）：调用位置 ``name(`` 只在
+    这些行上跳过。为 None 时信任所有调用位置（仅供纯文本单元测试使用）。
+    """
+    newlines = [found.start() for found in re.finditer("\n", text)]
     lines: list[int] = []
     for match in pattern.finditer(text):
         after = _FOLLOWING.match(text, match.end())
         following = after.group(1) if after else ""
+        line = bisect.bisect_right(newlines, match.start()) + 1
         if following.startswith("("):
-            continue
-        if following.startswith("=") and not following.startswith("=="):
+            if call_lines is None or line in call_lines:
+                continue
+        elif following.startswith("=") and not following.startswith("=="):
             start = match.start() - 1
             while start >= 0 and text[start] in " \t":
                 start -= 1
             if start < 0 or text[start] != ".":
                 continue
-        if newlines is None:
-            newlines = [found.start() for found in re.finditer("\n", text)]
-        line = bisect.bisect_right(newlines, match.start()) + 1
         if not lines or lines[-1] != line:
             lines.append(line)
     return lines

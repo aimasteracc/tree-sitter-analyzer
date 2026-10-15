@@ -29,6 +29,7 @@ def _insert_call(
     resolution: str,
     callee: str = _TARGET,
     callee_full: str | None = None,
+    call_line: int = 1,
 ) -> None:
     """Insert one CALLS edge with a chosen resolution state.
 
@@ -36,7 +37,7 @@ def _insert_call(
     which is what makes ``caller_name`` empty and the row "unattributed".
     ``callee_full`` defaults to ``callee``; pass it to model an attribute call
     (`list.append`) or a computed dispatch site whose full text differs from the
-    bare name the resolver recorded.
+    bare name the resolver recorded. ``call_line=0`` models a site without a call line.
     """
     full = callee_full if callee_full is not None else callee
     source = symbol_node("a.py", caller, caller_line) if caller else file_node("a.py")
@@ -49,7 +50,7 @@ def _insert_call(
                    ?, ?, 'a.py', ?, ?, 1, 'python', ?, ?)""",
         (
             source,
-            symbol_node("a.py", callee, 1),
+            symbol_node("a.py", callee, call_line),
             caller_line,
             caller,
             callee,
@@ -77,6 +78,10 @@ def tool_with_edges(tmp_path):
         yield CodeGraphCallersTool(str(tmp_path)), conn
     finally:
         cache.close()
+
+
+#: #1622 re-pin：模块级调用点有调用行时列为 ``<module>``；此处无调用行，仍只计数。
+_UNPLACED = {"caller": "", "caller_line": 0, "call_line": 0}
 
 
 async def _call(tool) -> dict:
@@ -117,7 +122,7 @@ async def test_incomplete_when_a_caller_exists_beside_an_unresolved_edge(
 async def test_unknown_never_reports_absence(tool_with_edges) -> None:
     """The case RFC-0028 §1 names: today's ``NOT_FOUND`` over an unresolved edge."""
     tool, conn = tool_with_edges
-    _insert_call(conn, caller="", caller_line=0, resolution="unknown")
+    _insert_call(conn, **_UNPLACED, resolution="unknown")
     conn.commit()
 
     result = await _call(tool)
@@ -250,7 +255,7 @@ async def test_unresolved_inbound_and_caller_count_are_different_units(
     ``(source_node_id, target_node_id, kind, line)``.
     """
     tool, conn = tool_with_edges
-    _insert_call(conn, caller="", caller_line=0, resolution="unknown")
+    _insert_call(conn, **_UNPLACED, resolution="unknown")
     conn.commit()
 
     result = await _call(tool)
@@ -276,7 +281,7 @@ async def test_resolved_module_level_caller_is_not_a_certified_zero(
     silent; only the unattributed count knew.
     """
     tool, conn = tool_with_edges
-    _insert_call(conn, caller="", caller_line=0, resolution=_RESOLVED)
+    _insert_call(conn, **_UNPLACED, resolution=_RESOLVED)
     conn.commit()
 
     result = await _call(tool)
@@ -302,7 +307,7 @@ async def test_an_unresolved_module_level_site_does_not_claim_unreadable(
     read" — a false statement about a successful read.
     """
     tool, conn = tool_with_edges
-    _insert_call(conn, caller="", caller_line=0, resolution="unknown")
+    _insert_call(conn, **_UNPLACED, resolution="unknown")
     conn.commit()
 
     result = await _call(tool)
