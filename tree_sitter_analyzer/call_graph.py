@@ -21,6 +21,7 @@ from typing import Any
 
 from .cached_edge_resolution import CachedEdgeResolver
 from .cached_reexport_binding import PackageReexportBinder
+from .call_graph_binding import pick_caller_ref, ref_identity
 from .call_graph_possible import PossibleEdgesMixin
 from .callee_resolution import CalleeResolver
 from .constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
@@ -368,11 +369,12 @@ class CallGraph(PossibleEdgesMixin):
         """
         self.build()
         targets = self._resolve_targets(func_name, file_path)
-        seen: set[str] = set()
+        seen: set[tuple[str, str, int]] = set()
         result: list[dict[str, Any]] = []
         for target in targets:
             for caller in self._callers.get(target, []):
-                key = caller.qualified_name()
+                # #1596：按定义行区分同名调用方，qualified_name 无 receiver 时会合并。
+                key = ref_identity(caller)
                 if key not in seen:
                     seen.add(key)
                     result.append(caller.to_dict())
@@ -393,11 +395,11 @@ class CallGraph(PossibleEdgesMixin):
         """
         self.build()
         targets = self._resolve_targets(func_name, file_path)
-        seen: set[str] = set()
+        seen: set[tuple[str, str, int]] = set()
         result: list[dict[str, Any]] = []
         for target in targets:
             for callee in self._callees.get(target, []):
-                key = callee.qualified_name()
+                key = ref_identity(callee)
                 if key not in seen:
                     seen.add(key)
                     result.append(callee.to_dict())
@@ -807,14 +809,12 @@ class CachedCallGraph(CallGraph):
             self._callee_resolver = edge_resolver.callee_resolver
         for edge in edges:
             caller_file = edge["caller_file"]
-            caller_candidates = self._func_by_name.get(edge["caller_name"], [])
-            caller_ref = None
-            for c in caller_candidates:
-                if c.file_path == caller_file:
-                    caller_ref = c
-                    break
-            if caller_ref is None and caller_candidates:
-                caller_ref = caller_candidates[0]
+            # #1596：同文件同名的调用方按定义行区分，不再取第一个同名函数。
+            caller_ref = pick_caller_ref(
+                self._func_by_name.get(edge["caller_name"], []),
+                caller_file,
+                int(edge.get("caller_line") or 0),
+            )
             if caller_ref is None:
                 continue
 

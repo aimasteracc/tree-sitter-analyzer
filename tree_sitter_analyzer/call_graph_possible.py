@@ -15,6 +15,8 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
+from .call_graph_binding import ref_identity
+
 if TYPE_CHECKING:
     from .call_graph import FunctionRef
 
@@ -77,11 +79,12 @@ class PossibleEdgesMixin:
     ) -> list[dict[str, Any]]:
         """``callers_of`` 的过近似补集：仅同名匹配的调用方，带 ``match`` 标记。"""
         self.build()
-        seen: set[str] = set()
+        seen: set[tuple[str, str, int]] = set()
         result: list[dict[str, Any]] = []
         for target in self._resolve_targets(func_name, file_path):
             for caller in self.possible_caller_refs_of(target):
-                key = caller.qualified_name()
+                # #1596：过近似一侧同样不得合并同名调用方。
+                key = ref_identity(caller)
                 if key not in seen:
                     seen.add(key)
                     result.append({**caller.to_dict(), "match": NAME_ONLY_MATCH})
