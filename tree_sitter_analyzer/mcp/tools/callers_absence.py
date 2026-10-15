@@ -22,6 +22,7 @@ import os
 import re
 import sqlite3
 import time
+from collections.abc import Sequence
 from collections.abc import Set as AbstractSet
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
@@ -29,6 +30,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ...discovery_budget import DISCOVERY_SECONDS_PER_ENTRY
+from .absence_text_refs import CONFIG_LANGUAGE, is_docstring, string_mention
 from .callers_call_lines import call_edge_lines
 from .callers_target import NOT_DEFINED_REASON, not_defined_hint, resolve_target
 from .callers_target import UNCHECKED_REASON as TARGET_UNCHECKED_REASON
@@ -37,9 +39,9 @@ from .unindexed_sources import FILES_CAP as UNINDEXED_FILES_CAP
 from .unindexed_sources import UNCHECKED_REASON as UNINDEXED_UNCHECKED_REASON
 from .unindexed_sources import (
     UNINDEXED_REASON,
+    project_files,
     unchecked_hint,
     unindexed_hint,
-    unindexed_source_files,
 )
 
 #: 找到非调用引用（属性访问、裸名、字符串名）。
@@ -165,17 +167,14 @@ def _assess_absence(
     bare = func_name.rpartition(".")[2]
     owner = func_name.rpartition(".")[0]
     declarations = _declarations(cache, bare, owner, file_path)
+    sites = None
     if declarations is not None:
-        new_files_verdict = _new_files_gap(
+        new_files_verdict, config_files = _new_files_gap(
             cache, project_root, func_name, declarations, fields
         )
         if new_files_verdict is not None:
             return new_files_verdict
-    sites = (
-        None
-        if declarations is None
-        else _non_call_sites(cache, project_root, bare, declarations)
-    )
+        sites = _non_call_sites(cache, project_root, bare, declarations, config_files)
     fields["non_call_references"] = None if sites is None else len(sites)
     fields["non_call_reference_sites"] = None if sites is None else sites[:_SITES_CAP]
     if declarations and _is_accessor(project_root, declarations, bare):
@@ -211,10 +210,15 @@ def _new_files_gap(
     func_name: str,
     declarations: list[tuple[str, int, str]],
     fields: dict[str, Any],
-) -> AbsenceVerdict | None:
-    """#1607：同语言中尚未入索引的新文件可能就是调用方；无新文件时返回 None。"""
+) -> tuple[AbsenceVerdict | None, list[str]]:
+    """#1607：同语言中尚未入索引的新文件可能就是调用方；无新文件时判定为 None。
+
+    同一次遍历顺带返回需扫描的配置文件（#1624）。
+    """
     languages = frozenset(language for _file, _line, language in declarations)
-    new_files = unindexed_source_files(cache, project_root, languages)
+    walked = project_files(cache, project_root, languages)
+    new_files = None if walked is None else walked.unindexed
+    config_files = [] if walked is None else walked.config
     fields["unindexed_source_files"] = (
         None if new_files is None else new_files[:UNINDEXED_FILES_CAP]
     )
@@ -223,11 +227,12 @@ def _new_files_gap(
     )
     if new_files is None:
         hint = unchecked_hint(func_name)
-        return AbsenceVerdict("unknown", UNINDEXED_UNCHECKED_REASON, hint, fields)
+        verdict = AbsenceVerdict("unknown", UNINDEXED_UNCHECKED_REASON, hint, fields)
+        return verdict, config_files
     if new_files:
         hint = unindexed_hint(func_name, languages, new_files)
-        return AbsenceVerdict("unknown", UNINDEXED_REASON, hint, fields)
-    return None
+        return AbsenceVerdict("unknown", UNINDEXED_REASON, hint, fields), config_files
+    return None, config_files
 
 
 def _describe(sites: list[dict[str, Any]]) -> str:
@@ -285,8 +290,9 @@ def _non_call_sites(
     project_root: str,
     bare: str,
     declarations: list[tuple[str, int, str]],
+    config_files: Sequence[str] = (),
 ) -> list[dict[str, Any]] | None:
-    """同语言已索引文件中名字的非调用出现位置；超时或读取失败为 None。"""
+    """同语言已索引文件与配置文件（#1624）中名字的非调用出现位置；超时或读取失败为 None。"""
     languages = sorted({language for _file, _line, language in declarations})
     if not languages:
         return []
@@ -301,7 +307,7 @@ def _non_call_sites(
                 f"WHERE language IN ({marks})",
                 languages,
             )
-        )
+        ) + [(path, CONFIG_LANGUAGE) for path in config_files]
         declared_lines = {
             (str(row[0]), int(row[1]))
             for row in conn.execute(
@@ -321,7 +327,8 @@ def _non_call_sites(
     pattern = re.compile(r"(?<![\w$])" + re.escape(bare) + r"(?![\w$])")
     sites: list[dict[str, Any]] = []
     for rel_path, language, data in hits:
-        text = _strip_comments_and_prose(data.decode("utf-8", "replace"), language)
+        decoded = data.decode("utf-8", "replace")
+        text = _strip_comments_and_prose(decoded, language, bare)
         covered = edge_lines.get(rel_path, frozenset())
         for line in _reference_lines(text, pattern, covered):
             if (rel_path, line) not in declared_lines:
@@ -376,8 +383,12 @@ def _files_containing(
     return hits
 
 
-def _strip_comments_and_prose(text: str, language: str) -> str:
-    """剔除注释与普通字符串，保留行号；恰为标识符的字符串保留（反射用名）。"""
+def _strip_comments_and_prose(text: str, language: str, bare: str | None = None) -> str:
+    """剔除注释与普通字符串，保留行号；恰为标识符的字符串保留（反射用名）。
+
+    #1624：给定 ``bare`` 时，以代码形态提到它的字符串（``"pkg.mod:bare"``、
+    ``"o.bare()"``）也保留为一次引用；Python 独立成句的三引号串（文档字符串）除外。
+    """
     if language in _PY_LANGUAGES:
         lexeme = _PY_LEXEME
     elif language in _C_LANGUAGES:
@@ -396,6 +407,11 @@ def _strip_comments_and_prose(text: str, language: str) -> str:
             prefix = text[max(0, match.start() - 2) : match.start()]
             if "f" in prefix.lower():
                 return token
+            docstring = quote == 3 and language in _PY_LANGUAGES
+            if bare and not (docstring and is_docstring(text, *match.span())):
+                mention = string_mention(body, bare)
+                if mention is not None:
+                    return mention
         return "\n" * token.count("\n")
 
     return lexeme.sub(_replace, text)
