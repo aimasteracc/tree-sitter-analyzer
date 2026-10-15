@@ -317,7 +317,10 @@ class ASTCacheIndexMixin(ASTCacheSurface):
                 # 磁盘删除的文件并重新认证；强制重建、仅解析与按语言运行不变。
                 return mutate_published_cache(
                     self,
-                    lambda writable, captured: writable.index_project(
+                    None,
+                    scope=scope,
+                    snapshot_operation=lambda writable,
+                    captured: writable.index_project(
                         max_files,
                         workers=workers,
                         include_activation=include_activation,
@@ -326,8 +329,6 @@ class ASTCacheIndexMixin(ASTCacheSurface):
                         source_scope=source_scope,
                         certify_manifest=certify_manifest,
                     ),
-                    scope=scope,
-                    bind_candidate=True,
                 )
 
             return mutate_published_cache(
