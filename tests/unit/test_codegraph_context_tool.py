@@ -2182,6 +2182,7 @@ async def _context_names(nav, task: str) -> list[str]:
     return [entry["name"] for entry in result["entry_points"]]
 
 
+@pytest.mark.slow_ok  # 两次真实 generation 发布即被测行为；--cov 下超出 8s 预算
 @pytest.mark.asyncio
 async def test_nav_context_survives_in_server_index_refreshes(indexed_project):
     # Issue #1608：同一 MCP 服务器内刷新索引（发布新 generation）后，
@@ -2228,3 +2229,13 @@ def test_context_keeps_cached_store_while_index_identity_is_unchanged(
         assert tool._edge_store is store
     finally:
         cache.close()
+
+
+def test_context_rebind_is_a_no_op_without_project_root():
+    # Issue #1608：未绑定项目根时不计算索引身份，也不触碰缓存。
+    tool = CodeGraphContextTool()
+    sentinel = object()
+    tool._edge_store = sentinel
+    tool._rebind_to_index_identity()
+    assert tool._edge_store is sentinel
+    assert tool._bound_index_identity is None
