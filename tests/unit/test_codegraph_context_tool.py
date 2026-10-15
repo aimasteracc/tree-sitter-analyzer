@@ -2174,3 +2174,57 @@ async def test_context_on_an_unchanged_index_is_scoped_not_stale(indexed_project
         "reason": "SOURCE_REVALIDATION_SCOPED",
     }
     assert "next_step" not in result
+
+
+async def _context_names(nav, task: str) -> list[str]:
+    result = await nav.execute({"action": "context", "task": task})
+    assert result.get("success") is True, result
+    return [entry["name"] for entry in result["entry_points"]]
+
+
+@pytest.mark.asyncio
+async def test_nav_context_survives_in_server_index_refreshes(indexed_project):
+    # Issue #1608：同一 MCP 服务器内刷新索引（发布新 generation）后，
+    # context 仍持有旧连接，报 "Cannot operate on a closed database"。
+    from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
+
+    _, lookup = create_tool_registry(project_root=str(indexed_project))
+    nav, index = lookup["nav"], lookup["index"]
+    app = indexed_project / "app.py"
+    try:
+        assert await _context_names(nav, "get_user") == ["get_user"]
+        for round_no in (1, 2):
+            app.write_text(
+                app.read_text(encoding="utf-8")
+                + f"\ndef refreshed_symbol_{round_no}():\n    return handle_request(1)\n",
+                encoding="utf-8",
+            )
+            refresh = await index.execute({"action": "cache", "mode": "index"})
+            assert refresh.get("success") is True, refresh
+            assert await _context_names(nav, f"refreshed_symbol_{round_no}") == [
+                f"refreshed_symbol_{round_no}"
+            ]
+            assert await _context_names(nav, "get_user") == ["get_user"]
+    finally:
+        for inner in lookup["nav"]._bespoke_inners:
+            cache = getattr(inner, "_cache", None)
+            if cache is not None and hasattr(cache, "close"):
+                cache.close()
+
+
+def test_context_keeps_cached_store_while_index_identity_is_unchanged(
+    indexed_project, monkeypatch: pytest.MonkeyPatch
+):
+    # Issue #1608：身份不变时不得每次调用都重开缓存（只在 generation 切换时换绑）。
+    import tree_sitter_analyzer.mcp.tools.relation_freshness as freshness
+
+    monkeypatch.setattr(freshness, "index_identity", lambda root: ("gen", 1))
+    tool = CodeGraphContextTool(str(indexed_project))
+    tool._rebind_to_index_identity()
+    cache, store = tool._get_cache(), tool._get_edge_store()
+    try:
+        tool._rebind_to_index_identity()
+        assert tool._cache is cache
+        assert tool._edge_store is store
+    finally:
+        cache.close()
