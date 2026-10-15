@@ -451,7 +451,9 @@ def test_index_one_file_incremental_size_independent_of_file_count(
     assert small_bytes == large_bytes, differing
     # #1625：回复新增 removed / removed_files / removed_files_truncated 与摘要中的
     # removed=0（+89 字节，仍与文件总数无关），重新钉为 1278。
-    assert large_bytes == 1278
+    # #1631：发布结果如实报告 "published": true（+19 字节，仍与文件总数无关），
+    # 重新钉为 1297。
+    assert large_bytes == 1297
     assert [(d["file"], d["status"]) for d in large["files"]] == [
         ("m0000.py", "indexed")
     ]
