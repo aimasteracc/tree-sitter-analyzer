@@ -414,50 +414,6 @@ async def test_potentially_local_callee_still_gates_the_file(
 
 
 @pytest.mark.asyncio
-async def test_other_name_still_gates_when_callers_exist(tool_with_edges) -> None:
-    """#1596：有调用方时非调用引用门不运行，因此不按名收窄，原守卫保持不变。"""
-    tool, conn = tool_with_edges
-    _insert_call(conn, caller="alpha", caller_line=10, resolution=_RESOLVED)
-    _insert_call(
-        conn,
-        caller="beta",
-        caller_line=20,
-        resolution="unknown",
-        callee="self.handle",
-        callee_full="self.handle",
-    )
-    conn.commit()
-
-    result = await _call(tool)
-
-    assert (result["caller_count"], result["completeness"]) == (1, "incomplete")
-    assert result["unresolved_in_declaring_files"] == 1
-
-
-@pytest.mark.asyncio
-async def test_other_name_does_not_gate_an_unreferenced_symbol(
-    tool_with_edges,
-) -> None:
-    """#1596：0 调用方时名字不同的调用点不能点名目标，记为已排除并说明原因。"""
-    tool, conn = tool_with_edges
-    _insert_call(
-        conn,
-        caller="beta",
-        caller_line=20,
-        resolution="unknown",
-        callee="self.handle",
-        callee_full="self.handle",
-    )
-    conn.commit()
-
-    result = await _call(tool)
-
-    assert (result["caller_count"], result["completeness"]) == (0, "complete")
-    assert result["unresolved_in_declaring_files"] == 0
-    assert result["excluded_by_reason"] == {"names_other_symbol": 1}
-
-
-@pytest.mark.asyncio
 async def test_dotted_callee_is_judged_by_receiver_not_by_substring(
     tool_with_edges,
 ) -> None:

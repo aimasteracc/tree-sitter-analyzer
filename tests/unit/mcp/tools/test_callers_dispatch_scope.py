@@ -101,6 +101,18 @@ async def test_unreferenced_module_function_answers_complete(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_other_names_still_gate_when_callers_exist(tmp_path) -> None:
+    # #1596：有调用方时非调用引用门不运行，因此不按名收窄，原守卫保持不变。
+    root = await _index(tmp_path, _PLAIN + "\n\ndef user():\n    return lonely([])\n")
+
+    result = await _callers(root, "lonely")
+
+    assert (result["caller_count"], result["completeness"]) == (1, "incomplete")
+    assert result["unresolved_in_declaring_files"] == 3
+    assert result["excluded_by_reason"] == {}
+
+
+@pytest.mark.asyncio
 async def test_reflective_dispatch_in_declaring_file_keeps_the_guard(
     tmp_path,
 ) -> None:
