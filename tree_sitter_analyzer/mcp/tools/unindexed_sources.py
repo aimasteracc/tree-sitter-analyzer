@@ -8,6 +8,9 @@ dogfood 第 4 轮实测：新建一个尚未入索引、两次直接调用某方
 点目录、``.gitignore``，以及索引清单记录的 exclude 模式）列出目录，找出目标
 语言中尚未入索引的源码文件。墙钟预算沿用 ``discovery_budget``（#1597/#1604）的
 唯一公式；超出预算或列表失败时返回 None——答案只能是 unknown，不得假定没有新文件。
+
+#1624：同一次遍历还列出需要做非调用引用扫描的配置 / 脚本文件（另加
+``.github``，点目录本身仍被跳过），避免为它们再走一遍目录。
 """
 
 from __future__ import annotations
@@ -15,6 +18,7 @@ from __future__ import annotations
 import fnmatch
 import os
 import sqlite3
+from dataclasses import dataclass
 from typing import Any
 
 #: 存在尚未入索引的同语言源码文件。
@@ -32,12 +36,32 @@ FILES_CAP = 20
 _FILES_NAMED = 3
 
 
+#: #1624：点目录照常跳过，但 CI 工作流目录会点名测试与脚本，须一并列出。
+_EXTRA_ROOTS = (".github",)
+
+
+@dataclass(frozen=True)
+class ProjectFiles:
+    """一次目录遍历的结果：语言匹配的未入索引源码，以及需扫描的配置文件。"""
+
+    unindexed: list[str]
+    config: list[str]
+
+
 def unindexed_source_files(
     cache: Any, project_root: str, languages: frozenset[str]
 ) -> list[str] | None:
     """``languages`` 中未入索引的源码文件（相对 POSIX 路径、有序）；失败为 None。"""
     if not languages:
         return []
+    files = project_files(cache, project_root, languages)
+    return None if files is None else files.unindexed
+
+
+def project_files(
+    cache: Any, project_root: str, languages: frozenset[str]
+) -> ProjectFiles | None:
+    """同一次遍历同时找出未入索引的源码与配置文件（#1607、#1624）；失败为 None。"""
     from ...constants import EXCLUDE_DIRS
     from ...index_candidate_walker import (
         CandidateDiscoveryBudgetExceeded,
@@ -45,6 +69,7 @@ def unindexed_source_files(
         walk_candidate_entries,
     )
     from ...project_graph import _language_from_ext
+    from .absence_text_refs import is_config_file
 
     try:
         conn = cache.get_conn()
@@ -54,27 +79,37 @@ def unindexed_source_files(
     except (sqlite3.Error, AttributeError):
         return None
     excludes = _effective_excludes(conn)
-    found: list[str] = []
+    unindexed: list[str] = []
+    config: list[str] = []
+    starts = [""] + [
+        extra
+        for extra in _EXTRA_ROOTS
+        if os.path.isdir(os.path.join(project_root, extra))
+    ]
     try:
-        for abs_path in walk_candidate_entries(
-            project_root,
-            excluded_dir_names=frozenset(EXCLUDE_DIRS),
-            entry_budget=_ENTRY_BUDGET,
-            path_byte_budget=_PATH_BYTE_BUDGET,
-            discovery_seconds=None,
-            budget_error=UNCHECKED_REASON,
-        ):
-            if _language_from_ext(abs_path) not in languages:
-                continue
-            rel_path = os.path.relpath(abs_path, project_root).replace("\\", "/")
-            if rel_path in indexed or any(
-                fnmatch.fnmatch(rel_path, pattern) for pattern in excludes
+        for start in starts:
+            for abs_path in walk_candidate_entries(
+                project_root,
+                excluded_dir_names=frozenset(EXCLUDE_DIRS),
+                entry_budget=_ENTRY_BUDGET,
+                path_byte_budget=_PATH_BYTE_BUDGET,
+                discovery_seconds=None,
+                budget_error=UNCHECKED_REASON,
+                start_relative=start,
             ):
-                continue
-            found.append(rel_path)
+                source = _language_from_ext(abs_path) in languages
+                if not source and not is_config_file(abs_path):
+                    continue
+                rel_path = os.path.relpath(abs_path, project_root).replace("\\", "/")
+                if any(fnmatch.fnmatch(rel_path, pattern) for pattern in excludes):
+                    continue
+                if not source:
+                    config.append(rel_path)
+                elif rel_path not in indexed:
+                    unindexed.append(rel_path)
     except (CandidateDiscoveryBudgetExceeded, CandidateDiscoveryError, OSError):
         return None
-    return sorted(found)
+    return ProjectFiles(sorted(unindexed), sorted(config))
 
 
 def _effective_excludes(conn: Any) -> frozenset[str]:
