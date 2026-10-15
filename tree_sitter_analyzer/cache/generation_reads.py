@@ -4,6 +4,11 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 
+from .generation_reader_release import (
+    bind_in_flight,
+    release_idle_readers,
+    unbind_in_flight,
+)
 from .generation_routing import (
     _WRITERS,
     IndexLocation,
@@ -18,15 +23,22 @@ _READERS: ContextVar[dict[str, IndexLocation] | None] = ContextVar(
 
 @contextmanager
 def generation_read_scope() -> Iterator[None]:
-    """嵌套 facade 共用外层调用的版本绑定，退出后不向下次调用泄漏。"""
+    """嵌套 facade 共用外层调用的版本绑定，退出后不向下次调用泄漏。
+
+    #1631：最外层调用结束时撤销其版本绑定，并释放本线程空闲读者对已退役版本的
+    连接与钉，使下一次发布（含 watcher 线程的发布）能够回收它们。
+    """
     if _READERS.get() is not None:
         yield
         return
-    token = _READERS.set({})
+    scope: dict[str, IndexLocation] = {}
+    token = _READERS.set(scope)
     try:
         yield
     finally:
         _READERS.reset(token)
+        unbind_in_flight(scope.values())
+        release_idle_readers()
 
 
 def adopt_read_location(root: str, location: IndexLocation) -> None:
@@ -37,7 +49,12 @@ def adopt_read_location(root: str, location: IndexLocation) -> None:
     """
     scope = _READERS.get()
     if scope is not None:
-        scope[str(logical_index_path(root))] = location
+        key = str(logical_index_path(root))
+        previous = scope.get(key)
+        scope[key] = location
+        bind_in_flight(location)
+        if previous is not None:
+            unbind_in_flight([previous])
 
 
 def current_read_location(root: str) -> IndexLocation | None:
@@ -49,5 +66,7 @@ def current_read_location(root: str) -> IndexLocation | None:
     if private is not None:
         return private
     if key not in scope:
-        scope.setdefault(key, resolve_index_location(root))
+        location = resolve_index_location(root)
+        scope[key] = location
+        bind_in_flight(location)
     return scope[key]

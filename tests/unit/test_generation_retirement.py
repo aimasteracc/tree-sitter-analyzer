@@ -183,3 +183,114 @@ def test_failed_deletion_keeps_generation_sealed(root, monkeypatch):
     tombstones = list((_storage(root) / "pins").glob("*/retiring"))
     expected = ([], before, [False] * (len(before) - 1), [])
     assert (removed, _ids(root), writable, tombstones) == expected
+
+
+# ---- #1631：公共索引路由上的版本累积（dogfood round 6，2026-10-16）----
+
+
+def _index(facade):  # 公共路由 ``index action=cache mode=index``
+    import asyncio
+
+    return asyncio.run(facade.execute({"action": "cache", "mode": "index"}))
+
+
+def _edit(root, n):
+    path = Path(root, "a.py")
+    path.write_text(f"def alpha_{n}():\n    return {n}\n", encoding="utf-8")
+    info = os.stat(path)
+    os.utime(path, ns=(info.st_atime_ns, info.st_mtime_ns + n * 1_000_000_000))
+
+
+def _impact(nav):  # 长驻 nav 工具实例读取当前版本并在调用结束后继续持有缓存
+    import asyncio
+
+    asyncio.run(nav.execute({"action": "impact", "symbol": "alpha_0"}))
+
+
+def test_noop_refreshes_publish_no_generation(root):
+    # Issue #1631：无变化的刷新（indexed=0 removed=0）每次都发布一份完整副本。
+    from tree_sitter_analyzer.mcp.tools.index_facade import build_index_facade
+
+    facade = build_index_facade(root)
+    _index(facade)
+    first = _ids(root)
+    results = [_index(facade) for _ in range(5)]
+    outcome = [(r["indexed"], r["published"], r["publication_reason"]) for r in results]
+    assert (_ids(root), outcome) == (first, [(0, False, "INDEX_UNCHANGED")] * 5)
+
+
+def test_changing_refreshes_keep_active_plus_retained(root):
+    # Issue #1631 / #1554：每次真实变化都发布，但磁盘上至多 active + RETAIN_COUNT。
+    from tree_sitter_analyzer.cache.generation_retirement import RETAIN_COUNT
+    from tree_sitter_analyzer.mcp.tools.index_facade import build_index_facade
+
+    facade = build_index_facade(root)
+    _index(facade)
+    published = []
+    for n in range(1, 6):
+        _edit(root, n)
+        published.append(_index(facade)["published"])
+    assert (len(_ids(root)), published) == (1 + RETAIN_COUNT, [True] * 5)
+
+
+def test_idle_long_lived_reader_does_not_pin_old_generation(root):
+    # Issue #1631：MCP 服务器内读过旧版本、之后空闲的工具实例无限期钉住它，
+    # 4 份 339 MB 副本同时留在磁盘上（index + 3 次刷新）。
+    from tree_sitter_analyzer.cache.generation_retirement import RETAIN_COUNT
+    from tree_sitter_analyzer.mcp.tools.index_facade import build_index_facade
+    from tree_sitter_analyzer.mcp.tools.nav_facade import build_nav_facade
+
+    facade, nav = build_index_facade(root), build_nav_facade(root)
+    _index(facade)
+    read = _active(root)
+    _impact(nav)
+    for n in range(1, 4):
+        _edit(root, n)
+        _index(facade)
+    assert (len(_ids(root)), read in _ids(root)) == (1 + RETAIN_COUNT, False)
+
+
+def test_reader_that_rebinds_releases_old_generation(root):
+    # Issue #1631：长驻工具换绑到新版本后，下一次发布即可回收它读过的旧版本。
+    from tree_sitter_analyzer.cache.generation_retirement import RETAIN_COUNT
+    from tree_sitter_analyzer.mcp.tools.index_facade import build_index_facade
+    from tree_sitter_analyzer.mcp.tools.nav_facade import build_nav_facade
+
+    facade, nav = build_index_facade(root), build_nav_facade(root)
+    _index(facade)
+    read = _active(root)
+    _impact(nav)
+    for n in range(1, 4):
+        _edit(root, n)
+        _index(facade)
+        _impact(nav)
+    assert (read in _ids(root), len(_ids(root))) == (False, 1 + RETAIN_COUNT)
+
+
+def test_in_flight_reader_keeps_its_generation(root):
+    # Issue #1631：放宽空闲钉时绝不回收正在调用中的读者所用版本（RFC-0032）。
+    import asyncio
+    import contextvars
+
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cache.generation_reads import generation_read_scope
+    from tree_sitter_analyzer.mcp.tools.index_facade import build_index_facade
+
+    facade = build_index_facade(root)
+    _index(facade)
+    read = _active(root)
+    with generation_read_scope():
+        reader = ASTCache(root)
+        try:
+            reader.get_conn()
+            for n in range(1, 5):  # 发布者运行在独立上下文、同一线程中
+                _edit(root, n)
+                contextvars.Context().run(
+                    asyncio.run, facade.execute({"action": "cache", "mode": "index"})
+                )
+            survived = read in _ids(root)
+            rows = reader.get_conn().execute("SELECT COUNT(*) FROM ast_index")
+            count = rows.fetchone()[0]
+        finally:
+            reader.close()
+    assert (survived, count) == (True, 1)

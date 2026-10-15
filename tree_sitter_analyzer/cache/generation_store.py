@@ -29,6 +29,7 @@ from ._win_fileops import IS_WINDOWS, replace_file
 from ._win_fileops import IndexWriterBusy as IndexWriterBusy  # 发布失败关闭的类型
 from .generation_bootstrap import adopt_legacy_database
 from .generation_pins import GenerationPin, pin_generation
+from .generation_reader_release import release_idle_readers
 from .generation_retirement import retire_generations, retire_unpublished
 from .generation_routing import read_selector
 from .generation_selector import (
@@ -486,6 +487,7 @@ class GenerationStore:
         if pin is not None:
             pin.release()
         try:
+            release_idle_readers()  # #1631：本线程空闲读者不再钉住旧版本
             retire_generations(self.storage, active.generation_id)
         except Exception:
             logger.warning("index generation retirement failed", exc_info=True)

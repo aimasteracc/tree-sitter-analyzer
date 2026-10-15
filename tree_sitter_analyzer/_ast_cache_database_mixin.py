@@ -139,12 +139,14 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
         """按当前绑定版本复用线程本地连接；其他线程发布后重新打开。"""
         database_path = self.db_path
         read_only = getattr(self, "_read_only", False)
+        scoped = False
         if getattr(self, "_default_locator", False):
             from .cache.generation_reads import current_read_location
 
             location = current_read_location(self.project_root)
             if location is not None:
                 read_only = location.published
+                scoped = True
         conn = getattr(self._local, "conn", None)
         if (
             conn is not None
@@ -172,6 +174,11 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
                 conn = sqlite3.connect(
                     Path(database_path).as_uri() + "?mode=ro", uri=True, timeout=10
                 )
+                if scoped:
+                    # #1631：调用之间空闲时可被提前释放，不再无限期钉住旧版本。
+                    from .cache.generation_reader_release import track_scoped_reader
+
+                    track_scoped_reader(self)
             else:
                 conn = sqlite3.connect(database_path, timeout=10)
                 conn.execute("PRAGMA journal_mode=WAL")
@@ -254,13 +261,17 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
             f"AST cache schema is incomplete. Missing: {missing_text}. {remediation}"
         )
 
+    def release_thread_connection(self) -> None:
+        """关闭本线程连接并释放其版本钉；下次 ``get_conn`` 按当前绑定重新打开。"""
+        conn = getattr(self._local, "conn", None)
+        if conn is not None:
+            conn.close()
+            self._local.conn = None
+        _release_thread_pin(self._local)
+
     def close(self) -> None:
         try:
-            conn = getattr(self._local, "conn", None)
-            if conn is not None:
-                conn.close()
-                self._local.conn = None
-            _release_thread_pin(self._local)
+            ASTCacheDatabaseMixin.release_thread_connection(self)
         finally:
             cache_dir_fd = getattr(self, "_cache_dir_fd", None)
             if cache_dir_fd is not None:
