@@ -474,7 +474,8 @@ class TestDefinitionBodyInlining:
             encoding="utf-8",
         )
         cache = ASTCache(str(tmp_path))
-        cache.index_project(max_files=100)
+        # #1625：增量运行现在会认证清单；本组用例需要显式未认证的索引。
+        cache.index_project(max_files=100, certify_manifest=False)
         cache.close()
         return str(tmp_path)
 

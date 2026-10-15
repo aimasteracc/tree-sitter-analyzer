@@ -97,13 +97,20 @@ def project_removed_files(
     ``removed_files`` 缺失表示删除检测没有运行：``removed`` 置为 ``None``
     （未知，而非 0），并在非强制运行时把下一步改为强制重建（#1625）。
     """
+    # ``pruned`` 与 ``removed`` 重复；``snapshot_metrics`` 是快照驱动后才出现在
+    # 本路由的内部发现证据。二者都不进入回复，保持 #1582 的响应体积契约。
+    base = {
+        key: value
+        for key, value in result.items()
+        if key not in ("pruned", "snapshot_metrics")
+    }
     paths = result.get("removed_files")
     if not isinstance(paths, list):
         step = next_step if force else FORCE_REFRESH_STEP
-        return {**result, "removed": None}, f"{summary_line} removed=unknown", step
+        return {**base, "removed": None}, f"{summary_line} removed=unknown", step
     listed = paths[:REMOVED_FILES_CAP]
     projected = {
-        **result,
+        **base,
         "removed": len(paths),
         "removed_files": listed,
         "removed_files_truncated": len(paths) > len(listed),

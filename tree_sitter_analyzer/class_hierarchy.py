@@ -109,8 +109,11 @@ class ClassHierarchy:
     def _load_from_cache(self) -> None:
         try:
             conn = self._cache.get_conn()
+            # #1625：同名类的候选顺序不能依赖行插入顺序（增量运行改由候选快照
+            # 驱动后，插入顺序随平台的目录遍历顺序变化），按路径排序保持确定。
             rows = conn.execute(
-                "SELECT file_path, symbols_json, language FROM ast_index"
+                "SELECT file_path, symbols_json, language FROM ast_index "
+                "ORDER BY file_path"
             ).fetchall()
         except Exception:
             return

@@ -227,7 +227,8 @@ def build_indexed_project(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     cache = ASTCache(str(project))
-    cache.index_project(max_files=100)
+    # #1625：增量运行现在会认证清单；这里显式保持未认证，供“未认证不可宣称”用例使用。
+    cache.index_project(max_files=100, certify_manifest=False)
     cache.close()
     return project
 
