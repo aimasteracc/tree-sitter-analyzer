@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.callers_decorators import DECORATED_REASON
@@ -17,6 +19,13 @@ from tree_sitter_analyzer.mcp.tools.callers_dispatch import (
     NAMES_OTHER_REASON,
     could_name_target,
     partition_by_target,
+    trailing_segment,
+)
+from tree_sitter_analyzer.mcp.tools.callers_reasons import (
+    COMPLETENESS_REASONS,
+    EdgeEvidence,
+    edge_completeness,
+    final_reasons,
 )
 from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
 
@@ -204,11 +213,22 @@ async def test_passive_decorator_keeps_complete(tmp_path) -> None:
         ('getattr(mod, "lonely")', True),
         ('getattr(mod, "other")', False),
         ("getattr(mod, name)", True),
-        ("getattr(importlib.import_module(m), c).run", True),
+        # #1632：标记只作用于被调用的尾段；尾段 `.run` / `.get` 不可能是目标。
+        ("getattr(importlib.import_module(m), c).run", False),
         ("HANDLERS[name]", True),
         ('HANDLERS["read"]', True),
         ('globals()["x"]', True),
-        ("vars(obj).get", True),
+        ("vars(obj).get", False),
+        ("received[0].get", False),
+        ('getattr(index, "action_map", {}).get', False),
+        ('d["a.b"].get', False),
+        ("x[0].lonely", True),
+        ("self.handlers[name]", True),
+        ("obj.__getattribute__(name)", True),
+        # 经 `call` / `apply` / `__call__` 转发时，被调用的仍是计算出的对象。
+        ("HANDLERS[name].__call__", True),
+        ("handlers[name].call", True),
+        ("getattr(m, name).apply", True),
         ("make()()", True),
         ("", True),
     ],
@@ -420,3 +440,232 @@ async def test_known_wrapper_decorator_keeps_complete(tmp_path, decorated: str) 
 
     assert (result["caller_count"], result["completeness"]) == (0, "complete")
     assert result["completeness_reason"] is None
+
+
+# ---------------------------------------------------------------------------
+# #1632：dogfood 第 6 轮。(1) 调用边层的非 complete 答案带原因码；
+# (2) 计算式分发标记只作用于被调用的尾段，`received[0].get()` 不再守卫。
+# ---------------------------------------------------------------------------
+
+#: 尾段是普通属性名的调用：前缀里有 `[` / `getattr(`，但被调用的 `.get` 不可能是目标。
+_TRAILING_PLAIN = (
+    _TARGET + "\n\ndef reader(received, index):\n"
+    "    first = received[0].get()\n"
+    '    return first, getattr(index, "action_map", {}).get()\n'
+)
+#: 被调用的就是计算结果本身：仍须守卫。
+_TRAILING_COMPUTED = {
+    "getattr_call": "import sys\n\n\n" + _TARGET + "\n\ndef run(name):\n"
+    "    mod = sys.modules[__name__]\n    return getattr(mod, name)()\n",
+    "subscript_call": "HANDLERS = {}\n\n\n" + _TARGET + "\n\ndef run(name):\n"
+    "    return HANDLERS[name]()\n",
+    "forwarded_call": "HANDLERS = {}\n\n\n" + _TARGET + "\n\ndef run(name):\n"
+    "    return HANDLERS[name].__call__()\n",
+}
+
+
+@pytest.mark.asyncio
+async def test_plain_trailing_segment_does_not_gate(tmp_path) -> None:
+    # #1632：`received[0].get` / `getattr(i, "a", {}).get` 调用的是 `.get`，不是目标。
+    root = await _index_files(tmp_path, {"mod.py": _TRAILING_PLAIN})
+
+    result = await _callers(root, "target")
+
+    assert (result["caller_count"], result["completeness"]) == (0, "complete")
+    assert (result["completeness_reason"], result["completeness_reasons"]) == (None, [])
+    assert [s["callee"] for s in result["excluded_sites"]] == [
+        '"x".join',
+        "received[0].get",
+        'getattr(index, "action_map", {}).get',
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("shape", sorted(_TRAILING_COMPUTED))
+async def test_computed_trailing_segment_still_gates(tmp_path, shape: str) -> None:
+    # #1632：`getattr(m, name)()`、`HANDLERS[name]()` 与经 `__call__` 转发的调用仍守卫。
+    root = await _index_files(tmp_path, {"mod.py": _TRAILING_COMPUTED[shape]})
+
+    result = await _callers(root, "target")
+
+    assert (result["caller_count"], result["completeness"]) == (0, "unknown")
+    assert result["completeness_reason"] == "UNRESOLVED_IN_DECLARING_FILE"
+    assert result["unresolved_in_declaring_files"] == 1
+
+
+@pytest.mark.asyncio
+async def test_unresolved_inbound_carries_its_reason(tmp_path) -> None:
+    # #1632：接收者未知的 `d.get()` 是指向 `Store.get` 的未解析入边。
+    root = await _index_files(
+        tmp_path, {"mod.py": "def use(d):\n    return d.get(1)\n"}
+    )
+
+    result = await _callers(root, "Store.get")
+
+    assert (result["caller_count"], result["completeness"]) == (0, "unknown")
+    assert result["completeness_reason"] == "UNRESOLVED_INBOUND"
+    assert result["completeness_reasons"] == ["UNRESOLVED_INBOUND", "NAME_ONLY_INBOUND"]
+
+
+@pytest.mark.asyncio
+async def test_lower_bound_caller_list_carries_its_reason(tmp_path) -> None:
+    # #1632：有调用方时 `incomplete` 同样必须点名缺口（第 6 轮 28/30 为 null）。
+    root = await _index(tmp_path, _PLAIN + "\n\ndef user():\n    return lonely([])\n")
+
+    result = await _callers(root, "lonely")
+
+    assert (result["caller_count"], result["completeness"]) == (1, "incomplete")
+    assert result["completeness_reasons"] == ["UNRESOLVED_IN_DECLARING_FILE"]
+
+
+@pytest.mark.asyncio
+async def test_empty_evidence_base_carries_its_reason(tmp_path) -> None:
+    # #1632：图里没有任何调用边时，0 无法区分“无人调用”与“从未填充”。
+    path = tmp_path / "mod.py"
+    path.write_text("def alone():\n    return 1\n", encoding="utf-8")
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    await CodeGraphFullIndexTool(str(tmp_path)).execute({"mode": "full"})
+
+    result = await _callers(str(tmp_path), "alone")
+
+    assert (result["caller_count"], result["completeness"]) == (0, "unknown")
+    assert result["completeness_reasons"] == ["EMPTY_EVIDENCE_BASE"]
+
+
+@pytest.mark.asyncio
+async def test_unreadable_guard_carries_its_reason(tmp_path, monkeypatch) -> None:
+    # #1632：声明文件守卫读取失败是 unknown，并以 UNCHECKED 原因码点名。
+    from tree_sitter_analyzer.mcp.tools import callers_tool
+
+    root = await _index(tmp_path, _PLAIN)
+    monkeypatch.setattr(callers_tool, "_declaring_file_unresolved", lambda *_: None)
+
+    result = await _callers(root, "lonely")
+
+    assert (result["caller_count"], result["completeness"]) == (0, "unknown")
+    assert result["completeness_reasons"] == ["UNRESOLVED_INBOUND_UNCHECKED"]
+
+
+#: #1632 不变式所覆盖的本文件全部夹具（每组一个项目）。
+_INVARIANT_PROJECTS = {
+    "plain": {"mod.py": _PLAIN},
+    "dispatch": {"mod.py": _DISPATCH},
+    "alias": {"mod.py": _ALIAS},
+    "registered": {"mod.py": _REGISTERED},
+    "factory": _FACTORY_FILES,
+    "trailing_plain": {"mod.py": _TRAILING_PLAIN},
+    **{f"module_{k}": {"mod.py": v} for k, v in _MODULE_SCOPE.items()},
+    **{f"decorated_{k}": {"mod.py": v} for k, v in _DECORATED.items()},
+    **{f"computed_{k}": {"mod.py": v} for k, v in _TRAILING_COMPUTED.items()},
+    **{f"text_{k}": {"mod.py": _TARGET, **v} for k, v in _TEXT_REFERENCES.items()},
+}
+#: 原因码闭集（与 docs/agent-envelope-contract.md 的表一致）。
+_CLOSED_REASONS = {
+    "UNRESOLVED_INBOUND_UNCHECKED",
+    "UNRESOLVED_INBOUND",
+    "UNRESOLVED_IN_DECLARING_FILE",
+    "NAME_ONLY_INBOUND",
+    "UNATTRIBUTED_CALL_SITES",
+    "EMPTY_EVIDENCE_BASE",
+    "SOURCE_INDEX_MISMATCH",
+    "SOURCE_SCOPE_UNKNOWN",
+    "MISSING_INDEX",
+    "SYMBOL_NOT_DEFINED",
+    "SYMBOL_DEFINITION_UNCHECKED",
+    "UNINDEXED_SOURCE_FILES",
+    "UNINDEXED_SOURCE_UNCHECKED",
+    "NON_CALL_REFERENCES",
+    "NON_CALL_REFERENCES_UNCHECKED",
+    "ACCESSOR_NOT_CALL_EDGES",
+    "DECORATOR_MAY_REGISTER",
+}
+
+
+def _reason_offence(result: dict) -> str | None:
+    """违反 #1632 不变式时返回说明；否则 None。"""
+    reason, reasons = result["completeness_reason"], result["completeness_reasons"]
+    if result["completeness"] == "complete":
+        return None if (reason, reasons) == (None, []) else "complete with a reason"
+    if reason is None or reasons[:1] != [reason]:
+        return f"{result['completeness']} without a primary reason"
+    unknown = sorted(set(reasons) - _CLOSED_REASONS)
+    return f"reasons outside the closed set: {unknown}" if unknown else None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("project", sorted(_INVARIANT_PROJECTS))
+async def test_every_non_complete_answer_names_a_closed_reason(
+    tmp_path, project: str
+) -> None:
+    # #1632 不变式：夹具中每个函数 / 方法的答案，非 complete 必有闭集内的主因。
+    files = _INVARIANT_PROJECTS[project]
+    root = await _index_files(tmp_path, files)
+    names = {"Store.get", "Store.join", "Cache.get", "get", "join"}
+    for text in files.values():
+        names.update(re.findall(r"^\s*def (\w+)", text, flags=re.MULTILINE))
+
+    offences = {}
+    for name in sorted(names):
+        offence = _reason_offence(await _callers(root, name))
+        if offence is not None:
+            offences[name] = offence
+
+    assert offences == {}
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("received[0].get", "get"),
+        ('getattr(x, "a.b").get', "get"),
+        ("x?.run", "run"),
+        ("lonely", "lonely"),
+        ("make(", None),
+        ("a)b.c", None),
+        ('d["x].y', None),
+    ],
+)
+def test_trailing_segment_splits_at_the_last_top_level_dot(text, expected) -> None:
+    # #1632：括号与引号内的 `.` 不切分；不配对时无法判定。
+    assert trailing_segment(text) == expected
+
+
+def test_closed_reason_set_matches_the_source_of_truth() -> None:
+    # #1632：测试中的闭集与 callers_reasons.COMPLETENESS_REASONS 完全一致。
+    assert set(COMPLETENESS_REASONS) == _CLOSED_REASONS
+
+
+@pytest.mark.parametrize(
+    ("edges", "expected"),
+    [
+        (
+            EdgeEvidence(0, 0, 0, 0, 2, False),
+            ("incomplete", ("UNATTRIBUTED_CALL_SITES",)),
+        ),
+        (
+            EdgeEvidence(0, None, 0, 1, 0, True),
+            (
+                "unknown",
+                (
+                    "UNRESOLVED_INBOUND_UNCHECKED",
+                    "NAME_ONLY_INBOUND",
+                    "EMPTY_EVIDENCE_BASE",
+                ),
+            ),
+        ),
+        (EdgeEvidence(3, 1, 0, 0, 0, False), ("incomplete", ("UNRESOLVED_INBOUND",))),
+        (EdgeEvidence(0, 0, 0, 0, 0, False), ("complete", ())),
+    ],
+)
+def test_edge_completeness_lists_every_applicable_reason(edges, expected) -> None:
+    # #1632：主因在首位；全部成立的原因按固定顺序列出。
+    assert edge_completeness(edges) == expected
+
+
+def test_absence_gate_reason_replaces_empty_edge_reasons() -> None:
+    # #1632：复核门只在调用边层为 complete 时运行，其原因即为唯一原因。
+    assert final_reasons("unknown", "NON_CALL_REFERENCES", ()) == [
+        "NON_CALL_REFERENCES"
+    ]
+    assert final_reasons("complete", None, ()) == []

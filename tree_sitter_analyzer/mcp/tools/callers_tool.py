@@ -18,6 +18,7 @@ from ._response_builder import build_response
 from .base_tool import BaseMCPTool
 from .callers_absence import assess_completeness
 from .callers_dispatch import narrow_to_target
+from .callers_reasons import EdgeEvidence, edge_completeness, final_reasons
 from .codegraph_relation_tool import (
     _STALE_CACHE_WARNING,
     CodeGraphRelationToolMixin,
@@ -443,27 +444,17 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             None if declaring_sites is None else len(declaring_sites)
         )
 
-        if unresolved_inbound is None or unresolved_in_declaring_files is None:
-            completeness = "unknown"
-        elif unresolved_inbound + unresolved_in_declaring_files + name_only_inbound:
-            completeness = "incomplete" if total_callers else "unknown"
-        elif unattributed_call_sites:
-            # #638 counts module-level call sites instead of listing them, so a
-            # listed count of 0 is not a census: the symbol *is* called and this
-            # response cannot say by whom.  Certifying "complete" over that is the
-            # false zero RFC-0028 §1 exists to forbid — measured on a symbol with
-            # two resolved module-level callers, which reported `complete` with
-            # `caller_count: 0` and "not in the index".
-            completeness = "incomplete"
-        elif empty_evidence_base:
-            # Zero unresolved edges over a graph that holds no CALLS edges at all
-            # is not a fact about this symbol: the resolved-edge evidence base is
-            # empty, so a zero read from it cannot distinguish "nothing calls this"
-            # from "the graph was never populated".  A zero over a graph that holds
-            # edges elsewhere is a fact and still answers complete.
-            completeness = "unknown"
-        else:
-            completeness = "complete"
+        # #1632：调用边层的降级（#638 模块级调用点、空证据基等）同时给出原因码。
+        completeness, edge_reasons = edge_completeness(
+            EdgeEvidence(
+                total_callers=total_callers,
+                unresolved_inbound=unresolved_inbound,
+                unresolved_in_declaring_files=unresolved_in_declaring_files,
+                name_only_inbound=name_only_inbound,
+                unattributed_call_sites=unattributed_call_sites,
+                empty_evidence_base=empty_evidence_base,
+            )
+        )
         # #1593 / #1594：调用边给出的 complete 还须通过新鲜度与非调用引用两道门。
         absence = assess_completeness(
             cache,
@@ -475,6 +466,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             evidence,
         )
         completeness = absence.completeness
+        reasons = final_reasons(completeness, absence.reason, edge_reasons)
 
         result = build_response(
             verdict="INFO" if callers or total_callers else "NOT_FOUND",
@@ -486,7 +478,8 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             listed_cap=listed_cap,
             truncated=truncated,
             completeness=completeness,
-            completeness_reason=absence.reason,
+            completeness_reason=reasons[0] if reasons else None,
+            completeness_reasons=reasons,
             **absence.fields,
             unresolved_inbound=unresolved_inbound,
             unresolved_in_declaring_files=unresolved_in_declaring_files,

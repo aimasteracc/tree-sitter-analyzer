@@ -13,6 +13,7 @@ source also goes red.
 import re
 from pathlib import Path
 
+from tree_sitter_analyzer.mcp.tools.callers_reasons import COMPLETENESS_REASONS
 from tree_sitter_analyzer.mcp.tools.tool_response import CANONICAL_VERDICTS
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
@@ -55,6 +56,13 @@ class TestAgentEnvelopeContractDoc:
             f"missing from doc={sorted(set(CANONICAL_VERDICTS) - documented)}, "
             f"stale in doc={sorted(documented - set(CANONICAL_VERDICTS))}"
         )
+
+    def test_completeness_reasons_match_closed_set(self) -> None:
+        # #1632：原因码表与 COMPLETENESS_REASONS 双向完全一致。
+        documented = _extract_marked_table_tokens(
+            DOC_PATH.read_text(encoding="utf-8"), "completeness-reasons"
+        )
+        assert documented == set(COMPLETENESS_REASONS)
 
     def test_cross_links_present(self) -> None:
         """CODEMAPS/mcp-tools.md must link the page."""
