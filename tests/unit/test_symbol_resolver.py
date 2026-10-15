@@ -50,7 +50,8 @@ def indexed_project(tmp_path):
     )
 
     cache = ASTCache(str(project))
-    cache.index_project(max_files=100)
+    # #1625：增量运行现在会认证清单；共享夹具显式保持未认证，与此前语义一致。
+    cache.index_project(max_files=100, certify_manifest=False)
     cache.close()
     return project
 

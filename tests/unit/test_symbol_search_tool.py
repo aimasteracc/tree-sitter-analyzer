@@ -818,12 +818,14 @@ async def test_indexed_zero_symbols_can_report_not_found(tmp_path, empty_project
         result = await tool.execute(
             {"query": "authenticate_user", "output_format": "json"}
         )
+        # #1625：增量运行现在会认证清单，已完成的零符号索引可如实报告 NOT_FOUND
+        # （此前未认证只能是 WARN/unknown），重新钉为 NOT_FOUND/fresh。
         assert (result["success"], result["verdict"], result["results"]) == (
             True,
-            "WARN",
+            "NOT_FOUND",
             [],
         )
-        assert result["source_evidence"]["freshness"] == "unknown"
+        assert result["source_evidence"]["freshness"] == "fresh"
     finally:
         cache.close()
         if tool._cache is not None:

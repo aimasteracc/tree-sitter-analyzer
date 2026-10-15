@@ -449,7 +449,9 @@ def test_index_one_file_incremental_size_independent_of_file_count(
         if json.dumps(small.get(key)) != json.dumps(large.get(key))
     }
     assert small_bytes == large_bytes, differing
-    assert large_bytes == 1189
+    # #1625：回复新增 removed / removed_files / removed_files_truncated 与摘要中的
+    # removed=0（+89 字节，仍与文件总数无关），重新钉为 1278。
+    assert large_bytes == 1278
     assert [(d["file"], d["status"]) for d in large["files"]] == [
         ("m0000.py", "indexed")
     ]

@@ -401,9 +401,10 @@ def run_index_project(
                 )
             )
         ):
-            stats["pruned"] = _prune_to_selected_scope(
+            stats["removed_files"] = _prune_to_selected_scope(
                 cache, conn, candidate_snapshot, root_fd=root_lease_fd
             )
+            stats["pruned"] = len(stats["removed_files"])
         run_incomplete = bool(
             stats.get("incomplete_skips", 0)
             or stats.get("truncated_by_max_files", False)

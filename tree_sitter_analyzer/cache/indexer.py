@@ -334,8 +334,8 @@ def _prune_to_selected_scope(
     candidate: IndexCandidateSnapshot,
     *,
     root_fd: int | None = None,
-) -> int:
-    """Transactionally remove primary and graph generations outside the scope."""
+) -> list[str]:
+    """在事务内移除范围外（含已从磁盘删除，#1625）文件的主行与图行，返回其路径。"""
     selected = {entry.rel_path for entry in candidate.selected_entries}
     stale = {
         _normalize_relative_path(str(row[0]))
@@ -343,7 +343,7 @@ def _prune_to_selected_scope(
         if _normalize_relative_path(str(row[0])) not in selected
     }
     if not stale:
-        return 0
+        return []
     try:
         for rel_path in stale:
             _discard_with_root_lease(cache, conn, rel_path, root_fd)
@@ -351,7 +351,7 @@ def _prune_to_selected_scope(
     except Exception:
         conn.rollback()
         raise
-    return len(stale)
+    return sorted(stale)
 
 
 def _candidate_paths_are_exact(
