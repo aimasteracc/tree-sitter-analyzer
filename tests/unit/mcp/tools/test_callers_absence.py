@@ -545,3 +545,23 @@ async def test_call_site_without_a_counted_edge_blocks_complete(tmp_path) -> Non
     assert (result["caller_count"], result["completeness"]) == (0, "unknown")
     assert result["completeness_reason"] == "NON_CALL_REFERENCES"
     assert result["non_call_reference_sites"] == [{"file": "lone.py", "line": 6}]
+
+
+def test_unreadable_call_edges_make_the_scan_unknown(tmp_path) -> None:
+    # #1622：读不到调用边时无法判断哪些 `name(` 已被覆盖，扫描结果为 None（unknown）。
+    import sqlite3
+
+    from tree_sitter_analyzer.mcp.tools.callers_absence import _non_call_sites
+    from tree_sitter_analyzer.mcp.tools.callers_call_lines import call_edge_lines
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, language TEXT)")
+    conn.execute("CREATE TABLE ast_symbol_rows (file_path TEXT, line INT, name TEXT)")
+
+    class _Cache:
+        def get_conn(self) -> sqlite3.Connection:
+            return conn
+
+    assert call_edge_lines(_Cache(), "size") is None
+    declarations = [("a.py", 1, "python")]
+    assert _non_call_sites(_Cache(), str(tmp_path), "size", declarations) is None

@@ -404,3 +404,21 @@ class TestModuleScopeCallers1622:
         assert result["test_files"] == ["tests/test_mod.py"]
         assert result["test_functions"] == ["tests/test_mod.py::<module>"]
         assert result["edge_count"] == 1
+
+
+def test_cached_edge_without_call_line_has_no_module_caller() -> None:
+    """#1622：缓存图里缺调用行的模块级边无法定位，不构造伪调用方（跳过）。"""
+    from tree_sitter_analyzer.call_graph import _edge_caller_ref
+
+    edge = {"caller_name": "", "callee_line": 0, "language": "python"}
+    assert _edge_caller_ref({}, edge, "a.py") is None
+    placed = _edge_caller_ref({}, {**edge, "callee_line": 9}, "a.py")
+    assert placed is not None
+    assert placed.to_dict() == {
+        "file": "a.py",
+        "name": "<module>",
+        "line": 9,
+        "end_line": 9,
+        "language": "python",
+        "scope": "module",
+    }
