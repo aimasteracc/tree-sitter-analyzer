@@ -21,7 +21,7 @@ from ...incremental_sync import IncrementalSync
 from ...indexing_limits import normalize_index_max_files
 from ...utils import setup_logger
 from ._validators import invalid_enum_error
-from .ast_cache_index_view import project_index_files
+from .ast_cache_index_view import project_index_files, project_removed_files
 from .base_tool import BaseMCPTool, _canonicalize_verdict, mirror_summary_line
 
 logger = setup_logger(__name__)
@@ -616,6 +616,9 @@ class ASTCacheTool(BaseMCPTool):
             # #1582：默认省略未变文件并限制明细条数，完整列表需显式 opt-in。
             result = project_index_files(
                 result, include_details=bool(arguments.get("include_details", False))
+            )
+            result, summary_line, next_step = project_removed_files(
+                result, summary_line, next_step, force=bool(force)
             )
         return _build_ast_cache_envelope("index", result, summary_line, next_step)
 

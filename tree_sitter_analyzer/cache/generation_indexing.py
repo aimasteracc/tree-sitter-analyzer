@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
 if TYPE_CHECKING:
-    from ..ast_cache import ASTCache
     from ..mcp.tools.full_index_tool import CodeGraphFullIndexTool
 
 from ..incremental_sync_support import SyncResult
@@ -75,13 +74,18 @@ def _first_publication(candidate: Any) -> bool:
 
 def mutate_published_cache(
     cache: Any,
-    operation: Callable[[ASTCache], _T],
+    operation: Callable[..., _T],
     *,
     scope: SourceScopeDescriptor | None = None,
     candidate_snapshot: IndexCandidateSnapshot | None = None,
     expected_path: Path | None = None,
+    bind_candidate: bool = False,
 ) -> _T:
-    """默认库的显式单文件、重建和失效操作只写私有副本，首次发布前亦然（#1554）。"""
+    """默认库的显式单文件、重建和失效操作只写私有副本，首次发布前亦然（#1554）。
+
+    ``bind_candidate`` 为真时，操作额外接收本次捕获的候选快照：增量项目索引据此
+    清除已从磁盘删除的文件并重新认证，与发布复核使用同一份快照（#1625）。
+    """
     from ..ast_cache import ASTCache
     from .generation_store import Superseded
 
@@ -107,7 +111,11 @@ def mutate_published_cache(
             with store.abandoning(selector):  # #1595：未发布即回收
                 writable = ASTCache(cache.project_root, str(store.database(selector)))
                 try:
-                    result = operation(writable)
+                    result = (
+                        operation(writable, candidate.snapshot)
+                        if bind_candidate
+                        else operation(writable)
+                    )
                 finally:
                     writable.close()
                 if publishable_result(result) or _first_publication(candidate):

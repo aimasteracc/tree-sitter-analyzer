@@ -312,6 +312,23 @@ class ASTCacheIndexMixin(ASTCacheSurface):
                 exclude_patterns=tuple(sorted(exclude_patterns or ())),
                 certification_max_files=max_files,
             )
+            if not (force or resolve_only or language_filter or candidate_snapshot):
+                # #1625：无候选的增量运行改用发布侧捕获的同一快照，才能清除已从
+                # 磁盘删除的文件并重新认证；强制重建、仅解析与按语言运行不变。
+                return mutate_published_cache(
+                    self,
+                    lambda writable, captured: writable.index_project(
+                        max_files,
+                        workers=workers,
+                        include_activation=include_activation,
+                        exclude_patterns=exclude_patterns,
+                        candidate_snapshot=captured,
+                        source_scope=source_scope,
+                        certify_manifest=certify_manifest,
+                    ),
+                    scope=scope,
+                    bind_candidate=True,
+                )
 
             return mutate_published_cache(
                 self,

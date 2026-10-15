@@ -74,3 +74,38 @@ def project_index_files(
             "for the full per-file list including unchanged files"
         )
     return projected
+
+
+#: #1625：回复中最多点名的已移除文件数；总数始终如实报告。
+REMOVED_FILES_CAP = 20
+
+#: 本次运行没有执行删除检测时的下一步。再跑一次增量刷新同样不会清除已删除
+#: 文件，因此必须指向强制重建，不能让代理在增量刷新上无限循环。
+FORCE_REFRESH_STEP = (
+    "deleted-file detection did not run for this refresh (language-scoped run, "
+    "truncated or incomplete discovery, or sources changed during the run); "
+    "run `index action=cache mode=index force=true` (CLI: `--ast-cache "
+    "--ast-cache-mode index --ast-cache-force`) to purge deleted files"
+)
+
+
+def project_removed_files(
+    result: dict[str, Any], summary_line: str, next_step: str, *, force: bool
+) -> tuple[dict[str, Any], str, str]:
+    """如实报告本次刷新从索引移除的文件，返回 (新结果, 摘要, 下一步)。
+
+    ``removed_files`` 缺失表示删除检测没有运行：``removed`` 置为 ``None``
+    （未知，而非 0），并在非强制运行时把下一步改为强制重建（#1625）。
+    """
+    paths = result.get("removed_files")
+    if not isinstance(paths, list):
+        step = next_step if force else FORCE_REFRESH_STEP
+        return {**result, "removed": None}, f"{summary_line} removed=unknown", step
+    listed = paths[:REMOVED_FILES_CAP]
+    projected = {
+        **result,
+        "removed": len(paths),
+        "removed_files": listed,
+        "removed_files_truncated": len(paths) > len(listed),
+    }
+    return projected, f"{summary_line} removed={len(paths)}", next_step
