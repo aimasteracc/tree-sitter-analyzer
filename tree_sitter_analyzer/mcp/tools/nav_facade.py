@@ -48,6 +48,7 @@ from typing import Any
 from ... import read_existing_access as read_access
 from ...call_graph_binding import RefIdentity, ref_identity
 from ...constants import JS_TS_MODULE_EXTS
+from ...module_scope_caller import is_module_caller
 from .facade_tool import FacadeTool
 from .nav_facade_help import (
     CONTEXT_KEYS,
@@ -158,7 +159,12 @@ def _is_collectible_caller(file_path: str, name: str, language: str = "") -> boo
     A caller that does NOT match its language convention is treated as a
     non-collectible helper, so the caller code applies the SAME 1-hop walk-up
     used for Python helpers to find the convention-matching test above it.
+
+    #1622：``<module>`` 伪调用方是测试文件的模块作用域调用点，导入（收集）该
+    文件时就会执行，因此运行该文件的任何测试都覆盖它——视为可收集的入口。
     """
+    if is_module_caller(name):
+        return True
     if _is_python_file(file_path):
         return _is_pytest_collectible(name)
     lang = (language or "").lower()

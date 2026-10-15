@@ -12,6 +12,7 @@ import os
 import sqlite3
 from typing import Any
 
+from ...module_scope_caller import module_caller_entry
 from ...utils import setup_logger
 from ._response_builder import build_response
 from .base_tool import BaseMCPTool
@@ -681,8 +682,9 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
 
         Returns ``(callers, unattributed_call_sites)``.  Edges without an
         enclosing function (module-level call sites store
-        ``caller_name='' / caller_line=0``) are never emitted as result rows
-        — they are counted instead (#638 ghost-caller fix).
+        ``caller_name='' / caller_line=0``) are listed under the ``<module>``
+        pseudo-caller at their call line (#1622); only a site without a call
+        line is counted instead, never emitted as a ghost row (#638).
 
         When ``include_activation`` is True, each entry gets an
         ``activation`` sub-dict carrying ``mod_count_30d`` and
@@ -696,10 +698,20 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         if include_activation:
             activation_map = self._fetch_activation_map(cache)
         for edge in raw:
-            if not edge.get("caller_name"):
+            # #1622：模块作用域调用点列为 ``<module>`` 伪调用方；缺坐标的才计数。
+            base = (
+                {
+                    "name": edge["caller_name"],
+                    "file": edge["caller_file"],
+                    "line": edge["caller_line"],
+                }
+                if edge.get("caller_name")
+                else module_caller_entry(edge)
+            )
+            if base is None:
                 unattributed += 1
                 continue
-            key = f"{edge['caller_file']}:{edge['caller_name']}:{edge['caller_line']}"
+            key = f"{base['file']}:{base['name']}:{base['line']}"
             if key in seen:
                 continue
             seen.add(key)
@@ -709,9 +721,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 func_name, callee_resolved, caller_file_val
             )
             entry: dict[str, Any] = {
-                "name": edge["caller_name"],
-                "file": edge["caller_file"],
-                "line": edge["caller_line"],
+                **base,
                 "language": "",
                 "callee_resolution": resolution,
                 "callee_resolved_file": resolved_file,

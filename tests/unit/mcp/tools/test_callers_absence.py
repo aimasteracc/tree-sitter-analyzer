@@ -498,3 +498,50 @@ def test_defined_lookup_requires_the_method_inside_the_class(tmp_path) -> None:
         _defined(conn, [], ""),
     ] == [True, False, True, True, False]
     assert _relative(str(tmp_path), str(tmp_path / "x" / "y.py")) == "x/y.py"
+
+
+def test_call_position_is_skipped_only_on_a_line_with_a_call_edge() -> None:
+    # #1622：`name(` 只有在该行确有调用边时才可跳过；无边的调用位置计为引用。
+    import re
+
+    from tree_sitter_analyzer.mcp.tools.callers_absence import _reference_lines
+
+    text = "a = size(1)\nb = size(2)\nc = w.size\n"
+    pattern = re.compile(r"(?<![\w$])size(?![\w$])")
+
+    assert _reference_lines(text, pattern, frozenset({1})) == [2, 3]
+    assert _reference_lines(text, pattern, frozenset()) == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_call_site_without_a_counted_edge_blocks_complete(tmp_path) -> None:
+    # #1622：调用点若没有任何调用边，扫描不得假定“已有边”而跳过它。
+    import os
+    import sqlite3
+    import stat
+
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    (tmp_path / "lone.py").write_text(
+        "def lonely():\n    return 1\n\n\ndef user():\n    return lonely()\n\n\n"
+        "def helper():\n    return 2\n\n\ndef other():\n    return helper()\n",
+        encoding="utf-8",
+    )
+    cache = ASTCache(str(tmp_path))
+    try:
+        cache.index_project()
+        db_path = cache.db_path
+    finally:
+        cache.close()
+    # 模拟“调用点没有任何调用边”：删去指向 lonely 的边（索引封存为只读，先解封）。
+    os.chmod(db_path, stat.S_IREAD | stat.S_IWRITE)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "DELETE FROM edges WHERE kind = 'calls' AND callee_name = ?", ("lonely",)
+        )
+
+    result = await _callers(str(tmp_path), "lonely")
+
+    assert (result["caller_count"], result["completeness"]) == (0, "unknown")
+    assert result["completeness_reason"] == "NON_CALL_REFERENCES"
+    assert result["non_call_reference_sites"] == [{"file": "lone.py", "line": 6}]

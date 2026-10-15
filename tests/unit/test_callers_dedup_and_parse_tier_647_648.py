@@ -100,11 +100,15 @@ class TestParseTierModuleLevelExclusion:
         """
         graph = CallGraph(project)
         graph.build()
-        edge_count = len(graph._call_edges)
-        assert edge_count == 3, (
-            f"expected 3 call edges (module-level call excluded), got {edge_count}: "
-            f"{[(c.name, e.name, ln) for c, e, ln in graph._call_edges]}"
-        )
+        # #1622 re-pin：模块级调用点归属 ``<module>`` 伪调用方，不再丢弃；
+        # #648 的不变式（不得错挂到前一个函数）由下面两个测试守住。
+        edges = [(c.name, e.name, ln) for c, e, ln in graph._call_edges]
+        assert edges == [
+            ("execute", "helper_a", 14),
+            ("execute", "fmt", 15),
+            ("execute", "fmt", 23),
+            ("<module>", "fmt", 26),
+        ]
 
     def test_no_call_edge_at_module_level_line(self, project: str) -> None:
         """No call edge should be sourced from the module-level call line 26."""
@@ -115,9 +119,8 @@ class TestParseTierModuleLevelExclusion:
             for c, e, ln in graph._call_edges
             if ln == _MODULE_LEVEL_CALL_LINE
         ]
-        assert bad_edges == [], (
-            f"call at module-level line {_MODULE_LEVEL_CALL_LINE} produced edges: {bad_edges}"
-        )
+        # #1622 re-pin：唯一来源是 ``<module>``，不是错挂的 execute@22。
+        assert bad_edges == [("<module>", "fmt", _MODULE_LEVEL_CALL_LINE)]
 
     def test_execute_22_has_exactly_one_fmt_callee(self, project: str) -> None:
         """UnsubscribeTool.execute calls fmt once (line 23); the module-level
@@ -196,12 +199,10 @@ class TestSQLTierDedupKeepsBothMethods:
     async def test_caller_count_reflects_both_methods(
         self, indexed_project_647: str
     ) -> None:
-        """caller_count must be 2 (both execute methods), not 1 (collapsed)."""
+        """caller_count 计两个 execute 加 #1622 的 ``<module>``，不是折叠后的 1。"""
         tool = CodeGraphCallersTool(indexed_project_647)
         result = await tool.execute({"function_name": "fmt", "output_format": "json"})
-        assert result.get("caller_count") == 2, (
-            f"caller_count should be 2 after dedup fix, got {result.get('caller_count')}"
-        )
+        assert result.get("caller_count") == 3
 
     @pytest.mark.asyncio
     async def test_no_ghost_rows_after_dedup_fix(
@@ -218,14 +219,14 @@ class TestSQLTierDedupKeepsBothMethods:
         assert ghost == [], f"ghost rows after dedup fix: {ghost}"
 
     @pytest.mark.asyncio
-    async def test_module_level_call_still_counted_not_emitted(
+    async def test_module_level_call_listed_as_module_caller(
         self, indexed_project_647: str
     ) -> None:
-        """The module-level fmt() call is still excluded and counted (#638 invariant
-        preserved after the dedup key change).
-        """
+        """#1622 re-pin：模块级 fmt() 列为 ``<module>`` 调用方，不再只计数。"""
         tool = CodeGraphCallersTool(indexed_project_647)
         result = await tool.execute({"function_name": "fmt", "output_format": "json"})
-        assert result.get("unattributed_call_sites") == 1, (
-            f"expected unattributed_call_sites=1, got {result.get('unattributed_call_sites')}"
-        )
+        rows = [
+            (c["name"], c["line"]) for c in result["callers"] if c["name"] == "<module>"
+        ]
+        assert rows == [("<module>", _MODULE_LEVEL_CALL_LINE)]
+        assert "unattributed_call_sites" not in result
