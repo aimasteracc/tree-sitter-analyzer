@@ -103,6 +103,47 @@ For direct inner routes, unknown or action-inapplicable parameters return
 `allowed_arguments`, and typo `suggestions`, so an Agent can repair the next
 call without parsing prose.
 
+## Completeness reasons (`nav action=callers`)
+
+`nav action=callers` declares `completeness` as `complete`, `incomplete` (the
+listed callers are a lower bound) or `unknown` (0 listed callers is not
+evidence of absence). An answer that is not `complete` always carries a
+machine-readable reason, so you can branch on a code instead of parsing prose
+(#1632):
+
+- `completeness_reason` (str | null) — the primary reason; `null` iff
+  `completeness == "complete"`.
+- `completeness_reasons` (list[str]) — every reason that applies, primary
+  first, in the fixed order of the table below; `[]` iff complete. Fixing the
+  primary cause does not make the answer a census while others remain.
+
+Source of truth: `COMPLETENESS_REASONS` in
+[`tree_sitter_analyzer/mcp/tools/callers_reasons.py`](../tree_sitter_analyzer/mcp/tools/callers_reasons.py).
+The first six come from the call-edge layer and can combine; the rest come from
+the gates that re-check an edge-level `complete` and appear alone.
+
+<!-- drift:completeness-reasons:start -->
+| Code | Meaning | What to do |
+|---|---|---|
+| `UNRESOLVED_INBOUND_UNCHECKED` | The unresolved-edge count or the declaring-file guard could not be read. | Retry; rebuild the index if it persists. |
+| `UNRESOLVED_INBOUND` | Inbound edges name the target but did not resolve to its definition (`unresolved_inbound`). | Read those call sites; qualify the name to narrow. |
+| `UNRESOLVED_IN_DECLARING_FILE` | A file that declares the target holds unresolved calls that could reach it (computed dispatch or same name; see `unresolved_sites`). | Read `unresolved_sites`. |
+| `NAME_ONLY_INBOUND` | Inbound edges match by name only and cannot be bound to this target. | Read them; qualify the name. |
+| `UNATTRIBUTED_CALL_SITES` | Module-level call sites are counted, not listed (`unattributed_call_sites`). | Read them directly. |
+| `EMPTY_EVIDENCE_BASE` | The call graph holds no call edges at all. | Build the full index (`index action=full`). |
+| `SOURCE_INDEX_MISMATCH` | The index is stale for the files in scope. | Refresh the index (`next_step`). |
+| `SOURCE_SCOPE_UNKNOWN` | The source could not be revalidated against the index. | Refresh the index. |
+| `MISSING_INDEX` | No index backs the answer. | Build the index. |
+| `SYMBOL_NOT_DEFINED` | The exact target is not defined in the index (`close_matches`). | Check spelling / qualification. |
+| `SYMBOL_DEFINITION_UNCHECKED` | The target's definition could not be checked. | Retry. |
+| `UNINDEXED_SOURCE_FILES` | Same-language files exist that the index has not seen. | Refresh the index. |
+| `UNINDEXED_SOURCE_UNCHECKED` | The project walk for unindexed files failed. | Retry. |
+| `NON_CALL_REFERENCES` | The name is used without a call (callback, attribute, string, config). | Read `non_call_reference_sites`. |
+| `NON_CALL_REFERENCES_UNCHECKED` | The non-call reference scan did not finish within budget. | Retry, or search the name directly. |
+| `ACCESSOR_NOT_CALL_EDGES` | The target is a property/accessor; reads are not call edges. | Search attribute reads. |
+| `DECORATOR_MAY_REGISTER` | A decorator may register the target for dispatch. | Inspect the decorator. |
+<!-- drift:completeness-reasons:end -->
+
 ## Worked examples (paste-real)
 
 Both examples were produced by running the tool classes' `execute()` directly

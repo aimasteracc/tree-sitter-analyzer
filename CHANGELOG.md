@@ -4,6 +4,23 @@
 
 ### Fixed
 
+- `nav action=callers` (CLI `--callers`) now names why an answer is not a
+  census (#1632). Before, every `incomplete` answer and most `unknown` answers
+  from the call-edge layer carried `completeness_reason: null` (dogfood round 6:
+  28/30 `incomplete` answers). `completeness_reason` is now the primary code
+  and is `null` only when `completeness == "complete"`; the new
+  `completeness_reasons` lists every code that applies, primary first. New
+  call-edge codes: `UNRESOLVED_INBOUND`, `UNRESOLVED_IN_DECLARING_FILE`,
+  `NAME_ONLY_INBOUND`, `UNATTRIBUTED_CALL_SITES`, `EMPTY_EVIDENCE_BASE`,
+  `UNRESOLVED_INBOUND_UNCHECKED`. The closed set is documented in
+  `docs/agent-envelope-contract.md`.
+- The callers declaring-file guard applies its computed-dispatch markers
+  (`[`, `getattr(` ...) to the called trailing segment only (#1632). Calls such
+  as `received[0].get()` or `getattr(index, "action_map", {}).get()` call
+  `.get`, so they no longer keep an unrelated module function from answering
+  `complete`. `HANDLERS[name]()`, `getattr(m, name)()` and forwarded calls
+  (`HANDLERS[name].call(...)`, `.apply`, `.__call__`) still gate.
+
 - `index action=cache mode=index` (CLI `--ast-cache --ast-cache-mode index`) no
   longer lists every unchanged file (#1582). The `files` detail now omits
   `status=cached` entries by default and lists at most 50 changed/errored files,

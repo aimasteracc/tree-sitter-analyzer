@@ -9,6 +9,10 @@
 ``globals()[...]``）。名字不同的调用点只能经由别名、回调或容器到达目标，而这些
 都需要一次按名引用——0 调用方时由非调用引用门（#1593）扫描。因此收窄只在该门
 会运行的情况下使用（见 ``callers_tool``），计算式分发始终保留守卫。
+
+#1632：计算式标记只作用于真正被调用的尾段。``received[0].get()`` 调用的是
+``.get``，前缀中的 ``[`` 不会改变被调用的名字；``HANDLERS[name]()``、
+``getattr(m, name)()`` 的尾段本身就是计算结果，仍保留守卫。
 """
 
 from __future__ import annotations
@@ -19,7 +23,7 @@ from typing import Any
 #: 排除原因码：调用点的属性名 / 裸名与目标不同，无法点名目标。
 NAMES_OTHER_REASON = "names_other_symbol"
 
-#: 名字在运行时计算的构造；出现在调用文本任意位置即保留守卫（只会更保守）。
+#: 名字在运行时计算的构造；出现在被调用的尾段中即保留守卫（#1632）。
 _COMPUTED_MARKERS = (
     "getattr(",
     "setattr(",
@@ -40,6 +44,42 @@ _LITERAL_GETATTR = re.compile(
 )
 #: 调用文本末尾的名字：整个文本是标识符，或 ``.`` 之后的标识符。
 _TRAILING_NAME = re.compile(r"(?:^|\.)\s*([A-Za-z_$][\w$]*)$")
+#: 把调用转发给前缀对象本身的尾段名（``f.call(...)``、``f.__call__()``）：
+#: 被调用的仍是前缀计算出的对象，因此标记看整段文本。
+_FORWARDERS = frozenset({"call", "apply", "__call__"})
+
+
+def trailing_segment(text: str) -> str | None:
+    """最后一个顶层 ``.`` 之后的部分，即真正被调用的尾段。
+
+    括号与引号内的 ``.`` 不计（``getattr(x, "a.b").get`` 的尾段是 ``get``）；
+    括号或引号不配对时无法切分，返回 None。
+    """
+    depth = 0
+    quote = ""
+    last_dot = -1
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if quote:
+            if char == "\\":
+                index += 1
+            elif char == quote:
+                quote = ""
+        elif char in "\"'`":
+            quote = char
+        elif char in "([{":
+            depth += 1
+        elif char in ")]}":
+            depth -= 1
+            if depth < 0:
+                return None
+        elif char == "." and depth == 0:
+            last_dot = index
+        index += 1
+    if depth or quote:
+        return None
+    return text[last_dot + 1 :]
 
 
 def could_name_target(callee_full: str, target: str) -> bool:
@@ -52,7 +92,11 @@ def could_name_target(callee_full: str, target: str) -> bool:
     literal = _LITERAL_GETATTR.match(text)
     if literal is not None:
         return literal.group(2) == target
-    if not text or any(marker in text for marker in _COMPUTED_MARKERS):
+    # #1632：标记只看被调用的尾段——`received[0].get` 调用的是 `.get`，前缀里的
+    # `[` 无法让它点名目标；尾段是转发名或无法切分时退回整段文本（只会更保守）。
+    segment = trailing_segment(text)
+    scope = text if segment is None or segment.strip() in _FORWARDERS else segment
+    if not text or any(marker in scope for marker in _COMPUTED_MARKERS):
         return True
     trailing = _TRAILING_NAME.search(text)
     if trailing is None:

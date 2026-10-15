@@ -419,30 +419,30 @@ async def test_potentially_local_callee_still_gates_the_file(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("attribute", "guarded", "excluded"),
+    # #1632 re-pin：尾段非目标名时按名收窄排除（不是 builtin_receiver）。
+    [(_TARGET, 1, {}), ("from_private_bytes", 0, {"names_other_symbol": 1})],
+)
 async def test_dotted_callee_is_judged_by_receiver_not_by_substring(
-    tool_with_edges,
+    tool_with_edges, attribute: str, guarded: int, excluded: dict
 ) -> None:
-    """A dotted callee is excused by its receiver *text*, never by a substring.
-
-    `getattr(importlib.import_module(mod), cls).from_private_bytes` contains dots,
-    but its text before the first dot is `getattr(importlib` — not a builtin type
-    name.  A naive reading could excuse a real dispatch site; it must keep gating.
-    """
+    """接收者文本 `getattr(importlib` 不是内建类型名，内建接收者规则从不豁免它。"""
     tool, conn = tool_with_edges
     _insert_call(
         conn,
         caller="alpha",
         caller_line=10,
         resolution="unknown",
-        callee="from_private_bytes",
-        callee_full="getattr(importlib.import_module(mod), cls).from_private_bytes",
+        callee=attribute,
+        callee_full=f"getattr(importlib.import_module(mod), cls).{attribute}",
     )
     conn.commit()
 
     result = await _call(tool)
 
-    assert result["unresolved_in_declaring_files"] == 1
-    assert result["completeness"] != "complete"
+    assert result["unresolved_in_declaring_files"] == guarded
+    assert result["excluded_by_reason"] == excluded
 
 
 def _site(path: str, line: int, callee: str) -> dict:
