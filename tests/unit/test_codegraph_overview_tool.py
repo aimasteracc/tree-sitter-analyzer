@@ -306,3 +306,20 @@ class TestComputeModuleCoupling:
         assert len(coupling) == 1
         assert coupling[0]["outgoing_calls"] == 4
         assert coupling[0]["target_files"] == 2
+
+
+@pytest.mark.slow_ok  # 两次真实索引（首建 + 刷新）即被测行为
+@pytest.mark.asyncio
+async def test_overview_counts_new_function_after_in_server_refresh(tmp_path):
+    # Issue #1611：刷新索引后 overview 仍报告旧调用图的函数数。
+    from tests.unit._index_refresh_support import (
+        add_caller_and_refresh,
+        make_indexed_project,
+    )
+
+    project = await make_indexed_project(tmp_path)
+    tool = CodeGraphOverviewTool(str(project))
+    await tool.execute({})
+    await add_caller_and_refresh(project)
+    result = await tool.execute({})
+    assert result["summary_line"].split(",")[0] == "3 functions"

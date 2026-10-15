@@ -9,6 +9,7 @@ from typing import Any
 from ...call_graph import CachedCallGraph, CallGraph
 from ...uml_export import UMLEdge, UMLExporter, render_flowchart_mermaid
 from ..utils.auto_index_guard import ensure_indexed
+from .index_bound_graph import index_bound_graph, reset_index_bound_graph
 
 
 def safe_node_id(name: str, file_path: str) -> str:
@@ -161,7 +162,7 @@ class CodeGraphVisualizationHub:
 
     def reset(self, project_root: str | None) -> None:
         self.project_root = project_root
-        self._call_graph = None
+        reset_index_bound_graph(self)
         self._cache = None
 
     def cache(self) -> Any | None:
@@ -172,17 +173,22 @@ class CodeGraphVisualizationHub:
         return self._cache
 
     def call_graph(self) -> CallGraph | None:
-        if self._call_graph is not None:
-            return self._call_graph
+        # #1611：调用图绑定索引身份；旧图与 hub 共享缓存，丢弃时一并换新。
+        return index_bound_graph(
+            self, self.project_root, self._build_call_graph, on_discard=self._drop_cache
+        )
+
+    def _drop_cache(self) -> None:
+        self._cache = None
+
+    def _build_call_graph(self) -> CallGraph | None:
         if not self.project_root:
             return None
         cache = self.cache()
         if cache is not None:
-            self._call_graph = CachedCallGraph(self.project_root, cache)
-            return self._call_graph
+            return CachedCallGraph(self.project_root, cache)
         cg = CallGraph(self.project_root)
         cg.build()
-        self._call_graph = cg
         return cg
 
     def uml_exporter(self) -> UMLExporter | None:
