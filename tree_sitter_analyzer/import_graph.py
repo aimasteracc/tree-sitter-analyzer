@@ -203,6 +203,15 @@ def _file_lookup(project_files: set[str]) -> dict[str, str]:
     return {path.replace("\\", "/"): path for path in project_files}
 
 
+def _is_rooted(path: str) -> bool:
+    """判断路径是否从根目录起算（含 Windows 上无盘符的 ``\\proj\\x.py``）。
+
+    Python 3.13 起 Windows 的 ``os.path.isabs`` 不再把无盘符的根路径视为绝对路径，
+    这类路径若按相对路径查表会静默返回 0 个依赖（develop windows 3.13 CI, 2026-10-16）。
+    """
+    return os.path.isabs(path) or os.path.splitdrive(path)[1][:1] in ("/", "\\")
+
+
 def _match_file(candidate: str, lookup: dict[str, str]) -> str | None:
     """Return the project file matching ``candidate``, ignoring separator style."""
     return lookup.get(os.path.normpath(candidate).replace("\\", "/"))
@@ -421,7 +430,7 @@ class ImportGraph:
         """
         rel = (
             os.path.relpath(os.path.abspath(file_path), self.project_root)
-            if os.path.isabs(file_path)
+            if _is_rooted(file_path)
             else file_path
         )
         if rel.startswith(".."):
