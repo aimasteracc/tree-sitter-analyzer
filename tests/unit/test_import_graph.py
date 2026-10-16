@@ -216,6 +216,12 @@ class TestImportGraphQueries:
         absolute = os.path.join(ROOT, "pkg", "c.py")
         assert [d["source"] for d in g.dependents_of(absolute)] == ["pkg/a.py"]
 
+    def test_dependents_of_matches_drive_qualified_absolute_path(self) -> None:
+        # develop windows 3.13 CI (2026-10-16)：带盘符的真实绝对路径同样命中 "/" 缓存键。
+        g = _graph([("pkg/a.py", "pkg/c.py")])
+        absolute = os.path.abspath(os.path.join(ROOT, "pkg", "c.py"))
+        assert [d["source"] for d in g.dependents_of(absolute)] == ["pkg/a.py"]
+
     def test_dependencies_of_matches_backslash_relative_path(self) -> None:
         # #1558：正向依赖同样按分隔符无关的键查找。
         g = _graph([("pkg/a.py", "pkg/b.py")])
