@@ -11,6 +11,7 @@ dogfood 第 4 轮实测：新建一个尚未入索引、两次直接调用某方
 
 #1624：同一次遍历还列出需要做非调用引用扫描的配置 / 脚本文件（另加
 ``.github``，点目录本身仍被跳过），避免为它们再走一遍目录。
+#1633：JSON（不超过大小上限）、Notebook 与模板文件同样在这次遍历中列出。
 """
 
 from __future__ import annotations
@@ -69,7 +70,7 @@ def project_files(
         walk_candidate_entries,
     )
     from ...project_graph import _language_from_ext
-    from .absence_text_refs import is_config_file
+    from .absence_text_kinds import wanted
 
     try:
         conn = cache.get_conn()
@@ -98,7 +99,7 @@ def project_files(
                 start_relative=start,
             ):
                 source = _language_from_ext(abs_path) in languages
-                if not source and not is_config_file(abs_path):
+                if not source and not wanted(abs_path):
                     continue
                 rel_path = os.path.relpath(abs_path, project_root).replace("\\", "/")
                 if any(fnmatch.fnmatch(rel_path, pattern) for pattern in excludes):
