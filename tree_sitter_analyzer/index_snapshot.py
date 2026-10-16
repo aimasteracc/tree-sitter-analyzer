@@ -16,6 +16,7 @@ from typing import Any, cast
 from urllib.parse import quote
 
 from .index_fingerprint_memo import (
+    memo_compute_deadline,
     memoized_index_fingerprint,
     memoized_projection_exact,
     pinned_fd_content_key,
@@ -48,7 +49,11 @@ from .index_snapshot_registry import (
     IndexSnapshot,
     IndexSnapshotRegistry,
 )
-from .index_snapshot_schema import index_fingerprint, validate_snapshot_schema
+from .index_snapshot_schema import (
+    _fingerprint_deadline_seconds,
+    index_fingerprint,
+    validate_snapshot_schema,
+)
 from .index_snapshot_schema import (
     stamp_full_index_manifest as stamp_full_index_manifest,
 )
@@ -150,8 +155,12 @@ def _index_fingerprint_with_deadline(
     """
 
     def compute() -> str:
+        # #1634：入表的指纹按整段预算算完，避免每次捕获都在期限处重算。
+        budget = memo_compute_deadline(
+            memo_key, deadline, _clock(), _fingerprint_deadline_seconds()
+        )
         try:
-            return index_fingerprint(connection, root, deadline=deadline)
+            return index_fingerprint(connection, root, deadline=budget)
         except TypeError as exc:
             if "unexpected keyword argument 'deadline'" not in str(exc):
                 raise
@@ -236,13 +245,17 @@ def _copy_projection_evidence(
             )
         }
         evidence_fts5 = sqlite_compile_supports_fts5(evidence)
+        # #1634：与指纹相同，入表的判定按整段预算算完。
+        budget = memo_compute_deadline(
+            memo_key, deadline, _clock(), _fingerprint_deadline_seconds()
+        )
         projection_exact = memoized_projection_exact(
             memo_key,
             lambda: bool(
                 evidence_fts5 is not None
                 and has_ordinary_symbol_projection(evidence, evidence_tables)
                 and symbol_projection_is_exact(
-                    evidence, deadline=deadline, require_fts=evidence_fts5
+                    evidence, deadline=budget, require_fts=evidence_fts5
                 )
             ),
         )

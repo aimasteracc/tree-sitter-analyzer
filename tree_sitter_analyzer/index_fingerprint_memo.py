@@ -49,6 +49,23 @@ def memoized_index_fingerprint(
     return fingerprint
 
 
+def memo_compute_deadline(
+    key: tuple[str, ...] | None, deadline: float, now: float, budget_seconds: float
+) -> float:
+    """#1634：可入备忘录的计算用整段计算预算，而非单次捕获剩余的期限。
+
+    dogfood 第 6 轮复现：本仓库（2,458 文件）的指纹计算实测 8.2–9.4 秒，与
+    10 秒捕获期限只差约 1 秒，负载稍高即在期限处中断。失败从不入表，于是之后
+    每次捕获都从头重算、再次超时——``nav callers`` 每次固定付出约 10 秒 CPU，
+    永不收敛。有内容键时让计算在 ``budget_seconds`` 内完成并入表：本次捕获仍按
+    原期限如实报告超时，下一次即命中备忘录。无内容键时结果不会被复用，延长
+    只会拖慢本次调用，因此保持原期限。
+    """
+    if key is None:
+        return deadline
+    return max(deadline, now + budget_seconds)
+
+
 def memoized_projection_exact(
     key: tuple[str, ...] | None, compute: Callable[[], bool]
 ) -> bool:
