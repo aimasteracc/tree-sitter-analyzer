@@ -112,10 +112,19 @@ jobs:
       run: |
         exec 3>> "$GITHUB_STEP_SUMMARY"
         echo "### 📊 Test Coverage Report" >&3
+        # #1638：-q 输出无法指出卡住的测试（2026-10-15 run 38744393660 停在 99%
+        # 直到 15 分钟步骤超时，30 s 的 pytest-timeout 未能结束它）。faulthandler
+        # 由 C 看门狗线程转储，主线程卡死也能写出所有线程栈；180 s 远超正常最长
+        # 单测（约 56 s，含一次超时重跑），只会命中真正卡死的测试。超时时
+        # pytest-output.txt 仍会作为诊断工件上传。
         uv run pytest tests/ -n auto -q --tb=short --maxfail=200 \
+          --durations=30 -o faulthandler_timeout=180 \
           --cov=tree_sitter_analyzer --cov-report=xml --cov-report=term-missing \
           --ignore=tests/e2e \
           -m "not slow and not e2e and not network and not benchmark" > pytest-output.txt 2>&1 || touch test_failed
+
+        # 成功时也把最慢测试写入作业日志，便于通过日志 API 追踪耗时趋势。
+        sed -n '/slowest .* durations/,$p' pytest-output.txt
 
         echo '```text' >&3
         tail -n 30 pytest-output.txt >&3
@@ -261,7 +270,9 @@ jobs:
       run: |
         exec 3>> "$GITHUB_STEP_SUMMARY"
         echo "### 📊 Test Coverage Report" >&3
+        # #1638：卡死测试在 180 s 后转储所有线程栈（见 PR 轴同名步骤）。
         uv run pytest tests/ -n auto -v --tb=short --maxfail=200 \
+          -o faulthandler_timeout=180 \
           --cov=tree_sitter_analyzer --cov-report=xml --cov-report=term-missing \
           --ignore=tests/e2e \
           -m "not slow and not e2e and not network and not benchmark" > pytest-output.txt 2>&1 || touch test_failed
