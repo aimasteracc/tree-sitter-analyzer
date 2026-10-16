@@ -1278,7 +1278,8 @@ def test_capture_phases_share_one_absolute_deadline(tmp_path, monkeypatch):
 
     def fingerprint(_connection, _root, *, deadline):
         phases.append("fingerprint")
-        assert deadline == 10.0
+        # #1634：可入备忘录的指纹按整段预算算完；捕获本身仍在 10 秒处判超时。
+        assert deadline == now[0] + owner._fingerprint_deadline_seconds()
         now[0] += 5.0
         return "sha256:" + "0" * 64
 

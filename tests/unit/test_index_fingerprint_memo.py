@@ -78,6 +78,67 @@ async def test_changed_index_bytes_recompute_fingerprint(tmp_path, monkeypatch):
     assert (second.reason, len(calls)) == ("CALL_GRAPH_INCOMPLETE", 2)
 
 
+def _slower_than_capture(monkeypatch, name: str) -> list[float]:
+    """把 ``name`` 换成需要比一次捕获期限多 1 秒预算的计算；期限不足即超时。"""
+    import time
+
+    from tree_sitter_analyzer import index_snapshot
+
+    cost = index_snapshot._CAPTURE_DEADLINE_SECONDS + 1.0
+    original = getattr(index_snapshot, name)
+    calls: list[float] = []
+
+    def slow(*args, **kwargs):
+        calls.append(kwargs["deadline"])
+        if kwargs["deadline"] - time.monotonic() < cost:
+            raise RuntimeError("INDEX_FINGERPRINT_DEADLINE")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(index_snapshot, name, slow)
+    return calls
+
+
+async def test_fingerprint_slower_than_capture_deadline_is_computed_once(
+    tmp_path, monkeypatch
+):
+    # Issue #1634：指纹成本贴近 10 秒捕获期限时每次都超时、从不入表，
+    # nav callers 每次固定付出约 10 秒；入表计算须按整段预算完成。
+    from tree_sitter_analyzer import index_snapshot
+
+    await _certified_project(tmp_path)
+    calls = _slower_than_capture(monkeypatch, "index_fingerprint")
+
+    index_snapshot.read_existing_snapshot(str(tmp_path))
+    second = index_snapshot.read_existing_snapshot(str(tmp_path))
+
+    assert (len(calls), second.completeness) == (1, "complete")
+
+
+async def test_projection_check_slower_than_capture_deadline_is_computed_once(
+    tmp_path, monkeypatch
+):
+    # Issue #1634：符号投影判定同为入表计算，同样不得在捕获期限处反复重算。
+    from tree_sitter_analyzer import index_snapshot
+
+    await _certified_project(tmp_path)
+    calls = _slower_than_capture(monkeypatch, "symbol_projection_is_exact")
+
+    index_snapshot.read_existing_snapshot(str(tmp_path))
+    second = index_snapshot.read_existing_snapshot(str(tmp_path))
+
+    assert (len(calls), second.completeness) == (1, "complete")
+
+
+def test_missing_content_key_keeps_capture_deadline():
+    # Issue #1634：无内容键的结果不会复用，延长期限只会拖慢本次调用。
+    assert memo.memo_compute_deadline(None, 5.0, 1.0, 120.0) == 5.0
+
+
+def test_content_key_extends_deadline_to_compute_budget():
+    # Issue #1634：有内容键时期限取「现在 + 整段预算」。
+    assert memo.memo_compute_deadline(("key",), 5.0, 1.0, 120.0) == 121.0
+
+
 def test_missing_content_key_always_recomputes():
     calls: list[int] = []
 
