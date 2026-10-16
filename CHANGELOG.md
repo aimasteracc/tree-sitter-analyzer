@@ -4,6 +4,21 @@
 
 ### Fixed
 
+- `nav action=callers` (CLI `--callers`) no longer answers `0 callers,
+  complete` when grep would find a reference in a JSON file, a notebook, an
+  `exec` string, a template or a doctest (#1633, dogfood round 6). The
+  non-call reference scan now also covers:
+  - `.json` files up to 64 KiB, for string values that are exactly the name or a
+    dotted/colon path ending in it (`"pkg.mod:fn"`, `"pkg.mod.fn"`). Keys,
+    prose strings and larger files (golden data, lockfiles, snapshots) are not
+    counted;
+  - `.ipynb` code cells, scanned as Python (calls and name references);
+  - string arguments of `exec` / `eval` / `compile`, scanned as code, so a bare
+    name such as `exec("h = fn\nh()")` counts (`re.compile(...)` does not);
+  - `{{ ... }}` / `{% ... %}` expressions in `.html` / `.jinja` / `.j2` /
+    `.jinja2` templates;
+  - doctest lines (`>>> ` / `... `) in docstrings.
+  Each hit answers `unknown` with `NON_CALL_REFERENCES` and the file:line site.
 - `nav action=callers` (CLI `--callers`) now names why an answer is not a
   census (#1632). Before, every `incomplete` answer and most `unknown` answers
   from the call-edge layer carried `completeness_reason: null` (dogfood round 6:

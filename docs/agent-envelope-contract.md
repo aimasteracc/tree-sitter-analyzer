@@ -138,7 +138,7 @@ the gates that re-check an edge-level `complete` and appear alone.
 | `SYMBOL_DEFINITION_UNCHECKED` | The target's definition could not be checked. | Retry. |
 | `UNINDEXED_SOURCE_FILES` | Same-language files exist that the index has not seen. | Refresh the index. |
 | `UNINDEXED_SOURCE_UNCHECKED` | The project walk for unindexed files failed. | Retry. |
-| `NON_CALL_REFERENCES` | The name is used without a call (callback, attribute, string, config). | Read `non_call_reference_sites`. |
+| `NON_CALL_REFERENCES` | The name is used without a call (callback, attribute, string, config, JSON, notebook, template, doctest). | Read `non_call_reference_sites`. |
 | `NON_CALL_REFERENCES_UNCHECKED` | The non-call reference scan did not finish within budget. | Retry, or search the name directly. |
 | `ACCESSOR_NOT_CALL_EDGES` | The target is a property/accessor; reads are not call edges. | Search attribute reads. |
 | `DECORATOR_MAY_REGISTER` | A decorator may register the target for dispatch. | Inspect the decorator. |

@@ -30,7 +30,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ...discovery_budget import DISCOVERY_SECONDS_PER_ENTRY
-from .absence_text_refs import CONFIG_LANGUAGE, is_docstring, string_mention
+from .absence_text_kinds import reference_text, text_language
+from .absence_text_refs import CONFIG_LANGUAGE, string_code
 from .callers_call_lines import call_edge_lines
 from .callers_decorators import (
     DECORATED_REASON,
@@ -317,7 +318,7 @@ def _non_call_sites(
                 f"WHERE language IN ({marks})",
                 languages,
             )
-        ) + [(path, CONFIG_LANGUAGE) for path in config_files]
+        ) + [(path, text_language(path) or CONFIG_LANGUAGE) for path in config_files]
         declared_lines = {
             (str(row[0]), int(row[1]))
             for row in conn.execute(
@@ -398,13 +399,15 @@ def _strip_comments_and_prose(text: str, language: str, bare: str | None = None)
 
     #1624：给定 ``bare`` 时，以代码形态提到它的字符串（``"pkg.mod:bare"``、
     ``"o.bare()"``）也保留为一次引用；Python 独立成句的三引号串（文档字符串）除外。
+    #1633：`exec`/`eval`/`compile` 的串实参与 doctest 行按代码保留；JSON、
+    Notebook 与模板交给 `absence_text_kinds.reference_text`。
     """
     if language in _PY_LANGUAGES:
         lexeme = _PY_LEXEME
     elif language in _C_LANGUAGES:
         lexeme = _C_LEXEME
     else:
-        return text
+        return reference_text(text, language, bare, _strip_comments_and_prose)
 
     def _replace(match: re.Match[str]) -> str:
         token = match.group(0)
@@ -418,10 +421,9 @@ def _strip_comments_and_prose(text: str, language: str, bare: str | None = None)
             if "f" in prefix.lower():
                 return token
             docstring = quote == 3 and language in _PY_LANGUAGES
-            if bare and not (docstring and is_docstring(text, *match.span())):
-                mention = string_mention(body, bare)
-                if mention is not None:
-                    return mention
+            kept = string_code(text, match.span(), body, docstring, bare)
+            if kept is not None:
+                return kept
         return "\n" * token.count("\n")
 
     return lexeme.sub(_replace, text)

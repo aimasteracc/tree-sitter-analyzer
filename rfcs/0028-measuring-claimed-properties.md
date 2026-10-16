@@ -375,6 +375,25 @@ absence over real uses:
   exempt. A declaration whose decorators cannot be read (syntax error,
   unreadable file, grammar unavailable) is treated as possibly registered.
 
+**Dogfood round 6 (#1633).** Five shapes still answered `complete, 0` where grep
+finds a reference. The non-call reference scan now covers them, and each hit
+answers `unknown` with `NON_CALL_REFERENCES`:
+
+- JSON (`function.json`, tool configs): only string values that are exactly
+  the name or a dotted/colon path ending in it. Keys and prose strings are not
+  counted. Files larger than 64 KiB are treated as data and are not scanned.
+  Measured 2026-10-16 (`git ls-files "*.json"`): 116 tracked files, 587 KB in
+  total, p99 42 KB; the only file over the bound is the 68 KB
+  `grammar_snapshot.json`.
+- `.ipynb` code cells, scanned as Python; markdown cells are not.
+- String arguments of `exec` / `eval` / `compile` (not method calls such as
+  `re.compile`), scanned as code, so bare names count.
+- `{{ ... }}` / `{% ... %}` expressions in `.html` / `.jinja` / `.j2` /
+  `.jinja2` templates.
+- Doctest lines in docstrings. The rest of a docstring is still prose.
+
+Markdown, rst and txt files are still not scanned.
+
 #### §1.3 — Carry the evidence, not only the count
 
 **Problem.** §1.1 adds `completeness`, and §1.2 makes it precise, but the caller

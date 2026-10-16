@@ -17,6 +17,16 @@
   PowerShell / batch、Makefile、Dockerfile 等），其中的整词出现全部计入。
   Markdown/rst/txt 等散文文档与 JSON（多为测试数据 / golden 输出）不扫描：
   它们点名方法只是描述，计入会让几乎所有方法都无法答 ``complete``。
+  （#1633 起 JSON 改为只认“恰为引用”的字符串值，见 ``absence_text_kinds``。）
+
+#1633（dogfood 第 6 轮）补上两种仍弱于 grep 的代码串：
+
+* ``exec`` / ``eval`` / ``compile`` 的字符串实参本身就是代码：整个串体按代码保留，
+  裸名引用（``exec("h = fn\\nh()")``）也计入；``re.compile(...)`` 等方法调用不算。
+* 文档字符串中的 doctest 行（``>>> `` / ``... `` 之后的内容）会被 doctest 执行，
+  按代码保留；文档字符串的其余散文仍不计。
+
+JSON、Notebook 与模板文件见 ``absence_text_kinds``。
 """
 
 from __future__ import annotations
@@ -47,6 +57,12 @@ _CONFIG_SUFFIXES = frozenset(
 _CONFIG_NAMES = frozenset({"makefile", "gnumakefile", "justfile", "procfile"})
 #: 允许名字之前紧邻的代码形态分隔符（点号路径、入口点冒号）。
 _CODE_PREFIXES = frozenset(".:")
+#: 字符串前紧邻的“把串当代码执行”的调用（不含 ``re.compile`` 等方法调用）。
+_CODE_CALL = re.compile(r"(?<![\w.$])(?:exec|eval|compile)\s*\(\s*[rRbBuU]*$")
+#: 回看调用名的字符数上限。
+_CODE_CALL_LOOKBACK = 64
+#: doctest 的提示符。
+_DOCTEST_PROMPTS = (">>>", "...")
 
 
 def is_config_file(rel_path: str) -> bool:
@@ -67,6 +83,31 @@ def is_docstring(text: str, start: int, end: int) -> bool:
     line_end = text.find("\n", end)
     rest = text[end : len(text) if line_end < 0 else line_end].strip()
     return not rest or rest.startswith("#")
+
+
+def string_code(
+    text: str, span: tuple[int, int], body: str, docstring: bool, bare: str | None
+) -> str | None:
+    """非标识符字符串中须按代码保留的部分（保留行号）；可整体剔除时为 None。
+
+    ``docstring`` 表示这是 Python 三引号串，需再判断是否独立成句。
+    """
+    start, end = span
+    if _CODE_CALL.search(text, max(0, start - _CODE_CALL_LOOKBACK), start):
+        return f" {body} "
+    if docstring and is_docstring(text, start, end):
+        return doctest_code(body)
+    return string_mention(body, bare) if bare else None
+
+
+def doctest_code(body: str) -> str:
+    """文档字符串中 doctest 提示符之后的代码；其余行留空（保留行号）。"""
+    lines: list[str] = []
+    for line in body.split("\n"):
+        stripped = line.lstrip()
+        code = stripped.startswith(_DOCTEST_PROMPTS)
+        lines.append(f" {stripped[3:]}" if code else "")
+    return "\n".join(lines)
 
 
 def string_mention(body: str, bare: str) -> str | None:
