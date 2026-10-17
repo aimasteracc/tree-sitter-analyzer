@@ -79,7 +79,7 @@ def project_files(
         }
     except (sqlite3.Error, AttributeError):
         return None
-    excludes = _effective_excludes(conn)
+    excludes = effective_excludes(conn)
     unindexed: list[str] = []
     config: list[str] = []
     starts = [""] + [
@@ -113,7 +113,7 @@ def project_files(
     return ProjectFiles(sorted(unindexed), sorted(config))
 
 
-def _effective_excludes(conn: Any) -> frozenset[str]:
+def effective_excludes(conn: Any) -> frozenset[str]:
     """索引清单记录的 exclude 模式；清单缺失或无效时用默认模式（只会更保守）。"""
     from ...index_source_scope import (
         make_source_scope_descriptor,
