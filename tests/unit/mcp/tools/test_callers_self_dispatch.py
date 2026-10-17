@@ -73,8 +73,9 @@ async def test_self_call_in_base_is_a_caller_of_base_method(hook_root) -> None:
     # #1635：`Base.run` 的 `self.hook()` 绑定到外围类自己的 `Base.hook`。
     result = await _callers(hook_root, "Base.hook")
 
-    assert ("run", 2) in _names(result)
-    assert result["caller_count"] >= 1
+    # `Sub.hook`（第 10 行）的 `super().hook()` 同样指向 `Base.hook`。
+    assert {("run", 2), ("hook", 10)} <= _names(result)
+    assert result["caller_count"] == len(result["callers"])
 
 
 @pytest.mark.asyncio
