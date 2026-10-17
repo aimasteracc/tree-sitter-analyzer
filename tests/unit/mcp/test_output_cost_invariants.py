@@ -646,7 +646,8 @@ def test_impact_response_bytes_pinned_after_dedup() -> None:
 # 清单以及逐字重复的验证命令。修复后默认只给计数与影响最大的前 N 项（如实的
 # *_total / *_truncated），include_details=true 恢复完整列表。
 # 实测（本仓库 git diff 2702997c 3362b590，10 个文件，2026-10-17）：
-#   修复前 73947 B；修复后默认见 PR 描述，include_details=true 与修复前同量级。
+#   修复前 73947 B；修复后默认 20528 B，include_details=true 75738 B。
+# 预算 IMPACT_SUMMARY_BUDGET_BYTES = 24 KB 的依据见 change_impact_detail_view。
 
 _IMPACT_CHANGED = [f"src/pkg/mod_{i}.py" for i in range(10)]
 
@@ -775,7 +776,7 @@ def _impact_full_result() -> dict:
             all_tests=tests,
             verification=verification,
             strategy=strategy,
-            test_mapping={path: tests[:1] for path in _IMPACT_CHANGED},
+            test_mapping=dict.fromkeys(_IMPACT_CHANGED, tests[:1]),
             agent_summary=summary,
         )
     )
@@ -786,12 +787,21 @@ def _impact_full_result() -> dict:
     ]
     result["changed_symbol_count"] = 600
     result["affected_symbols"] = [
-        {"file": f"src/app/user_{n % 12}.py", "name": f"s_{n}", "kind": "function", "line": n}
+        {
+            "file": f"src/app/user_{n % 12}.py",
+            "name": f"s_{n}",
+            "kind": "function",
+            "line": n,
+        }
         for n in range(200)
     ]
     result["affected_symbol_count"] = 200
     result["risk_factors"] = [
-        {"factor": "hot_zone", "reason": "hot zone: src/pkg/mod_0.py", "severity": "warn"}
+        {
+            "factor": "hot_zone",
+            "reason": "hot zone: src/pkg/mod_0.py",
+            "severity": "warn",
+        }
     ]
     result["constraint_violations"] = []
     result["activation_diagnostic"] = {"available": True, "reason": None}
@@ -909,7 +919,7 @@ def test_impact_summary_lists_top_functions_with_honest_totals(
         "possible_upstream_callers": 3,
         "downstream_callees_total": 8,
     }
-    assert graph["cross_file_callers_by_file"] == {p: 30 for p in _IMPACT_CHANGED}
+    assert graph["cross_file_callers_by_file"] == dict.fromkeys(_IMPACT_CHANGED, 30)
     assert (
         graph["affected_function_files_total"],
         graph["affected_functions_total"],

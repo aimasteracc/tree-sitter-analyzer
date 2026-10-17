@@ -349,9 +349,7 @@ class ChangeImpactTool(BaseMCPTool):
             result = build_agent_summary_only_response(result)
         else:
             # #1617：完整响应默认摘要明细列表，include_details=true 恢复全量。
-            result = project_impact_details(
-                result, include_details=include_details
-            )
+            result = project_impact_details(result, include_details=include_details)
         result["output_format"] = output_format
         # RFC-0022 P0.5: echo the adapter-owned wire owner version.
         result["action_version"] = EDIT_IMPACT_ACTION_VERSION

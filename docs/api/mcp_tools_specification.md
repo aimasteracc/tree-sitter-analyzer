@@ -1066,12 +1066,32 @@ uv run tree-sitter-analyzer --parser-readiness --parser-readiness-include-suppor
       "default": [],
       "description": "Optional git pathspecs limiting diff, impact, and test mapping to the current edit queue"
     },
+    "include_details": {
+      "type": "boolean",
+      "default": false,
+      "description": "Return the full call_graph_impact / affected_symbols / changed_symbols / affected_files lists and every command field (#1617)"
+    },
     "output_format": {"type": "string", "enum": ["json", "toon"], "default": "toon"}
   }
 }
 ```
 
 **Output**: compact `agent_summary` (risk, next step, verification command, scope hint, stop condition), changed files (including untracked files in `diff` mode), optional `scope_paths` / `scope_filtered` when queue-scoped analysis is requested, optional `queue_ledger` for scoped dirty worktrees (`scoped_changed_count`, `out_of_scope_changed_count`, previews, and a compact handoff string), affected downstream files (via blast radius), related test files to run (`tests_to_run` is display-limited and paired with `tests_to_run_count` / `tests_to_run_omitted_count`), `test_required`, `test_runner`, `default_test_command`, copy-pasteable `test_command`, pytest compatibility fields (`pytest_required`, `pytest_command`), copy-pasteable `verification_command`, `verification_reason`, risk level (low/medium/high), diff stat. Command de-duplication (#1582): the top-level command fields keep their full copy-pasteable values. In `agent_summary`, `verification_command` is the only command; the other command mirrors (`focused_test_command`, `local_verification_command`, `low_impact_focused_test_command`, `ci_verification_command`) live only at the top level. Prose fields (`next_step`, `stop_condition`, `queue_ledger.handoff`) still inline commands of up to 200 characters, and refer to longer ones by field name, e.g. ``Run verification: `verification_command` (2185 chars)``.
+
+**Detail summary (#1617)**: the full (non-`agent_summary_only`) response summarizes its bulk lists by default; `include_details=true` (CLI: `--change-impact-include-details`, which implies `--change-impact-full`) restores them verbatim. Measured on this repository's 10-file diff `git diff 2702997c 3362b590`: 73,947 B before, about 20.5 KB by default, about 75.7 KB with `include_details=true`. The default-response budget is 24 KB (`IMPACT_SUMMARY_BUDGET_BYTES`, pinned in `tests/unit/mcp/test_output_cost_invariants.py`). What changes by default:
+
+| Field | Default (summary) | `include_details=true` |
+|---|---|---|
+| `call_graph_impact.function_impacts` | top 5 by `fan_in`, each with `upstream_callers_total` / `possible_upstream_callers` (name_only) / `downstream_callees_total` counts instead of caller lists; `function_impacts_total` / `_listed` / `_truncated` | full entries with caller / callee lists |
+| `call_graph_impact.cross_file_callers` / `cross_file_callees` | `cross_file_callers_by_file` / `cross_file_callees_by_file` counts | full lists |
+| `call_graph_impact.affected_functions_by_file` | `affected_function_files` (top 10 files by count), `affected_function_files_total` / `_truncated`, `affected_functions_total` | full `caller -> callee` edges |
+| `affected_symbols` / `affected_files` | first 10 with `*_total` / `*_listed` / `*_truncated` | full lists |
+| `changed_symbols` | omitted (`changed_symbols_omitted: true`); `file_impacts` keeps the first 10 symbols per file and `changed_symbol_count` keeps the total | full list |
+| `file_impacts[].direct_dependents` | first 10 with `direct_dependents_listed` / `_truncated` | first 20 |
+| `pytest_command` / `test_command` | omitted when byte-identical to `verification_command`; listed in `command_aliases` | present |
+| `focused_test_command` / `low_impact_focused_test_command` | omitted when no prose field refers to them by name; listed in `command_fields_omitted` | present |
+
+Never summarized: `verdict`, `risk_level`, `verification_command` (top level and `agent_summary`), `local_verification_command`, `ci_verification_command`, `verification_steps`, `risk_factors`, `constraint_violations`, `activation_diagnostic`, `queue_ledger`, `scope_paths_invalid`, the call-graph totals (`total_upstream_callers`, `possible_upstream_callers`, `total_downstream_callees`), `high_risk_functions` (with `high_risk_functions_total`), and all counts. `affected_symbols_scan_capped` reports in both modes when the 200-symbol scan limit was reached, so the total is a lower bound. Default responses carry `details_included: false`, `details_truncated`, and, when anything was cut, `details_next_step`.
 
 **SMART Workflow**: Call AFTER editing code to understand what's affected and what tests to run. On large dirty worktrees, pass `scope_paths` (CLI: `--change-impact-scope PATH...`) for the current queue so agents get focused feedback before the final boundary check. Scoped responses include `queue_ledger` so handoffs can say how many changed files belong to the queue and how many dirty files are outside it. CLI mode parity is available with `--change-impact-mode diff|staged|branch`, and test discovery can be skipped with `--change-impact-no-tests` when a caller only needs changed/affected files. Follow `verification_command` for fast feedback during development; docs-only changes may set `test_required=false` and recommend `git diff --check`. Python projects keep `pytest_command`; Node, Go, Rust, Java/Maven/Gradle, and similar projects can surface their native default test command. Run the full suite before release/PR when risk remains high.
 

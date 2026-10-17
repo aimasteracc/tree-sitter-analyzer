@@ -4,6 +4,41 @@
 
 ### Fixed
 
+- `edit action=impact` (CLI `--change-impact --change-impact-full`) no longer
+  returns 70-224 KB for a multi-file diff (#1617, dogfood R3/R4). The full
+  response now summarizes its bulk lists by default. On this repo's 10-file
+  diff `git diff 2702997c 3362b590` it went from 73,947 B to about 20.5 KB;
+  the default-response budget is 24 KB, pinned in
+  `tests/unit/mcp/test_output_cost_invariants.py`.
+  - `call_graph_impact` lists the top 5 functions by `fan_in`, with caller and
+    callee counts (including the name_only `possible_upstream_callers` count)
+    instead of caller lists, plus per-file counts for
+    `cross_file_callers` / `cross_file_callees` / `affected_functions_by_file`.
+  - `affected_symbols` and `affected_files` list the first 10, with
+    `*_total` / `*_listed` / `*_truncated`. `changed_symbols` is omitted
+    (`changed_symbols_omitted: true`): `file_impacts` already carries the first
+    10 symbols per file and `changed_symbol_count` the total.
+  - `pytest_command` / `test_command` are omitted when byte-identical to
+    `verification_command` (see `command_aliases`), and the focused-subset
+    commands are omitted when no prose field refers to them by name (see
+    `command_fields_omitted`). `verification_hint` now refers to a long
+    `ci_verification_command` by field name instead of repeating it.
+  - Decision fields are never summarized: verdict, `verification_command`,
+    `local_verification_command`, `ci_verification_command`,
+    `verification_steps`, `risk_factors`, `constraint_violations`,
+    `activation_diagnostic`, `queue_ledger`, the call-graph totals and
+    `high_risk_functions`, and all counts. `details_truncated` and
+    `details_next_step` say when something was cut.
+  - New `include_details=true` (CLI `--change-impact-include-details`, which
+    implies `--change-impact-full`) returns the full lists and every command
+    field, as before.
+  - Honest totals in both modes: `call_graph_impact` gains
+    `function_impacts_total` and `high_risk_functions_total`, each function
+    entry gains `upstream_callers_total` / `possible_upstream_callers` /
+    `downstream_callees_total`, and `affected_symbols_scan_capped` says when
+    the 200-symbol scan limit made the total a lower bound.
+  - `agent_summary_only` responses (the CLI default) are unchanged.
+
 - The no-index reply of `nav action=callers`, `callees` and `caller_tree`
   (`error_code: INDEX_MISSING`, for repos over the 200-file on-the-fly parse
   budget) now declares `completeness: "unknown"`, `completeness_reason:

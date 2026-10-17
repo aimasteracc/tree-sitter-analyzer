@@ -15,12 +15,12 @@ from ...git_path_codec import path_from_wire
 from ...read_existing_access import validate_read_existing_paths
 from ..utils.format_helper import apply_output_format_to_response
 from .base_tool import _canonicalize_verdict, mirror_summary_line
+from .utils.change_impact_detail_view import project_impact_details
 from .utils.change_impact_response import (
     apply_scope_validation,
     attach_queue_ledger,
     build_agent_summary_only_response,
 )
-from .utils.change_impact_detail_view import project_impact_details
 
 
 def _canonicalize_change_impact_verdict(result: dict[str, Any]) -> None:
@@ -356,6 +356,4 @@ def _finalize_pr_result(
     result["action_version"] = EDIT_IMPACT_ACTION_VERSION
     _canonicalize_change_impact_verdict(result)
     result = mirror_summary_line(result)
-    return apply_output_format_to_response(
-        result, output_format
-    )
+    return apply_output_format_to_response(result, output_format)
