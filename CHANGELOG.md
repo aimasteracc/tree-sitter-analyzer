@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+### Added
+
+- `nav action=callers` attributes calls through a receiver whose type is given
+  only by an annotation (#1618, RFC-0038). Python only. The supported sources
+  are:
+  - a parameter annotation (`def f(store: GenerationStore)`);
+  - an annotated local (`store: GenerationStore = ...`);
+  - a `self.x` attribute typed by a class-body or `self.x: T` annotation, a
+    `@property` return annotation, `self.x = T(...)`, or `self.x = <annotated
+    parameter>`;
+  - the return annotation of the project function that produced the receiver
+    (`store = project_store(...)` with `-> GenerationStore`, across modules).
+
+  `Optional[T]` / `T | None` count as `T`. A union of two classes, generics
+  and unannotated or rebound receivers are not attributed. Such callers carry
+  `resolution_kind: "annotated_receiver"`, `receiver_type`, `type_source` and
+  `confidence: 0.8`. The edge counts as resolved only for the method it is
+  bound to, so it never makes another same-name answer `complete`. An
+  override in a subclass of the annotated type stays non-complete
+  (`NAME_ONLY_INBOUND` / `UNRESOLVED_INBOUND`). The extractor version goes from
+  39 to 40, so the next refresh re-extracts files indexed by older versions;
+  until then, those files resolve as before.
+
 ### Fixed
 
 - `detect_routes` (CLI `--detect-routes`) now finds Django routes (#1650).
