@@ -123,6 +123,30 @@ async def test_caller_tree_without_index_over_budget_returns_index_missing(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool_cls", "arguments"),
+    [
+        (CodeGraphCallersTool, {"function_name": "target"}),
+        (CodeGraphCalleesTool, {"function_name": "caller_0"}),
+        (CodeGraphCallerTreeTool, {"symbol": "target"}),
+    ],
+)
+async def test_index_missing_answer_declares_unknown_completeness(
+    over_budget_root, forbid_parse, tool_cls, arguments
+) -> None:
+    # Issue #1644（dogfood 第 7 轮）：按 completeness / 原因码分支的 agent 在
+    # INDEX_MISSING 答复里找不到任何字段；契约记载的原因码是 MISSING_INDEX。
+    result = await tool_cls(over_budget_root).execute(arguments)
+
+    assert (
+        result["error_code"],
+        result["completeness"],
+        result["completeness_reason"],
+        result["completeness_reasons"],
+    ) == ("INDEX_MISSING", "unknown", "MISSING_INDEX", ["MISSING_INDEX"])
+
+
+@pytest.mark.asyncio
 async def test_callers_without_index_within_budget_still_parses(tmp_path) -> None:
     root = _write_project(tmp_path, 2)
     result = await CodeGraphCallersTool(root).execute({"function_name": "target"})
