@@ -17,6 +17,21 @@
   `django`, so a helper called `path(...)` elsewhere is not reported. The
   route cache scanner version goes to 3, so `routes.db` rows written by the
   broken scanner (an empty list for every `urls.py`) are dropped.
+- `index action=cache mode=index` no longer fails when a source file is
+  locked or unreadable (#1654). On Windows, a file another process held locked
+  made a bare `PermissionError` escape from `index_source_stream.hash_source_at`
+  while source hashes were bound. If the open itself failed instead, the whole
+  run was aborted as `INDEX_GENERATION_SOURCE_CHANGED` with a misleading
+  `modified:` entry. The file is now a per-file failure, for example
+  `{"file": "m1.py", "status": "error", "reason": "source unreadable:
+  PermissionError [Errno 13] Permission denied"}`, and the other files are
+  indexed as usual. Publication follows the existing rules for read failures:
+  a refresh of a published index is not published (`publication_reason:
+  "INDEX_NOT_PUBLISHABLE"`) and the previous index stays active, while a first
+  index publishes the other files. The indexer never reuses an old row for the
+  locked file, so no published index claims the file is fresh. Certification
+  scans still count an unreadable file as unsafe, and a file that vanished
+  between discovery and the read is still a source change.
 - `nav action=callers`: a target that is not indexed but is defined in a
   source file the index excludes (for example `tests/golden/corpus_python.py`,
   excluded by the built-in `tests/golden/corpus_*` pattern, or a file matched
