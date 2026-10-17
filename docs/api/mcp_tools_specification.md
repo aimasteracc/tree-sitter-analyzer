@@ -1724,6 +1724,8 @@ Modes: `record` (new entry), `get` (by id), `search` (substring + verdict + path
 
 Modes: `all` (list all routes), `summary` (stats), `lookup` (find handler for URL), `prefix` (routes matching prefix), `file` (routes in a specific file).
 
+Django (files that import `django`): `path("items/", views.items)` and `re_path(r"^x/$", view)` yield one route per verb (GET/POST/PUT/DELETE/PATCH), because Django patterns do not restrict the method; `url_pattern` is the pattern as declared (no leading `/`, raw-string prefix removed). `path("api/", include("api.urls"))` mounts a prefix rather than declaring an endpoint, so it yields one record with `http_method: "INCLUDE"` and the included target as `handler_name` (`"<inline>"` for an inline list). Prefixes are not composed into the included module's patterns.
+
 **CLI Parity**: `uv run python -m tree_sitter_analyzer --detect-routes --detect-routes-mode all --format json`
 
 ### 50. modification_guard
