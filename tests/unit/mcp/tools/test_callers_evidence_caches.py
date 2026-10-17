@@ -275,6 +275,32 @@ def test_walk_cache_propagates_and_never_memoizes_failures(tmp_path) -> None:
     assert len(cache) == 0
 
 
+def test_candidate_walker_reports_exactly_the_directories_it_listed(tmp_path) -> None:
+    from tree_sitter_analyzer.index_candidate_walker import walk_candidate_entries
+
+    (tmp_path / "pkg" / "deep").mkdir(parents=True)
+    (tmp_path / "skipped").mkdir()
+    (tmp_path / ".hidden").mkdir()
+    (tmp_path / ".gitignore").write_text("skipped/\n")
+    (tmp_path / "pkg" / "deep" / "a.py").write_text("a\n")
+    visited: list[str] = []
+
+    found = list(
+        walk_candidate_entries(
+            str(tmp_path),
+            excluded_dir_names=frozenset(),
+            entry_budget=1000,
+            path_byte_budget=1 << 20,
+            discovery_seconds=None,
+            budget_error="X",
+            visited_dirs=visited,
+        )
+    )
+
+    assert sorted(visited) == ["", "pkg", os.path.join("pkg", "deep")]
+    assert str(tmp_path / "pkg" / "deep" / "a.py") in found
+
+
 # --------------------------------------------------------------------------- #
 # index_identity / query_cost / live probe
 # --------------------------------------------------------------------------- #
@@ -423,8 +449,9 @@ async def _warm(root: Path, name: str) -> dict:
     """调用两次让缓存生效，并确认它们确实被填充。"""
     await _callers(root, name)
     result = await _callers(root, name)
-    assert len(project_walk_cache.WALK_CACHE) >= 1
-    assert len(evidence_file_cache.FILE_CACHE) >= 1
+    # 一个遍历起点（项目根）；两个已索引 Python 文件的字节。
+    assert len(project_walk_cache.WALK_CACHE) == 1
+    assert len(evidence_file_cache.FILE_CACHE) == 2
     return result
 
 
