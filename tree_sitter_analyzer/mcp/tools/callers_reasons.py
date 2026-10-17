@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from .callers_absence import ACCESSOR_REASON, NON_CALL_REASON
 from .callers_absence import UNCHECKED_REASON as NON_CALL_UNCHECKED_REASON
 from .callers_decorators import DECORATED_REASON
+from .callers_excluded import EXCLUDED_REASON
 from .callers_target import NOT_DEFINED_REASON
 from .callers_target import UNCHECKED_REASON as TARGET_UNCHECKED_REASON
 from .relation_freshness import (
@@ -59,6 +60,7 @@ COMPLETENESS_REASONS = frozenset(
         UNKNOWN_REASON,
         MISSING_REASON,
         NOT_DEFINED_REASON,
+        EXCLUDED_REASON,
         TARGET_UNCHECKED_REASON,
         UNINDEXED_REASON,
         UNINDEXED_UNCHECKED_REASON,

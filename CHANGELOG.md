@@ -4,6 +4,35 @@
 
 ### Fixed
 
+- `nav action=callers`: a target that is not indexed but is defined in a
+  source file the index excludes (for example `tests/golden/corpus_python.py`,
+  excluded by the built-in `tests/golden/corpus_*` pattern, or a file matched
+  by a configured `exclude_patterns` entry) now answers with the new reason
+  code `SYMBOL_IN_EXCLUDED_FILE` instead of `SYMBOL_NOT_DEFINED` (#1635,
+  dogfood rounds 6 and 7). The reply names the file, line and exclude pattern
+  (`excluded_definition`) and says that a refresh will not index the file:
+  read it directly, or rebuild without that exclude (`index action=full
+  no_default_excludes=true` for a default pattern). The answer stays
+  `unknown`. If the walk or a read fails, the reply stays `SYMBOL_NOT_DEFINED`.
+- `nav action=callers Base.hook`: a `self.hook()` call inside `Base` now
+  counts as a caller of `Base.hook` even when a subclass overrides `hook`
+  (#1635, dogfood round 6). Before, both same-file candidates were only
+  "possible", so `Base.hook` had 0 callers. Every override in a subclass of
+  the caller's class (found through `extends` edges, across files) is now a
+  possible dispatch target of that call, so `Sub.hook` and `Leaf.hook` answer
+  `unknown` (`NAME_ONLY_INBOUND`). This closes a false `complete, 0` for an
+  override in another file that is reached only through the base class's
+  `self.hook()`. A `super().hook()` call is no longer bound to the caller's
+  own `hook`.
+- `index action=cache mode=index` (CLI `--ast-cache --ast-cache-mode index`)
+  now reports `published: false` and `publication_reason:
+  "INDEX_NOT_PUBLISHABLE"` when a run with non-stable failures (for example
+  read or write errors on a nearly full disk) is not published (#1635,
+  dogfood round 6). The `summary_line` gains `published=false
+  reason=INDEX_NOT_PUBLISHABLE` and `next_step` says that `symbols=` is the
+  count of the previous, still-active index. Before, the reply carried
+  neither, so the old count (`symbols=69316`) looked like the result of the
+  refresh. Forced rebuilds now report `published` too.
 - `edit action=impact` (CLI `--change-impact --change-impact-full`) no longer
   returns 70-224 KB for a multi-file diff (#1617, dogfood R3/R4). The full
   response now summarizes its bulk lists by default. On this repo's 10-file

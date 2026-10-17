@@ -135,6 +135,7 @@ the gates that re-check an edge-level `complete` and appear alone.
 | `SOURCE_SCOPE_UNKNOWN` | The source could not be revalidated against the index. | Refresh the index. |
 | `MISSING_INDEX` | No index backs the answer. | Build the index. |
 | `SYMBOL_NOT_DEFINED` | The exact target is not defined in the index (`close_matches`). | Check spelling / qualification. |
+| `SYMBOL_IN_EXCLUDED_FILE` | The target is not indexed, but it is defined in a source file the index excludes by a default or configured exclude pattern (`excluded_definition`: `file`, `line`, `exclude_pattern`, `default_exclude`). A refresh never indexes that file. | Read the file directly, or rebuild without that exclude (`index action=full no_default_excludes=true` for a default pattern). |
 | `SYMBOL_DEFINITION_UNCHECKED` | The target's definition could not be checked. | Retry. |
 | `UNINDEXED_SOURCE_FILES` | Same-language files exist that the index has not seen. | Refresh the index. |
 | `UNINDEXED_SOURCE_UNCHECKED` | The project walk for unindexed files failed. | Retry. |

@@ -117,10 +117,11 @@ def test_the_harvest_is_not_vacuous() -> None:
     明确更新计数；宽松下界会让采集范围大幅缩水后仍然通过。
     #1562（2026-10-14）：next_step 改用 `edit action=refactor` 门面写法，
     旧工具名 `refactoring_suggestions` 标记消失，计数 16 → 15。
+    #1635：未发布刷新的 next_step 新增 2 个字符串常量，计数 171 → 173。
     """
     harvest = _next_step_strings()
-    assert len(harvest) == 171, (
-        f"expected 171 next_step string constants, harvested {len(harvest)}; "
+    assert len(harvest) == 173, (
+        f"expected 173 next_step string constants, harvested {len(harvest)}; "
         "update this constant if the phrasing changed, otherwise the AST walk is "
         "no longer matching how next_step is assigned"
     )

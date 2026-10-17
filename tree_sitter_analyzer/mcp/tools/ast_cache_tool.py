@@ -21,7 +21,11 @@ from ...incremental_sync import IncrementalSync
 from ...indexing_limits import normalize_index_max_files
 from ...utils import setup_logger
 from ._validators import invalid_enum_error
-from .ast_cache_index_view import project_index_files, project_removed_files
+from .ast_cache_index_view import (
+    project_index_files,
+    project_publication,
+    project_removed_files,
+)
 from .base_tool import BaseMCPTool, _canonicalize_verdict, mirror_summary_line
 
 logger = setup_logger(__name__)
@@ -619,6 +623,9 @@ class ASTCacheTool(BaseMCPTool):
             )
             result, summary_line, next_step = project_removed_files(
                 result, summary_line, next_step, force=bool(force)
+            )
+            result, summary_line, next_step = project_publication(
+                result, summary_line, next_step, symbols=symbols
             )
         return _build_ast_cache_envelope("index", result, summary_line, next_step)
 

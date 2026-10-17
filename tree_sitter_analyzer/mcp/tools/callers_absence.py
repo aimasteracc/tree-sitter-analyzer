@@ -38,6 +38,7 @@ from .callers_decorators import (
     registered_hint,
     registering_decorator,
 )
+from .callers_excluded import EXCLUDED_REASON, excluded_definition, excluded_hint
 from .callers_import_bindings import mask_import_bindings
 from .callers_target import NOT_DEFINED_REASON, not_defined_hint, resolve_target
 from .callers_target import UNCHECKED_REASON as TARGET_UNCHECKED_REASON
@@ -182,6 +183,13 @@ def _assess_absence(
         "close_matches": list(target.close_matches),
     }
     if not target.defined:
+        if target.defined is False:
+            # #1635：定义在被索引排除的文件里时，刷新无济于事，须点名文件与规则。
+            excluded = excluded_definition(cache, project_root, func_name, file_path)
+            if excluded is not None:
+                fields["excluded_definition"] = excluded.to_dict()
+                hint = excluded_hint(func_name, excluded)
+                return AbsenceVerdict("unknown", EXCLUDED_REASON, hint, fields)
         reason = (
             TARGET_UNCHECKED_REASON if target.defined is None else NOT_DEFINED_REASON
         )

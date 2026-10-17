@@ -23,6 +23,7 @@ from .cached_edge_resolution import CachedEdgeResolver
 from .cached_reexport_binding import PackageReexportBinder
 from .call_graph_binding import RefIdentity, pick_caller_ref, ref_identity
 from .call_graph_possible import PossibleEdgesMixin
+from .call_graph_self_dispatch import SubclassIndex
 from .callee_resolution import CalleeResolver
 from .constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
 from .constants import JS_TS_MODULE_EXTS
@@ -808,6 +809,7 @@ class CachedCallGraph(CallGraph):
             functions_by_file=self._func_by_file,
             file_import_map=file_import_map,
             reexport_binder=PackageReexportBinder(self._cache),
+            subclasses=SubclassIndex(self._cache),
         )
         if self._callee_resolver is None:
             self._callee_resolver = edge_resolver.callee_resolver
@@ -818,7 +820,7 @@ class CachedCallGraph(CallGraph):
                 continue
 
             # #1559/#1560：优先采用持久化解析，模糊的裸名匹配不再扇出成边。
-            targets = edge_resolver.resolve(edge, caller_file)
+            targets = edge_resolver.resolve(edge, caller_file, caller_ref.receiver)
             self._add_possible_edges(caller_ref, targets.possible)
             for callee_ref in targets.certain:
                 self._callees[caller_ref].append(callee_ref)
