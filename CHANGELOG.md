@@ -61,6 +61,32 @@
   count of the previous, still-active index. Before, the reply carried
   neither, so the old count (`symbols=69316`) looked like the result of the
   refresh. Forced rebuilds now report `published` too.
+- Same-name definitions keep their identity (#1621).
+  - Callee resolution no longer merges two same-name definitions in one file
+    that have no receiver, for example two nested `inner` functions or two
+    conditional `handler` definitions. Before, the candidate key was
+    `qualified_name()` (`file:name`), so a bare call reached one candidate
+    with inflated confidence: the index wrote `project` for it, and the cached
+    call graph made it a certain edge. Both definitions now stay candidates,
+    so the call is ambiguous: `unknown` in the index, `possible` in the graph.
+    Indexes built before this change keep the old resolution until they are
+    re-indexed (`index action=full`).
+  - The cached call graph no longer makes a receiver call whose type is
+    unknown (`obj.hook()`) a certain caller of every same-file method of that
+    name (`A.hook` and `B.hook`). Such a call is now a possible caller of
+    each, so `nav action=callers A.hook` answers `unknown`
+    (`NAME_ONLY_INBOUND`) instead of listing `drive` as a caller of both. A
+    receiver that names the class (`A.hook()`) still binds to `A.hook` only,
+    and `self` / `cls` / `super()` keep the #1635 dispatch.
+  - **Visualization node-id scheme change.** `codegraph_visualize` /
+    `viz action=graph` node ids (Mermaid node ids and Sigma `key` /
+    `source` / `target`) were `<file>::<name>` with non-alphanumerics replaced
+    by `_`, so same-name functions, including methods on different classes,
+    rendered as one node. Ids are now `<file>::<Owner>.<name>@<line>`, sanitized
+    the same way (`tools.py::A.execute@2` becomes `tools_py__A_execute_2`;
+    functions without an owner use `<file>::<name>@<line>`). Labels are now
+    `<basename>::<Owner>.<name>:<line>`. Clients that stored or matched the old
+    ids must re-derive them.
 - `edit action=impact` (CLI `--change-impact --change-impact-full`) no longer
   returns 70-224 KB for a multi-file diff (#1617, dogfood R3/R4). The full
   response now summarizes its bulk lists by default. On this repo's 10-file

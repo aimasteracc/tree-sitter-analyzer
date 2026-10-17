@@ -245,8 +245,8 @@ class CodeGraphVisualizeTool(BaseMCPTool):
                 break
             for caller in cg.caller_refs_of(func):
                 pair = (
-                    _safe_node_id(caller.name, caller.file_path),
-                    _safe_node_id(func.name, func.file_path),
+                    _ref_node_id(caller),
+                    _ref_node_id(func),
                 )
                 if pair not in seen and len(seen) < max_edges:
                     seen.add(pair)
@@ -269,15 +269,15 @@ class CodeGraphVisualizeTool(BaseMCPTool):
 
         funcs = cg.function_refs_in_file(normalized)
         for func in funcs:
-            fid = _safe_node_id(func.name, func.file_path)
+            fid = _ref_node_id(func)
             for callee in cg.callee_refs_of(func):
-                cid = _safe_node_id(callee.name, callee.file_path)
+                cid = _ref_node_id(callee)
                 pair = (fid, cid)
                 if pair not in seen and len(seen) < max_edges:
                     seen.add(pair)
                     edges.append((func, callee))
             for caller in cg.caller_refs_of(func):
-                cid = _safe_node_id(caller.name, caller.file_path)
+                cid = _ref_node_id(caller)
                 pair = (cid, fid)
                 if pair not in seen and len(seen) < max_edges:
                     seen.add(pair)
@@ -318,11 +318,11 @@ class CodeGraphVisualizeTool(BaseMCPTool):
                 continue
             visited.add(ident)
 
-            cur_id = _safe_node_id(current.name, current.file_path)
+            cur_id = _ref_node_id(current)
 
             if d < depth:
                 for callee in cg.callee_refs_of(current):
-                    cid = _safe_node_id(callee.name, callee.file_path)
+                    cid = _ref_node_id(callee)
                     pair = (cur_id, cid)
                     if pair not in seen_edges and len(seen_edges) < max_edges:
                         seen_edges.add(pair)
@@ -330,7 +330,7 @@ class CodeGraphVisualizeTool(BaseMCPTool):
                         queue.append((callee, d + 1))
 
                 for caller in cg.caller_refs_of(current):
-                    cid = _safe_node_id(caller.name, caller.file_path)
+                    cid = _ref_node_id(caller)
                     pair = (cid, cur_id)
                     if pair not in seen_edges and len(seen_edges) < max_edges:
                         seen_edges.add(pair)
@@ -342,13 +342,27 @@ class CodeGraphVisualizeTool(BaseMCPTool):
         return edges, truncated
 
 
+def _ref_node_id(ref: FunctionRef) -> str:
+    """#1621: one node per definition — owner class and definition line included."""
+    return _safe_node_id(
+        ref.name, ref.file_path, getattr(ref, "receiver", None), ref.start_line
+    )
+
+
+def _ref_label(ref: FunctionRef) -> str:
+    """Label naming the definition the node stands for (``file::Owner.name:line``)."""
+    return _short_label(
+        ref.name, ref.file_path, getattr(ref, "receiver", None), ref.start_line
+    )
+
+
 def _mermaid_edge(edge: tuple[FunctionRef, FunctionRef]) -> tuple[str, str, str, str]:
     source, target = edge
     return (
-        _safe_node_id(source.name, source.file_path),
-        _short_label(source.name, source.file_path),
-        _safe_node_id(target.name, target.file_path),
-        _short_label(target.name, target.file_path),
+        _ref_node_id(source),
+        _ref_label(source),
+        _ref_node_id(target),
+        _ref_label(target),
     )
 
 
@@ -359,8 +373,8 @@ def _build_sigma_graph(edges: list[tuple[FunctionRef, FunctionRef]]) -> dict[str
     seen_edges: set[tuple[str, str]] = set()
 
     for source, target in edges:
-        source_key = _safe_node_id(source.name, source.file_path)
-        target_key = _safe_node_id(target.name, target.file_path)
+        source_key = _ref_node_id(source)
+        target_key = _ref_node_id(target)
         node_refs.setdefault(source_key, source)
         node_refs.setdefault(target_key, target)
         edge_key = (source_key, target_key)
@@ -415,7 +429,7 @@ def _sigma_node_attributes(ref: FunctionRef) -> dict[str, Any]:
     file_path = str(getattr(ref, "file_path", ""))
     name = str(getattr(ref, "name", ""))
     return {
-        "label": _short_label(name, file_path),
+        "label": _ref_label(ref),
         "kind": "method" if receiver else "function",
         "file_path": file_path,
         "symbol": name,
