@@ -579,6 +579,7 @@ def _update_call_edge_resolution(
                SET callee_symbol_id = ?, callee_resolution = 'project',
                    callee_resolved_file = ?
                WHERE kind = 'calls'
+                 AND callee_resolution <> 'annotated_receiver'
                  AND file_path = ?
                  AND caller_name = ?
                  AND caller_line = ?
@@ -659,7 +660,10 @@ def _call_is_resolved(edge: dict[str, Any]) -> bool:
     resolved_file = str(edge.get("callee_resolved_file") or "")
     if resolution == "stdlib":
         return True
-    return resolution in {"local", "project"} and bool(resolved_file)
+    # RFC-0038：注解绑定的边已有确定目标，第二遍不得按名字改绑。
+    return resolution in {"local", "project", "annotated_receiver"} and bool(
+        resolved_file
+    )
 
 
 def _is_obvious_external(

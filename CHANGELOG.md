@@ -13,7 +13,10 @@
     `@property` return annotation, `self.x = T(...)`, or `self.x = <annotated
     parameter>`;
   - the return annotation of the project function that produced the receiver
-    (`store = project_store(...)` with `-> GenerationStore`, across modules).
+    (`store = project_store(...)` with `-> GenerationStore`, across modules);
+  - a module-level singleton (`REGISTRY = IndexSnapshotRegistry(...)`) used as
+    `REGISTRY.publish()`, `owner.REGISTRY.publish()` or, after
+    `from m import REGISTRY`, as `REGISTRY.publish()`.
 
   `Optional[T]` / `T | None` count as `T`. A union of two classes, generics
   and unannotated or rebound receivers are not attributed. Such callers carry

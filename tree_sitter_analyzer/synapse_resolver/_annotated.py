@@ -132,6 +132,8 @@ class AnnotationIndex:
     returns: dict[int, tuple[str, str, str | None]] = field(default_factory=dict)
     kinds: dict[int, str] = field(default_factory=dict)
     lines: dict[int, int] = field(default_factory=dict)
+    #: file -> {module-level name: receiver hint} (``symbols_json.module_types``)
+    module_types: dict[str, dict[str, dict[str, Any]]] = field(default_factory=dict)
 
 
 def annotation_index(ctx: ResolverContext) -> AnnotationIndex:
@@ -164,9 +166,13 @@ def _load_index(conn: Any, index: AnnotationIndex) -> None:
         "SELECT file_path, symbols_json FROM ast_index WHERE language = 'python'"
     ):
         try:
-            symbols = json.loads(symbols_json).get("symbols", [])
+            payload = json.loads(symbols_json)
+            symbols = payload.get("symbols", [])
         except (TypeError, ValueError, AttributeError):
             continue
+        module_types = payload.get("module_types")
+        if isinstance(module_types, dict) and module_types:
+            index.module_types[file_path] = module_types
         for symbol in symbols:
             kind = symbol.get("kind")
             name = str(symbol.get("name") or "")
@@ -175,9 +181,7 @@ def _load_index(conn: Any, index: AnnotationIndex) -> None:
                     str(parent) for parent in symbol.get("parents") or []
                 ]
             elif kind in ("function", "method") and symbol.get("return_type"):
-                found = by_position.get(
-                    (file_path, name, int(symbol.get("line") or 0))
-                )
+                found = by_position.get((file_path, name, int(symbol.get("line") or 0)))
                 if found is not None:
                     index.returns[found] = (
                         str(symbol["return_type"]),
@@ -273,10 +277,47 @@ def _factory_symbol(
     return resolved.callee_symbol_id if resolved is not None else None
 
 
+def _module_variable(
+    hint: dict[str, Any], caller_file: str, ctx: ResolverContext
+) -> tuple[str, dict[str, Any]] | None:
+    """(defining file, its hint) for ``alias.NAME`` / an imported ``NAME``."""
+    if "module_attr" in hint:
+        alias, _, name = str(hint["module_attr"]).partition(".")
+        target = ctx.import_alias_target.get(caller_file, {}).get(alias)
+    else:
+        name = str(hint.get("imported") or "")
+        target, name = _imported_name_target(caller_file, name, ctx)
+    for _ in range(_MAX_REEXPORT_HOPS):
+        if not target or not name:
+            return None
+        found = annotation_index(ctx).module_types.get(target, {}).get(name)
+        if isinstance(found, dict):
+            return target, found
+        target, name = _imported_name_target(target, name, ctx)  # re-export
+    return None
+
+
+def _imported_name_target(
+    file_path: str, name: str, ctx: ResolverContext
+) -> tuple[str | None, str]:
+    for entry in ctx.imports_by_file.get(file_path, []):
+        if entry.local_name == name and not entry.is_star:
+            target = ctx.name_to_source.get(file_path, {}).get(name)
+            if target and target != file_path:
+                return target, entry.alias_of or name
+            return None, name
+    return None, name
+
+
 def _hint_class(
     hint: dict[str, Any], caller_file: str, caller_name: str, ctx: ResolverContext
 ) -> tuple[str, str] | None:
     index = annotation_index(ctx)
+    if "module_attr" in hint or "imported" in hint:
+        located = _module_variable(hint, caller_file, ctx)
+        if located is None:
+            return None
+        return _hint_class(located[1], located[0], "", ctx)
     if "type" in hint:
         name = normalize_annotation(str(hint["type"]))
         if name is None or name == "Self":
@@ -328,14 +369,12 @@ def resolve_annotated_receiver(
     if bound is None:
         return None
     file_path, sym_id, owner = bound
-    declared = (
-        normalize_annotation(str(hint["type"])) if "type" in hint else cls[1]
-    ) or cls[1]
     binding = {
         "source": "return"
         if "returns_of" in hint and hint.get("source") == "local"
         else str(hint.get("source") or ""),
-        "type": declared.rsplit(".", 1)[-1],
+        # The resolved class, so an aliased import (`as GS`) still names it.
+        "type": cls[1],
         "type_file": cls[0],
         "owner": owner,
         "line": annotation_index(ctx).lines.get(sym_id, 0),

@@ -10,8 +10,9 @@ from .receiver_hints import (
     Hint,
     call_receiver_hint,
     class_attribute_hints,
-    function_receiver_hints,
+    function_scope_hints,
 )
+from .receiver_module_hints import ModuleHints, module_call_hint, module_hints
 
 _COMMENT_NODE_TYPES: dict[str, frozenset[str]] = {
     "python": frozenset(["comment"]),
@@ -538,7 +539,9 @@ def walk_tree(node: Any, source: str, language: str) -> tuple[list[dict], list[d
     calls: list[dict[str, Any]] = []
     fixture_types = _collect_fixture_types(node, source, language)
     hint_scope = (
-        _ReceiverHintScope(attributes=class_attribute_hints(node))
+        _ReceiverHintScope(
+            attributes=class_attribute_hints(node), module=module_hints(node)
+        )
         if language == "python"
         else None
     )
@@ -561,10 +564,26 @@ class _ReceiverHintScope:
     """RFC-0038: receiver hints visible to the calls of one Python function."""
 
     attributes: dict[str, dict[str, Hint]]
+    module: ModuleHints | None = None
     function: dict[str, Hint] = field(default_factory=dict)
+    #: Names bound by the enclosing function scopes: they shadow module names.
+    shadowed: frozenset[str] = frozenset()
 
     def for_function(self, func_node: Any) -> _ReceiverHintScope:
-        return _ReceiverHintScope(self.attributes, function_receiver_hints(func_node))
+        hints, bound = function_scope_hints(func_node)
+        return _ReceiverHintScope(
+            self.attributes, self.module, hints, self.shadowed | bound
+        )
+
+    def hint_for(
+        self, receiver: str | None, enclosing_class: str | None
+    ) -> Hint | None:
+        hint = call_receiver_hint(
+            receiver, self.function, self.attributes, enclosing_class
+        )
+        if hint is None and receiver:
+            hint = module_call_hint(receiver, self.module, self.shadowed)
+        return hint
 
 
 # Python tree-sitter right-hand-side node types that indicate a builtin
@@ -796,9 +815,7 @@ def _extract_recursive(
                     call_info["full_name"] = f"{cls}.{call_info['name']}"
             if hint_scope is not None and "receiver_type" not in call_info:
                 # RFC-0038：注解给出的接收者类型，交给 Synapse 解析。
-                hint = call_receiver_hint(
-                    recv, hint_scope.function, hint_scope.attributes, enclosing_class
-                )
+                hint = hint_scope.hint_for(recv, enclosing_class)
                 if hint is not None:
                     call_info["receiver_hint"] = hint
             # Embed branch context in the call dict so edge metadata can carry it.

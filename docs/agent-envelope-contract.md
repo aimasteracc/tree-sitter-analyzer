@@ -149,7 +149,7 @@ the gates that re-check an edge-level `complete` and appear alone.
 
 A caller entry whose call was attributed only through the receiver's annotated
 type carries `resolution_kind: "annotated_receiver"`, plus `receiver_type`,
-`type_source` (`param` / `local` / `attribute` / `return`) and `confidence`
+`type_source` (`param` / `local` / `attribute` / `return` / `module`) and `confidence`
 (`0.8`). Example: `store.publish()` where `store: GenerationStore`, or
 `store = project_store()` with `-> GenerationStore`. Such an edge counts as
 resolved only for the method it is bound to. For every other method of that

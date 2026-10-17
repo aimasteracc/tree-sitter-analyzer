@@ -231,6 +231,11 @@ def _decide(scope: _Scope, name: str) -> Hint | None:
 
 def function_receiver_hints(func_node: Any) -> dict[str, Hint]:
     """Receiver name -> hint for one Python ``function_definition``."""
+    return function_scope_hints(func_node)[0]
+
+
+def function_scope_hints(func_node: Any) -> tuple[dict[str, Hint], frozenset[str]]:
+    """(receiver hints, every name the function binds) for one function."""
     scope = _Scope()
     _collect_parameters(func_node.child_by_field_name("parameters"), scope)
     _walk_scope(func_node.child_by_field_name("body"), scope)
@@ -240,7 +245,7 @@ def function_receiver_hints(func_node: Any) -> dict[str, Hint]:
         hint = _decide(scope, name)
         if hint is not None:
             hints[name] = hint
-    return hints
+    return hints, frozenset(names | scope.poisoned)
 
 
 # ---------------------------------------------------------------------------

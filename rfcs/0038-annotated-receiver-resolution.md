@@ -6,7 +6,8 @@
 - **Last updated**: 2026-10-18
 - **Tracking issue**: #1618
 - **Affected source paths** (pin them — reviewers watch for drift here):
-  - `tree_sitter_analyzer/receiver_hints.py` (new: extractor-side hint collection)
+  - `tree_sitter_analyzer/receiver_hints.py`, `tree_sitter_analyzer/receiver_module_hints.py` (new: extractor-side hint collection)
+  - `tree_sitter_analyzer/cache/extraction.py`, `tree_sitter_analyzer/cache/unresolved.py`
   - `tree_sitter_analyzer/function_extraction.py` (attaches hints to call sites)
   - `tree_sitter_analyzer/cache/call_edges.py`, `tree_sitter_analyzer/cache/write.py` (persist hints)
   - `tree_sitter_analyzer/synapse_resolver/_annotated.py` (new: resolution)
@@ -19,9 +20,12 @@
 ## Summary
 
 Resolve a method call `x.m()` to a project method when the type of `x` is
-fixed by an annotation the source already states: a parameter annotation, an
-annotated local, a `self.x` attribute annotation or assignment, or the return
-annotation of the function that produced `x`. An edge resolved this way gets a
+fixed by what the source already states. The sources are:
+- a parameter annotation;
+- an annotated local;
+- a `self.x` attribute annotation or assignment;
+- a module-level singleton;
+- the return annotation of the function that produced `x`. An edge resolved this way gets a
 new resolution kind, `annotated_receiver`, with its type source and a fixed
 confidence. It adds a caller to the method the annotation names. It never
 removes an unresolved site from any other method's completeness check, so it
@@ -81,8 +85,22 @@ receiver name. The rules, in precedence order:
      `self.a = T(...)` (a constructor), `self.a = p` where `p` is a parameter
      of that method annotated `T`, or `self.a = f(...)` (a factory, as in rule 2).
 
-An existing constructor binding (`x = T(...)`, RFC-0002) keeps its current
-path. Its callee is rewritten to `T.m` and resolves as `project`.
+4. **Module-level name.** A module-level name gets a hint when every
+   top-level binding agrees on one type: an annotation, a constructor
+   `NAME = T(...)`, or a factory call. `None` is ignored, and no function may
+   rebind the name through `global`. The hint applies to three call shapes:
+   - `NAME.m()` in the defining module, when no enclosing function binds `NAME`;
+   - `alias.NAME.m()` after `import pkg.mod as alias`;
+   - `NAME.m()` after `from pkg.mod import NAME`.
+
+   For the second and third shapes, the extractor records only where to look.
+   The defining module's hints are persisted as `symbols_json.module_types`, and
+   Synapse resolves them there, following re-exports. Imports from stdlib
+   modules are skipped. This covers singletons such as
+   `REGISTRY = IndexSnapshotRegistry(...)` used as `owner.REGISTRY.publish(...)`.
+
+An existing local constructor binding (`x = T(...)`, RFC-0002) keeps its
+current path. Its callee is rewritten to `T.m` and resolves as `project`.
 
 **Scope and shadowing are conservative.** A name gets no hint if it is:
 - bound by `global` / `nonlocal` / `del`;
@@ -134,7 +152,7 @@ The Synapse UPDATE writes:
 | `callee_resolution` | `annotated_receiver` |
 | `callee_symbol_id` | the method's symbol row |
 | `callee_resolved_file` | the method's file |
-| `metadata.receiver_binding` | `{"source": "param"\|"local"\|"attribute"\|"return", "type": "<declared type text>", "owner": "<class owning the method>", "line": <method definition line>, "confidence": 0.8}` |
+| `metadata.receiver_binding` | `{"source": "param"\|"local"\|"attribute"\|"return"\|"module", "type": "<declared type text>", "owner": "<class owning the method>", "line": <method definition line>, "confidence": 0.8}` |
 
 `nav callers` entries for such an edge carry `resolution_kind:
 "annotated_receiver"`, `receiver_type`, `type_source` and `confidence`.
@@ -176,8 +194,8 @@ override) stays non-complete because of it.
 
 ### 5. Re-index and versioning
 
-Hints are new extractor output, stored in edge `metadata`. There is no schema
-change. `_AST_CACHE_EXTRACTOR_VERSION` goes from 39 to 40 (`ast_cache.py` and
+Hints are new extractor output: in edge `metadata` and, for module-level
+names, in `symbols_json.module_types`. There is no schema change. `_AST_CACHE_EXTRACTOR_VERSION` goes from 39 to 40 (`ast_cache.py` and
 `cache/indexer.py`), so the next refresh re-extracts every file indexed by
 older code. Until then, old rows have no hint and resolve as before, so they
 can only be less complete, never wrongly complete. A cross-file edge is not
@@ -225,9 +243,11 @@ fields.
 `tests/unit/test_annotated_receivers_1618.py`, on indexed fixtures, through
 `CodeGraphCallersTool`:
 
-- each source (parameter, annotated local, `self.x: T`, `self.x = T(...)`,
-  `self.x = param`, property, factory return annotation across modules,
-  `Optional[T]`) adds the caller, with `resolution_kind` and `type_source`;
+- each source adds the caller, with `resolution_kind` and `type_source`:
+  - parameter, annotated local and `Optional[T]`;
+  - `self.x: T`, `self.x = T(...)`, `self.x = param` and a property;
+  - a factory return annotation across modules;
+  - a module singleton (same module, `alias.NAME`, `from m import NAME`);
 - negative controls: a wrong-type receiver is not attributed; a union of two
   classes is not attributed; an unannotated or rebound receiver stays
   unattributed; an override in a subclass is not `complete` because of an edge

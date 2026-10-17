@@ -269,4 +269,11 @@ def _extract_call_edges(
 
     if tree is not None and language in _COMMENT_NODE_TYPES:
         symbols["comments"] = extract_comments_from_body(tree.root_node, language)
+    if tree is not None and language == "python":
+        # RFC-0038：模块级变量的接收者类型，供跨文件 `alias.NAME.m()` 解析。
+        from ..receiver_module_hints import module_hints
+
+        variables = module_hints(tree.root_node).variables
+        if variables:
+            symbols["module_types"] = variables
     return extract_call_edges(tree, source_code, language)

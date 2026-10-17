@@ -319,3 +319,104 @@ def _function_hints(source: str) -> dict:
 )
 def test_function_receiver_hints(source: str, expected: dict) -> None:
     assert _function_hints(source) == expected
+
+
+_HOLDER = (
+    "from registry import IndexSnapshotRegistry\n\n"
+    "REGISTRY = IndexSnapshotRegistry()\n\n\n"
+    "def local_use(entry):\n"
+    "    REGISTRY.publish(entry)\n\n\n"
+    "def shadowed_use(REGISTRY, entry):\n"
+    "    REGISTRY.publish(entry)\n"
+)
+_CLIENT = (
+    "import holder\n"
+    "from holder import REGISTRY\n\n\n"
+    "def via_alias(entry):\n"
+    "    holder.REGISTRY.publish(entry)\n\n\n"
+    "def via_import(entry):\n"
+    "    REGISTRY.publish(entry)\n"
+)
+
+
+@pytest.mark.asyncio
+async def test_module_level_singleton_receivers(tmp_path: Path) -> None:
+    # `REGISTRY = IndexSnapshotRegistry()`：同模块、`alias.REGISTRY`、`from m import REGISTRY`。
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    (tmp_path / "registry.py").write_text(_REGISTRY, encoding="utf-8")
+    (tmp_path / "holder.py").write_text(_HOLDER, encoding="utf-8")
+    (tmp_path / "client.py").write_text(_CLIENT, encoding="utf-8")
+    # 第二个 `publish`：未注解的接收者不能凭“项目里唯一的同名方法”绑定。
+    (tmp_path / "other.py").write_text(
+        "class Other:\n    def publish(self, entry):\n        return entry\n",
+        encoding="utf-8",
+    )
+    indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
+        {"mode": "full", "max_files": 10}
+    )
+    assert indexed["published"] is True
+
+    result = await _callers(str(tmp_path), "IndexSnapshotRegistry.publish")
+
+    callers = _by_name(result)
+    assert {name: callers[name]["type_source"] for name in callers} == {
+        "local_use": "module",
+        "via_alias": "module",
+        "via_import": "module",
+    }
+    # 负对照：参数 `REGISTRY` 遮蔽模块变量，仍未解析，答复不是普查。
+    assert result["completeness"] != "complete"
+
+
+def _module(source: str):
+    import tree_sitter
+    import tree_sitter_python
+
+    from tree_sitter_analyzer.receiver_module_hints import module_hints
+
+    parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_python.language()))
+    return module_hints(parser.parse(source.encode("utf-8")).root_node)
+
+
+def test_module_hints_shapes_and_controls() -> None:
+    from tree_sitter_analyzer.receiver_module_hints import module_call_hint
+
+    module = _module(
+        "import os\n"
+        "import pkg.owner as owner\n"
+        "from pkg import THING\n"
+        "from json import decoder\n"
+        "REG = Registry()\n"
+        "TYPED: Store = make()\n"
+        "MADE = build()\n"
+        "MIXED = build()\n"
+        "MIXED = other()\n"
+        "LAZY = None\n"
+        "LAZY = Registry()\n"
+        "MOVED = Registry()\n"
+        "def reset():\n"
+        "    global MOVED\n"
+        "    MOVED = None\n"
+    )
+
+    assert module.variables == {
+        "REG": {"source": "module", "type": "Registry"},
+        "TYPED": {"source": "module", "type": "Store"},
+        "MADE": {"source": "module", "returns_of": "build"},
+        "LAZY": {"source": "module", "type": "Registry"},
+    }
+    none: frozenset[str] = frozenset()
+    assert module_call_hint("REG", module, none) == module.variables["REG"]
+    assert module_call_hint("REG", module, frozenset({"REG"})) is None
+    assert module_call_hint("THING", module, none) == {
+        "source": "module",
+        "imported": "THING",
+    }
+    assert module_call_hint("owner.REGISTRY", module, none) == {
+        "source": "module",
+        "module_attr": "owner.REGISTRY",
+    }
+    assert module_call_hint("os.path", module, none) is None
+    assert module_call_hint("decoder", module, none) is None
+    assert module_call_hint("MOVED", module, none) is None
