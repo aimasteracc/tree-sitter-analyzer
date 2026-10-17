@@ -84,7 +84,9 @@ def test_coverage_suites_dump_stuck_test_stacks() -> None:
 
     assert len(coverage_steps) == 2
     for body in coverage_steps:
-        assert body.count("-o faulthandler_timeout=180") == 1
+        # 硬看门狗取代仅转储的 faulthandler_timeout：卡死须快速失败并带栈。
+        assert body.count("--hang-timeout=120") == 1
+        assert "faulthandler_timeout" not in body
     pr_step = coverage_steps[0]
     assert re.search(r"(?m)^      timeout-minutes:\s*15\s*$", pr_step)
     assert "--durations=30" in pr_step

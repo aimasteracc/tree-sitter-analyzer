@@ -138,6 +138,33 @@ def _python_app_framework(source: str) -> str:
     return "unknown"
 
 
+# #1638: route-free Python files used to be parsed and walked twice anyway,
+# which made a whole-repo scan cost ~30 s under coverage. Each pattern below is
+# a necessary condition of one scanner, so a file matching none of them cannot
+# yield a route and need not be parsed:
+#   - ``@x.route(`` (scan_flask_decorators) has ``.route(`` in its decorator
+#     text, which is a substring of the file;
+#   - ``@x.get(`` shortcuts need a flask or fastapi import
+#     (``_python_app_framework`` on the same text);
+#   - Django needs a call whose function is the bare identifier ``path`` or
+#     ``re_path``; only whitespace, line continuations and comments can sit
+#     between that identifier and its ``(``. Every alternative of the gap
+#     group starts with a different character and a comment must run to its
+#     line end, so the pattern stays linear (no backtracking blow-up on a
+#     banner of ``#`` characters).
+_PY_ROUTE_DECORATOR_HINT_RE = re.compile(r"\.\s*route\s*\(")
+_PY_DJANGO_CALL_HINT_RE = re.compile(r"(?<!\w)(?:re_)?path(?:\s|\\|#[^\r\n]*[\r\n])*\(")
+
+
+def python_source_may_declare_routes(source: str) -> bool:
+    """Return False only when no Python route scanner can match ``source``."""
+    return bool(
+        _PY_ROUTE_DECORATOR_HINT_RE.search(source)
+        or _PY_DJANGO_CALL_HINT_RE.search(source)
+        or _python_app_framework(source) != "unknown"
+    )
+
+
 def _python_source_text(root: Any) -> str:
     """Decode the root node's source. Returns an empty string on failure."""
     try:
