@@ -4,6 +4,13 @@
 
 ### Fixed
 
+- The no-index reply of `nav action=callers`, `callees` and `caller_tree`
+  (`error_code: INDEX_MISSING`, for repos over the 200-file on-the-fly parse
+  budget) now declares `completeness: "unknown"`, `completeness_reason:
+  "MISSING_INDEX"` and `completeness_reasons: ["MISSING_INDEX"]`, as
+  documented in `docs/agent-envelope-contract.md` (#1644, dogfood round 7).
+  Before, it carried no completeness field, so an agent branching on the
+  reason code found nothing. `error_code` is unchanged.
 - `nav action=callers` (CLI `--callers`): a non-empty caller list can now be
   `complete`, and only when it passes the same checks as an absence (#1643,
   dogfood round 7). Before, 31 of 34 sampled called module-level functions

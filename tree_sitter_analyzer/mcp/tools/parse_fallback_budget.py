@@ -26,6 +26,7 @@ from typing import Any
 from ...call_graph import SUPPORTED_EXTS
 from ...constants import EXCLUDE_DIRS
 from ._response_builder import build_response
+from .relation_freshness import MISSING_REASON
 
 #: 允许现场解析的最大源文件数；超过即返回 INDEX_MISSING（见模块文档的实测依据）。
 PARSE_FALLBACK_MAX_FILES = 200
@@ -88,6 +89,11 @@ def index_missing_response(
         error_code="INDEX_MISSING",
         data_source="none",
         index_missing=True,
+        # #1644：没有索引就没有答案，按契约声明 unknown 与原因码 MISSING_INDEX；
+        # error_code 保持既有的 INDEX_MISSING，供已按它分支的调用方使用。
+        completeness="unknown",
+        completeness_reason=MISSING_REASON,
+        completeness_reasons=[MISSING_REASON],
         source_file_count=file_count,
         parse_fallback_max_files=PARSE_FALLBACK_MAX_FILES,
         next_step=next_step,
