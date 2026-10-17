@@ -448,7 +448,11 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # `target.publish` 这类接收者未知的调用可能指向任何同名方法。
         count_name = func_name.rpartition(".")[2] if is_qualified else func_name
         unresolved_inbound = (
-            cache.count_unresolved_callers(count_name, file_path, bound_targets)
+            cache.count_unresolved_callers(
+                count_name,
+                file_path,
+                **({"bound_targets": bound_targets} if bound_targets else {}),
+            )
             if cache is not None
             else None
         )

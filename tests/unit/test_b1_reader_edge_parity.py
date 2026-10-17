@@ -375,6 +375,8 @@ class TestGetCallEdgesParity:
             # #1559/#1560 re-pin：内存调用图需要持久化解析列来绑定目标。
             "callee_resolution",
             "callee_resolved_file",
+            # RFC-0038：注解绑定边的来源（其余边为 None）。
+            "receiver_binding",
         }
         for row in rows:
             assert set(row.keys()) == expected_keys

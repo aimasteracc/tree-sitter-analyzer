@@ -293,12 +293,18 @@ def _function_hints(source: str) -> dict:
     ("source", "expected"),
     [
         ("def f(x: T):\n    x.m()\n", {"x": {"source": "param", "type": "T"}}),
-        ("def f():\n    x: T = g()\n    x.m()\n", {"x": {"source": "local", "type": "T"}}),
+        (
+            "def f():\n    x: T = g()\n    x.m()\n",
+            {"x": {"source": "local", "type": "T"}},
+        ),
         (
             "def f():\n    x = None\n    x = make()\n    x.m()\n",
             {"x": {"source": "local", "returns_of": "make"}},
         ),
-        ("def f():\n    x = await make()\n", {"x": {"source": "local", "returns_of": "make"}}),
+        (
+            "def f():\n    x = await make()\n",
+            {"x": {"source": "local", "returns_of": "make"}},
+        ),
         ("def f(x: T, y: U):\n    global x\n", {"y": {"source": "param", "type": "U"}}),
         ("def f(x: T, xs):\n    return [x for x in xs]\n", {}),
         ("def f(x: T):\n    return lambda x: x.m()\n", {}),

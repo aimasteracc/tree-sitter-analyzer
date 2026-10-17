@@ -175,11 +175,11 @@ def _load_index(conn: Any, index: AnnotationIndex) -> None:
                     str(parent) for parent in symbol.get("parents") or []
                 ]
             elif kind in ("function", "method") and symbol.get("return_type"):
-                sym_id = by_position.get(
+                found = by_position.get(
                     (file_path, name, int(symbol.get("line") or 0))
                 )
-                if sym_id is not None:
-                    index.returns[sym_id] = (
+                if found is not None:
+                    index.returns[found] = (
                         str(symbol["return_type"]),
                         file_path,
                         symbol.get("class"),
