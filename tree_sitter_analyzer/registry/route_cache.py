@@ -31,7 +31,9 @@ from typing import Any
 #       whitelist (and any future scanner tightening). False positives
 #       like ``apiClient.post('/save', ...)`` slipped through the v1
 #       scanner and never aged out because the file content was stable.
-_SCANNER_VERSION = 2
+#   3 — #1650: the Django scanner read the wrong call field and cached an
+#       empty route list for every ``urls.py``; drop those rows.
+_SCANNER_VERSION = 3
 
 _ROUTE_CACHE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS route_cache (

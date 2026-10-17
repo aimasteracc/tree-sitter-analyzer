@@ -4,6 +4,19 @@
 
 ### Fixed
 
+- `detect_routes` (CLI `--detect-routes`) now finds Django routes (#1650).
+  The Django scanner read the call field `func`, but tree-sitter-python names
+  it `function`, so no `urls.py` ever produced a route even though Django was
+  listed as supported. `path("items/", views.items)` and
+  `re_path(r"^x/$", view)` now yield one route per verb (GET/POST/PUT/DELETE/
+  PATCH; the `r` prefix is stripped from the pattern). `path("api/",
+  include("api.urls"))` is a prefix mount, not an endpoint: it yields one
+  record with `http_method: "INCLUDE"` and `handler_name: "api.urls"`
+  (`"<inline>"` for an inline list); prefixes are not joined onto the
+  included module's patterns. The scanner only runs on files that import
+  `django`, so a helper called `path(...)` elsewhere is not reported. The
+  route cache scanner version goes to 3, so `routes.db` rows written by the
+  broken scanner (an empty list for every `urls.py`) are dropped.
 - `nav action=callers`: a target that is not indexed but is defined in a
   source file the index excludes (for example `tests/golden/corpus_python.py`,
   excluded by the built-in `tests/golden/corpus_*` pattern, or a file matched
