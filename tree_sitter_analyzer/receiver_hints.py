@@ -100,6 +100,8 @@ class _Scope:
         default_factory=lambda: defaultdict(list)
     )
     poisoned: set[str] = field(default_factory=set)
+    #: function-local ``import`` bindings (RFC-0038 module receivers)
+    imports: dict[str, tuple[str, str]] = field(default_factory=dict)
 
     def untyped(self, names: list[str]) -> None:
         for name in names:
@@ -187,7 +189,33 @@ def _visit_binding_node(node: Any, scope: _Scope) -> None:
         if target is not None:
             scope.poisoned.update(_identifiers(target))
     elif kind in ("import_statement", "import_from_statement"):
-        scope.untyped(_identifiers(node))
+        import_bindings(node, scope.imports)
+
+
+def import_bindings(node: Any, imports: dict[str, tuple[str, str]]) -> None:
+    """Record ``local name -> ("module" | "name", module path)`` of an import."""
+    if node.type == "import_statement":
+        for child in node.children:
+            if child.type == "dotted_name":
+                top = _text(child).split(".", 1)[0]
+                imports[top] = ("module", top)
+            elif child.type == "aliased_import":
+                name = child.child_by_field_name("name")
+                alias = child.child_by_field_name("alias")
+                if name is not None and alias is not None:
+                    imports[_text(alias)] = ("module", _text(name))
+        return
+    module = node.child_by_field_name("module_name")
+    module_path = _text(module) if module is not None else ""
+    for index, child in enumerate(node.children):
+        if node.field_name_for_child(index) != "name":
+            continue
+        if child.type == "dotted_name":
+            imports[_text(child)] = ("name", module_path)
+        elif child.type == "aliased_import":
+            alias = child.child_by_field_name("alias")
+            if alias is not None:
+                imports[_text(alias)] = ("name", module_path)
 
 
 def _walk_scope(body: Any, scope: _Scope) -> None:
@@ -234,8 +262,10 @@ def function_receiver_hints(func_node: Any) -> dict[str, Hint]:
     return function_scope_hints(func_node)[0]
 
 
-def function_scope_hints(func_node: Any) -> tuple[dict[str, Hint], frozenset[str]]:
-    """(receiver hints, every name the function binds) for one function."""
+def function_scope_hints(
+    func_node: Any,
+) -> tuple[dict[str, Hint], frozenset[str], dict[str, tuple[str, str]]]:
+    """(hints, names bound other than by import, local import bindings)."""
     scope = _Scope()
     _collect_parameters(func_node.child_by_field_name("parameters"), scope)
     _walk_scope(func_node.child_by_field_name("body"), scope)
@@ -245,7 +275,11 @@ def function_scope_hints(func_node: Any) -> tuple[dict[str, Hint], frozenset[str
         hint = _decide(scope, name)
         if hint is not None:
             hints[name] = hint
-    return hints, frozenset(names | scope.poisoned)
+    local_imports = {
+        name: target for name, target in scope.imports.items() if name not in names
+    }
+    shadowing = names | scope.poisoned | (set(scope.imports) - set(local_imports))
+    return hints, frozenset(shadowing), local_imports
 
 
 # ---------------------------------------------------------------------------

@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .receiver_hints import Hint, _Scope, _visit_binding_node
+from .receiver_hints import Hint, _Scope, _visit_binding_node, import_bindings
 from .synapse_resolver._constants import STDLIB_NAMES_PY
 
 _DEFINITIONS = frozenset({"function_definition", "class_definition"})
@@ -38,31 +38,6 @@ class ModuleHints:
 def _text(node: Any) -> str:
     raw = getattr(node, "text", b"")
     return raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw)
-
-
-def _import_bindings(node: Any, imports: dict[str, tuple[str, str]]) -> None:
-    if node.type == "import_statement":
-        for child in node.children:
-            if child.type == "dotted_name":
-                path = _text(child)
-                imports[path.split(".", 1)[0]] = ("module", path.split(".", 1)[0])
-            elif child.type == "aliased_import":
-                name = child.child_by_field_name("name")
-                alias = child.child_by_field_name("alias")
-                if name is not None and alias is not None:
-                    imports[_text(alias)] = ("module", _text(name))
-        return
-    module = node.child_by_field_name("module_name")
-    module_path = _text(module) if module is not None else ""
-    for index, child in enumerate(node.children):
-        if node.field_name_for_child(index) != "name":
-            continue
-        if child.type == "dotted_name":
-            imports[_text(child)] = ("name", module_path)
-        elif child.type == "aliased_import":
-            alias = child.child_by_field_name("alias")
-            if alias is not None:
-                imports[_text(alias)] = ("name", module_path)
 
 
 def _global_names(root: Any) -> set[str]:
@@ -102,7 +77,7 @@ def module_hints(root: Any) -> ModuleHints:
                     _text(c) for c in params.children if c.type == "identifier"
                 )
         if node.type in ("import_statement", "import_from_statement"):
-            _import_bindings(node, imports)
+            import_bindings(node, imports)
         _visit_binding_node(node, scope)
         stack.extend(node.children)
     scope.poisoned |= _global_names(root)

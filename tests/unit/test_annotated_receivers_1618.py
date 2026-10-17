@@ -335,7 +335,10 @@ _CLIENT = (
     "def via_alias(entry):\n"
     "    holder.REGISTRY.publish(entry)\n\n\n"
     "def via_import(entry):\n"
-    "    REGISTRY.publish(entry)\n"
+    "    REGISTRY.publish(entry)\n\n\n"
+    "def via_local_import(entry):\n"
+    "    import holder as owner\n\n"
+    "    owner.REGISTRY.publish(entry)\n"
 )
 
 
@@ -364,6 +367,7 @@ async def test_module_level_singleton_receivers(tmp_path: Path) -> None:
         "local_use": "module",
         "via_alias": "module",
         "via_import": "module",
+        "via_local_import": "module",
     }
     # 负对照：参数 `REGISTRY` 遮蔽模块变量，仍未解析，答复不是普查。
     assert result["completeness"] != "complete"

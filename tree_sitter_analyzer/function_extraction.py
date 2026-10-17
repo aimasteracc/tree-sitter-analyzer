@@ -570,9 +570,16 @@ class _ReceiverHintScope:
     shadowed: frozenset[str] = frozenset()
 
     def for_function(self, func_node: Any) -> _ReceiverHintScope:
-        hints, bound = function_scope_hints(func_node)
+        hints, bound, local_imports = function_scope_hints(func_node)
+        module = self.module
+        if module is not None and local_imports:
+            # 函数内的 `import pkg.mod as alias` 同样是模块别名（RFC-0038）。
+            module = ModuleHints(module.variables, {**module.imports, **local_imports})
         return _ReceiverHintScope(
-            self.attributes, self.module, hints, self.shadowed | bound
+            self.attributes,
+            module,
+            hints,
+            (self.shadowed - set(local_imports)) | bound,
         )
 
     def hint_for(
