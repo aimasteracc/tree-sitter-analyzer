@@ -1,6 +1,7 @@
 """Unit tests for change-impact MCP execute integration and test-file mapping."""
 
 import asyncio
+import json
 import os
 
 import pytest
@@ -2718,4 +2719,172 @@ def test_strict_scope_rename_into_cache_keeps_visible_source_record(
     ] == [("R", "old.py", ".ast-cache/new.py")]
     registry.close_route_lease(
         str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+    )
+
+
+# ── #1617: edit action=impact 默认摘要保留决策字段，include_details 恢复全量 ──
+
+from tests.unit._impact_summary_support import (  # noqa: E402
+    IMPACT_CHANGED,
+    impact_full_result,
+    run_impact_tool,
+)
+
+# 驱动决策、绝不能被摘要裁剪的顶层字段（#1617）。
+_IMPACT_DECISION_KEYS = (
+    "verdict",
+    "risk_level",
+    "verification_command",
+    "ci_verification_command",
+    "verification_steps",
+    "risk_factors",
+    "constraint_violations",
+    "activation_diagnostic",
+    "queue_ledger",
+    "scope_paths_invalid",
+    "agent_summary",
+    "changed_count",
+    "affected_count",
+    "tests_to_run_count",
+    "tests_to_run_truncated",
+    "changed_symbol_count",
+)
+
+# call_graph_impact 中的计数与过近似信号（#1559 / #1568）。
+_CALL_GRAPH_DECISION_KEYS = (
+    "functions_analyzed",
+    "total_upstream_callers",
+    "possible_upstream_callers",
+    "total_downstream_callees",
+    "high_risk_functions",
+    "high_risk_functions_total",
+)
+
+
+def test_impact_summary_keeps_decision_fields(tmp_path, monkeypatch) -> None:
+    """#1617：默认摘要中每个决策字段与 include_details 响应逐字相同。"""
+    summary = run_impact_tool(tmp_path, monkeypatch)
+    details = run_impact_tool(tmp_path, monkeypatch, include_details=True)
+
+    assert {k: summary.get(k) for k in _IMPACT_DECISION_KEYS} == {
+        k: details.get(k) for k in _IMPACT_DECISION_KEYS
+    }
+    graph, full_graph = summary["call_graph_impact"], details["call_graph_impact"]
+    assert {k: graph[k] for k in _CALL_GRAPH_DECISION_KEYS} == {
+        k: full_graph[k] for k in _CALL_GRAPH_DECISION_KEYS
+    }
+    assert (graph["possible_upstream_callers"], graph["total_upstream_callers"]) == (
+        90,
+        360,
+    )
+
+
+def test_impact_summary_lists_top_functions_with_honest_totals(
+    tmp_path, monkeypatch
+) -> None:
+    """#1617：默认只列 fan_in 最高的 10 个函数，逐函数保留 name_only 计数与总数。"""
+    graph = run_impact_tool(tmp_path, monkeypatch)["call_graph_impact"]
+
+    assert (
+        graph["function_impacts_total"],
+        graph["function_impacts_listed"],
+        graph["function_impacts_truncated"],
+    ) == (30, 5, True)
+    fan_ins = [item["fan_in"] for item in graph["function_impacts"]]
+    assert fan_ins == sorted(fan_ins, reverse=True)
+    # fan_in = 12 + (i * 7) % 30 在 i=17 时取最大值 41（mod_5 的第 3 个函数）。
+    assert graph["function_impacts"][0] == {
+        "name": "func_17",
+        "file": "src/pkg/mod_5.py",
+        "line": 61,
+        "fan_in": 41,
+        "fan_out": 8,
+        "upstream_callers_total": 12,
+        "possible_upstream_callers": 3,
+        "downstream_callees_total": 8,
+    }
+    assert graph["cross_file_callers_by_file"] == dict.fromkeys(IMPACT_CHANGED, 30)
+    assert (
+        graph["affected_function_files_total"],
+        graph["affected_functions_total"],
+        graph["affected_function_files_truncated"],
+    ) == (12, 360, True)
+    assert "cross_file_callers" not in graph
+    assert "affected_functions_by_file" not in graph
+
+
+def test_impact_summary_caps_symbol_lists_and_aliases_commands(
+    tmp_path, monkeypatch
+) -> None:
+    """#1617：符号清单截断并如实计数；与 verification_command 相同的命令只留一份。"""
+    summary = run_impact_tool(tmp_path, monkeypatch)
+
+    assert (
+        len(summary["affected_symbols"]),
+        summary["affected_symbols_total"],
+        summary["affected_symbols_truncated"],
+        summary["affected_symbols_scan_capped"],
+    ) == (10, 200, True, True)
+    # affected_files 的总数取 affected_count（上游列表已截到 50 个）。
+    assert (
+        len(summary["affected_files"]),
+        summary["affected_files_total"],
+        summary["affected_files_truncated"],
+    ) == (10, 12, True)
+    assert "changed_symbols" not in summary
+    assert summary["changed_symbols_omitted"] is True
+    assert summary["command_aliases"] == {
+        "pytest_command": "verification_command",
+        "test_command": "verification_command",
+    }
+    assert "pytest_command" not in summary
+    text = json.dumps(summary, ensure_ascii=False)
+    # 顶层 verification / local 2 处 + verification_steps[0] 1 处 + 摘要
+    # verification_command 1 处；include_details 时另有 pytest / test /
+    # low_impact_focused 3 处。
+    assert text.count(summary["verification_command"]) == 4
+    # 未被文案引用的 focused 子集命令省略并如实列出。
+    assert summary["command_fields_omitted"] == [
+        "focused_test_command",
+        "low_impact_focused_test_command",
+    ]
+    assert (summary["details_included"], summary["details_truncated"]) == (False, True)
+    assert summary["details_next_step"].startswith("pass include_details=true")
+
+
+def test_impact_include_details_restores_full_lists(tmp_path, monkeypatch) -> None:
+    """#1617：include_details=true 是显式 opt-in，返回完整明细与全部命令字段。"""
+    details = run_impact_tool(tmp_path, monkeypatch, include_details=True)
+    full = impact_full_result()
+
+    assert details["call_graph_impact"] == full["call_graph_impact"]
+    assert details["affected_symbols"] == full["affected_symbols"]
+    assert details["changed_symbols"] == full["changed_symbols"]
+    assert details["affected_files"] == full["affected_files"]
+    assert details["pytest_command"] == details["verification_command"]
+    assert details["details_included"] is True
+    assert "command_aliases" not in details
+    assert "details_next_step" not in details
+
+
+def test_impact_include_details_validation_and_cli_twin() -> None:
+    """#1617：include_details 必须是布尔值；CLI --change-impact-include-details 透传。"""
+    import argparse
+
+    import pytest
+
+    from tree_sitter_analyzer.cli.commands.mcp_commands._specs_core import (
+        _CORE_SPECS,
+    )
+    from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
+
+    with pytest.raises(ValueError, match="include_details must be a boolean"):
+        ChangeImpactTool().validate_arguments({"include_details": "yes"})
+    spec = next(s for s in _CORE_SPECS if s.flag_name == "change_impact")
+    args = argparse.Namespace(change_impact_include_details=True)
+    tool_args = spec.build_tool_args(args, "json")
+    # 明细只存在于完整响应，因此 CLI 开关同时关闭 agent_summary_only。
+    assert (tool_args["include_details"], tool_args["agent_summary_only"]) == (
+        True,
+        False,
     )
