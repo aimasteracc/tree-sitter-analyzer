@@ -12,17 +12,38 @@ from ..utils.auto_index_guard import ensure_indexed
 from .index_bound_graph import index_bound_graph, reset_index_bound_graph
 
 
-def safe_node_id(name: str, file_path: str) -> str:
-    """Build a Mermaid-safe node id for call-graph visualization nodes."""
-    raw = f"{file_path}::{name}"
+def safe_node_id(
+    name: str,
+    file_path: str,
+    owner: str | None = None,
+    line: int | None = None,
+) -> str:
+    """Build a Mermaid-safe node id for call-graph visualization nodes.
+
+    #1621: ``file::name`` alone merges same-name functions — methods of two
+    classes in one file, or two nested ``inner`` — into one node.  Callers that
+    hold a definition pass its ``owner`` (class) and definition ``line`` so every
+    definition gets its own node: ``file::Owner.name@line``.
+    """
+    symbol = f"{owner}.{name}" if owner else name
+    raw = f"{file_path}::{symbol}"
+    if line is not None:
+        raw = f"{raw}@{line}"
     return "".join(c if c.isalnum() or c == "_" else "_" for c in raw)
 
 
-def short_label(name: str, file_path: str) -> str:
+def short_label(
+    name: str,
+    file_path: str,
+    owner: str | None = None,
+    line: int | None = None,
+) -> str:
     """Build a compact label that preserves both file and function context."""
     parts = Path(file_path).parts
     short_file = parts[-1] if parts else file_path
-    return f"{short_file}::{name}"
+    symbol = f"{owner}.{name}" if owner else name
+    label = f"{short_file}::{symbol}"
+    return f"{label}:{line}" if line is not None else label
 
 
 def render_call_flowchart(
