@@ -136,9 +136,9 @@ async def test_unresolved_same_name_call_keeps_incomplete(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_importlib_loaded_attribute_call_keeps_name_only(tmp_path) -> None:
+async def test_ambiguous_importlib_attribute_call_keeps_incomplete(tmp_path) -> None:
     # #1643 负对照（第 7 轮 `collector.digest_bytes`）：经 importlib 加载的模块
-    # 上的同名调用无法绑定到目标，只能凭名字匹配，不得宣称 complete。
+    # 上的同名调用无法唯一绑定到目标，记为未解析入边，不得宣称 complete。
     support = (
         "import hashlib\n\n\n"
         "def digest_bytes(data):\n"
@@ -166,9 +166,9 @@ async def test_importlib_loaded_attribute_call_keeps_name_only(tmp_path) -> None
     result = await _callers(root, "digest_bytes")
 
     assert result["completeness"] == "incomplete"
-    # `test_digest` 仅凭同名匹配列出，因此列表只是下界。
+    # `test_digest` 的调用无法唯一绑定，因此列表只是下界。
     assert sorted(c["name"] for c in result["callers"]) == ["bundle", "test_digest"]
-    assert result["completeness_reasons"] == ["NAME_ONLY_INBOUND"]
+    assert result["completeness_reasons"] == ["UNRESOLVED_INBOUND"]
 
 
 @pytest.mark.asyncio
