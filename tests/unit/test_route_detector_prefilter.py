@@ -65,9 +65,10 @@ def test_prefilter_keeps_every_route_form(tmp_path, source, expected):
     ],
 )
 def test_prefilter_keeps_django_call_forms(source):
-    # Prefilter only: scan_django_urls reads the ``func`` field, which
-    # tree-sitter-python names ``function``, so it emits nothing today. The
-    # prefilter must still keep these files for when that scanner works.
+    # Prefilter only: these snippets have no django import, so the scanner
+    # itself skips them (#1650). The prefilter must not be the reason a
+    # Django call form is dropped; the end-to-end Django cases live in
+    # test_route_detector_django.py.
     assert python_source_may_declare_routes(source)
 
 

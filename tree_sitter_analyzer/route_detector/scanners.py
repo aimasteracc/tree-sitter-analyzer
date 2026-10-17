@@ -15,9 +15,10 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, Any
 
+# Django lives in ``django_urls`` (#1650); re-exported for existing importers.
+from .django_urls import scan_django_urls as scan_django_urls
 from .helpers import (
     extract_annotation_value,
-    extract_django_handler,
     extract_template_string,
     find_keyword,
     function_name_after_decorator,
@@ -146,8 +147,9 @@ def _python_app_framework(source: str) -> str:
 #     text, which is a substring of the file;
 #   - ``@x.get(`` shortcuts need a flask or fastapi import
 #     (``_python_app_framework`` on the same text);
-#   - Django needs a call whose function is the bare identifier ``path`` or
-#     ``re_path``; only whitespace, line continuations and comments can sit
+#   - Django (``django_urls.scan_django_urls``) needs a call whose function
+#     is the bare identifier ``path`` or ``re_path`` (``include`` is only
+#     reported as the view argument of one of those); only whitespace, line continuations and comments can sit
 #     between that identifier and its ``(``. Every alternative of the gap
 #     group starts with a different character and a comment must run to its
 #     line end, so the pattern stays linear (no backtracking blow-up on a
@@ -356,56 +358,6 @@ def scan_fastapi_decorators(
                 language="python",
             )
         )
-    return routes
-
-
-def scan_django_urls(
-    root: Any, file_path: str, _source: str, route_info_cls: type
-) -> list[Any]:
-    routes: list[Any] = []
-    for node in walk(root):
-        if node.type != "call":
-            continue
-        func = node.child_by_field_name("func")
-        if func is None:
-            continue
-        func_text = func.text.decode()
-        if func_text not in ("path", "re_path", "include"):
-            continue
-        args = node.child_by_field_name("arguments")
-        if args is None:
-            continue
-        arg_texts = [
-            c.text.decode()
-            for c in args.children
-            if c.type not in (",", "(", ")", "[", "]")
-        ]
-        if func_text == "include":
-            continue
-        if len(arg_texts) < 2:
-            continue
-        url_pattern = unquote(arg_texts[0])
-        handler_name = extract_django_handler(arg_texts[1])
-        methods = ["GET", "POST", "PUT", "DELETE", "PATCH"]
-        kw_node = find_keyword(args, "method")
-        if kw_node:
-            kw_val = kw_node.child_by_field_name("value")
-            if kw_val:
-                methods = parse_methods_list(kw_val.text.decode())
-                if not methods:
-                    methods = ["GET", "POST", "PUT", "DELETE", "PATCH"]
-        for method in methods:
-            routes.append(
-                route_info_cls(
-                    http_method=method.upper(),
-                    url_pattern=url_pattern,
-                    handler_name=handler_name,
-                    file_path=file_path,
-                    line_number=node.start_point[0] + 1,
-                    framework="django",
-                    language="python",
-                )
-            )
     return routes
 
 
