@@ -24,6 +24,7 @@ from typing import Any
 
 from ....ast_cache import ASTCache
 from ....call_graph import CachedCallGraph, CallGraph
+from ....call_graph_possible import NAME_ONLY_MATCH
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,12 @@ class FunctionImpact:
             "line": self.line,
             "fan_in": self.fan_in,
             "fan_out": self.fan_out,
+            # #1617：列表有上限，计数如实报告未截断的跨文件总数与同名匹配数。
+            "upstream_callers_total": len(self.upstream_callers),
+            "possible_upstream_callers": sum(
+                1 for c in self.upstream_callers if c.get("match") == NAME_ONLY_MATCH
+            ),
+            "downstream_callees_total": len(self.downstream_callees),
         }
         if self.upstream_callers:
             d["upstream_callers"] = self.upstream_callers[:_MAX_UPSTREAM]
@@ -77,9 +84,12 @@ class CallGraphImpactResult:
             "possible_upstream_callers": self.total_possible_upstream,
             "total_downstream_callees": self.total_downstream,
             "high_risk_functions": self.high_risk_functions[:20],
+            # #1617：列表有上限时如实给出截断前的总数。
+            "high_risk_functions_total": len(self.high_risk_functions),
             "cross_file_callers": self.cross_file_callers,
             "cross_file_callees": self.cross_file_callees,
             "function_impacts": self.function_impacts[:_MAX_FUNCTIONS_PER_FILE],
+            "function_impacts_total": len(self.function_impacts),
             "affected_functions_by_file": self.affected_functions_by_file,
         }
 

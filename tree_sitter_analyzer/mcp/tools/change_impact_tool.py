@@ -33,6 +33,7 @@ from .utils.change_impact_analysis import (
     ChangeImpactRequest,
     _build_change_impact_result,
 )
+from .utils.change_impact_detail_view import project_impact_details
 from .utils.change_impact_git import (
     _get_changed_files,
     _get_diff_stat,
@@ -112,6 +113,10 @@ class ChangeImpactTool(BaseMCPTool):
             raise ValueError("DIFF_SNAPSHOT_CONFLICTING_ARGUMENTS")
         if "mode" in arguments and arguments["mode"] not in _VALID_MODES:
             raise ValueError("mode must be diff|staged|branch|pr")
+        if "include_details" in arguments and not isinstance(
+            arguments["include_details"], bool
+        ):
+            raise ValueError("include_details must be a boolean")
         if (
             "scope_mode" in arguments
             and arguments["scope_mode"] not in _VALID_SCOPE_MODES
@@ -191,6 +196,7 @@ class ChangeImpactTool(BaseMCPTool):
         # commands don't stall the local machine. CLI uses its own default (#731).
         resource_profile = arguments.get("resource_profile", "local_low_impact")
         agent_summary_only = bool(arguments.get("agent_summary_only", False))
+        include_details = arguments.get("include_details") is True
         capture_diff_snapshot = arguments.get("capture_diff_snapshot") is True
         frozen: dict[str, object] | None = None
         frozen_consumer: Any = None
@@ -271,6 +277,7 @@ class ChangeImpactTool(BaseMCPTool):
                 agent_summary_only,
                 scope_mode=scope_mode,
                 resource_profile=resource_profile,
+                include_details=include_details,
             )
 
         changed_files = _get_changed_files(mode, self.project_root, scope_paths)
@@ -340,6 +347,11 @@ class ChangeImpactTool(BaseMCPTool):
         result = apply_scope_validation(result, scope_paths_invalid)
         if agent_summary_only:
             result = build_agent_summary_only_response(result)
+        else:
+            # #1617：完整响应默认摘要明细列表，include_details=true 恢复全量。
+            result = project_impact_details(
+                result, include_details=include_details
+            )
         result["output_format"] = output_format
         # RFC-0022 P0.5: echo the adapter-owned wire owner version.
         result["action_version"] = EDIT_IMPACT_ACTION_VERSION
@@ -553,6 +565,7 @@ class ChangeImpactTool(BaseMCPTool):
         *,
         scope_mode: str = "report",
         resource_profile: str = "default",
+        include_details: bool = False,
     ) -> dict[str, Any]:
         """Analyze a GitHub PR's diff via gh CLI.
 
@@ -615,6 +628,7 @@ class ChangeImpactTool(BaseMCPTool):
             agent_summary_only=agent_summary_only,
             output_format=output_format,
             scope_mode=scope_mode,
+            include_details=include_details,
         )
 
     @staticmethod

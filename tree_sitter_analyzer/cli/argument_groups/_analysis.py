@@ -248,9 +248,21 @@ def _add_mcp_change_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         default=False,
         help=(
-            "Emit the full 145KB --change-impact envelope (default since "
-            "v1.12: trimmed agent-summary). Use this when you genuinely "
-            "need verification_command, raw_files, raw_test_paths, etc."
+            "Emit the full --change-impact envelope (default since "
+            "v1.12: trimmed agent-summary). Its detail lists are summarized "
+            "to counts plus the top most-impacted items; add "
+            "--change-impact-include-details for the complete lists (#1617)."
+        ),
+    )
+    parser.add_argument(
+        "--change-impact-include-details",
+        action="store_true",
+        default=False,
+        help=(
+            "Emit the full --change-impact envelope with the complete "
+            "call_graph_impact / affected_symbols / changed_symbols / "
+            "affected_files lists and every command field (implies "
+            "--change-impact-full)."
         ),
     )
     parser.add_argument(

@@ -14,6 +14,7 @@ from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 from ....project_graph import BlastRadius, DependencyGraph
 from .call_graph_impact import compute_call_graph_impact
 from .change_impact_cached_graph import load_cached_dependency_graph
+from .change_impact_command_refs import command_ref
 from .change_impact_index_graph import (
     dependency_graph_provenance,
     load_verified_index_graph,
@@ -584,9 +585,11 @@ def _with_local_low_impact_profile(
         if focused_command and focused_command != final_command
         else "local_low_impact_then_ci"
     )
+    # #1617：长命令按字段名引用，不在提示文案里整段重复 ci_verification_command。
     hint = (
         "Run the low-impact local verification command while iterating; "
-        f"keep {final_command} as the CI or queue-boundary verification command."
+        f"keep {command_ref('ci_verification_command', final_command)} as the CI "
+        "or queue-boundary verification command."
     )
     return {
         **strategy,
