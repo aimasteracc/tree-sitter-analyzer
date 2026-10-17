@@ -26,7 +26,7 @@ from collections.abc import Sequence
 from collections.abc import Set as AbstractSet
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from ...discovery_budget import DISCOVERY_SECONDS_PER_ENTRY
@@ -38,6 +38,7 @@ from .callers_decorators import (
     registered_hint,
     registering_decorator,
 )
+from .callers_import_bindings import mask_import_bindings
 from .callers_target import NOT_DEFINED_REASON, not_defined_hint, resolve_target
 from .callers_target import UNCHECKED_REASON as TARGET_UNCHECKED_REASON
 from .relation_freshness import SCOPED_REASON
@@ -128,9 +129,16 @@ def assess_completeness(
         return AbsenceVerdict(
             downgraded, freshness_reason, _freshness_hint(func_name, evidence)
         )
-    if total_callers or not project_root:
+    if not project_root:
         return AbsenceVerdict(completeness)
-    return _assess_absence(cache, project_root, func_name, file_path)
+    # #1643：调用方列表同样须通过这些门才是普查——别名、回调、登记型装饰器、
+    # 未入索引的新文件都可能是列表之外的调用方。有调用方时降级为 incomplete。
+    verdict = _assess_absence(
+        cache, project_root, func_name, file_path, with_callers=bool(total_callers)
+    )
+    if total_callers and verdict.completeness != "complete":
+        return replace(verdict, completeness=downgraded)
+    return verdict
 
 
 def _freshness_gap(evidence: dict[str, Any]) -> str | None:
@@ -154,9 +162,19 @@ def _freshness_hint(func_name: str, evidence: dict[str, Any]) -> str:
 
 
 def _assess_absence(
-    cache: Any, project_root: str, func_name: str, file_path: str | None
+    cache: Any,
+    project_root: str,
+    func_name: str,
+    file_path: str | None,
+    *,
+    with_callers: bool = False,
 ) -> AbsenceVerdict:
-    """0 个调用方：目标已定义、无新文件、访问器与非调用引用都不存在时才保留 complete。"""
+    """目标已定义、无新文件、访问器与非调用引用都不存在时才保留 complete。
+
+    ``with_callers``（#1643）：已有调用方时，未改名的导入行只是绑定，不计为引用。
+    0 调用方时导入行仍计入——``__init__`` 中的再导出可能是仓库外调用的公开 API，
+    “0 个调用方、complete”会被当作可删除的死代码。
+    """
     # #1606：精确（限定）目标必须解析到已索引定义，否则 0 不是不存在的证据。
     target = resolve_target(cache, project_root, func_name, file_path)
     fields: dict[str, Any] = {
@@ -180,7 +198,14 @@ def _assess_absence(
         )
         if new_files_verdict is not None:
             return new_files_verdict
-        sites = _non_call_sites(cache, project_root, bare, declarations, config_files)
+        sites = _non_call_sites(
+            cache,
+            project_root,
+            bare,
+            declarations,
+            config_files,
+            mask_imports=with_callers,
+        )
     fields["non_call_references"] = None if sites is None else len(sites)
     fields["non_call_reference_sites"] = None if sites is None else sites[:_SITES_CAP]
     if declarations and _is_accessor(project_root, declarations, bare):
@@ -302,6 +327,8 @@ def _non_call_sites(
     bare: str,
     declarations: list[tuple[str, int, str]],
     config_files: Sequence[str] = (),
+    *,
+    mask_imports: bool = False,
 ) -> list[dict[str, Any]] | None:
     """同语言已索引文件与配置文件（#1624）中名字的非调用出现位置；超时或读取失败为 None。"""
     languages = sorted({language for _file, _line, language in declarations})
@@ -340,6 +367,8 @@ def _non_call_sites(
     for rel_path, language, data in hits:
         decoded = data.decode("utf-8", "replace")
         text = _strip_comments_and_prose(decoded, language, bare)
+        if mask_imports and language in _PY_LANGUAGES:
+            text = mask_import_bindings(text, bare)
         covered = edge_lines.get(rel_path, frozenset())
         for line in _reference_lines(text, pattern, covered):
             if (rel_path, line) not in declared_lines:

@@ -219,10 +219,10 @@ def test_python_f_string_interpolation_is_kept() -> None:
 
 @pytest.mark.parametrize(
     ("completeness", "callers"),
-    [("unknown", 0), ("incomplete", 3), ("complete", 3)],
+    [("unknown", 0), ("incomplete", 3)],
 )
 def test_only_an_edge_complete_absence_is_rechecked(completeness, callers) -> None:
-    # #1593：非 complete 的答案与非空列表都原样返回，不做额外扫描。
+    # #1593：非 complete 的答案原样返回，不做额外扫描。
     from tree_sitter_analyzer.mcp.tools.callers_absence import assess_completeness
 
     scoped = {"freshness": "unknown", "reason": "SOURCE_REVALIDATION_SCOPED"}
@@ -232,6 +232,19 @@ def test_only_an_edge_complete_absence_is_rechecked(completeness, callers) -> No
         completeness,
         None,
         {},
+    )
+
+
+def test_complete_caller_list_is_rechecked_and_downgrades_to_incomplete() -> None:
+    # #1643：非空列表同样须过复核门；门无法运行时降为 incomplete，不保留 complete。
+    from tree_sitter_analyzer.mcp.tools.callers_absence import assess_completeness
+
+    scoped = {"freshness": "unknown", "reason": "SOURCE_REVALIDATION_SCOPED"}
+    verdict = assess_completeness(object(), ".", "W.f", None, "complete", 3, scoped)
+
+    assert (verdict.completeness, verdict.reason) == (
+        "incomplete",
+        "SYMBOL_DEFINITION_UNCHECKED",
     )
 
 

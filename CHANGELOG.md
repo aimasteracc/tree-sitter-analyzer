@@ -4,6 +4,31 @@
 
 ### Fixed
 
+- `nav action=callers` (CLI `--callers`): a non-empty caller list can now be
+  `complete`, and only when it passes the same checks as an absence (#1643,
+  dogfood round 7). Before, 31 of 34 sampled called module-level functions
+  answered `incomplete` / `UNRESOLVED_IN_DECLARING_FILE`, because unrelated
+  calls in the declaring file (`record.get`, `"\n".join`, `Path(...).resolve`)
+  kept the guard on. In 30 of the 31, the list was already the full set.
+  - The #1596 narrowing (only sites that could name the target, by the same
+    trailing name or by computed dispatch, keep the guard) now runs whatever
+    the caller count.
+  - A non-empty list now goes through the same rechecks as an absence: target
+    defined, unindexed source files, non-call references (aliases, callbacks,
+    string names, config/JSON/notebook hits), accessors and registering
+    decorators. A failed or unrunnable check answers `incomplete` with its
+    reason code. This also closes a gap where a function with one direct
+    call that was also aliased (`issue = obj.method; issue()`), passed as a
+    callback or registered by a decorator answered `complete`.
+  - When the list is non-empty, a plain `from m import name` binding (no `as`)
+    is not counted as a reference; every later use of `name` in that file is
+    still scanned. With 0 callers the import still counts, so a function that
+    is only re-exported from `__init__` never reads as dead code.
+  - Measured on the round-7 sample (175 functions, ground truth from `ast` plus
+    `git grep`, same index, old code vs new): wrong `complete` answers 0 → 0;
+    called functions answered `complete` 19/50 → 42/50 (module-level 3/34 →
+    28/34); truly unreferenced functions answered `complete` 37/37 → 37/37;
+    recall unchanged; median latency 3.13 s → 3.38 s.
 - `nav action=callers` (CLI `--callers`) no longer answers `0 callers,
   complete` when grep would find a reference in a JSON file, a notebook, an
   `exec` string, a template or a doctest (#1633, dogfood round 6). The

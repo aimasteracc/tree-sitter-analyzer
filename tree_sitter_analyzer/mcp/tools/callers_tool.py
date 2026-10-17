@@ -434,9 +434,10 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # grounds. Without it, "this file is not a census" cannot be checked
         # against "this file is a browser asset full of builtin attribute calls".
         excluded_sites = _declaring_file_excluded(cache, func_name, file_path)
-        # #1596：0 调用方时非调用引用门（#1593）会扫描别名与回调，守卫只需计入
-        # 可能点名目标的调用点（同名或计算式分发）；有调用方时保持原守卫。
-        if not total_callers and self.project_root:
+        # #1596 / #1643：非调用引用门（#1593）会扫描别名与回调，守卫只需计入
+        # 可能点名目标的调用点（同名或计算式分发）。该门对有无调用方都运行，
+        # 因此收窄也不再限于 0 调用方。
+        if self.project_root:
             declaring_sites, excluded_sites = narrow_to_target(
                 declaring_sites, excluded_sites, count_name
             )
