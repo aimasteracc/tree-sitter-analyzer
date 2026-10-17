@@ -61,7 +61,14 @@ def text_language(rel_path: str) -> str | None:
 
 def wanted(abs_path: str) -> bool:
     """是否扫描该文件：语言受支持，且 JSON 不超过 ``JSON_MAX_BYTES``。"""
-    language = text_language(abs_path)
+    return wanted_as(abs_path, text_language(abs_path))
+
+
+def wanted_as(abs_path: str, language: str | None) -> bool:
+    """:func:`wanted`，但 ``language`` 已由 :func:`text_language` 算出。
+
+    语言只取决于路径字符串，可以随目录遍历结果一起记忆；JSON 的大小每次重新读取。
+    """
     if language != JSON_LANGUAGE:
         return language is not None
     try:

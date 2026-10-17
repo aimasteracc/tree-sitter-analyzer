@@ -42,6 +42,7 @@ from .callers_excluded import EXCLUDED_REASON, excluded_definition, excluded_hin
 from .callers_import_bindings import mask_import_bindings
 from .callers_target import NOT_DEFINED_REASON, not_defined_hint, resolve_target
 from .callers_target import UNCHECKED_REASON as TARGET_UNCHECKED_REASON
+from .evidence_file_cache import FILE_CACHE
 from .relation_freshness import SCOPED_REASON
 from .unindexed_sources import FILES_CAP as UNINDEXED_FILES_CAP
 from .unindexed_sources import UNCHECKED_REASON as UNINDEXED_UNCHECKED_REASON
@@ -68,6 +69,8 @@ _SITES_NAMED = 3
 _SCAN_DEADLINE_SECONDS = 2.0
 #: 并行读取的线程数。
 _READ_WORKERS = 8
+#: 每个线程分到的块数（块越少调度越省，块越多期限检查越细）。
+_CHUNKS_PER_WORKER = 4
 
 _PY_LANGUAGES = frozenset({"python"})
 _C_LANGUAGES = frozenset(
@@ -385,11 +388,12 @@ def _non_call_sites(
 
 
 def _read_if_contains(path: str, needle: bytes) -> bytes | None:
-    """读取文件；不含 ``needle`` 时返回空串，读取失败返回 None。"""
-    try:
-        with open(path, "rb") as handle:
-            data = handle.read()
-    except OSError:
+    """读取文件；不含 ``needle`` 时返回空串，读取失败返回 None。
+
+    字节经 :data:`FILE_CACHE` 按 stat 证据复用（每次重新 stat，变即重读）。
+    """
+    data = FILE_CACHE.read_bytes(path)
+    if data is None:
         return None
     return data if needle in data else b""
 
@@ -406,29 +410,46 @@ def _files_containing(
     开销主导耗时且会释放 GIL，因此用线程池并行读取。
     """
     hits: list[tuple[str, str, bytes]] = []
+    # dogfood 第 7 轮：逐文件提交 future 的调度开销与（已缓存的）读取相当；
+    # 改为按块提交、块内顺序读取。期限与“任一不可读即 None”的判定不变。
+    size = max(1, -(-len(files) // (_READ_WORKERS * _CHUNKS_PER_WORKER)))
+    chunks = [files[start : start + size] for start in range(0, len(files), size)]
     executor = ThreadPoolExecutor(max_workers=_READ_WORKERS)
     try:
         futures = [
-            executor.submit(
-                _read_if_contains, os.path.join(project_root, rel_path), needle
-            )
-            for rel_path, _language in files
+            executor.submit(_read_chunk, project_root, chunk, needle)
+            for chunk in chunks
         ]
-        for (rel_path, language), future in zip(files, futures, strict=True):
+        for chunk, future in zip(chunks, futures, strict=True):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return None
             try:
-                data = future.result(timeout=remaining)
+                results = future.result(timeout=remaining)
             except FutureTimeout:
                 return None
-            if data is None:
-                return None
-            if data:
-                hits.append((rel_path, language, data))
+            # 块在首个不可读文件处停止，结果可能短于块，因此不用 strict。
+            for (rel_path, language), data in zip(chunk, results, strict=False):
+                if data is None:
+                    return None
+                if data:
+                    hits.append((rel_path, language, data))
     finally:
         executor.shutdown(wait=False, cancel_futures=True)
     return hits
+
+
+def _read_chunk(
+    project_root: str, chunk: list[tuple[str, str]], needle: bytes
+) -> list[bytes | None]:
+    """顺序读取一块文件；遇到不可读文件即停止（其后的结果已不再需要）。"""
+    results: list[bytes | None] = []
+    for rel_path, _language in chunk:
+        data = _read_if_contains(os.path.join(project_root, rel_path), needle)
+        results.append(data)
+        if data is None:
+            break
+    return results
 
 
 def _strip_comments_and_prose(text: str, language: str, bare: str | None = None) -> str:
@@ -502,13 +523,10 @@ def _is_accessor(
     """声明是否为访问器：Python 访问器装饰器，或 JS/TS 的 get/set 访问器。"""
     getter = re.compile(r"\b(?:get|set)\s+" + re.escape(bare) + r"\s*\(")
     for rel_path, line, _language in declarations:
-        try:
-            with open(
-                os.path.join(project_root, rel_path), encoding="utf-8", errors="replace"
-            ) as handle:
-                source = handle.read().splitlines()
-        except OSError:
+        text = FILE_CACHE.read_text(os.path.join(project_root, rel_path))
+        if text is None:
             continue
+        source = text.splitlines()
         if not 0 < line <= len(source):
             continue
         if getter.search(source[line - 1]):
