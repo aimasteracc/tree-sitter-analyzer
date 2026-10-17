@@ -175,6 +175,16 @@ def parse_and_write(
     }
 
 
+def _unreadable_reason(entry: Any) -> str | None:
+    """Reason a selected entry could not be read when its source was bound (#1654)."""
+    from ..index_source_stream import unreadable_source_reason
+
+    fingerprint = entry.fingerprint
+    if fingerprint is None:
+        return None
+    return unreadable_source_reason(fingerprint.content_hash)
+
+
 def walk_and_partition(
     cache: Any,
     conn: sqlite3.Connection,
@@ -264,6 +274,12 @@ def walk_and_partition(
                 stats["files"].append(
                     make_error_entry(entry.rel_path, entry.reason or "stat failed")
                 )
+                continue
+            unreadable = _unreadable_reason(entry)
+            if unreadable is not None:
+                # #1654：发布绑定时读不到（如被锁定）：非稳定的单文件失败，不复用旧行。
+                stats["errors"] += 1
+                stats["files"].append(make_error_entry(entry.rel_path, unreadable))
                 continue
 
             change_reason = (

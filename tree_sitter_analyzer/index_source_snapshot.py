@@ -22,7 +22,7 @@ from .index_source_scope import (
     parse_source_scope_descriptor,
     validate_full_index_source_scope,
 )
-from .index_source_stream import hash_source_at, opened_entry_matches
+from .index_source_stream import hash_source_or_unsafe, opened_entry_matches
 from .indexing_limits import KNOWLEDGE_INDEX_MAX_FILES
 from .languages.lang_extension_map import EXT_TO_LANG
 
@@ -460,7 +460,7 @@ def _inventory(
                         if not with_content:
                             rows.add((rel, _metadata_marker(info), language))
                             continue
-                        marker, content_hash, clean = hash_source_at(
+                        marker, content_hash, clean = hash_source_or_unsafe(
                             directory_fd,
                             name,
                             info,

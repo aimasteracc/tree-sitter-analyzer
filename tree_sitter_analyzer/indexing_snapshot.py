@@ -20,6 +20,7 @@ from .index_candidate_walker import (
     CandidateDiscoveryError as _CandidateDiscoveryError,
 )
 from .index_candidate_walker import walk_candidate_entries as _walk_candidate_entries
+from .index_source_stream import unreadable_source_reason
 from .indexing_limits import normalize_index_max_files
 from .source_oracle import (
     SourceOracleError,
@@ -539,6 +540,8 @@ def changed_since_snapshot(entry: IndexSnapshotEntry) -> str | None:
         fingerprint.mode,
     ) or (
         bool(fingerprint.content_hash)
+        # #1654：不可读标记不是摘要；该文件由索引器按单文件失败报告。
+        and unreadable_source_reason(fingerprint.content_hash) is None
         and current.content_hash != fingerprint.content_hash
     ):
         return "file changed after candidate snapshot"
