@@ -34,8 +34,14 @@ def walk_candidate_entries(
     discovery_seconds: float | None,
     budget_error: str,
     start_relative: str = "",
+    visited_dirs: list[str] | None = None,
 ) -> Iterable[str]:
-    """Yield non-directories while charging every entry before filtering."""
+    """Yield non-directories while charging every entry before filtering.
+
+    ``visited_dirs`` (when given) receives the relative path of every directory
+    actually listed, root first, so a caller can bind a memoized result to the
+    exact set of directory listings it was derived from.
+    """
     started = time.monotonic()
     entry_count = 0
     path_bytes = 0
@@ -58,6 +64,7 @@ def walk_candidate_entries(
             path_byte_budget,
             (started, discovery_seconds),
             budget_error,
+            visited_dirs,
         )
         return
 
@@ -80,6 +87,8 @@ def walk_candidate_entries(
                 getattr(root_info, "st_mode", 0),
             )
             scanners.append((os.scandir(root_fd), root_fd, scan_relative))
+            if visited_dirs is not None:
+                visited_dirs.append(scan_relative)
             root_fd = None  # the scanner frame owns it now
         except OSError as exc:
             raise CandidateDiscoveryError(_DISCOVERY_ERROR) from exc
@@ -156,6 +165,8 @@ def walk_candidate_entries(
                 project_root, rel_path, ignore_rules.get(parent_rel, [])
             )
             scanners.append((child_scanner, child_fd, rel_path))
+            if visited_dirs is not None:
+                visited_dirs.append(rel_path)
         # Enumeration through the pinned descriptor is authoritative only while
         # the caller-visible pathname still names that exact directory.  A
         # rename/replacement must not let an old empty root certify a new tree.
@@ -229,6 +240,7 @@ def _walk_path_entries(
     path_byte_budget: int,
     budget: tuple[float, float | None],
     budget_error: str,
+    visited_dirs: list[str] | None = None,
 ) -> Iterable[str]:
     """Non-POSIX fallback; secure snapshot capture is unsupported on this path."""
     entry_count = 0
@@ -237,6 +249,8 @@ def _walk_path_entries(
     try:
         try:
             scanners.append((os.scandir(scan_root), scan_relative))
+            if visited_dirs is not None:
+                visited_dirs.append(scan_relative)
         except OSError as exc:
             raise CandidateDiscoveryError(_DISCOVERY_ERROR) from exc
         while scanners:
@@ -289,6 +303,8 @@ def _walk_path_entries(
                     project_root, rel_path, ignore_rules.get(parent_rel, [])
                 )
                 scanners.append((child_scanner, rel_path))
+                if visited_dirs is not None:
+                    visited_dirs.append(rel_path)
     finally:
         for scanner, _rel in reversed(scanners):
             scanner.close()

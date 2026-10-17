@@ -19,8 +19,11 @@ from __future__ import annotations
 import fnmatch
 import os
 import sqlite3
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
+
+from .project_walk_cache import WALK_CACHE
 
 #: 存在尚未入索引的同语言源码文件。
 UNINDEXED_REASON = "UNINDEXED_SOURCE_FILES"
@@ -69,8 +72,7 @@ def project_files(
         CandidateDiscoveryError,
         walk_candidate_entries,
     )
-    from ...project_graph import _language_from_ext
-    from .absence_text_kinds import wanted
+    from .absence_text_kinds import wanted_as
 
     try:
         conn = cache.get_conn()
@@ -87,22 +89,36 @@ def project_files(
         for extra in _EXTRA_ROOTS
         if os.path.isdir(os.path.join(project_root, extra))
     ]
+    excluded_dir_names = frozenset(EXCLUDE_DIRS)
+    entry_budget = _ENTRY_BUDGET
+    path_byte_budget = _PATH_BYTE_BUDGET
     try:
         for start in starts:
-            for abs_path in walk_candidate_entries(
+
+            def walk(visited: list[str], start: str = start) -> Iterable[str]:
+                return walk_candidate_entries(
+                    project_root,
+                    excluded_dir_names=excluded_dir_names,
+                    entry_budget=entry_budget,
+                    path_byte_budget=path_byte_budget,
+                    discovery_seconds=None,
+                    budget_error=UNCHECKED_REASON,
+                    start_relative=start,
+                    visited_dirs=visited,
+                )
+
+            # dogfood 第 7 轮：遍历按目录 / 规则文件的 lstat 证据记忆，证据变即重走。
+            walked = WALK_CACHE.walk(
                 project_root,
-                excluded_dir_names=frozenset(EXCLUDE_DIRS),
-                entry_budget=_ENTRY_BUDGET,
-                path_byte_budget=_PATH_BYTE_BUDGET,
-                discovery_seconds=None,
-                budget_error=UNCHECKED_REASON,
-                start_relative=start,
+                (excluded_dir_names, entry_budget, path_byte_budget),
+                start,
+                walk,
+            )
+            for abs_path, rel_path, ext_language, text_kind in _classified(
+                project_root, walked, excludes
             ):
-                source = _language_from_ext(abs_path) in languages
-                if not source and not wanted(abs_path):
-                    continue
-                rel_path = os.path.relpath(abs_path, project_root).replace("\\", "/")
-                if any(fnmatch.fnmatch(rel_path, pattern) for pattern in excludes):
+                source = ext_language in languages
+                if not source and not wanted_as(abs_path, text_kind):
                     continue
                 if not source:
                     config.append(rel_path)
@@ -111,6 +127,45 @@ def project_files(
     except (CandidateDiscoveryBudgetExceeded, CandidateDiscoveryError, OSError):
         return None
     return ProjectFiles(sorted(unindexed), sorted(config))
+
+
+#: 一次遍历结果的路径分类：(abs_path, rel_path, 扩展名语言, 文本扫描语言)。
+_Classified = tuple[tuple[str, str, str | None, str | None], ...]
+#: ``_classified`` 的记忆：键含遍历结果对象本身，遍历重走即换新对象。
+_CLASSIFIED_MEMO: dict[
+    tuple[str, int, frozenset[str]], tuple[tuple[str, ...], _Classified]
+] = {}
+_CLASSIFIED_MEMO_MAX = 8
+
+
+def _classified(
+    project_root: str, walked: tuple[str, ...], excludes: frozenset[str]
+) -> _Classified:
+    """遍历结果中未被 exclude 模式排除的路径及其只取决于路径字符串的分类。
+
+    相对路径、扩展名语言、文本扫描语言与 exclude 匹配都是路径字符串的纯函数，
+    因此与遍历结果一起记忆；JSON 大小等磁盘状态仍由调用方每次读取。
+    """
+    from ...project_graph import _language_from_ext
+    from .absence_text_kinds import text_language
+
+    key = (project_root, id(walked), excludes)
+    cached = _CLASSIFIED_MEMO.get(key)
+    if cached is not None and cached[0] is walked:
+        return cached[1]
+    rows: list[tuple[str, str, str | None, str | None]] = []
+    for abs_path in walked:
+        rel_path = os.path.relpath(abs_path, project_root).replace("\\", "/")
+        if any(fnmatch.fnmatch(rel_path, pattern) for pattern in excludes):
+            continue
+        rows.append(
+            (abs_path, rel_path, _language_from_ext(abs_path), text_language(abs_path))
+        )
+    classified = tuple(rows)
+    if len(_CLASSIFIED_MEMO) >= _CLASSIFIED_MEMO_MAX:
+        _CLASSIFIED_MEMO.pop(next(iter(_CLASSIFIED_MEMO)))
+    _CLASSIFIED_MEMO[key] = (walked, classified)
+    return classified
 
 
 def effective_excludes(conn: Any) -> frozenset[str]:
