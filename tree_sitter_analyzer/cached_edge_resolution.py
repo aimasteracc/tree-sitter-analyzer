@@ -22,11 +22,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from .call_graph_self_dispatch import (
+    OWN_INSTANCE_QUALIFIERS,
+    override_candidates,
+    own_class_target,
+)
 from .callee_resolution import CalleeResolver
 
 if TYPE_CHECKING:
     from .cached_reexport_binding import PackageReexportBinder
     from .call_graph import FunctionRef
+    from .call_graph_self_dispatch import SubclassIndex
 
 #: 持久化解析已确定为非项目目标的取值（RFC-0004/0005/0007）。
 _NON_PROJECT_RESOLUTIONS = frozenset({"builtin", "stdlib", "external"})
@@ -34,6 +40,8 @@ _NON_PROJECT_RESOLUTIONS = frozenset({"builtin", "stdlib", "external"})
 _PROJECT_RESOLUTIONS = frozenset({"project", "local"})
 #: 指向调用者自身实例 / 类的接收者：唯一的全局候选（如 mixin 方法）可以绑定。
 _SELF_QUALIFIERS = frozenset({"self", "cls", "this", "super", "super()"})
+#: ``super`` 接收者：指向基类，而不是外围类自己的方法（#1635）。
+_SUPER_QUALIFIERS = frozenset({"super", "super()"})
 
 
 @dataclass(frozen=True)
@@ -58,9 +66,12 @@ class CachedEdgeResolver:
         functions_by_file: dict[str, list[FunctionRef]],
         file_import_map: dict[str, dict[str, str]],
         reexport_binder: PackageReexportBinder | None = None,
+        subclasses: SubclassIndex | None = None,
     ) -> None:
         self._functions_by_file = functions_by_file
+        self._functions_by_name = functions_by_name
         self._reexport_binder = reexport_binder
+        self._subclasses = subclasses
         self._resolver = CalleeResolver(
             functions_by_name=functions_by_name,
             functions_by_file=functions_by_file,
@@ -72,8 +83,55 @@ class CachedEdgeResolver:
         """底层的裸名解析器（与 :class:`CallGraph` 共用）。"""
         return self._resolver
 
-    def resolve(self, edge: dict[str, Any], caller_file: str) -> EdgeTargets:
-        """返回 ``edge`` 的确定目标与模糊候选。"""
+    def resolve(
+        self, edge: dict[str, Any], caller_file: str, caller_class: str | None = None
+    ) -> EdgeTargets:
+        """返回 ``edge`` 的确定目标与模糊候选。
+
+        ``caller_class`` 为调用方的外围类（#1635）：``self.m()`` 绑定到它自己的
+        ``m``，其子类的覆写记为可能目标。
+        """
+        targets = self._static_targets(edge, caller_file)
+        full_name = str(edge.get("callee_full") or "") or str(
+            edge.get("callee_name") or ""
+        )
+        qualifier, base_name = _split_qualifier(full_name)
+        if not caller_class:
+            return targets
+        if qualifier in _SUPER_QUALIFIERS:
+            # ``super().m()`` 从不调用外围类自己的 ``m``。
+            return EdgeTargets(
+                certain=[r for r in targets.certain if r.receiver != caller_class],
+                possible=[r for r in targets.possible if r.receiver != caller_class],
+            )
+        if qualifier not in OWN_INSTANCE_QUALIFIERS:
+            return targets
+        return self._self_dispatch(targets, base_name, qualifier, caller_class)
+
+    def _self_dispatch(
+        self, targets: EdgeTargets, base_name: str, qualifier: str, caller_class: str
+    ) -> EdgeTargets:
+        """#1635：外围类自己的方法是确定目标，其余同名候选与子类覆写是可能目标。"""
+        certain, possible = list(targets.certain), list(targets.possible)
+        if len(certain) != 1:
+            own = own_class_target(certain + possible, qualifier, caller_class)
+            if own is not None:
+                possible = [ref for ref in certain + possible if ref != own]
+                certain = [own]
+        if self._subclasses is not None:
+            for ref in override_candidates(
+                self._subclasses,
+                self._functions_by_name,
+                base_name,
+                qualifier,
+                caller_class,
+            ):
+                if ref not in certain and ref not in possible:
+                    possible.append(ref)
+        return EdgeTargets(certain=certain, possible=possible)
+
+    def _static_targets(self, edge: dict[str, Any], caller_file: str) -> EdgeTargets:
+        """按持久化解析与本地 / import / 全局兜底给出目标（与调用方类无关）。"""
         callee_name = str(edge.get("callee_name") or "")
         full_name = str(edge.get("callee_full") or "") or callee_name
         qualifier, base_name = _split_qualifier(full_name)
