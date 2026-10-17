@@ -90,7 +90,10 @@ def project_impact_details(
         truncated = _cap_list(projected, "affected_symbols", symbols) or truncated
     files = result.get("affected_files")
     if isinstance(files, list):
-        truncated = _cap_list(projected, "affected_files", files) or truncated
+        # 上游已把 affected_files 截到 50 个；总数以 affected_count 为准。
+        count = result.get("affected_count")
+        total = count if isinstance(count, int) else len(files)
+        truncated = _cap_list(projected, "affected_files", files, total) or truncated
     if "changed_symbols" in result:
         # file_impacts 已为每个改动文件注入前 10 个符号与 symbol_count，
         # changed_symbol_count 保留总数；完整清单只在 include_details 时返回。
@@ -116,13 +119,16 @@ def project_impact_details(
     return projected
 
 
-def _cap_list(projected: dict[str, Any], key: str, items: list[Any]) -> bool:
+def _cap_list(
+    projected: dict[str, Any], key: str, items: list[Any], total: int | None = None
+) -> bool:
     """把 ``key`` 列表截到上限并写入如实计数，返回是否截断。"""
     listed = items[:IMPACT_DETAIL_CAP]
+    full = len(items) if total is None else max(total, len(items))
     projected[key] = listed
-    projected[f"{key}_total"] = len(items)
+    projected[f"{key}_total"] = full
     projected[f"{key}_listed"] = len(listed)
-    projected[f"{key}_truncated"] = len(items) > len(listed)
+    projected[f"{key}_truncated"] = full > len(listed)
     return bool(projected[f"{key}_truncated"])
 
 

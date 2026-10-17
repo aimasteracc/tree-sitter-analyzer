@@ -941,6 +941,12 @@ def test_impact_summary_caps_symbol_lists_and_aliases_commands(
         summary["affected_symbols_truncated"],
         summary["affected_symbols_scan_capped"],
     ) == (10, 200, True, True)
+    # affected_files 的总数取 affected_count（上游列表已截到 50 个）。
+    assert (
+        len(summary["affected_files"]),
+        summary["affected_files_total"],
+        summary["affected_files_truncated"],
+    ) == (10, 12, True)
     assert "changed_symbols" not in summary
     assert summary["changed_symbols_omitted"] is True
     assert summary["command_aliases"] == {
