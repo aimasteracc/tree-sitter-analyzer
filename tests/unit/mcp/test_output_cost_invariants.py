@@ -637,3 +637,37 @@ def test_impact_response_bytes_pinned_after_dedup() -> None:
     """
     response = _impact_response_with_long_command(60)
     assert len(json.dumps(response, ensure_ascii=False)) == 19334
+
+
+# ── #1617: edit action=impact (diff) — 明细列表默认摘要 ──────────────────────
+#
+# dogfood R3/R4（2026-10-15）：多文件 diff 的完整 impact 响应 104-224 KB，主要来自
+# call_graph_impact（逐函数上下游调用方）、affected_symbols / changed_symbols 符号
+# 清单以及逐字重复的验证命令。修复后默认只给计数与影响最大的前 N 项（如实的
+# *_total / *_truncated），include_details=true 恢复完整列表。
+# 实测（本仓库 git diff 2702997c 3362b590，10 个文件，2026-10-17）：
+#   修复前 73947 B；修复后默认 20529 B，include_details=true 75738 B。
+#   较小的 git diff f7703cf1 3362b590（3 个文件）：44393 B → 9979 B。
+# 决策字段与 include_details 行为测试见 test_change_impact_tool_execute_and_mapping。
+# 预算 IMPACT_SUMMARY_BUDGET_BYTES = 24 KB 的依据见 change_impact_detail_view。
+
+from tests.unit._impact_summary_support import run_impact_tool  # noqa: E402
+
+
+def test_impact_default_summary_smaller_than_details(tmp_path, monkeypatch) -> None:
+    """#1617 差分不变量：默认摘要字节 < include_details 字节，且两者精确钉住。"""
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_detail_view import (
+        IMPACT_SUMMARY_BUDGET_BYTES,
+    )
+
+    summary = run_impact_tool(tmp_path, monkeypatch)
+    details = run_impact_tool(tmp_path, monkeypatch, include_details=True)
+    summary_bytes = len(json.dumps(summary, ensure_ascii=False))
+    details_bytes = len(json.dumps(details, ensure_ascii=False))
+
+    assert summary_bytes < details_bytes
+    # 默认摘要必须落在文档化的上下文预算（IMPACT_SUMMARY_BUDGET_BYTES）内。
+    assert summary_bytes <= IMPACT_SUMMARY_BUDGET_BYTES
+    # 精确钉住（夹具确定、不含临时路径）：实测 2026-10-17 默认 19701 B，
+    # include_details 173567 B（与 dogfood 的 104-224 KB 同量级），缩小 8.8 倍。
+    assert (summary_bytes, details_bytes) == (19701, 173567)

@@ -181,6 +181,9 @@ def _build_build_project_index_tool_args(
 
 
 def _build_change_impact_tool_args(args: Any, output_format: str) -> dict[str, Any]:
+    # #1617：明细列表只存在于完整响应，因此 include_details 隐含 --change-impact-full。
+    include_details = bool(getattr(args, "change_impact_include_details", False))
+    full = include_details or bool(getattr(args, "change_impact_full", False))
     tool_args = {
         "mode": getattr(args, "change_impact_mode", "diff") or "diff",
         "pr_url": getattr(args, "pr_url", "") or "",
@@ -188,8 +191,10 @@ def _build_change_impact_tool_args(args: Any, output_format: str) -> dict[str, A
         "output_format": output_format,
         "scope_paths": getattr(args, "change_impact_scope", None) or [],
         "scope_mode": getattr(args, "change_impact_scope_mode", "report") or "report",
-        "agent_summary_only": not bool(getattr(args, "change_impact_full", False)),
+        "agent_summary_only": not full,
     }
+    if include_details:
+        tool_args["include_details"] = True
     # Always pass resource_profile explicitly so the MCP tool's fallback default
     # ("local_low_impact" for MCP callers) never silently overrides the CLI path.
     tool_args["resource_profile"] = (
