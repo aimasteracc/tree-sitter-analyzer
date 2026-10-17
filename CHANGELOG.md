@@ -43,6 +43,13 @@
     so the call is ambiguous: `unknown` in the index, `possible` in the graph.
     Indexes built before this change keep the old resolution until they are
     re-indexed (`index action=full`).
+  - The cached call graph no longer makes a receiver call whose type is
+    unknown (`obj.hook()`) a certain caller of every same-file method of that
+    name (`A.hook` and `B.hook`). Such a call is now a possible caller of
+    each, so `nav action=callers A.hook` answers `unknown`
+    (`NAME_ONLY_INBOUND`) instead of listing `drive` as a caller of both. A
+    receiver that names the class (`A.hook()`) still binds to `A.hook` only,
+    and `self` / `cls` / `super()` keep the #1635 dispatch.
   - **Visualization node-id scheme change.** `codegraph_visualize` /
     `viz action=graph` node ids (Mermaid node ids and Sigma `key` /
     `source` / `target`) were `<file>::<name>` with non-alphanumerics replaced

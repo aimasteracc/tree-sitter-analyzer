@@ -188,3 +188,63 @@ async def test_visualize_mermaid_keeps_same_name_methods_as_distinct_nodes() -> 
     assert 'tools_py__B_execute_6["tools.py::B.execute:6"]' in mermaid
     assert "main_py__run_1 --> tools_py__A_execute_2" in mermaid
     assert "main_py__run_1 --> tools_py__B_execute_6" in mermaid
+
+
+_TWO_HOOKS = (
+    "class A:\n"
+    "    def hook(self):\n"
+    "        return 1\n\n\n"
+    "class B:\n"
+    "    def hook(self):\n"
+    "        return 2\n\n\n"
+    "def drive(obj):\n"
+    "    return obj.hook()\n"
+)
+
+
+async def _index_two_hooks(root: Path) -> str:
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    (root / "hooks.py").write_text(_TWO_HOOKS, encoding="utf-8")
+    indexed = await CodeGraphFullIndexTool(str(root)).execute(
+        {"mode": "full", "max_files": 10}
+    )
+    assert indexed["published"] is True
+    return str(root)
+
+
+async def test_unknown_receiver_call_is_not_a_certain_caller_of_each_method(
+    tmp_path: Path,
+) -> None:
+    """`obj.hook()` 的接收者类型未知，同文件的 `A.hook` / `B.hook` 都只是可能目标。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+
+    root = await _index_two_hooks(tmp_path)
+    for target in ("A.hook", "B.hook"):
+        result = await CodeGraphCallersTool(root).execute(
+            {"function_name": target, "include_bodies": False}
+        )
+        assert (result["caller_count"], result["completeness"]) == (0, "unknown")
+        assert "NAME_ONLY_INBOUND" in result["completeness_reasons"]
+
+
+def test_receiver_naming_the_class_still_binds_its_own_method() -> None:
+    """对照：接收者正是类名（`A.hook()`）时只剩一个候选，仍是确定边。"""
+    first = FunctionRef("hooks.py", "hook", 2, "python", receiver="A", end_line=3)
+    second = FunctionRef("hooks.py", "hook", 7, "python", receiver="B", end_line=8)
+    resolver = CachedEdgeResolver(
+        functions_by_name={"hook": [first, second]},
+        functions_by_file={"hooks.py": [first, second]},
+        file_import_map={},
+    )
+
+    targets = resolver.resolve(
+        {
+            "callee_name": "hook",
+            "callee_full": "A.hook",
+            "callee_resolution": "unknown",
+        },
+        "hooks.py",
+    )
+
+    assert (targets.certain, targets.possible) == ([first], [])
