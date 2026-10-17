@@ -186,8 +186,17 @@ class CachedEdgeResolver:
                 full_name, caller_file, include_global=False
             )
         ]
-        if certain:
+        if certain and qualifier in _SELF_QUALIFIERS:
+            # self / cls / super：由 ``resolve`` 按调用方的外围类分派（#1635）。
             return EdgeTargets(certain=certain)
+        if certain:
+            # #1621：本地 / import 档命中多个同名定义（`obj.hook()` 与同文件的
+            # `A.hook`、`B.hook`）时无法确定是哪一个。接收者名恰是某个类时收窄；
+            # 仍不唯一就只记为 possible，不再把每个候选都当作确定的被调方。
+            scoped = _narrow_by_receiver(certain, qualifier)
+            if len(scoped) == 1:
+                return EdgeTargets(certain=scoped)
+            return EdgeTargets(possible=scoped)
         globals_ = [
             ref
             for ref, _confidence in self._resolver.resolve_items(
