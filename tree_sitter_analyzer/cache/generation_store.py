@@ -64,7 +64,7 @@ def _bind_source_hashes(snapshot: IndexCandidateSnapshot) -> IndexCandidateSnaps
     """
     if not _PATH_ONLY_SOURCE:
         return snapshot
-    from ..index_source_stream import hash_source_at
+    from ..index_source_stream import SourceUnreadable, hash_source_at
     from ..portable_source_snapshot import _marker, _same
 
     entries = []
@@ -96,6 +96,10 @@ def _bind_source_hashes(snapshot: IndexCandidateSnapshot) -> IndexCandidateSnaps
                 )
             except (TimeoutError, OverflowError) as exc:
                 raise SourceHashBudgetExceeded(selected, bound) from exc
+            except SourceUnreadable as exc:
+                # #1654：被锁定等不可读文件记为标记而非摘要，其余文件照常绑定；
+                # 索引器据此按文件报告失败，标记永不等于任何已索引行的摘要。
+                digest, clean = exc.marker, True
             bound += 1
             if not clean or entry.fingerprint != type(entry.fingerprint).from_stat(
                 before
@@ -106,6 +110,27 @@ def _bind_source_hashes(snapshot: IndexCandidateSnapshot) -> IndexCandidateSnaps
             )
         entries.append(entry)
     return replace(snapshot, entries=tuple(entries))
+
+
+def _with_unreadable_marks(
+    snapshot: IndexCandidateSnapshot, bound: IndexCandidateSnapshot
+) -> IndexCandidateSnapshot:
+    """把绑定时不可读的条目带回候选，使索引器不能复用旧行声称其最新（#1654）。
+
+    其余条目保持原样：候选比较忽略摘要，只有不可读标记需要索引器看到。
+    """
+    from ..index_source_stream import unreadable_source_reason
+
+    marked = {
+        entry.rel_path: entry
+        for entry in bound.entries
+        if entry.fingerprint is not None
+        and unreadable_source_reason(entry.fingerprint.content_hash) is not None
+    }
+    if not marked:
+        return snapshot
+    entries = tuple(marked.get(entry.rel_path, entry) for entry in snapshot.entries)
+    return replace(snapshot, entries=entries)
 
 
 class Superseded(RuntimeError):
@@ -287,12 +312,13 @@ class GenerationStore:
         with self._lease():
             parent = self._publication_parent()
         snapshot = (snapshot_factory or self._snapshot)()
+        bound = _bind_source_hashes(snapshot)
         return GenerationCandidate(
             str(self.root),
             self.logical_path,
             parent,
-            snapshot,
-            _source_contents(_bind_source_hashes(snapshot)),
+            _with_unreadable_marks(snapshot, bound),
+            _source_contents(bound),
         )
 
     def _admit(self, candidate: GenerationCandidate) -> None:
