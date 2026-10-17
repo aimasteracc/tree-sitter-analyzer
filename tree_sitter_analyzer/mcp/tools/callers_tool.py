@@ -17,6 +17,12 @@ from ...utils import setup_logger
 from ._response_builder import build_response
 from .base_tool import BaseMCPTool
 from .callers_absence import assess_completeness
+from .callers_annotated import (
+    annotated_provenance,
+    drop_bound_sites,
+    graph_bound_targets,
+    name_bound_targets,
+)
 from .callers_dispatch import narrow_to_target
 from .callers_reasons import EdgeEvidence, edge_completeness, final_reasons
 from .codegraph_relation_tool import (
@@ -44,6 +50,9 @@ logger = setup_logger(__name__)
 #: it, so a capped list is never mistaken for the whole set — the same
 #: honest-truncation pattern the caller list itself uses.
 _UNRESOLVED_SITES_CAP = 20
+
+#: RFC-0038 caller-entry fields of an edge bound only through an annotation.
+_PROVENANCE_FIELDS = ("resolution_kind", "receiver_type", "type_source", "confidence")
 
 #: How many sites the next_step names inline. Small on purpose: the hint is there
 #: to make the work bounded, not to duplicate the payload.
@@ -351,6 +360,8 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
 
         unattributed_call_sites = 0
         name_only_inbound = 0
+        # RFC-0038：本次查询涉及的定义；经注解绑定到它们的边对本查询已解析。
+        bound_targets: frozenset[tuple[str, int]] = frozenset()
         cache = bound_cache if bound_cache is not None else self._try_get_cache()
         refusal = self._parse_fallback_refusal(cache, "callers", function=func_name)
         if refusal is not None:
@@ -367,6 +378,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             callers, unattributed_call_sites = self._sql_native_callers(
                 cache, func_name, file_path, include_activation
             )
+            bound_targets = name_bound_targets(cache, func_name, file_path)
             data_source = "sql"
             has_any_call_edges = True  # SQL path only runs when edges exist
         else:
@@ -382,6 +394,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 graph = self._get_call_graph()
                 data_source = self._data_source
             callers = graph.callers_of(func_name, file_path)
+            bound_targets = graph_bound_targets(graph, func_name, file_path)
             # #1578：仅同名匹配、无法绑定到目标的入边——它们存在时不能宣称 complete。
             name_only_inbound = len(graph.possible_callers_of(func_name, file_path))
             callers = label_graph_relations(
@@ -435,7 +448,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # `target.publish` 这类接收者未知的调用可能指向任何同名方法。
         count_name = func_name.rpartition(".")[2] if is_qualified else func_name
         unresolved_inbound = (
-            cache.count_unresolved_callers(count_name, file_path)
+            cache.count_unresolved_callers(count_name, file_path, bound_targets)
             if cache is not None
             else None
         )
@@ -455,6 +468,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # grounds. Without it, "this file is not a census" cannot be checked
         # against "this file is a browser asset full of builtin attribute calls".
         excluded_sites = _declaring_file_excluded(cache, func_name, file_path)
+        declaring_sites = drop_bound_sites(declaring_sites, bound_targets)
         # #1596 / #1643：非调用引用门（#1593）会扫描别名与回调，守卫只需计入
         # 可能点名目标的调用点（同名或计算式分发）。该门对有无调用方都运行，
         # 因此收窄也不再限于 0 调用方。
@@ -716,6 +730,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         results: list[dict[str, Any]] = []
         unattributed = 0
         seen: set[str] = set()
+        annotated_entries: dict[str, dict[str, Any]] = {}
         activation_map: dict[tuple[str, int], dict[str, Any]] = {}
         if include_activation:
             activation_map = self._fetch_activation_map(cache)
@@ -734,7 +749,13 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 unattributed += 1
                 continue
             key = f"{base['file']}:{base['name']}:{base['line']}"
+            provenance = annotated_provenance(edge.get("receiver_binding"))
             if key in seen:
+                if not provenance and key in annotated_entries:
+                    # 同一调用方另有普通边：不再标注为仅经注解绑定。
+                    for field_name in _PROVENANCE_FIELDS:
+                        annotated_entries[key].pop(field_name, None)
+                    del annotated_entries[key]
                 continue
             seen.add(key)
             callee_resolved = edge.get("callee_resolved_file", "")
@@ -747,7 +768,10 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 "language": "",
                 "callee_resolution": resolution,
                 "callee_resolved_file": resolved_file,
+                **provenance,
             }
+            if provenance:
+                annotated_entries[key] = entry
             row_data = cache.lookup(
                 os.path.join(cache.project_root, edge["caller_file"])
             )

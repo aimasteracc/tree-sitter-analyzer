@@ -223,7 +223,7 @@ async def test_fully_annotated_target_without_overrides_is_complete(
 
     assert {(c["name"], c["line"]) for c in result["callers"]} == {
         ("drain", 4),
-        ("run", 11),
+        ("run", 12),
     }
     assert (result["completeness"], result["completeness_reasons"]) == (
         "complete",
@@ -239,3 +239,77 @@ def test_extractor_version_is_bumped_for_receiver_hints() -> None:
         ast_cache._AST_CACHE_EXTRACTOR_VERSION,
         indexer._AST_CACHE_EXTRACTOR_VERSION,
     ) == (40, 40)
+
+
+@pytest.mark.asyncio
+async def test_bare_name_query_carries_provenance(store_root: str) -> None:
+    # SQL 路径（裸名）同样标注经注解绑定的调用方。
+    result = await _callers(store_root, "publish")
+
+    callers = _by_name(result)
+    assert callers["by_param"]["resolution_kind"] == "annotated_receiver"
+    assert "resolution_kind" not in callers["unannotated"]
+    assert result["completeness"] != "complete"
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("GenerationStore", "GenerationStore"),
+        ("'GenerationStore'", "GenerationStore"),
+        ("Optional[store.GenerationStore]", "store.GenerationStore"),
+        ("typing.Optional['GenerationStore']", "GenerationStore"),
+        ("GenerationStore | None", "GenerationStore"),
+        ("None | GenerationStore", "GenerationStore"),
+        ("Union[GenerationStore, None]", "GenerationStore"),
+        ("GenerationStore | Other", None),
+        ("Union[GenerationStore, Other]", None),
+        ("list[GenerationStore]", None),
+        ("type[GenerationStore]", None),
+        ("Any", None),
+        ("str", None),
+        ("Self", "Self"),
+    ],
+)
+def test_normalize_annotation(text: str, expected: str | None) -> None:
+    from tree_sitter_analyzer.synapse_resolver._annotated import normalize_annotation
+
+    assert normalize_annotation(text) == expected
+
+
+def _function_hints(source: str) -> dict:
+    import tree_sitter
+    import tree_sitter_python
+
+    from tree_sitter_analyzer.receiver_hints import function_receiver_hints
+
+    parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_python.language()))
+    tree = parser.parse(source.encode("utf-8"))
+    func = next(c for c in tree.root_node.children if c.type == "function_definition")
+    return function_receiver_hints(func)
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("def f(x: T):\n    x.m()\n", {"x": {"source": "param", "type": "T"}}),
+        ("def f():\n    x: T = g()\n    x.m()\n", {"x": {"source": "local", "type": "T"}}),
+        (
+            "def f():\n    x = None\n    x = make()\n    x.m()\n",
+            {"x": {"source": "local", "returns_of": "make"}},
+        ),
+        ("def f():\n    x = await make()\n", {"x": {"source": "local", "returns_of": "make"}}),
+        ("def f(x: T, y: U):\n    global x\n", {"y": {"source": "param", "type": "U"}}),
+        ("def f(x: T, xs):\n    return [x for x in xs]\n", {}),
+        ("def f(x: T):\n    return lambda x: x.m()\n", {}),
+        ("def f():\n    x = make()\n    x = other()\n", {}),
+        ("def f():\n    x = make()\n    for x in y:\n        pass\n", {}),
+        ("def f():\n    x, y = make()\n", {}),
+        ("def f():\n    with make() as x:\n        pass\n", {}),
+        ("def f(x):\n    x = make()\n", {}),
+        ("def f():\n    x = Thing()\n", {}),
+        ("def f(x: T, x2: U):\n    del x2\n", {"x": {"source": "param", "type": "T"}}),
+    ],
+)
+def test_function_receiver_hints(source: str, expected: dict) -> None:
+    assert _function_hints(source) == expected

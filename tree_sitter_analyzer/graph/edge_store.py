@@ -10,9 +10,12 @@ import json
 import re
 import sqlite3
 from collections import deque
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, cast
+
+from ..cached_annotated_binding import ANNOTATED_RECEIVER
 
 
 class EdgeKind(str, Enum):
@@ -441,6 +444,7 @@ class EdgeStore:
         self,
         callee_name: str,
         callee_file: str | None = None,
+        bound_targets: Collection[tuple[str, int]] | None = None,
     ) -> int:
         """Count inbound CALLS edges into ``callee_name`` not known resolved.
 
@@ -460,7 +464,7 @@ class EdgeStore:
         """
         count = 0
         for row in _direct_callers(self._conn, callee_name, callee_file):
-            if not _resolution_is_resolved(row):
+            if not _resolution_is_resolved(row) and not _bound_to(row, bound_targets):
                 count += 1
         return count
 
@@ -513,6 +517,11 @@ class EdgeStore:
             }
             if reason:
                 site["reason_code"] = reason
+            bound = annotated_binding_target(row, edge)
+            if bound is not None:
+                # RFC-0038：经注解绑定的边对其绑定目标已解析，对其余目标仍未解析。
+                site["resolution"] = ANNOTATED_RECEIVER
+                site["bound_to"] = {"file": bound[0], "line": bound[1]}
             sites.append(site)
         return sites
 
@@ -902,6 +911,38 @@ _RESOLVED_CALLEE_RESOLUTIONS = frozenset(
 )
 
 
+def annotated_binding_target(
+    row: sqlite3.Row, edge: Edge | None = None
+) -> tuple[str, int] | None:
+    """RFC-0038: (file, line) an ``annotated_receiver`` edge is bound to."""
+    edge = edge if edge is not None else _edge_from_row(row)
+    resolution = str(
+        _row_col(row, "callee_resolution", "callee_resolution", edge) or ""
+    )
+    if resolution != ANNOTATED_RECEIVER:
+        return None
+    binding = edge.metadata.get("receiver_binding")
+    resolved_file = str(
+        _row_col(row, "callee_resolved_file", "callee_resolved_file", edge) or ""
+    )
+    if not isinstance(binding, dict) or not resolved_file:
+        return None
+    try:
+        return (resolved_file, int(binding.get("line") or 0))
+    except (TypeError, ValueError):
+        return None
+
+
+def _bound_to(
+    row: sqlite3.Row, bound_targets: Collection[tuple[str, int]] | None
+) -> bool:
+    """Whether ``row`` is an annotated edge bound to one of ``bound_targets``."""
+    if not bound_targets:
+        return False
+    target = annotated_binding_target(row)
+    return target is not None and target in bound_targets
+
+
 def _resolution_is_resolved(row: sqlite3.Row) -> bool:
     """Whether an edge row's ``callee_resolution`` establishes its callee.
 
@@ -1038,7 +1079,7 @@ def _call_edge_entry(
         _row_col(row, "callee_resolved_file", "callee_resolved_file", edge) or ""
     )
     callee_full = str(_row_col(row, "callee_full", "callee_full", edge) or "")
-    return {
+    entry: dict[str, Any] = {
         "caller_name": source.name,
         "caller_file": source.file_path,
         "caller_line": source.line,
@@ -1049,3 +1090,6 @@ def _call_edge_entry(
         "callee_line": target.line or edge.line or 0,
         "depth": depth + 1,
     }
+    if annotated_binding_target(row, edge) is not None:
+        entry["receiver_binding"] = edge.metadata.get("receiver_binding")
+    return entry

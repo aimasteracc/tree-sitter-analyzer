@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any, cast
+
+from .receiver_hints import (
+    Hint,
+    call_receiver_hint,
+    class_attribute_hints,
+    function_receiver_hints,
+)
 
 _COMMENT_NODE_TYPES: dict[str, frozenset[str]] = {
     "python": frozenset(["comment"]),
@@ -529,10 +537,34 @@ def walk_tree(node: Any, source: str, language: str) -> tuple[list[dict], list[d
     definitions: list[dict[str, Any]] = []
     calls: list[dict[str, Any]] = []
     fixture_types = _collect_fixture_types(node, source, language)
+    hint_scope = (
+        _ReceiverHintScope(attributes=class_attribute_hints(node))
+        if language == "python"
+        else None
+    )
     _extract_recursive(
-        node, source, language, definitions, calls, None, None, fixture_types
+        node,
+        source,
+        language,
+        definitions,
+        calls,
+        None,
+        None,
+        fixture_types,
+        hint_scope,
     )
     return definitions, calls
+
+
+@dataclass(frozen=True)
+class _ReceiverHintScope:
+    """RFC-0038: receiver hints visible to the calls of one Python function."""
+
+    attributes: dict[str, dict[str, Hint]]
+    function: dict[str, Hint] = field(default_factory=dict)
+
+    def for_function(self, func_node: Any) -> _ReceiverHintScope:
+        return _ReceiverHintScope(self.attributes, function_receiver_hints(func_node))
 
 
 # Python tree-sitter right-hand-side node types that indicate a builtin
@@ -700,6 +732,7 @@ def _extract_recursive(
     enclosing_class: str | None,
     local_types: dict[str, tuple[str, int]] | None,
     fixture_types: dict[str, str] | None = None,
+    hint_scope: _ReceiverHintScope | None = None,
 ) -> None:
     if not hasattr(node, "type"):
         return
@@ -734,6 +767,9 @@ def _extract_recursive(
                 for pname in _func_param_names(node, source):
                     if pname in fixture_types:
                         func_types[pname] = (fixture_types[pname], 0)
+            func_hints = (
+                hint_scope.for_function(node) if hint_scope is not None else None
+            )
             for child in node.children:
                 _extract_recursive(
                     child,
@@ -744,6 +780,7 @@ def _extract_recursive(
                     parent_class,
                     func_types,
                     fixture_types,
+                    func_hints,
                 )
             return
 
@@ -757,6 +794,13 @@ def _extract_recursive(
                 if (node.start_point[0] + 1) >= bind_line:
                     call_info["receiver_type"] = cls
                     call_info["full_name"] = f"{cls}.{call_info['name']}"
+            if hint_scope is not None and "receiver_type" not in call_info:
+                # RFC-0038：注解给出的接收者类型，交给 Synapse 解析。
+                hint = call_receiver_hint(
+                    recv, hint_scope.function, hint_scope.attributes, enclosing_class
+                )
+                if hint is not None:
+                    call_info["receiver_hint"] = hint
             # Embed branch context in the call dict so edge metadata can carry it.
             call_info["branch"] = extract_branch_context(node, language)
             calls.append(call_info)
@@ -771,6 +815,7 @@ def _extract_recursive(
             enclosing_class,
             local_types,
             fixture_types,
+            hint_scope,
         )
 
 

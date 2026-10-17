@@ -6,6 +6,7 @@ ASTCache delegates to these via thin wrapper methods.
 
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 from typing import TYPE_CHECKING, Any
@@ -22,6 +23,9 @@ def _resolve_indexed_callee(
     """利用持久化定义行补足 self/cls 的类身份，不把同名调用者交给名字猜测。"""
     caller_file = row["caller_file"]
     name = row["callee_name"]
+    annotated = _resolve_annotated(row, ctx)
+    if annotated is not None:
+        return annotated
     if ctx.file_languages.get(caller_file) == "python" and row["callee_full"] in (
         f"self.{name}",
         f"cls.{name}",
@@ -49,6 +53,62 @@ def _resolve_indexed_callee(
     return resolve(name, caller_file, ctx, row["callee_full"], row["caller_name"])
 
 
+def _resolve_annotated(row: Any, ctx: Any) -> Any:
+    """RFC-0038：调用点带接收者类型线索时，先按注解所指的类解析。"""
+    if ctx.file_languages.get(row["caller_file"]) != "python":
+        return None
+    from ..synapse_resolver._annotated import (
+        receiver_hint_from_metadata,
+        resolve_annotated_receiver,
+    )
+
+    hint = receiver_hint_from_metadata(_row_value(row, "metadata"))
+    if hint is None:
+        return None
+    return resolve_annotated_receiver(
+        hint, row["callee_name"], row["caller_file"], row["caller_name"] or "", ctx
+    )
+
+
+def _row_value(row: Any, key: str) -> Any:
+    try:
+        return row[key]
+    except (IndexError, KeyError):
+        return None
+
+
+def _update_params(resolved: Any, row: Any) -> tuple[Any, ...]:
+    """UPDATE 参数：带绑定的解析同时把 ``receiver_binding`` 写入 metadata。"""
+    metadata = None  # COALESCE keeps the stored metadata
+    binding = getattr(resolved, "binding", None)
+    if binding:
+        stored = _row_value(row, "metadata")
+        try:
+            parsed = json.loads(stored) if stored else {}
+        except (TypeError, ValueError):
+            parsed = {}
+        if not isinstance(parsed, dict):
+            parsed = {}
+        parsed["receiver_binding"] = binding
+        parsed["callee_resolution"] = resolved.resolution
+        parsed["callee_resolved_file"] = resolved.resolved_file
+        metadata = json.dumps(parsed, sort_keys=True)
+    return (
+        resolved.callee_symbol_id,
+        resolved.resolution,
+        resolved.resolved_file,
+        metadata,
+        row["id"],
+    )
+
+
+_UPDATE_RESOLUTION_SQL = (
+    "UPDATE edges "
+    "SET callee_symbol_id = ?, callee_resolution = ?, "
+    "callee_resolved_file = ?, metadata = COALESCE(?, metadata) WHERE id = ?"
+)
+
+
 def resolve_call_edges_for_file(
     cache: Any,
     conn: sqlite3.Connection,
@@ -74,7 +134,7 @@ def resolve_call_edges_for_file(
     try:
         rows = conn.execute(
             "SELECT id, caller_name, caller_line, file_path AS caller_file, callee_name, "
-            "callee_full FROM edges WHERE kind = 'calls' AND file_path = ?",
+            "callee_full, metadata FROM edges WHERE kind = 'calls' AND file_path = ?",
             (rel_path,),
         ).fetchall()
     except sqlite3.OperationalError as exc:
@@ -87,17 +147,7 @@ def resolve_call_edges_for_file(
             logger.debug("resolve_callee crashed on %s: %s", row["callee_name"], exc)
             continue
         try:
-            conn.execute(
-                "UPDATE edges "
-                "SET callee_symbol_id = ?, callee_resolution = ?, "
-                "callee_resolved_file = ? WHERE id = ?",
-                (
-                    resolved.callee_symbol_id,
-                    resolved.resolution,
-                    resolved.resolved_file,
-                    row["id"],
-                ),
-            )
+            conn.execute(_UPDATE_RESOLUTION_SQL, _update_params(resolved, row))
         except sqlite3.OperationalError as exc:
             logger.debug("call_edge update failed for id=%s: %s", row["id"], exc)
             return
@@ -124,7 +174,7 @@ def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int]
         # backfill is the unknown-> rescan loop B3 is meant to break.
         rows = conn.execute(
             "SELECT id, caller_name, caller_line, file_path AS caller_file, callee_name, "
-            "callee_full FROM edges "
+            "callee_full, metadata FROM edges "
             "WHERE kind = 'calls' AND ("
             "callee_resolution = 'unknown' "
             "OR (callee_resolved_file = '' "
@@ -142,7 +192,7 @@ def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int]
         return None
     total = len(rows)
     resolved = unchanged = errors = 0
-    updates: list[tuple[Any, str, str, int]] = []
+    updates: list[tuple[Any, ...]] = []
     for row in rows:
         try:
             result = _resolve_indexed_callee(conn, row, ctx, resolve_callee)
@@ -153,22 +203,10 @@ def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int]
         if result.resolution == "unknown" and not result.resolved_file:
             unchanged += 1
             continue
-        updates.append(
-            (
-                result.callee_symbol_id,
-                result.resolution,
-                result.resolved_file,
-                row["id"],
-            )
-        )
+        updates.append(_update_params(result, row))
     if updates:
         try:
-            conn.executemany(
-                "UPDATE edges "
-                "SET callee_symbol_id = ?, callee_resolution = ?, "
-                "callee_resolved_file = ? WHERE id = ?",
-                updates,
-            )
+            conn.executemany(_UPDATE_RESOLUTION_SQL, updates)
             resolved += len(updates)
         except sqlite3.OperationalError as exc:
             logger.debug("synapse backfill update failed: %s", exc)

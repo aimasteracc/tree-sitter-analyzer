@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Collection
 from typing import Any, cast
 
 from .cache.callgraph_state import call_graph_built as _call_graph_built
@@ -139,7 +140,10 @@ class CertifiedSnapshotCache:
         rows = self.get_conn().execute(
             "SELECT caller_name, file_path AS caller_file, caller_line, "
             "callee_name, callee_full, callee_line, file_path, language, "
-            "callee_resolution, callee_resolved_file "
+            "callee_resolution, callee_resolved_file, "
+            "CASE WHEN callee_resolution = 'annotated_receiver' "
+            "THEN json_extract(metadata, '$.receiver_binding') END "
+            "AS receiver_binding "
             "FROM edges WHERE kind='calls'"
         )
         return [dict(row) for row in rows]
@@ -200,9 +204,23 @@ class CertifiedSnapshotCache:
         return EdgeStore(self.get_conn(), ensure_schema=False)
 
     def count_unresolved_callers(
-        self, name: str, file: str | None = None
+        self,
+        name: str,
+        file: str | None = None,
+        bound_targets: Collection[tuple[str, int]] | None = None,
     ) -> int | None:
-        return cast(int | None, self._store().count_unresolved_callers(name, file))
+        return cast(
+            int | None,
+            self._store().count_unresolved_callers(name, file, bound_targets),
+        )
+
+    def symbol_definitions(self, name: str) -> list[tuple[str, int]]:
+        rows = self.get_conn().execute(
+            "SELECT file_path, line FROM ast_symbol_rows WHERE name=? "
+            "AND kind IN ('function', 'method')",
+            (name,),
+        )
+        return [(str(row[0]), int(row[1] or 0)) for row in rows if row[0]]
 
     def unresolved_call_sites_in_file(
         self, file: str

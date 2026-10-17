@@ -128,7 +128,8 @@ _warned_extensions: set[str] = set()
 
 # 提取版本与 ast_cache.py 保持一致，同时保留依赖加载投影的失效契约。
 # v39：按语言分类驱动提取，修复成员作用域与 C++ 函数名称恢复。
-_AST_CACHE_EXTRACTOR_VERSION = 39
+# v40：Python 调用边携带接收者类型线索（RFC-0038 receiver_hint）。
+_AST_CACHE_EXTRACTOR_VERSION = 40
 
 
 def _walk_source_files(project_root: str) -> Iterator[str]:

@@ -76,4 +76,8 @@ def _edge_for_call(
         # walk_tree 为每个调用写入分支上下文（包括 unconditional），无需再次猜测缺失。
         "branch": call["branch"],
     }
+    hint = call.get("receiver_hint")
+    if hint is not None:
+        # RFC-0038：注解给出的接收者类型线索，随边写入 metadata。
+        edge["receiver_hint"] = hint
     return edge

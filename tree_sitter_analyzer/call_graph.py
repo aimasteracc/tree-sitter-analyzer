@@ -129,6 +129,9 @@ class CallGraph(PossibleEdgesMixin):
         # #1559/#1560：无法区分的同名候选不成为边，只供安全类消费者过近似。
         self._init_possible_edges()
         self._call_edges: list[tuple[FunctionRef, FunctionRef, int]] = []
+        # RFC-0038：仅经注解绑定的边的来源，键为 (调用方身份, 被调方身份)。
+        self._edge_bindings: dict[tuple[RefIdentity, RefIdentity], dict[str, Any]] = {}
+        self._plain_edges: set[tuple[RefIdentity, RefIdentity]] = set()
         self._built = False
         self._file_imports: dict[str, dict[str, str]] = {}
         self._file_module_map: dict[str, str] = {}
@@ -384,6 +387,26 @@ class CallGraph(PossibleEdgesMixin):
                     seen.add(key)
                     result.append(caller.to_dict())
         return result
+
+    def _record_edge_binding(
+        self,
+        caller: FunctionRef,
+        callee: FunctionRef,
+        binding: dict[str, Any] | None,
+    ) -> None:
+        """RFC-0038：记录边是否只经注解绑定；同一对之间有普通边时不再标注。"""
+        key = (ref_identity(caller), ref_identity(callee))
+        if binding is None:
+            self._plain_edges.add(key)
+            self._edge_bindings.pop(key, None)
+        elif key not in self._plain_edges:
+            self._edge_bindings.setdefault(key, binding)
+
+    def edge_binding(
+        self, caller: FunctionRef, callee: FunctionRef
+    ) -> dict[str, Any] | None:
+        """``caller -> callee`` 仅经注解绑定时返回其 ``receiver_binding``。"""
+        return self._edge_bindings.get((ref_identity(caller), ref_identity(callee)))
 
     def callees_of(
         self, func_name: str, file_path: str | None = None
@@ -828,6 +851,7 @@ class CachedCallGraph(CallGraph):
                 self._call_edges.append(
                     (caller_ref, callee_ref, edge.get("callee_line", 0))
                 )
+                self._record_edge_binding(caller_ref, callee_ref, targets.binding)
 
         self._built = True
 
