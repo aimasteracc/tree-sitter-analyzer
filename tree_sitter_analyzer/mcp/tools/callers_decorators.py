@@ -31,6 +31,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from .evidence_file_cache import FILE_CACHE
+
 #: completeness 原因：目标带有可能登记它的装饰器（注册表分发不产生调用边）。
 DECORATED_REASON = "DECORATOR_MAY_REGISTER"
 #: 无法读取装饰器时 hint 中使用的占位文本。
@@ -95,12 +97,8 @@ def registering_decorator(
     读取或解析失败的声明返回 :data:`UNREADABLE`——无法读取不等于没有装饰器。
     """
     for rel_path, line, language in declarations:
-        try:
-            with open(
-                os.path.join(project_root, rel_path), encoding="utf-8", errors="replace"
-            ) as handle:
-                text = handle.read()
-        except OSError:
+        text = FILE_CACHE.read_text(os.path.join(project_root, rel_path))
+        if text is None:
             return UNREADABLE
         decorators = declaration_decorators(text, line, language)
         if decorators is None:

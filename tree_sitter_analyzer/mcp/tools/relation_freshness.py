@@ -60,6 +60,11 @@ def index_identity(project_root: str) -> tuple[Any, ...]:
     ``edges`` 的最大 rowid。任何文件重新索引都会刷新 ``indexed_at``，
     增删文件会改变行数或最新时间，新写入的调用边会推高 rowid。
     三条查询都走聚合或主键，开销与一次 SQL 查询相当，不遍历源码树。
+
+    dogfood 第 7 轮：``MAX(indexed_at)`` 位于大 JSON 列之后、无索引，取值要遍历
+    溢出页，356 MB 的库每次约 140 ms。结果因此按库文件与 WAL 的 stat 证据记忆
+    （:func:`_database_stamps`）：任何提交都会改变其中之一的大小或 mtime，证据
+    相同即返回同一身份；证据处于时间戳竞争窗口内时不记忆。
     """
     from ...cache.generation_routing import resolve_index_location
 
@@ -71,6 +76,55 @@ def index_identity(project_root: str) -> tuple[Any, ...]:
     database = location.path
     if not database.is_file():
         return (str(database), generation, "absent")
+    stamps = _database_stamps(str(database))
+    memo_key = (str(database), generation, stamps)
+    if stamps is not None:
+        cached = _IDENTITY_MEMO.get(str(database))
+        if cached is not None and cached[0] == memo_key:
+            return cached[1]
+    identity = _read_index_identity(database, generation)
+    if (
+        stamps is not None
+        and identity[2:3] != ("unreadable",)
+        and _database_stamps(str(database)) == stamps
+    ):
+        if len(_IDENTITY_MEMO) >= _IDENTITY_MEMO_MAX:
+            _IDENTITY_MEMO.pop(next(iter(_IDENTITY_MEMO)))
+        _IDENTITY_MEMO[str(database)] = (memo_key, identity)
+    return identity
+
+
+#: ``index_identity`` 的记忆：库路径 -> ((库, generation, stat 证据), 身份)。
+_IDENTITY_MEMO: dict[str, tuple[tuple[Any, ...], tuple[Any, ...]]] = {}
+_IDENTITY_MEMO_MAX = 32
+#: mtime 距当前不足此值的库文件不记忆（同一时间戳刻度内的第二次写入不改元数据）。
+_IDENTITY_RACY_WINDOW_NS = 5_000_000_000
+#: 与库内容相关的旁路文件：WAL 承载已提交但未检查点的页。
+_DATABASE_SIDECARS = ("", "-wal", "-journal")
+
+
+def _database_stamps(database: str) -> tuple[Any, ...] | None:
+    """库文件及其 WAL / 回滚日志的 stat 证据；竞争窗口内或不可读为 None。"""
+    stamps: list[Any] = []
+    now = time.time_ns()
+    for suffix in _DATABASE_SIDECARS:
+        try:
+            info = os.stat(database + suffix)
+        except FileNotFoundError:
+            stamps.append(None)
+            continue
+        except OSError:
+            return None
+        if now - info.st_mtime_ns < _IDENTITY_RACY_WINDOW_NS:
+            return None
+        stamps.append(
+            (info.st_size, info.st_mtime_ns, info.st_ctime_ns, info.st_ino, info.st_dev)
+        )
+    return tuple(stamps)
+
+
+def _read_index_identity(database: Any, generation: Any) -> tuple[Any, ...]:
+    """不经记忆、直接从库读取的内容身份。"""
     try:
         # 与 is_ast_index_stale 相同：rw 打开拒绝创建空库，query_only 保证只读。
         conn = sqlite3.connect(
@@ -99,6 +153,30 @@ def _stamp(path: str) -> tuple[int, int] | None:
     except OSError:
         return None
     return (info.st_mtime_ns, info.st_size)
+
+
+#: 文件数达到此值才并行 stat；更少时线程开销大于收益。
+_PARALLEL_STAT_MIN = 64
+#: 并行 stat 的线程数（``os.stat`` 释放 GIL）。
+_STAT_WORKERS = 8
+
+
+def _prefetch_stamps(paths: list[str]) -> list[tuple[int, int] | None] | None:
+    """并行取得每个路径的 ``_stamp``；文件少时返回 None（调用方逐个 stat）。
+
+    dogfood 第 7 轮：Windows 上逐个 ``os.stat`` 约 2,450 个已索引文件占单次
+    ``nav callers`` 约 0.2–0.4 s。复核逻辑不变：每个文件仍在本次调用中重新
+    stat，只是由线程分块并发完成。
+    """
+    if len(paths) < _PARALLEL_STAT_MIN:
+        return None
+    from concurrent.futures import ThreadPoolExecutor
+
+    chunk = -(-len(paths) // _STAT_WORKERS)
+    parts = [paths[start : start + chunk] for start in range(0, len(paths), chunk)]
+    with ThreadPoolExecutor(max_workers=len(parts)) as executor:
+        results = list(executor.map(lambda part: [_stamp(p) for p in part], parts))
+    return [stamp for part in results for stamp in part]
 
 
 def _evidence(freshness: str, reason: str) -> dict[str, Any]:
@@ -176,12 +254,15 @@ def _changed_files(
     """
     from ...incremental_sync_support import file_content_hash
 
+    ordered = sorted(rows)
+    paths = [os.path.join(project_root, row[0]) for row in ordered]
+    stamps = _prefetch_stamps(paths)
     changed: list[str] = []
-    for rel_path, mtime_ns, size, content_hash in sorted(rows):
+    for index, (rel_path, mtime_ns, size, content_hash) in enumerate(ordered):
         if deadline is not None and time.monotonic() > deadline:
             return None
-        abs_path = os.path.join(project_root, rel_path)
-        disk = _stamp(abs_path)
+        abs_path = paths[index]
+        disk = stamps[index] if stamps is not None else _stamp(abs_path)
         if disk is None or disk[1] != size:
             changed.append(rel_path)
         elif disk[0] != mtime_ns:

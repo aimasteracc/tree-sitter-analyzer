@@ -159,6 +159,27 @@ def _collect_sites(
     return sites[:limit] if limit is not None else sites
 
 
+def _certification_ruled_out(project_root: str) -> bool:
+    """Whether a certified read of the live index is certain to yield no owner.
+
+    A certified snapshot is ``complete`` only when its private copy of the
+    index carries the exact call-graph marker; a copy of an index whose marker
+    is not exact always publishes ``CALL_GRAPH_INCOMPLETE`` and the read falls
+    back to the uncertified cache.  dogfood round 7 measured that capture —
+    copying the database and WAL, an in-memory ``backup`` and a projection
+    check — at 1.5-3.5 s on every call, only to be discarded.
+
+    The marker is read from the same database in one read-only transaction; the
+    answer then reflects the index as of that read, exactly as if the capture
+    had run at that instant.  An unreadable probe never rules certification out
+    (the full capture still runs).
+    """
+    from ...cache.live_index_probe import probe_live_index
+
+    probe = probe_live_index(project_root)
+    return probe is not None and not probe.call_graph_exact
+
+
 def _symbol_indexed(cache: Any, func_name: str) -> bool:
     """#1578：目标符号是否在索引中有定义行（读取失败按"未知"处理为 False）。"""
     if cache is None:
@@ -275,7 +296,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         self.validate_arguments(arguments)
         if is_index_rebuilding(self.project_root):
             return await self._execute_bound(arguments, None, None)
-        if self.project_root:
+        if self.project_root and not _certification_ruled_out(self.project_root):
             from ...index_snapshot import certified_index_read
 
             try:
