@@ -8,7 +8,8 @@ Recognised forms (bare callee identifiers, as imported from ``django.urls``):
 - ``path("api/", include("api.urls"))``: a URL *prefix* mount, not an
   endpoint. It is reported as one record with ``http_method="INCLUDE"``, the
   prefix as ``url_pattern`` and the included target as ``handler_name``
-  (``"<inline>"`` for an inline list). This mirrors the Express / Fiber
+  (``"<inline>"`` for an inline list; the module of an
+  ``include(("app.urls", "app"))`` tuple). This mirrors the Express / Fiber
   ``USE`` mount records. Prefixes are not composed into the included
   module's patterns, which keep the pattern as declared.
 
@@ -39,21 +40,17 @@ _PY_DJANGO_IMPORT_RE = re.compile(
 )
 
 
-def _source_text(root: Any, source: str) -> str:
-    if source:
-        return source
-    try:
-        return root.text.decode()
-    except (AttributeError, UnicodeDecodeError):
-        return ""
-
-
 def _string_value(node: Any) -> str:
-    """Return a Python string literal's value without quotes or ``r``/``u`` prefix."""
-    if node.type == "string":
-        parts = [c.text.decode() for c in node.children if c.type == "string_content"]
-        if all(c.type != "interpolation" for c in node.children):
-            return "".join(parts)
+    """Return a string literal's value without quotes or ``r``/``u`` prefix.
+
+    An f-string with placeholders has no static value; its source text is kept.
+    """
+    if node.type == "concatenated_string":
+        return "".join(_string_value(c) for c in node.children if c.type == "string")
+    if node.type == "string" and all(c.type != "interpolation" for c in node.children):
+        return "".join(
+            c.text.decode() for c in node.children if c.type == "string_content"
+        )
     return unquote(node.text.decode())
 
 
@@ -65,23 +62,31 @@ def _callee_name(call: Any) -> str | None:
 
 
 def _include_target(call: Any) -> str:
-    """Name what ``include(...)`` mounts: a module string, an expression, or inline."""
-    args = call.child_by_field_name("arguments")
-    positional = _positional_args(args) if args is not None else []
+    """Name what ``include(...)`` mounts: a module, an expression, or an inline list.
+
+    The ``include(("app.urls", "app"))`` tuple form names its module first.
+    """
+    positional = _positional_args(call)
+    if positional and positional[0].type == "tuple":
+        positional = _positional_args(positional[0], field=None)
     if not positional:
         return "<unknown>"
     first = positional[0]
     if first.type in ("string", "concatenated_string"):
         return _string_value(first)
-    if first.type in ("list", "tuple", "list_comprehension"):
+    if first.type in ("list", "list_comprehension"):
         return "<inline>"
     return first.text.decode()[:80]
 
 
-def _positional_args(args: Any) -> list[Any]:
+def _positional_args(node: Any, field: str | None = "arguments") -> list[Any]:
+    """Positional children of a call's ``arguments`` (or of ``node`` itself)."""
+    holder = node.child_by_field_name(field) if field else node
+    if holder is None:
+        return []
     return [
         c
-        for c in args.children
+        for c in holder.children
         if c.type not in _ARG_PUNCTUATION and c.type != "keyword_argument"
     ]
 
@@ -96,14 +101,14 @@ def _route_target(view: Any) -> tuple[str, tuple[str, ...]]:
 def scan_django_urls(
     root: Any, file_path: str, _source: str, route_info_cls: type
 ) -> list[Any]:
-    if not _PY_DJANGO_IMPORT_RE.search(_source_text(root, _source)):
+    source = _source or root.text.decode("utf-8", "replace")
+    if not _PY_DJANGO_IMPORT_RE.search(source):
         return []
     routes: list[Any] = []
     for node in walk(root):
         if node.type != "call" or _callee_name(node) not in _DJANGO_ROUTE_CALLS:
             continue
-        args = node.child_by_field_name("arguments")
-        positional = _positional_args(args) if args is not None else []
+        positional = _positional_args(node)
         if len(positional) < 2:
             continue
         url_pattern = _string_value(positional[0])

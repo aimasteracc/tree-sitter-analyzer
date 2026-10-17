@@ -98,6 +98,51 @@ def test_inline_include_list_reports_inner_routes_unprefixed(tmp_path):
     ]
 
 
+def test_include_target_forms(tmp_path):
+    source = (
+        "from django.urls import include, path\n"
+        "urlpatterns = [\n"
+        "    path('router/', include(router.urls)),\n"
+        "    path('tuple/', include(('blog.urls', 'blog'), namespace='blog')),\n"
+        "    path('joined/', include('shop' '.urls')),\n"
+        "    path('empty/', include()),\n"
+        "]\n"
+    )
+    _write(tmp_path, source)
+    records = {r[2]: (r[1], r[3]) for r in _detect(tmp_path)}
+    assert records == {
+        "router/": ("INCLUDE", "router.urls"),
+        "tuple/": ("INCLUDE", "blog.urls"),
+        "joined/": ("INCLUDE", "shop.urls"),
+        "empty/": ("INCLUDE", "<unknown>"),
+    }
+
+
+def test_non_route_call_shapes_are_skipped(tmp_path):
+    source = (
+        "import django\n"
+        "from django import urls\n"
+        "urlpatterns = [\n"
+        "    path('lonely/'),\n"  # no view argument
+        "    urls.path('dotted/', views.dotted),\n"  # only bare callees match
+        "    path(f'{prefix}/', views.dynamic),\n"  # no static pattern
+        "]\n"
+    )
+    _write(tmp_path, source)
+    assert {(r[2], r[3]) for r in _detect(tmp_path)} == {("f'{prefix}/'", "dynamic")}
+
+
+def test_scanner_reads_the_tree_when_no_source_is_given(tmp_path):
+    from tree_sitter_analyzer.core.parser import Parser
+    from tree_sitter_analyzer.route_detector import RouteInfo
+    from tree_sitter_analyzer.route_detector.scanners import scan_django_urls
+
+    target = _write(tmp_path, _URLS_PY)
+    tree = Parser().parse_file(str(target), "python").tree
+    routes = scan_django_urls(tree.root_node, str(target), "", RouteInfo)
+    assert len(routes) == 11
+
+
 def test_bare_path_call_without_django_import_is_not_a_route(tmp_path):
     # Once the field is fixed, a helper named ``path`` in any Python file must
     # not turn into a Django route; the scanner is gated on a django import,
