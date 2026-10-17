@@ -116,15 +116,16 @@ async def test_unreferenced_module_function_answers_complete(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_other_names_still_gate_when_callers_exist(tmp_path) -> None:
-    # #1596：有调用方时非调用引用门不运行，因此不按名收窄，原守卫保持不变。
+async def test_other_names_no_longer_gate_when_callers_exist(tmp_path) -> None:
+    # #1643（取代 #1596 的“有调用方时保持原守卫”）：非调用引用门现在对有调用方的
+    # 答案同样运行，因此按名收窄；名字不同的调用点被排除，列表即为普查。
     root = await _index(tmp_path, _PLAIN + "\n\ndef user():\n    return lonely([])\n")
 
     result = await _callers(root, "lonely")
 
-    assert (result["caller_count"], result["completeness"]) == (1, "incomplete")
-    assert result["unresolved_in_declaring_files"] == 3
-    assert result["excluded_by_reason"] == {}
+    assert (result["caller_count"], result["completeness"]) == (1, "complete")
+    assert result["unresolved_in_declaring_files"] == 0
+    assert result["excluded_by_reason"] == {NAMES_OTHER_REASON: 3}
 
 
 @pytest.mark.asyncio
@@ -510,7 +511,11 @@ async def test_unresolved_inbound_carries_its_reason(tmp_path) -> None:
 @pytest.mark.asyncio
 async def test_lower_bound_caller_list_carries_its_reason(tmp_path) -> None:
     # #1632：有调用方时 `incomplete` 同样必须点名缺口（第 6 轮 28/30 为 null）。
-    root = await _index(tmp_path, _PLAIN + "\n\ndef user():\n    return lonely([])\n")
+    # #1643：计算式分发仍可能点名目标，守卫保留（名字不同的调用点已不再守卫）。
+    dispatch = "\n\nHANDLERS = {}\n\n\ndef run(name):\n    return HANDLERS[name]()\n"
+    root = await _index(
+        tmp_path, _PLAIN + "\n\ndef user():\n    return lonely([])\n" + dispatch
+    )
 
     result = await _callers(root, "lonely")
 
