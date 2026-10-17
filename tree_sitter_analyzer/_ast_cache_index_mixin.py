@@ -347,6 +347,7 @@ class ASTCacheIndexMixin(ASTCacheSurface):
                 ),
                 scope=scope,
                 candidate_snapshot=candidate_snapshot,
+                report_publication=True,
             )
         # One cache owner serializes validation, destructive clear, and writes.
         # SQLite still arbitrates across processes; this lock closes the in-owner

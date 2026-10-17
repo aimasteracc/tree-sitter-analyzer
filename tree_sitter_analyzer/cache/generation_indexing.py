@@ -19,6 +19,7 @@ from ..indexing_candidate_materialization import release_index_candidate_snapsho
 from ..indexing_snapshot import IndexCandidateSnapshot
 from .generation_noop import (
     index_run_unchanged,
+    not_publishable_result,
     same_certified_content,
     unpublished_result,
 )
@@ -99,12 +100,16 @@ def mutate_published_cache(
     candidate_snapshot: IndexCandidateSnapshot | None = None,
     expected_path: Path | None = None,
     snapshot_operation: Callable[[ASTCache, IndexCandidateSnapshot], _T] | None = None,
+    report_publication: bool = False,
 ) -> _T:
     """默认库的显式单文件、重建和失效操作只写私有副本，首次发布前亦然（#1554）。
 
     给出 ``snapshot_operation`` 时以它代替 ``operation``，并额外传入本次捕获的
     候选快照：增量项目索引据此清除已从磁盘删除的文件并重新认证，与发布复核
     使用同一份快照（#1625）。
+
+    项目索引（``snapshot_operation`` 或 ``report_publication=True``）的结果总带
+    ``published``；未发布时另带 ``publication_reason``（#1631、#1635）。
     """
     from ..ast_cache import ASTCache
     from .generation_store import Superseded
@@ -144,12 +149,17 @@ def mutate_published_cache(
                 ):
                     # #1631：零变化的增量项目索引不发布，私有副本随 abandoning 回收。
                     return cast(_T, unpublished_result(cast(Mapping[str, Any], result)))
+                report = report_publication or snapshot_operation is not None
                 if publishable_result(result) or _first_publication(candidate):
                     store.seal(selector)
                     store.publish(PreparedGeneration(candidate, selector, SyncResult()))
                     cache._adopt_published_generation()
-                    if snapshot_operation is not None and isinstance(result, Mapping):
+                    if report and isinstance(result, Mapping):
                         result = cast(_T, {**result, "published": True})
+                elif report and isinstance(result, Mapping):
+                    # #1635：私有副本被放弃，活动版本不变；如实报告，不让摘要中的
+                    # 计数看起来像是本次刷新的结果。
+                    result = cast(_T, not_publishable_result(result))
             return result
 
         finally:

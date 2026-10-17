@@ -20,6 +20,8 @@ from typing import Any
 
 #: 跳过发布时返回的稳定原因码。
 UNCHANGED_REASON = "INDEX_UNCHANGED"
+#: 运行有非稳定失败（读写失败、回填失败等），结果不能替换父版本（#1635）。
+NOT_PUBLISHABLE_REASON = "INDEX_NOT_PUBLISHABLE"
 
 #: 与 ``index_snapshot_schema._CONTROL_TABLES`` 相同：不进入 ``index_fingerprint``
 #: 的表，必须逐行比较。
@@ -77,3 +79,12 @@ def index_run_unchanged(result: Any) -> bool:
 def unpublished_result(result: Mapping[str, Any]) -> dict[str, Any]:
     """如实报告未发布及原因；活动版本与其认证保持不变。"""
     return {**result, "published": False, "publication_reason": UNCHANGED_REASON}
+
+
+def not_publishable_result(result: Mapping[str, Any]) -> dict[str, Any]:
+    """#1635：运行有非稳定失败，私有副本被放弃；活动版本保持不变。"""
+    return {
+        **result,
+        "published": False,
+        "publication_reason": NOT_PUBLISHABLE_REASON,
+    }

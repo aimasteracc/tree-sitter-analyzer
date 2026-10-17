@@ -116,3 +116,28 @@ def project_removed_files(
         "removed_files_truncated": len(paths) > len(listed),
     }
     return projected, f"{summary_line} removed={len(paths)}", next_step
+
+
+def project_publication(
+    result: dict[str, Any], summary_line: str, next_step: str, *, symbols: int
+) -> tuple[dict[str, Any], str, str]:
+    """#1635：摘要中的 ``symbols`` 是刷新之后活动索引的计数，并如实说明是否发布。
+
+    运行有非稳定失败（``INDEX_NOT_PUBLISHABLE``）时私有副本被放弃，活动版本没有被
+    替换：计数仍属于旧版本，摘要必须说出这一点，不能让它看起来像是本次运行的结果。
+    零变化（``INDEX_UNCHANGED``）时旧版本与本次运行内容相同，计数本就准确。
+    """
+    from ...cache.generation_noop import NOT_PUBLISHABLE_REASON
+
+    projected = dict(result)
+    reason = result.get("publication_reason")
+    if result.get("published") is not False or reason != NOT_PUBLISHABLE_REASON:
+        return projected, summary_line, next_step
+    summary_line = f"{summary_line} published=false reason={reason}"
+    next_step = (
+        "this refresh was not published: the active index was not replaced, so "
+        f"symbols={symbols} is the previous index. Read `errors` / `files`, fix "
+        "the cause (unreadable files, low disk space), then rerun "
+        "`index action=cache mode=index`"
+    )
+    return projected, summary_line, next_step
