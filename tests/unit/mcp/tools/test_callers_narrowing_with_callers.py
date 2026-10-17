@@ -166,9 +166,9 @@ async def test_importlib_loaded_attribute_call_keeps_name_only(tmp_path) -> None
     result = await _callers(root, "digest_bytes")
 
     assert result["completeness"] == "incomplete"
-    assert result["caller_count"] >= 1
-    reasons = set(result["completeness_reasons"])
-    assert reasons & {"NAME_ONLY_INBOUND", "UNRESOLVED_INBOUND"}
+    # `test_digest` 仅凭同名匹配列出，因此列表只是下界。
+    assert sorted(c["name"] for c in result["callers"]) == ["bundle", "test_digest"]
+    assert result["completeness_reasons"] == ["NAME_ONLY_INBOUND"]
 
 
 @pytest.mark.asyncio
