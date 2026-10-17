@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Hashable
 from dataclasses import dataclass
 from typing import Any
 
@@ -144,7 +145,7 @@ class CalleeResolver:
     ) -> list[CalleeResolution]:
         qualifier, base_name = _split_qualifier(callee_name)
         results: list[CalleeResolution] = []
-        seen: set[str] = set()
+        seen: set[Hashable] = set()
 
         if include_local:
             for func in self._functions_by_file.get(source_file, []):
@@ -258,7 +259,7 @@ def _item_language(item: Any) -> str:
 
 def _append_resolution(
     results: list[CalleeResolution],
-    seen: set[str],
+    seen: set[Hashable],
     item: Any,
     confidence: float,
     *,
@@ -280,7 +281,7 @@ def _append_resolution(
 
 def _append_file_resolution(
     results: list[CalleeResolution],
-    seen: set[str],
+    seen: set[Hashable],
     file_path: str,
     confidence: float,
 ) -> None:
@@ -290,11 +291,20 @@ def _append_file_resolution(
     results.append(CalleeResolution(file=file_path, confidence=confidence))
 
 
-def _item_key(item: Any) -> str:
-    if hasattr(item, "qualified_name"):
-        return str(item.qualified_name())
-    file_path = _item_file(item)
-    line = getattr(item, "line", getattr(item, "start_line", ""))
+def _item_key(item: Any) -> tuple[str, str, object]:
+    """Identity of one candidate definition: file, name and symbol id or line.
+
+    #1621: ``qualified_name()`` is ``file:name`` for a definition without a
+    receiver, so two nested ``inner`` functions (or two conditional ``handler``
+    definitions) in one file collapsed into one candidate.  That hid the
+    ambiguity and let a two-way choice pass as the single, confident match.
+    The key now follows ``ref_identity`` (#1619): a persisted symbol id when the
+    candidate carries one, else its definition line.
+    """
     if isinstance(item, dict):
-        line = item.get("line", item.get("start_line", ""))
-    return f"{file_path}:{_item_name(item)}:{line}"
+        ident = item.get("id")
+        line = item.get("line", item.get("start_line"))
+    else:
+        ident = getattr(item, "id", None)
+        line = getattr(item, "start_line", getattr(item, "line", None))
+    return (_item_file(item), _item_name(item), ident if ident is not None else line)

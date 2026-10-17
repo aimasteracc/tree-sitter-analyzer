@@ -360,11 +360,16 @@ class TestVisualizeIndexedProject:
                 "output_format": "json",
             }
         )
-        assert [n["attributes"]["symbol"] for n in result["graph"]["nodes"]] == [
-            "apply_budget",
-            "inner",
-            "log_a",
-            "log_b",
+        # #1621：两个 `inner` 是不同的定义，节点 id 含定义行，各自成为一个节点。
+        assert [
+            (n["attributes"]["symbol"], n["attributes"]["line"])
+            for n in result["graph"]["nodes"]
+        ] == [
+            ("apply_budget", 1),
+            ("inner", 14),
+            ("inner", 20),
+            ("log_a", 5),
+            ("log_b", 9),
         ]
 
 
