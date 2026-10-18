@@ -52,6 +52,7 @@ def _edge(
     resolution: str = "unknown",
     resolved: str = "",
     line: int = 3,
+    binding: str | None = None,
 ) -> dict[str, Any]:
     """与 ``get_call_edges`` 同形的一行。"""
     return {
@@ -65,6 +66,8 @@ def _edge(
         "language": "javascript" if caller_file.endswith(".js") else "python",
         "callee_resolution": resolution,
         "callee_resolved_file": resolved,
+        # RFC-0038：只有 annotated_receiver 边带绑定来源，其余为 None。
+        "receiver_binding": binding,
     }
 
 
@@ -110,6 +113,29 @@ _EDGES: list[tuple[dict[str, Any], str | None]] = [
     # 只差限定名（接收者把全局候选收窄到不同的类）。
     (_edge("prod/user.py", "get", full="Store.get"), None),
     (_edge("prod/user.py", "get", full="Cache.get"), None),
+    # RFC-0038：只差注解绑定的来源（绑定到的定义行 / 所属类）。
+    (
+        _edge(
+            "prod/user.py",
+            "hook",
+            full="b.hook",
+            resolution="annotated_receiver",
+            resolved="base.py",
+            binding='{"line": 5, "owner": "Base", "type": "Base"}',
+        ),
+        None,
+    ),
+    (
+        _edge(
+            "prod/user.py",
+            "hook",
+            full="b.hook",
+            resolution="annotated_receiver",
+            resolved="base.py",
+            binding='{"line": 10, "owner": "Sub", "type": "Sub"}',
+        ),
+        None,
+    ),
 ]
 
 
@@ -151,7 +177,16 @@ def _orders() -> list[list[int]]:
 def test_fixture_pairs_really_resolve_differently() -> None:
     # 前提：成对的边在无记忆时确实得到不同答案，否则下面的比较什么也证明不了。
     plain = _answers(_resolver(memoize=False), list(range(len(_EDGES))))
-    for left, right in ((0, 1), (0, 2), (4, 5), (6, 7), (8, 9), (10, 11), (13, 14)):
+    for left, right in (
+        (0, 1),
+        (0, 2),
+        (4, 5),
+        (6, 7),
+        (8, 9),
+        (10, 11),
+        (13, 14),
+        (15, 16),
+    ):
         assert plain[left] != plain[right], (left, right)
 
 
