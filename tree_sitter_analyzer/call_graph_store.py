@@ -146,7 +146,14 @@ def _encode_ref(ref: Any, index: dict[int, int]) -> Any:
     if position is not None:
         return position
     # 不在函数表里的引用（模块作用域伪调用方等）按值保存。
-    return (ref.file_path, ref.name, ref.start_line, ref.language, ref.receiver, ref.end_line)
+    return (
+        ref.file_path,
+        ref.name,
+        ref.start_line,
+        ref.language,
+        ref.receiver,
+        ref.end_line,
+    )
 
 
 def _encode_record(record: EdgeRecord, index: dict[int, int]) -> Any:
@@ -162,7 +169,9 @@ def _encode_record(record: EdgeRecord, index: dict[int, int]) -> Any:
     )
 
 
-def decode(encoded: list[Any], functions: Sequence[Any], ref_type: Any) -> list[EdgeRecord]:
+def decode(
+    encoded: list[Any], functions: Sequence[Any], ref_type: Any
+) -> list[EdgeRecord]:
     """把已存结果还原为引用对象；结构或下标不符时抛 ValueError。"""
     count = len(functions)
 

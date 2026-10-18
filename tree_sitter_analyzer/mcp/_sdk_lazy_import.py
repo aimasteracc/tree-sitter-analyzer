@@ -94,11 +94,10 @@ def _install(spec: Any) -> ModuleType:
         try:
             return module.__dict__[attr]
         except KeyError:
-            raise AttributeError(
-                f"module {name!r} has no attribute {attr!r}"
-            ) from None
+            raise AttributeError(f"module {name!r} has no attribute {attr!r}") from None
 
-    module.__getattr__ = __getattr__  # type: ignore[attr-defined]
+    # PEP 562 module ``__getattr__``: consulted only for names not yet defined.
+    setattr(module, "__getattr__", __getattr__)  # noqa: B010
     sys.modules[name] = module
     return module
 

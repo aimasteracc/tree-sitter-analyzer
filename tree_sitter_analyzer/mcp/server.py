@@ -9,11 +9,10 @@ from typing import Any
 
 from ._sdk_lazy_import import defer_sdk_package_inits
 
-# #1675: a stdio server needs only the low-level SDK modules; skip the ~190
-# modules the SDK's package ``__init__`` files pull in (client, FastMCP, HTTP).
-defer_sdk_package_inits()
-
 try:
+    # #1675: a stdio server needs only the low-level SDK modules; skip the
+    # ~300 modules the SDK's and httpx's package ``__init__`` files pull in.
+    defer_sdk_package_inits()
     from mcp.server.lowlevel import Server
     from mcp.server.models import InitializationOptions
     from mcp.server.stdio import stdio_server as _stdio_server

@@ -942,7 +942,9 @@ class CachedCallGraph(CallGraph):
             except (ValueError, TypeError):
                 return None
         else:
-            records = [_resolve_edge(self._func_by_name, edge_resolver, e) for e in edges]
+            records = [
+                _resolve_edge(self._func_by_name, edge_resolver, e) for e in edges
+            ]
         # 现场解析与已存结果走同一个应用函数，两条路径构出的图状态相同。
         self._apply_edge_records(records)
 
