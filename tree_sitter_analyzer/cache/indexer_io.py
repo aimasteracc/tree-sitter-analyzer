@@ -200,6 +200,8 @@ def walk_and_partition(
     language_filter: str | None = None,
     exclude_patterns: frozenset[str] | None = None,
     candidate_snapshot: IndexCandidateSnapshot | None = None,
+    *,
+    snapshot_validated: bool = False,
 ) -> tuple[dict[str, Any], list[tuple[str, str]], int]:
     """Walk source files and partition into (stats, candidates, count).
 
@@ -207,6 +209,12 @@ def walk_and_partition(
     equals it are considered; non-matching files are skipped BEFORE any parse
     attempt, so a Python-scoped run never tries to load an optional grammar
     (e.g. Swift) and never surfaces a "grammar not installed" error.
+
+    ``snapshot_validated`` (#1673): the caller already ran
+    ``validate_index_candidate_snapshot`` on this very snapshot at the start of
+    the same operation, so the per-entry ``realpath`` / ``stat`` pass is not
+    repeated (on Windows each ``realpath`` opens a handle; 2.5k files cost 2–4 s).
+    Per-entry change detection (``changed_since_snapshot``) still runs.
     """
     max_files = normalize_index_max_files(max_files)
     candidates: list[tuple[str, str]] = []
@@ -251,9 +259,10 @@ def walk_and_partition(
         }
 
     if candidate_snapshot is not None:
-        validate_index_candidate_snapshot(
-            cache.project_root, max_files, candidate_snapshot
-        )
+        if not snapshot_validated:
+            validate_index_candidate_snapshot(
+                cache.project_root, max_files, candidate_snapshot
+            )
         stats["truncated_by_max_files"] = candidate_snapshot.truncated_by_max_files
         stats["snapshot_metrics"] = candidate_snapshot.metrics()
         count = len(candidate_snapshot.entries)

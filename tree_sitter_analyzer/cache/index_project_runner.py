@@ -255,6 +255,8 @@ def run_index_project(
             language_filter,
             effective_exclude,
             candidate_snapshot,
+            # 本操作开头已校验同一快照（见上），不重复逐项 realpath（#1673）。
+            snapshot_validated=candidate_snapshot is not None,
         )
         cleanup_result = stats
         candidate_fingerprints = (

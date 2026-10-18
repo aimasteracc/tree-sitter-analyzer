@@ -185,6 +185,38 @@ def _with_unreadable_marks(
     return replace(snapshot, entries=entries)
 
 
+_SQLITE_SIDECARS = ("-wal", "-shm", "-journal")
+_COPY_CHUNK = 8 * 1024 * 1024
+
+
+def _copy_sealed_database(source: Path, destination: Path) -> bool:
+    """把已封存的父版本按字节复制进已建好的私有库文件；不适用时返回 ``False``。
+
+    #1673：``sqlite3`` 的 backup 按页复制，本仓库 343 MB 实测 5.7–7 秒。已封存
+    版本是只读、回滚日志模式、无任何旁路文件的单个主库（``seal``），其字节即是
+    完整一致的数据库，大块顺序复制即可得到同一个库。父版本带旁路文件（不应
+    出现）时退回 backup。目标文件就地截断写入，保持 ``begin`` 记录的文件身份；
+    复制前后父版本的 stat 必须一致，否则退回 backup。
+    """
+    if any(os.path.lexists(f"{source}{suffix}") for suffix in _SQLITE_SIDECARS):
+        return False
+    before = os.stat(source)
+    with open(source, "rb") as reader, open(destination, "r+b") as writer:
+        writer.truncate(0)
+        while chunk := reader.read(_COPY_CHUNK):
+            writer.write(chunk)
+    after = os.stat(source)
+    copied = (
+        (before.st_size, before.st_mtime_ns) == (after.st_size, after.st_mtime_ns)
+        and not any(os.path.lexists(f"{source}{suffix}") for suffix in _SQLITE_SIDECARS)
+        and os.path.getsize(destination) == before.st_size
+    )
+    if not copied:
+        with open(destination, "r+b") as writer:
+            writer.truncate(0)  # 退回 backup 前恢复为空库文件
+    return copied
+
+
 @dataclass(frozen=True)
 class GenerationCandidate:
     """把源码候选与完整父版本身份绑定，首次发布也绑定目标项目。"""
@@ -424,17 +456,17 @@ class GenerationStore:
             # 首次发布采纳遗留旧库（#1554）；发布 CAS 照常拒绝过时候选。
             adopt_legacy_database(Path(self.logical_path), database)
         else:
-            source = sqlite3.connect(
-                self.database(candidate.parent).as_uri() + "?mode=ro", uri=True
-            )
-            try:
-                destination = sqlite3.connect(database)
+            parent = self.database(candidate.parent)
+            if not _copy_sealed_database(parent, database):
+                source = sqlite3.connect(parent.as_uri() + "?mode=ro", uri=True)
                 try:
-                    source.backup(destination)
+                    destination = sqlite3.connect(database)
+                    try:
+                        source.backup(destination)
+                    finally:
+                        destination.close()
                 finally:
-                    destination.close()
-            finally:
-                source.close()
+                    source.close()
         # #1671：私有副本不继承父版本的稳定失败记录；只有收敛的运行重新签发。
         clear_record_at(database)
         return selector
