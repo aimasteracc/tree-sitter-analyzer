@@ -331,7 +331,10 @@ def _call_refs(
         caller_line = _line(edge.get("caller_line"))
         source = symbol_node(rel_path, caller_name, caller_line)
         ref_line = _line(edge.get("callee_line")) or caller_line
-        rows.append(_ref(source, callee_name, EdgeKind.CALLS.value, rel_path, ref_line))
+        ref = _ref(source, callee_name, EdgeKind.CALLS.value, rel_path, ref_line)
+        # #1669：无接收者的调用（`rollback()` 调用的是参数）到达不了方法。
+        ref["bare_call"] = "." not in callee_full
+        rows.append(ref)
     return rows
 
 
@@ -471,7 +474,12 @@ def _choose_candidate(
     reference_name = str(row["reference_name"])
     base = _base_name(reference_name)
     import_hints = _import_target_hints(conn, source_file, reference_name)
-    eligible = [item for item in candidates if item.get("node_id") != source_node]
+    eligible = [
+        item
+        for item in candidates
+        if item.get("node_id") != source_node
+        and not (row.get("bare_call") and item.get("kind") == "method")
+    ]
     # Language gate: a reference in a Python file must not bind to a same-named
     # symbol defined in another language. ``ast_symbol_rows`` is cross-language,
     # so a Python ``config.get(...)`` with no Python ``get`` in the tree would

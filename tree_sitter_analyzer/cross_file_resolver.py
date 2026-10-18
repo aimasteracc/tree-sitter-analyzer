@@ -254,6 +254,8 @@ class CrossFileResolver:
                 and ("." in callee_full or len(callee_candidates) != 1)
             ):
                 callee_candidates = []
+            if "." not in callee_full:
+                callee_candidates = self._bare_reachable(callee_name, callee_candidates)
             callee_resolved = callee_candidates[0][0] if callee_candidates else ""
 
             confidence = 1.0
@@ -275,6 +277,25 @@ class CrossFileResolver:
                 )
             )
         return resolved
+
+    def _bare_reachable(
+        self, callee_name: str, candidates: list[tuple[str, float]]
+    ) -> list[tuple[str, float]]:
+        """#1669：无接收者的调用到达不了方法。
+
+        本地（1.0）与全局（≤0.5）档按名字命中的文件里须有同名的非方法定义；
+        经 import 档（0.9 / 0.7）命中的文件由导入语句给出，原样保留。
+        """
+        functions = {
+            func.file
+            for func in self._functions_by_name.get(callee_name, [])
+            if func.parent_class is None
+        }
+        return [
+            (file_path, confidence)
+            for file_path, confidence in candidates
+            if file_path in functions or 0.5 < confidence < 1.0
+        ]
 
     def _build_module_map(self) -> None:
         conn = self._cache.get_conn()

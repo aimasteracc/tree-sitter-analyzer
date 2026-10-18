@@ -247,3 +247,24 @@ def test_graph_receiver_proof_via_module_import() -> None:
         "pkg",
         "client",
     )
+
+
+@pytest.mark.asyncio
+async def test_bare_callback_parameter_is_not_a_method_caller(tmp_path: Path) -> None:
+    # 第二遍按名字解析：`rollback()` 调用的是参数，不是项目里唯一的方法 `Conn.rollback`。
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    (tmp_path / "conn.py").write_text(
+        "class Conn:\n    def rollback(self):\n        return 1\n", encoding="utf-8"
+    )
+    (tmp_path / "job.py").write_text(
+        "def run(rollback):\n    return rollback()\n", encoding="utf-8"
+    )
+    indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
+        {"mode": "full", "max_files": 10}
+    )
+    assert indexed["published"] is True
+
+    for name in ("Conn.rollback", "rollback"):
+        result = await _callers(str(tmp_path), name, "conn.py")
+        assert result["caller_count"] == 0, name
