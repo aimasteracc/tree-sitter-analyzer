@@ -31,6 +31,7 @@ from .constants import (
     JS_TS_MODULE_EXTS_LONGEST_FIRST,
 )
 from .languages.lang_extension_map import EXT_TO_LANG
+from .receiver_proof import has_unproven_receiver
 
 logger = logging.getLogger(__name__)
 
@@ -237,7 +238,13 @@ class CrossFileResolver:
                         caller_name = cn
                         caller_line = cl
 
-            callee_candidates = self.resolve_callee(callee_name, caller_file)
+            # #1669：这里只按裸名解析，看不到接收者；接收者未被证明的 `x.m()`
+            # （含同文件里的 `self._entries.append()`）不得因同名定义而写入文件。
+            callee_candidates = (
+                []
+                if has_unproven_receiver(callee_full)
+                else self.resolve_callee(callee_name, caller_file)
+            )
             # 低置信度全局同名回退只适用于唯一的裸调用；带接收者的调用交给
             # Synapse 的类型、内建对象和唯一方法规则，避免把 str.format
             # 之类的调用误连到项目中的同名定义。

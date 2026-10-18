@@ -13,6 +13,7 @@ import sqlite3
 from typing import Any
 
 from ...module_scope_caller import module_caller_entry
+from ...receiver_proof import has_unproven_receiver
 from ...utils import setup_logger
 from ._response_builder import build_response
 from .base_tool import BaseMCPTool
@@ -168,6 +169,13 @@ def _collect_sites(
         sites.extend(found)
     sites.sort(key=lambda site: (site["file"], site["line"]))
     return sites[:limit] if limit is not None else sites
+
+
+def _unbound_receiver_call(edge: dict[str, Any]) -> bool:
+    """边未绑定到任何文件，且接收者未被证明（#1669）：只是同名匹配。"""
+    return not edge.get("callee_resolved_file") and has_unproven_receiver(
+        str(edge.get("callee_full") or "")
+    )
 
 
 def _certification_ruled_out(project_root: str) -> bool:
@@ -781,6 +789,10 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             )
             if base is None:
                 unattributed += 1
+                continue
+            if file_path and _unbound_receiver_call(edge):
+                # #1669：限定到定义文件的查询只列出绑定到该文件的调用；同文件里
+                # 接收者未知的 `self._entries.append()` 仅按名字匹配，留给未解析计数。
                 continue
             key = f"{base['file']}:{base['name']}:{base['line']}"
             provenance = annotated_provenance(edge.get("receiver_binding"))

@@ -73,7 +73,6 @@ class ResolverContext:
         self._file_class_methods_loaded = file_class_methods is not None
         self._method_indexes_loaded = False
         self._class_method_index: dict[tuple[str, str], tuple[str, int] | None] = {}
-        self._unique_method_index: dict[str, tuple[str, int] | None] = {}
         self._global_name_table = global_name_table or {}
         self._import_alias_target = import_alias_target or {}
         self._imports_by_file = imports_by_file or {}
@@ -145,10 +144,6 @@ class ResolverContext:
                         self._class_method_index[class_key] = target
                     elif self._class_method_index[class_key] != target:
                         self._class_method_index[class_key] = None
-                    if method_name not in self._unique_method_index:
-                        self._unique_method_index[method_name] = target
-                    elif self._unique_method_index[method_name] != target:
-                        self._unique_method_index[method_name] = None
         self._method_indexes_loaded = True
 
     @property
@@ -156,12 +151,6 @@ class ResolverContext:
         """返回类名和方法名对应的唯一项目定义；歧义项的值为 ``None``。"""
         self._ensure_method_indexes()
         return self._class_method_index
-
-    @property
-    def unique_method_index(self) -> dict[str, tuple[str, int] | None]:
-        """返回方法名对应的唯一项目定义；歧义项的值为 ``None``。"""
-        self._ensure_method_indexes()
-        return self._unique_method_index
 
     @property
     def global_name_table(self) -> dict[str, list[tuple[str, int]]]:

@@ -36,6 +36,7 @@ from .call_graph_self_dispatch import (
     own_class_target,
 )
 from .callee_resolution import CalleeResolver
+from .receiver_proof import receiver_type_name, split_receiver
 
 if TYPE_CHECKING:
     from .cached_reexport_binding import PackageReexportBinder
@@ -83,6 +84,7 @@ class CachedEdgeResolver:
     ) -> None:
         self._functions_by_file = functions_by_file
         self._functions_by_name = functions_by_name
+        self._file_import_map = file_import_map
         self._reexport_binder = reexport_binder
         self._subclasses = subclasses
         self._resolver = CalleeResolver(
@@ -276,8 +278,12 @@ class CachedEdgeResolver:
             # #1621：本地 / import 档命中多个同名定义（`obj.hook()` 与同文件的
             # `A.hook`、`B.hook`）时无法确定是哪一个。接收者名恰是某个类时收窄；
             # 仍不唯一就只记为 possible，不再把每个候选都当作确定的被调方。
+            # #1669：唯一的本地同名定义也只在接收者被证明时才确定——同文件里
+            # `self._entries.append()` 不是 `HealthHistory.append` 的调用。
             scoped = _narrow_by_receiver(certain, qualifier)
-            if len(scoped) == 1:
+            if len(scoped) == 1 and self._receiver_proven(
+                qualifier, scoped[0], caller_file
+            ):
                 return EdgeTargets(certain=scoped)
             return EdgeTargets(possible=scoped)
         globals_ = [
@@ -290,6 +296,17 @@ class CachedEdgeResolver:
         if len(narrowed) == 1 and _qualifier_admits_global(qualifier, narrowed[0]):
             return EdgeTargets(certain=narrowed)
         return EdgeTargets(possible=globals_)
+
+    def _receiver_proven(self, qualifier: str, ref: FunctionRef, caller_file: str) -> bool:
+        """本地 / import 档的唯一候选能否确定：无接收者、接收者是候选的类，或是导入名。
+
+        导入名（模块别名或导入的类）经 import 档命中目标文件，是接收者证据；
+        其余接收者（局部变量、参数、``self.x``）的类型未知（#1669）。
+        """
+        if _qualifier_admits_global(qualifier, ref):
+            return True
+        imported = self._file_import_map.get(caller_file, {})
+        return imported.get(qualifier.split(".", 1)[0]) == ref.file_path
 
 
 def _static_memo_key(edge: dict[str, Any], caller_file: str) -> tuple[Any, ...]:
@@ -320,14 +337,13 @@ _KEY_GETTERS: dict[tuple[str, ...], Callable[[dict[str, Any]], tuple[Any, ...]]]
 
 
 def _split_qualifier(name: str) -> tuple[str, str]:
-    if "." in name:
-        qualifier, base_name = name.rsplit(".", 1)
-        return qualifier, base_name
-    return "", name
+    # #1669：`Foo(a.b).m` 的接收者是 `Foo(a.b)`，括号内的点不参与拆分。
+    return split_receiver(name)
 
 
 def _receiver_name(qualifier: str) -> str:
-    return qualifier.rsplit(".", 1)[-1]
+    # #1669：构造调用接收者 `mod.Foo(3)` 按其类名 `Foo` 比较。
+    return receiver_type_name(qualifier)
 
 
 def _narrow_by_receiver(
