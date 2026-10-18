@@ -7,6 +7,41 @@ from __future__ import annotations
 from typing import Any
 
 
+def _issue_stable_failure_record(
+    cache: Any,
+    conn: Any,
+    stats: dict[str, Any],
+    candidate_snapshot: Any,
+    scope_json: str,
+    *,
+    converged: bool,
+) -> None:
+    """#1671：仅稳定失败、且本次回填已收敛的运行签发零变化判定的内容证据。
+
+    本函数不经门面全局绑定（``run_index_project`` 才是），所需值全部显式传入。
+    """
+    from .stable_failures import current_extractor_version, issue_after_run
+
+    issued = issue_after_run(
+        conn,
+        project_root=cache.project_root,
+        candidate=candidate_snapshot,
+        scope=scope_json,
+        extractor_version=current_extractor_version(),
+        details=stats.get("files", ()),
+        errors=int(stats.get("errors", 0) or 0),
+        converged=bool(
+            converged
+            and stats.get("backfill_errors", 0) == 0
+            and stats.get("changed_during_run", 0) == 0
+            and stats.get("incomplete_skips", 0) == 0
+            and not stats.get("truncated_by_max_files", False)
+        ),
+    )
+    if issued:
+        stats["stable_failures_recorded"] = int(stats.get("errors", 0) or 0)
+
+
 def run_index_project(
     cache: Any,
     max_files: int = 20_000,
@@ -28,6 +63,12 @@ def run_index_project(
     """
     max_files = normalize_index_max_files(max_files)
     activation_enabled = _project_index_activation_enabled(include_activation)
+    from .stable_failures import clear_record
+
+    # #1671：任何写运行都先撤销继承的稳定失败记录；只有收敛的运行结束时重新签发。
+    record_conn = cache._get_conn()
+    clear_record(record_conn)
+    record_conn.commit()
     if resolve_only:
         synapse = cache._run_synapse_backfill()
         edge_store_refresh = cache._refresh_graph_edges_from_cache()
@@ -472,6 +513,21 @@ def run_index_project(
         if certify_manifest:
             _update_authoritative_manifest(
                 cache, candidate_snapshot, stats, source_scope
+            )
+            from .index_project_runner import _issue_stable_failure_record
+
+            _issue_stable_failure_record(
+                cache,
+                conn,
+                stats,
+                candidate_snapshot,
+                canonical_source_scope_descriptor(source_scope),
+                converged=bool(
+                    needs_backfill
+                    and language_filter is None
+                    and not projection_repair
+                    and not stats.get("activation_errors")
+                ),
             )
         return stats
     finally:

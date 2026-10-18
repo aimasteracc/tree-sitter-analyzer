@@ -70,7 +70,9 @@ def _process_one_index_result(
             # 工作进程解析失败同样绑定已捕获字节，属稳定失败（#1554）。
             from .publication_policy import stable_failure
 
-            stats["files"].append(stable_failure(r["rel_path"], r["reason"]))
+            stats["files"].append(
+                stable_failure(r["rel_path"], r["reason"], r.get("content_hash"))
+            )
         else:
             stats["files"].append(
                 {"file": r["rel_path"], "status": "error", "reason": r["reason"]}

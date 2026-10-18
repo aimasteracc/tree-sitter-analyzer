@@ -404,10 +404,12 @@ def test_parse_and_write_returns_exact_parser_failure():
     )
 
     # #1554：解析器拒绝同一字节属稳定失败，不冻结其余文件的发布。
+    # #1671：失败项携带被拒绝字节的摘要，作为零变化判定的内容证据。
     assert result == {
         "file": "bad.py",
         "status": "error",
         "reason": "invalid source",
+        "content_hash": "hash",
         "failure_kind": "stable",
     }
 

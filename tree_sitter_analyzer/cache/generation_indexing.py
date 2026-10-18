@@ -19,11 +19,13 @@ from ..indexing_candidate_materialization import release_index_candidate_snapsho
 from ..indexing_snapshot import IndexCandidateSnapshot
 from .admission import CandidateUnbound, admission_failure_of, admission_fields
 from .generation_noop import (
+    NOT_PUBLISHABLE_REASON,
     index_run_unchanged,
     not_publishable_result,
     same_certified_content,
     unpublished_result,
 )
+from .generation_noop_precheck import unchanged_before_build
 from .generation_routing import (
     generation_storage_path,
     logical_index_path,
@@ -122,6 +124,7 @@ def mutate_published_cache(
     expected_path: Path | None = None,
     snapshot_operation: Callable[[ASTCache, IndexCandidateSnapshot], _T] | None = None,
     report_publication: bool = False,
+    precheck_unchanged: bool = False,
 ) -> _T:
     """默认库的显式单文件、重建和失效操作只写私有副本，首次发布前亦然（#1554）。
 
@@ -131,6 +134,9 @@ def mutate_published_cache(
 
     项目索引（``snapshot_operation`` 或 ``report_publication=True``）的结果总带
     ``published``；未发布时另带 ``publication_reason``（#1631、#1635）。
+
+    ``precheck_unchanged``（仅增量项目索引）：建库前以内容摘要比较候选与父版本，
+    证明零变化时直接返回未发布结果（#1671，见 ``generation_noop_precheck``）。
     """
     from ..ast_cache import ASTCache
     from .generation_store import Superseded
@@ -154,6 +160,11 @@ def mutate_published_cache(
                 and candidate_snapshot.publication_parent != candidate.parent
             ):
                 raise Superseded("INDEX_GENERATION_SUPERSEDED")
+            if precheck_unchanged and snapshot_operation is not None:
+                # #1671：内容摘要证明零变化时不复制父版本、不建库、不发布。
+                evidence = unchanged_before_build(store, candidate)
+                if evidence is not None:
+                    return cast(_T, evidence.index_result(candidate.snapshot))
             selector = store.begin(candidate)
             with store.abandoning(selector):  # #1595：未发布即回收
                 writable = ASTCache(cache.project_root, str(store.database(selector)))
@@ -189,6 +200,13 @@ def mutate_published_cache(
                 release_index_candidate_snapshot(candidate.snapshot)
 
 
+def _report_sync_publication(result: Any, published: bool, reason: str | None) -> None:
+    """同步结果如实携带是否发布（#1671）；自定义工厂的结果对象可能没有这些字段。"""
+    if isinstance(result, SyncResult):
+        result.published = published
+        result.publication_reason = reason
+
+
 def run_incremental_sync(
     cache: Any, *, sync_factory: Any = None, **arguments: Any
 ) -> SyncResult:
@@ -205,6 +223,19 @@ def run_incremental_sync(
     try:
         if supplied is not None and supplied.publication_parent != candidate.parent:
             raise Superseded("INDEX_GENERATION_SUPERSEDED")
+        if arguments.get("certify_manifest", True) and sync_factory in (
+            None,
+            IncrementalSync,
+        ):
+            # #1671：内容摘要证明零变化时不复制父版本、不建库、不发布。
+            evidence = unchanged_before_build(store, candidate)
+            if evidence is not None:
+                unchanged: SyncResult = evidence.sync_result()
+                callback = arguments.get("callback")
+                if callback:
+                    for detail in unchanged.details:
+                        callback(detail)
+                return unchanged
         selector = store.begin(candidate)
         with store.abandoning(selector):  # #1595：未发布即回收
             writable = ASTCache(cache.project_root, str(store.database(selector)))
@@ -228,6 +259,9 @@ def run_incremental_sync(
                     )
                 )
                 cache._adopt_published_generation()
+                _report_sync_publication(result, True, None)
+            else:
+                _report_sync_publication(result, False, NOT_PUBLISHABLE_REASON)
         return result
 
     finally:

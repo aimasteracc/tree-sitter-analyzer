@@ -1,0 +1,180 @@
+"""索引内容的规范化转储：增量刷新与全新重建的逐表比较（#1671 / #1673 等价门）。
+
+查询可见表逐行转储为有序列表，只排除与内容无关的列。排除项（精确清单）：
+
+时间戳
+  * ``ast_index.indexed_at``、``ast_index.certified_at``（保留“是否已认证”）
+  * ``ast_symbol_activation.computed_at``
+  * ``ast_constraint_violations.detected_at``
+  * ``lsp_resolution_cache.cached_at``
+  * ``ast_schema_version.applied_at``
+  * ``ast_call_graph_state.built_at``、``ast_build_state.started_at`` 与 ``pid``
+  * ``ast_resolve_state.fingerprint``（值为 ``<行数>:<max(indexed_at)>``，由时间戳派生）
+  * ``ast_index_snapshot_manifest.index_fingerprint``（覆盖上面各时间戳列的摘要）
+
+版本 / 写入身份
+  * ``ast_writer_state``（缓存 UUID 与写入修订号，RFC-0032）
+  * ``sqlite_sequence``（AUTOINCREMENT 计数器）
+
+代理键（不丢弃，而是映射为自然键后比较）
+  * ``ast_symbol_rows.id`` → ``(file_path, name, kind, line, end_line, language)``，
+    ``edges.callee_symbol_id``、``ast_symbol_comments.symbol_id``、
+    ``ast_symbol_activation.symbol_id``、``lsp_resolution_cache.symbol_id`` 与
+    FTS 文档 rowid 都按此映射
+  * ``edges.id`` → ``(source_node_id, target_node_id, kind, line)``；
+    ``ast_imports.id``、``ast_symbol_comments.id`` 直接省略（无外部引用）
+
+FTS5 影子表（``ast_symbols_fts_*``）的 B 树布局取决于写入历史，不可比较；改为用
+``fts5vocab(instance)`` 转储完整倒排索引（词项、文档、列、偏移），文档按上面的
+符号自然键映射。其余列（含 ``mtime_ns``、``file_size``、内容摘要、全部 JSON）全部比较。
+"""
+
+from __future__ import annotations
+
+import sqlite3
+from pathlib import Path
+from typing import Any
+
+EXCLUDED_TABLES = frozenset({"ast_writer_state", "sqlite_sequence"})
+EXCLUDED_COLUMNS = {
+    "ast_index": {"indexed_at", "certified_at"},
+    "ast_symbol_activation": {"computed_at"},
+    "ast_constraint_violations": {"detected_at"},
+    "lsp_resolution_cache": {"cached_at"},
+    "ast_schema_version": {"applied_at"},
+    "ast_call_graph_state": {"built_at"},
+    "ast_build_state": {"started_at", "pid"},
+    "ast_resolve_state": {"fingerprint"},
+    "ast_index_snapshot_manifest": {"index_fingerprint"},
+    "ast_imports": {"id"},
+    "ast_symbol_comments": {"id"},
+}
+_SYMBOL_ID_COLUMNS = {
+    "edges": "callee_symbol_id",
+    "ast_symbol_comments": "symbol_id",
+    "ast_symbol_activation": "symbol_id",
+    "lsp_resolution_cache": "symbol_id",
+}
+
+
+def _columns(conn: sqlite3.Connection, table: str) -> list[str]:
+    return [str(row[1]) for row in conn.execute(f'PRAGMA table_info("{table}")')]
+
+
+def _sorted(rows: list[tuple[Any, ...]]) -> list[tuple[Any, ...]]:
+    return sorted(rows, key=repr)
+
+
+def canonical_dump(database: Path | str) -> dict[str, list[tuple[Any, ...]]]:
+    """返回 ``{表名: 有序行}``；只读打开，不修改数据库。"""
+    conn = sqlite3.connect(Path(database).as_uri() + "?mode=ro", uri=True)
+    try:
+        return _dump(conn)
+    finally:
+        conn.close()
+
+
+def _dump(conn: sqlite3.Connection) -> dict[str, list[tuple[Any, ...]]]:
+    tables = [
+        str(row[0])
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        )
+    ]
+    symbols: dict[int, tuple[Any, ...]] = {
+        int(row[0]): tuple(row[1:])
+        for row in conn.execute(
+            "SELECT id, file_path, name, kind, line, end_line, language "
+            "FROM ast_symbol_rows"
+        )
+    }
+    edge_keys: dict[int, tuple[Any, ...]] = {}
+    if "edges" in tables:
+        edge_keys = {
+            int(row[0]): tuple(row[1:])
+            for row in conn.execute(
+                "SELECT id, source_node_id, target_node_id, kind, line FROM edges"
+            )
+        }
+    dump: dict[str, list[tuple[Any, ...]]] = {}
+    for table in tables:
+        if table in EXCLUDED_TABLES or table.startswith("ast_symbols_fts"):
+            continue
+        columns = _columns(conn, table)
+        keep = [c for c in columns if c not in EXCLUDED_COLUMNS.get(table, set())]
+        if table == "ast_symbol_rows":
+            keep = [c for c in keep if c != "id"]
+        if table == "edges":
+            keep = [c for c in keep if c != "id"]
+        quoted = ", ".join(f'"{c}"' for c in keep)
+        rows = []
+        for row in conn.execute(f'SELECT {quoted} FROM "{table}"'):
+            values = dict(zip(keep, row, strict=True))
+            symbol_column = _SYMBOL_ID_COLUMNS.get(table)
+            if symbol_column in values and values[symbol_column] is not None:
+                values[symbol_column] = symbols.get(int(values[symbol_column]), "?")
+            if table == "lsp_resolution_cache" and values.get("edge_id") is not None:
+                values["edge_id"] = edge_keys.get(int(values["edge_id"]), "?")
+            rows.append(tuple(values[c] for c in keep))
+        if table == "ast_index":
+            # ``certified_at`` 的值是时间戳，只比较“是否已认证”。
+            certified = dict(
+                conn.execute(
+                    "SELECT file_path, certified_at IS NOT NULL FROM ast_index"
+                ).fetchall()
+            )
+            rows = [(*row, certified[row[0]]) for row in rows]
+        dump[table] = _sorted(rows)
+    dump["fts5vocab(instance)"] = _fts_dump(conn, symbols)
+    return dump
+
+
+def _fts_dump(
+    conn: sqlite3.Connection, symbols: dict[int, tuple[Any, ...]]
+) -> list[tuple[Any, ...]]:
+    present = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE name='ast_symbols_fts'"
+    ).fetchone()
+    if present is None:
+        return []
+    conn.execute(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS temp.tsa_fts_vocab "
+        "USING fts5vocab(main, ast_symbols_fts, instance)"
+    )
+    try:
+        return _sorted(
+            [
+                (term, symbols.get(int(doc), "?"), column, offset)
+                for term, doc, column, offset in conn.execute(
+                    "SELECT term, doc, col, offset FROM temp.tsa_fts_vocab"
+                )
+            ]
+        )
+    finally:
+        conn.execute("DROP TABLE temp.tsa_fts_vocab")
+
+
+def dump_differences(
+    left: dict[str, list[tuple[Any, ...]]],
+    right: dict[str, list[tuple[Any, ...]]],
+    *,
+    limit: int = 5,
+) -> dict[str, Any]:
+    """逐表差异（各方独有的行，最多 ``limit`` 条）；相同返回空字典。"""
+    from collections import Counter
+
+    differences: dict[str, Any] = {}
+    for table in sorted(set(left) | set(right)):
+        a = Counter(left.get(table, []))
+        b = Counter(right.get(table, []))
+        if a == b:
+            continue
+        only_left = list((a - b).elements())
+        only_right = list((b - a).elements())
+        differences[table] = {
+            "only_left": len(only_left),
+            "only_right": len(only_right),
+            "left_sample": only_left[:limit],
+            "right_sample": only_right[:limit],
+        }
+    return differences

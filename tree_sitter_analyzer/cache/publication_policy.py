@@ -16,9 +16,19 @@ FAILURE_KIND = "failure_kind"
 STABLE = "stable"
 
 
-def stable_failure(rel_path: str, reason: str) -> dict[str, Any]:
-    """解析器拒绝这份字节时的单文件错误项。"""
-    return {"file": rel_path, "status": "error", "reason": reason, FAILURE_KIND: STABLE}
+def stable_failure(
+    rel_path: str, reason: str, content_hash: str | None = None
+) -> dict[str, Any]:
+    """解析器拒绝这份字节时的单文件错误项；``content_hash`` 是被拒绝字节的摘要。
+
+    摘要是零变化判定的内容证据（#1671）：只有同一文件、同一摘要、同一原因
+    才算与活动版本相同的稳定失败。
+    """
+    failure = {"file": rel_path, "status": "error", "reason": reason}
+    if content_hash:
+        failure["content_hash"] = content_hash
+    failure[FAILURE_KIND] = STABLE
+    return failure
 
 
 def stable_failures_only(details: Iterable[Any], errors: int) -> bool:
