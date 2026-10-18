@@ -111,3 +111,70 @@ def test_hold_reports_a_stop_that_did_not_finish(monkeypatch, capsys) -> None:
 
     assert _watch_hold.hold_cli_watcher(Tool(), {"status": "started"}) == 1
     assert "shutdown is still pending" in capsys.readouterr().err
+
+
+def test_run_tool_releases_the_watcher_when_printing_fails() -> None:
+    from argparse import Namespace
+
+    from tree_sitter_analyzer.cli.commands.mcp_commands._helpers import _run_tool
+
+    calls: list[tuple[str, bool]] = []
+    errors: list[str] = []
+
+    class Tool:
+        def __init__(self, project_root: str) -> None:
+            self.project_root = project_root
+
+        async def execute(self, _arguments: dict) -> dict:
+            return {"success": True, "status": "started"}
+
+    def broken_output(_result: dict) -> None:
+        raise RuntimeError("stdout closed")
+
+    def after_run(_tool, result: dict, *, hold: bool = True) -> int:
+        calls.append((result["status"], hold))
+        return 0
+
+    code = _run_tool(
+        Namespace(project_root="."),
+        Tool,
+        {"mode": "watch_start"},
+        "Pre-indexed AST cache",
+        broken_output,
+        errors.append,
+        lambda: "json",
+        after_run=after_run,
+    )
+
+    assert code == 1
+    assert calls == [("started", False)]
+    assert errors == ["Pre-indexed AST cache failed: stdout closed"]
+
+
+def test_run_tool_returns_the_hold_exit_code() -> None:
+    from argparse import Namespace
+
+    from tree_sitter_analyzer.cli.commands.mcp_commands._helpers import _run_tool
+
+    class Tool:
+        def __init__(self, project_root: str) -> None:
+            self.project_root = project_root
+
+        async def execute(self, _arguments: dict) -> dict:
+            return {"success": True, "status": "started"}
+
+    printed: list[dict] = []
+
+    code = _run_tool(
+        Namespace(project_root="."),
+        Tool,
+        {"mode": "watch_start"},
+        "Pre-indexed AST cache",
+        printed.append,
+        pytest.fail,
+        lambda: "json",
+        after_run=lambda _tool, _result, hold=True: 1,
+    )
+
+    assert code == 1
+    assert printed == [{"success": True, "status": "started"}]
