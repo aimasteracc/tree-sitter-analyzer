@@ -118,11 +118,11 @@ Follow-ups (#1664, 2026-10-18):
   Windows 11 / NTFS with a copy of this repository (2,865 indexed files; record
   `e6-lease-wait` in [`evidence/0032-feasibility/observations.jsonl`](evidence/0032-feasibility/observations.jsonl)):
   a second writer released at the instant a refresh (`run_incremental_sync`) took
-  the publish lease waited 3.4, 5.4, 4.1, 6.6 and 5.2 s (median 5.2 s; 3 of 5 over 5 s). The publish critical section rechecks every
-  source file (walk plus content hash on path-only platforms), so it grows with the
-  project; capture and admission hold the lease for under 10 ms. A 5 s bound
-  therefore reported `INDEX_WRITER_BUSY` for ordinary contention on a mid-size
-  repository. The wait ends as soon as the lease is released, so a caller waits for
+  the publish lease waited 3.4, 5.4, 4.1, 6.6 and 5.2 s (median 5.2 s; 3 of 5 over
+  5 s). The publish critical section rechecks every source file (walk plus content
+  hash on path-only platforms), so it grows with the project; capture and admission
+  hold the lease for under 10 ms. A 5 s bound therefore reported `INDEX_WRITER_BUSY`
+  for ordinary contention on a mid-size repository. The wait ends as soon as the lease is released, so a caller waits for
   the holder's actual critical section, and the full 30 s only when that section is
   itself longer; it stays a wait bound, not a feedback SLA. The watcher's backoff
   starts after a failed attempt and is unchanged.
@@ -610,8 +610,9 @@ SQL exception, or operation token belongs in the human-readable error.
 admission errors, rather than reducing them to `{"error": ...}`. Background watchers
 retry only the two retryable codes, using fresh capture after delays of 5, 10, 20, 40,
 then 60 seconds (60-second cap). Existing notification coalescing and stop ownership
-remain mandatory. An unbound candidate does not cause an automatic replay loop. Normal mutating coordination performs admitted recovery;
-capture-only callers must explicitly request recovery through a mutating route.
+remain mandatory. An unbound candidate does not cause an automatic replay loop.
+Normal mutating coordination performs admitted recovery; capture-only callers must
+explicitly request recovery through a mutating route.
 
 Watch status exposes `last_admission_error` (null or the failure payload) and increments
 its existing error counter once per failed attempt. Clear this diagnostic after a
