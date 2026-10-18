@@ -567,6 +567,11 @@ def ensure_canonical_error_envelope(
     else:
         # error_type is already set — re-classify to fill recovery_hint only.
         _, recovery_hint, suggested_tool = _classify(error_msg, error_type)
+    # #1674：工具自己给出的 next_step 比通用提示更具体（如类型化的索引失败），
+    # 不能被 "Review the error message" 覆盖。
+    tool_next_step = response.get("next_step")
+    if isinstance(tool_next_step, str) and tool_next_step:
+        recovery_hint = tool_next_step
 
     # Find an identifier — prefer values already on the response, then
     # fall back to the request arguments.
@@ -587,7 +592,9 @@ def ensure_canonical_error_envelope(
 
     summary_line = response.get("summary_line")
     if not isinstance(summary_line, str) or not summary_line:
-        summary_line = _summary_line(tool_name, error_type, identifier_value)
+        error_code = response.get("error_code")
+        label = error_code if isinstance(error_code, str) and error_code else error_type
+        summary_line = _summary_line(tool_name, label, identifier_value)
         response["summary_line"] = summary_line
 
     response.setdefault("error_type", error_type)

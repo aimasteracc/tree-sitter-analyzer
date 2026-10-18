@@ -43,6 +43,12 @@ from .source_hash_budget import (
 from .source_recheck import SourceChanged, source_changed_failure
 
 _T = TypeVar("_T")
+_PUBLISH_STATE_UNKNOWN_NEXT_STEP = (
+    "The publish step failed after the new index may have become active "
+    "(see `published`). Run index action=status to confirm which generation "
+    "is active, then re-run index action=full mode=full if it is not the "
+    "expected one."
+)
 _SOURCE_CHANGED_KEYS = (
     "error_code",
     "cause_code",
@@ -293,6 +299,10 @@ async def run_full_index(
                     failure["published"] = store.active_selector() == selector
                 except (OSError, ValueError):
                     failure["published"] = None
+                if failure["published"] is not False:
+                    # 发布步骤失败时新版本可能已可见：不能声称"什么都没发布"。
+                    failure["next_step"] = _PUBLISH_STATE_UNKNOWN_NEXT_STEP
+                    failure["agent_summary"]["next_step"] = failure["next_step"]
                 return failure
         # #1674：已发布即成功；只缺可选语法时完整性如实为 incomplete（未认证，
         # scope_complete 仍为 False），跳过的文件列在 skipped_files。
@@ -357,7 +367,37 @@ def _publication_error(exc: Exception, root: str, phase: str) -> dict[str, Any]:
     elif (admission := admission_failure_of(exc)) is not None:
         # RFC-0032 slice 4：准入失败与 CLI/MCP/watcher 使用同一组机器字段。
         failure.update(admission_fields(admission))
-    return failure
+    return _typed_publication_failure(failure)
+
+
+def _typed_publication_failure(failure: dict[str, Any]) -> dict[str, Any]:
+    """#1674：未发布的答复总带 error_code 与 next_step，摘要指向错误码。
+
+    已归类的失败（预算、源码变化、准入码）标为 ``index_not_published``；
+    未预料的异常不预设 error_type，仍由中央信封按异常文本归类。
+    """
+    from ..mcp.tools.full_index_outcome import (
+        INDEX_NOT_PUBLISHED,
+        INDEX_RUN_FAILED,
+        RUN_FAILED_NEXT_STEP,
+    )
+
+    typed = "error_code" in failure
+    shaped = {
+        **failure,
+        "error_code": failure.get("error_code") or INDEX_RUN_FAILED,
+        "next_step": failure.get("next_step") or RUN_FAILED_NEXT_STEP,
+    }
+    if typed:
+        shaped["error_type"] = INDEX_NOT_PUBLISHED
+    summary_line = f"codegraph_full_index: failed ({shaped['error_code']})"
+    shaped["summary_line"] = summary_line
+    shaped["agent_summary"] = {
+        "verdict": "ERROR",
+        "summary_line": summary_line,
+        "next_step": shaped["next_step"],
+    }
+    return shaped
 
 
 def mutate_index_path(root: str, path: Path, operation: Callable[[Path], _T]) -> _T:
