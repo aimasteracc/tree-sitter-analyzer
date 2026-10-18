@@ -57,7 +57,8 @@ def test_verification_command_appears_once_at_full_length(
     command = response["verification_command"]
     text = json.dumps(response, ensure_ascii=False)
 
-    assert len(command) > 1000
+    # 与 dogfood 同量级的长命令（PowerShell 形式的 40 个测试目标）。
+    assert len(command) == 1684
     assert text.count(command) == 1
     # 其他字段按名字引用它。
     assert response["command_aliases"] == {
