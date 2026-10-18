@@ -20,6 +20,7 @@ from ..incremental_sync_support import SyncResult
 from ..index_source_scope import SourceScopeDescriptor, make_source_scope_descriptor
 from ..indexing_snapshot import (
     IndexCandidateSnapshot,
+    IndexSnapshotEntry,
     build_index_candidate_snapshot,
     walk_index_candidate_entries,
 )
@@ -78,43 +79,17 @@ def _bind_source_hashes(snapshot: IndexCandidateSnapshot) -> IndexCandidateSnaps
     """
     if not _PATH_ONLY_SOURCE:
         return snapshot
-    from ..index_source_stream import SourceUnreadable, hash_source_at
-    from ..portable_source_snapshot import _marker, _same
-
-    entries = []
-    counters = {"input": 0, "output": 0}
-    selected = sum(
-        1
+    selected = [
+        entry
         for entry in snapshot.entries
         if entry.decision == "selected" and entry.fingerprint is not None
-    )
-    overall_deadline = time.monotonic() + source_hash_budget_seconds(selected)
-    bound = 0
+    ]
+    overall_deadline = time.monotonic() + source_hash_budget_seconds(len(selected))
+    bound = _bound_source_hashes(selected, overall_deadline)
+    entries = []
     for entry in snapshot.entries:
         if entry.decision == "selected" and entry.fingerprint is not None:
-            before = os.lstat(entry.abs_path)
-            deadline = min(
-                overall_deadline,
-                time.monotonic() + SOURCE_HASH_MAX_SECONDS_ONE_FILE,
-            )
-            try:
-                _, digest, clean = hash_source_at(
-                    None,
-                    entry.abs_path,
-                    before,
-                    deadline,
-                    counters,
-                    SOURCE_HASH_BYTE_BUDGET,
-                    _marker,
-                    _same,
-                )
-            except (TimeoutError, OverflowError) as exc:
-                raise SourceHashBudgetExceeded(selected, bound) from exc
-            except SourceUnreadable as exc:
-                # #1654：被锁定等不可读文件记为标记而非摘要，其余文件照常绑定；
-                # 索引器据此按文件报告失败，标记永不等于任何已索引行的摘要。
-                digest, clean = exc.marker, True
-            bound += 1
+            before, digest, clean = bound[entry.rel_path]
             if not clean or entry.fingerprint != type(entry.fingerprint).from_stat(
                 before
             ):
@@ -124,6 +99,69 @@ def _bind_source_hashes(snapshot: IndexCandidateSnapshot) -> IndexCandidateSnaps
             )
         entries.append(entry)
     return replace(snapshot, entries=tuple(entries))
+
+
+#: 冷读取的并发线程数（#1673）：Windows 打开文件受 I/O 与实时扫描延迟支配，
+#: 本机实测顺序读取约 35 ms/文件、8 线程约 6 ms/文件；命中 ``source_hash_cache``
+#: 时根本不读文件。
+_HASH_THREADS = 8
+
+
+def _bound_source_hashes(
+    selected: list[IndexSnapshotEntry], overall_deadline: float
+) -> dict[str, tuple[os.stat_result, str, bool]]:
+    """为每个选中条目取 ``(lstat, 摘要, 干净)``；时间与字节预算对整批生效。
+
+    任一文件超出预算即抛 ``SourceHashBudgetExceeded``，不返回部分结果。
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from ..index_source_stream import SourceUnreadable, hash_source_at
+    from ..portable_source_snapshot import _marker, _same
+
+    def bind(entry: IndexSnapshotEntry) -> tuple[os.stat_result, str, bool, int]:
+        before = os.lstat(entry.abs_path)
+        deadline = min(
+            overall_deadline, time.monotonic() + SOURCE_HASH_MAX_SECONDS_ONE_FILE
+        )
+        counters = {"input": 0, "output": 0}
+        try:
+            _, digest, clean = hash_source_at(
+                None,
+                entry.abs_path,
+                before,
+                deadline,
+                counters,
+                SOURCE_HASH_BYTE_BUDGET,
+                _marker,
+                _same,
+            )
+        except SourceUnreadable as exc:
+            # #1654：被锁定等不可读文件记为标记而非摘要，其余文件照常绑定；
+            # 索引器据此按文件报告失败，标记永不等于任何已索引行的摘要。
+            digest, clean = exc.marker, True
+        return before, digest, clean, counters["input"]
+
+    results: dict[str, tuple[os.stat_result, str, bool]] = {}
+    total_bytes = 0
+    with ThreadPoolExecutor(max_workers=_HASH_THREADS) as pool:
+        futures = [(entry, pool.submit(bind, entry)) for entry in selected]
+        try:
+            for entry, future in futures:
+                before, digest, clean, read = future.result()
+                total_bytes += read
+                if total_bytes > SOURCE_HASH_BYTE_BUDGET:
+                    raise OverflowError
+                results[entry.rel_path] = (before, digest, clean)
+        except (TimeoutError, OverflowError) as exc:
+            for _entry, pending in futures:
+                pending.cancel()
+            raise SourceHashBudgetExceeded(len(selected), len(results)) from exc
+        except BaseException:
+            for _entry, pending in futures:
+                pending.cancel()
+            raise
+    return results
 
 
 def _with_unreadable_marks(
