@@ -26,19 +26,21 @@ from collections.abc import Mapping
 from typing import Any
 
 #: Registered facades in public registration order (governs ``tools/list``
-#: order) -> whether the builder ``tools/<name>_facade.build_<name>_facade``
-#: also takes the subscription lifecycle manager. A dict literal keyed by the
-#: public name, so ``scripts/codemap_surface.py`` reads the surface statically.
-_FACADES: dict[str, bool] = {
-    "search": True,
-    "nav": False,
-    "structure": False,
-    "health": False,
-    "edit": False,
-    "project": False,
-    "index": True,
-    "viz": False,
-}
+#: order): ``("name", takes_lifecycle_manager)`` for the builder
+#: ``tools/<name>_facade.build_<name>_facade``. One ``("name", ...)`` tuple per
+#: line, the registration shape ``scripts/codemap_surface.py`` and
+#: ``tests/integration/test_codemap_sync_hook.sh`` read statically.
+_FACADE_REGISTRATIONS: tuple[tuple[str, bool], ...] = (
+    ("search", True),
+    ("nav", False),
+    ("structure", False),
+    ("health", False),
+    ("edit", False),
+    ("project", False),
+    ("index", True),
+    ("viz", False),
+)
+_FACADES: dict[str, bool] = dict(_FACADE_REGISTRATIONS)
 FACADE_NAMES: tuple[str, ...] = tuple(_FACADES)
 
 
