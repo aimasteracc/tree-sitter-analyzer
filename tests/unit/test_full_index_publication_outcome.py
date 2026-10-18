@@ -101,8 +101,9 @@ async def test_unpublished_run_returns_a_typed_error(project_root, monkeypatch):
     assert result["agent_summary"]["verdict"] == "ERROR"
     assert result["error_code"] == "INDEX_RUN_FAILED"
     assert result["error_type"] == "index_not_published"
-    assert result["error"] == (
-        "index not published: INDEX_RUN_FAILED (phase ast_cache: RuntimeError: boom)"
+    # 后续阶段可能继发报错；首个原因必须是真正失败的阶段。
+    assert result["error"].startswith(
+        "index not published: INDEX_RUN_FAILED (phase ast_cache: RuntimeError: boom"
     )
     assert result["next_step"].startswith("Nothing was published")
     assert result["agent_summary"]["next_step"] == result["next_step"]
@@ -112,14 +113,19 @@ async def test_unpublished_run_returns_a_typed_error(project_root, monkeypatch):
 async def test_aborted_snapshot_handoff_reuses_the_admission_code(
     project_root, monkeypatch
 ):
-    import tree_sitter_analyzer.indexing_candidate_materialization as materialization
     from tree_sitter_analyzer.cache.admission import ADMISSION_CODES
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
 
-    monkeypatch.setattr(
-        materialization,
-        "index_candidate_cache_hierarchy_is_current",
-        lambda *args, **kwargs: False,
-    )
+    def aborted_handoff(self, *args, **kwargs):
+        # 快照交接校验失败时 ast_cache 阶段的形状（与平台无关地复现该分支）。
+        return {
+            "status": "ok",
+            "processed": 0,
+            "abort_remaining_phases": True,
+            "snapshot_handoff_error": "INDEX_CACHE_HIERARCHY_CHANGED",
+        }
+
+    monkeypatch.setattr(CodeGraphFullIndexTool, "_phase_ast_cache", aborted_handoff)
     result = await _full_index(project_root)
 
     assert (result["success"], result["published"], result["verdict"]) == (
