@@ -19,8 +19,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from operator import itemgetter
+from typing import TYPE_CHECKING, Any, cast
 
 from .cached_annotated_binding import (
     ANNOTATED_RECEIVER,
@@ -48,6 +50,8 @@ _PROJECT_RESOLUTIONS = frozenset({"project", "local"})
 _SELF_QUALIFIERS = frozenset({"self", "cls", "this", "super", "super()"})
 #: ``super`` 接收者：指向基类，而不是外围类自己的方法（#1635）。
 _SUPER_QUALIFIERS = frozenset({"super", "super()"})
+#: ``_static_targets`` 不读取的边字段（只描述调用方与调用点位置），不进入记忆键。
+_CALLER_ONLY_EDGE_FIELDS = frozenset({"caller_name", "caller_line", "callee_line"})
 
 
 @dataclass(frozen=True)
@@ -75,6 +79,7 @@ class CachedEdgeResolver:
         file_import_map: dict[str, dict[str, str]],
         reexport_binder: PackageReexportBinder | None = None,
         subclasses: SubclassIndex | None = None,
+        memoize: bool = False,
     ) -> None:
         self._functions_by_file = functions_by_file
         self._functions_by_name = functions_by_name
@@ -84,7 +89,18 @@ class CachedEdgeResolver:
             functions_by_name=functions_by_name,
             functions_by_file=functions_by_file,
             name_to_source=file_import_map,
+            memoize_global=memoize,
         )
+        # #1657：``_static_targets`` 是边的解析字段与调用方文件的纯函数（索引在构图
+        # 期间不变）。18.7 万条边只有约 7 万种不同输入，相同输入只解析一次。
+        self._static_memo: dict[tuple[Any, ...], EdgeTargets] | None = (
+            {} if memoize else None
+        )
+
+    def release_memos(self) -> None:
+        """#1657：构图结束后释放记忆（全局兜底列表约占数十 MB），之后不再记忆。"""
+        self._static_memo = None
+        self._resolver.release_global_memo()
 
     @property
     def callee_resolver(self) -> CalleeResolver:
@@ -99,7 +115,7 @@ class CachedEdgeResolver:
         ``caller_class`` 为调用方的外围类（#1635）：``self.m()`` 绑定到它自己的
         ``m``，其子类的覆写记为可能目标。
         """
-        targets = self._static_targets(edge, caller_file)
+        targets = self._memoized_static_targets(edge, caller_file)
         full_name = str(edge.get("callee_full") or "") or str(
             edge.get("callee_name") or ""
         )
@@ -127,6 +143,7 @@ class CachedEdgeResolver:
                 possible = [ref for ref in certain + possible if ref != own]
                 certain = [own]
         if self._subclasses is not None:
+            present = {*certain, *possible}
             for ref in override_candidates(
                 self._subclasses,
                 self._functions_by_name,
@@ -134,9 +151,31 @@ class CachedEdgeResolver:
                 qualifier,
                 caller_class,
             ):
-                if ref not in certain and ref not in possible:
+                # #1657：按身份去重（与 ``in`` 列表同义，但不是 O(n²)）。
+                if ref not in present:
+                    present.add(ref)
                     possible.append(ref)
         return EdgeTargets(certain=certain, possible=possible)
+
+    def _memoized_static_targets(
+        self, edge: dict[str, Any], caller_file: str
+    ) -> EdgeTargets:
+        """``_static_targets`` 的构图内记忆；结果只读共享。
+
+        键是调用方文件加上边的全部字段，只去掉 ``_static_targets`` 不读取的调用方
+        身份与行号——新增的边字段自动进入键，不会被忽略。
+        """
+        if self._static_memo is None:
+            return self._static_targets(edge, caller_file)
+        try:
+            key = _static_memo_key(edge, caller_file)
+            cached = self._static_memo.get(key)
+        except TypeError:  # 不可哈希的字段值：不记忆。
+            return self._static_targets(edge, caller_file)
+        if cached is None:
+            cached = self._static_targets(edge, caller_file)
+            self._static_memo[key] = cached
+        return cached
 
     def _static_targets(self, edge: dict[str, Any], caller_file: str) -> EdgeTargets:
         """按持久化解析与本地 / import / 全局兜底给出目标（与调用方类无关）。"""
@@ -179,6 +218,8 @@ class CachedEdgeResolver:
         full_name = f"{qualifier}.{base_name}" if qualifier else base_name
         before = self._inferred_targets(full_name, qualifier, caller_file)
         possible: list[FunctionRef] = []
+        # #1657：按身份去重（与 ``in`` 列表同义，但不是 O(n²)）。
+        present = {target}
         for ref in [
             *dispatch_alternatives(
                 self._subclasses, self._functions_by_name, base_name, binding, target
@@ -186,7 +227,8 @@ class CachedEdgeResolver:
             *before.certain,
             *before.possible,
         ]:
-            if ref != target and ref not in possible:
+            if ref not in present:
+                present.add(ref)
                 possible.append(ref)
         return EdgeTargets(certain=[target], possible=possible, binding=binding)
 
@@ -248,6 +290,33 @@ class CachedEdgeResolver:
         if len(narrowed) == 1 and _qualifier_admits_global(qualifier, narrowed[0]):
             return EdgeTargets(certain=narrowed)
         return EdgeTargets(possible=globals_)
+
+
+def _static_memo_key(edge: dict[str, Any], caller_file: str) -> tuple[Any, ...]:
+    """调用方文件 + 边的字段名 + 除调用方身份 / 行号外的全部字段值。
+
+    同一读取器的边字段顺序相同：按字段名元组缓存取值器，取值在 C 层完成。
+    """
+    fields = tuple(edge)
+    getter = _KEY_GETTERS.get(fields)
+    if getter is None:
+        kept = [name for name in fields if name not in _CALLER_ONLY_EDGE_FIELDS]
+        getter = _values_getter(kept)
+        _KEY_GETTERS[fields] = getter
+    return (caller_file, fields, getter(edge))
+
+
+def _values_getter(names: list[str]) -> Callable[[dict[str, Any]], tuple[Any, ...]]:
+    if not names:
+        return lambda _edge: ()
+    if len(names) == 1:
+        single = itemgetter(names[0])
+        return lambda edge: (single(edge),)
+    return cast(Callable[[dict[str, Any]], tuple[Any, ...]], itemgetter(*names))
+
+
+#: 字段名元组 -> 取值器（字段集合只有寥寥几种）。
+_KEY_GETTERS: dict[tuple[str, ...], Callable[[dict[str, Any]], tuple[Any, ...]]] = {}
 
 
 def _split_qualifier(name: str) -> tuple[str, str]:

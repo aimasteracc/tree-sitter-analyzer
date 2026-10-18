@@ -367,6 +367,13 @@ def _reset_all_singletons():
             "reset_answer_cache",
             lambda fn: fn(),
         ),
+        # #1657：内存调用图按输入内容摘要记忆。代码不在键里，测试会替换解析
+        # 规则（monkeypatch），因此每个测试都从空记忆开始。
+        (
+            "tree_sitter_analyzer.call_graph_memo",
+            "clear",
+            lambda fn: fn(),
+        ),
     ]
 
     for module_path, attr_name, reset_fn in _RESETS:

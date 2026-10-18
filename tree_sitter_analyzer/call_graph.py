@@ -12,13 +12,18 @@ Key classes:
 - FunctionRef: Qualified function reference (file, name, line, language)
 """
 
+import gc
 import os
 import sqlite3
 from collections import defaultdict, deque
+from collections.abc import Iterator
 from collections.abc import Set as AbstractSet
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from . import call_graph_memo
+from .cache import graph_input_rows
 from .cached_edge_resolution import CachedEdgeResolver
 from .cached_reexport_binding import PackageReexportBinder
 from .call_graph_binding import RefIdentity, pick_caller_ref, ref_identity
@@ -751,7 +756,11 @@ class CachedCallGraph(CallGraph):
             return
 
         if self._cache is not None:
-            self._build_from_cache()
+            # #1657：构图一次分配数百万个对象，循环 GC 会反复扫描进程里已有的大堆
+            # （长驻服务器还持有旧图与各类缓存）。构图期间暂停循环回收，实测省
+            # 1.1–1.4 s；结束后（含异常）恢复原状态，引用计数回收不受影响。
+            with _cyclic_gc_paused():
+                self._build_from_cache()
         if not self._built and self._fallback:
             super().build()
 
@@ -766,8 +775,8 @@ class CachedCallGraph(CallGraph):
         try:
             if self._cache is None:
                 return
-            edges = self._cache.get_call_edges()
-            functions = self._cache.get_functions()
+            edge_source = graph_input_rows.read_edge_source(self._cache)
+            function_source = graph_input_rows.read_function_source(self._cache)
             imports_raw = self._cache.get_imports()
         except sqlite3.Error:
             if getattr(self._cache, "strict_sql_errors", False):
@@ -776,6 +785,60 @@ class CachedCallGraph(CallGraph):
         except Exception:
             return
 
+        # #1657：包再导出与子类证据先于摘要加载（与惰性加载读同一批表，失败语义不变），
+        # 摘要覆盖本次构图消费的全部输入；内容相同则直接复用已建好的图。
+        reexport_binder = PackageReexportBinder(self._cache)
+        subclasses = SubclassIndex(self._cache)
+        root = str(self.project_root)
+        digest = call_graph_memo.input_digest(
+            *graph_input_rows.source_digest_parts(edge_source),
+            *graph_input_rows.source_digest_parts(function_source),
+            imports_raw,
+            reexport_binder.evidence(),
+            subclasses.evidence(),
+        )
+        if digest is not None:
+            state = call_graph_memo.lookup(root, digest)
+            if state is not None:
+                self._adopt_state(state)
+                return
+        # 输入已变：先释放本根的旧状态，构图期间内存里不同时保留两张图。
+        call_graph_memo.discard(root)
+
+        try:
+            edges = graph_input_rows.materialize_edges(edge_source)
+            functions = graph_input_rows.materialize_functions(function_source)
+        except Exception:
+            return
+        # 原始行已转换完毕：构图期间不再同时持有两份边数据。
+        del edge_source, function_source
+        self._build_from_inputs(
+            edges, functions, imports_raw, reexport_binder, subclasses
+        )
+        if self._built and digest is not None:
+            call_graph_memo.store(root, digest, self._export_state())
+
+    def _export_state(self) -> dict[str, Any]:
+        """构图完成后的全部状态（不含缓存句柄与项目根），供内容相同的图复用。"""
+        return {
+            name: value
+            for name, value in vars(self).items()
+            if name not in _UNSHARED_STATE
+        }
+
+    def _adopt_state(self, state: dict[str, Any]) -> None:
+        """采用内容相同的输入构建出的状态；构建完成后状态只读，可以共享。"""
+        for name, value in state.items():
+            setattr(self, name, value)
+
+    def _build_from_inputs(
+        self,
+        edges: list[dict[str, Any]],
+        functions: list[dict[str, Any]],
+        imports_raw: dict[str, Any],
+        reexport_binder: PackageReexportBinder,
+        subclasses: SubclassIndex,
+    ) -> None:
         if not functions and not edges:
             return
 
@@ -831,8 +894,10 @@ class CachedCallGraph(CallGraph):
             functions_by_name=self._func_by_name,
             functions_by_file=self._func_by_file,
             file_import_map=file_import_map,
-            reexport_binder=PackageReexportBinder(self._cache),
-            subclasses=SubclassIndex(self._cache),
+            reexport_binder=reexport_binder,
+            subclasses=subclasses,
+            # #1657：函数与 import 索引此时已完整且不再变化，相同输入只解析一次。
+            memoize=True,
         )
         if self._callee_resolver is None:
             self._callee_resolver = edge_resolver.callee_resolver
@@ -853,7 +918,26 @@ class CachedCallGraph(CallGraph):
                 )
                 self._record_edge_binding(caller_ref, callee_ref, targets.binding)
 
+        # #1657：构图内记忆只服务这一次构建；保留下来的裸名解析器不再带着它。
+        edge_resolver.release_memos()
         self._built = True
+
+
+#: 不随复用的图状态共享的属性：缓存句柄属于各自的图对象，项目根由构造参数给出。
+_UNSHARED_STATE = frozenset({"_cache", "_fallback", "project_root"})
+
+
+@contextmanager
+def _cyclic_gc_paused() -> Iterator[None]:
+    """暂停循环垃圾回收；只在进入时处于开启状态才在退出时重新开启。"""
+    was_enabled = gc.isenabled()
+    if was_enabled:
+        gc.disable()
+    try:
+        yield
+    finally:
+        if was_enabled:
+            gc.enable()
 
 
 def _edge_caller_ref(

@@ -9,7 +9,12 @@ from typing import Any, cast
 
 from .cache.callgraph_state import call_graph_built as _call_graph_built
 from .cache.graph import bfs_callees, bfs_callers
-from .cache.helpers import _build_function_entry
+from .cache.graph_input_rows import (
+    CallEdgeRows,
+    FunctionRows,
+    read_call_edge_rows,
+    read_function_rows,
+)
 from .cache.query import (
     fts_search,
     fts_search_ranked,
@@ -94,15 +99,11 @@ class CertifiedSnapshotCache:
         return search_symbols_linear(self.get_conn(), query, language)
 
     def get_functions(self) -> list[dict[str, Any]]:
-        rows = self.get_conn().execute(
-            "SELECT file_path, symbols_json, language FROM ast_index"
-        )
-        return [
-            _build_function_entry(symbol, row["file_path"], row["language"])
-            for row in rows
-            for symbol in json.loads(row["symbols_json"]).get("symbols", [])
-            if symbol.get("kind") in ("function", "method")
-        ]
+        return read_function_rows(self.get_conn()).to_functions()
+
+    def get_function_rows(self) -> FunctionRows:
+        """#1657：``get_functions`` 解析前的原始行（供构图输入摘要）。"""
+        return read_function_rows(self.get_conn())
 
     def get_symbols_by_kind(
         self, kind: str, limit: int = 50000
@@ -137,16 +138,11 @@ class CertifiedSnapshotCache:
 
     def get_call_edges(self) -> list[dict[str, Any]]:
         # #1559/#1560：带上持久化解析列，内存调用图不再按裸名重新猜测。
-        rows = self.get_conn().execute(
-            "SELECT caller_name, file_path AS caller_file, caller_line, "
-            "callee_name, callee_full, callee_line, file_path, language, "
-            "callee_resolution, callee_resolved_file, "
-            "CASE WHEN callee_resolution = 'annotated_receiver' "
-            "THEN json_extract(metadata, '$.receiver_binding') END "
-            "AS receiver_binding "
-            "FROM edges WHERE kind='calls'"
-        )
-        return [dict(row) for row in rows]
+        return read_call_edge_rows(self.get_conn()).to_dicts()
+
+    def get_call_edge_rows(self) -> CallEdgeRows:
+        """#1657：``get_call_edges`` 的原始元组形式；SQL 错误照常抛出（严格）。"""
+        return read_call_edge_rows(self.get_conn())
 
     def query_edges(
         self,
