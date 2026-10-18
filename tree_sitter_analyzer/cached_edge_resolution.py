@@ -191,6 +191,10 @@ class CachedEdgeResolver:
             annotated = self._annotated_targets(edge, base_name, qualifier, caller_file)
             if annotated is not None:
                 return annotated
+        alias_name = edge.get("import_alias_name")
+        if resolution in _PROJECT_RESOLUTIONS and alias_name and not qualifier:
+            # #1670：`g()` 经 `from m import f as g` 解析，按目标的真实名字 `f` 绑定。
+            base_name = str(alias_name)
         if resolution in _PROJECT_RESOLUTIONS:
             resolved_file = str(edge.get("callee_resolved_file") or "")
             persisted = self._persisted_targets(base_name, qualifier, resolved_file)

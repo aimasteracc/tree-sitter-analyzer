@@ -33,6 +33,7 @@ from ...discovery_budget import DISCOVERY_SECONDS_PER_ENTRY
 from . import reference_vocab
 from .absence_text_kinds import reference_text, text_language
 from .absence_text_refs import CONFIG_LANGUAGE, string_code
+from .callers_alias_refs import alias_reference_check
 from .callers_call_lines import call_edge_lines
 from .callers_decorators import (
     DECORATED_REASON,
@@ -452,16 +453,23 @@ def _reference_scan(
     if hits is None:
         return None
     pattern = re.compile(r"(?<![\w$])" + re.escape(bare) + r"(?![\w$])")
+    declaration_files = {file for file, _line, _language in declarations}
     sites: list[dict[str, Any]] = []
     stamps: dict[str, StatKey | None] = {}
     for rel_path, language, data, stamp in hits:
         stamps[rel_path] = stamp
         decoded = data.decode("utf-8", "replace")
         text = _strip_comments_and_prose(decoded, language, bare)
+        alias_lines: list[int] = []
         if mask_imports and language in _PY_LANGUAGES:
-            text = mask_import_bindings(text, bare)
+            # #1670：别名的每次使用都已核对时，改名导入行也只是绑定。
+            masked, alias_lines = alias_reference_check(
+                cache, rel_path, text, bare, declaration_files, _reference_lines
+            )
+            text = mask_import_bindings(text, bare, masked)
         covered = edge_lines.get(rel_path, frozenset())
-        for line in _reference_lines(text, pattern, covered):
+        lines = sorted({*_reference_lines(text, pattern, covered), *alias_lines})
+        for line in lines:
             if (rel_path, line) not in declared_lines:
                 sites.append({"file": rel_path, "line": line})
     return sites, stamps
