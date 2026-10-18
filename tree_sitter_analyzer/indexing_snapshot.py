@@ -284,7 +284,12 @@ def validate_index_candidate_snapshot(
             )
         if entry.decision == "selected":
             try:
-                source_info = os.stat(logical_path, follow_symlinks=False)
+                # 同一轮刚取得的 lstat 直接复用（#1673）；未取得时照常 stat。
+                source_info = (
+                    entry_info
+                    if entry_info is not None
+                    else os.stat(logical_path, follow_symlinks=False)
+                )
             except FileNotFoundError:
                 # Deletion after capture is reported by changed_since_snapshot.
                 continue
