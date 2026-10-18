@@ -309,6 +309,12 @@ class FileWatcherDaemon:
 
     def _flush_pending(self) -> None:
         with self._pending_lock:
+            if self._stop_event.is_set():
+                # #1667：stop() 已取消防抖计时器；退出路径（轮询循环的 finally、
+                # 已醒来的计时器回调）不得再把它变成一次完整同步——那会让停止
+                # 等待一整次索引写入，负载下超过 stop() 的期限。请求与排队的路径
+                # 保留，重新 start 时由启动对齐（#1405）兑现。
+                return
             pending = bool(self._pending) or self._sync_requested
             self._pending.clear()
             self._sync_requested = False
