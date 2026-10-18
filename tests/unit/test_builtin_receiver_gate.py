@@ -182,6 +182,7 @@ def test_untyped_param_receiver_is_not_bound_by_unique_name(tmp_path: Path) -> N
         (e["callee_resolution"], e["callee_resolved_file"]) for e in proc_edges
     ] == [("unknown", "")]
 
+
 def test_self_attr_receiver_unique_method_binds(tmp_path: Path) -> None:
     """P1 adversarial case: ``self._store.get()`` where DataStore.get is unique
     must bind. ``self._store`` has qualifier ``self._store``; its last segment

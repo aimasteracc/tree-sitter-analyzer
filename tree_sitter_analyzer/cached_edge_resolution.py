@@ -297,7 +297,9 @@ class CachedEdgeResolver:
             return EdgeTargets(certain=narrowed)
         return EdgeTargets(possible=globals_)
 
-    def _receiver_proven(self, qualifier: str, ref: FunctionRef, caller_file: str) -> bool:
+    def _receiver_proven(
+        self, qualifier: str, ref: FunctionRef, caller_file: str
+    ) -> bool:
         """本地 / import 档的唯一候选能否确定：无接收者、接收者是候选的类，或是导入名。
 
         导入名（模块别名或导入的类）经 import 档命中目标文件，是接收者证据；

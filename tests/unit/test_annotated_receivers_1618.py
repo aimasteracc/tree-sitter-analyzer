@@ -238,7 +238,7 @@ def test_extractor_version_is_bumped_for_receiver_hints() -> None:
     assert (
         ast_cache._AST_CACHE_EXTRACTOR_VERSION,
         indexer._AST_CACHE_EXTRACTOR_VERSION,
-    # v40 引入接收者线索；v41（#1669）在其上停止按唯一方法名绑定。
+        # v40 引入接收者线索；v41（#1669）在其上停止按唯一方法名绑定。
     ) == (41, 41)
 
 
