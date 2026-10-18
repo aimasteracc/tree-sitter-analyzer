@@ -1522,7 +1522,8 @@ class TestGrammarErrorsOnly:
     ("stats", "success"),
     [
         ({"_manifest_certified": True}, True),
-        ({"scope_complete": False}, False),
+        # #1674：只缺可选语法、无独立认证失败时照常发布，发布即成功（不完整、WARN）。
+        ({"scope_complete": False}, True),
         (
             {
                 "manifest_warning": "INDEX_MANIFEST_CERTIFICATION_FAILED",
@@ -1590,7 +1591,9 @@ async def test_grammar_only_errors_require_independent_certification(
         )
 
     assert result["success"] is success
-    assert result["verdict"] == "ERROR"  # #1674: not published
+    assert result["published"] is success
+    # #1674：已发布（仅缺可选语法）为 WARN；未发布为 ERROR。
+    assert result["verdict"] == ("WARN" if success else "ERROR")
 
 
 def test_collect_final_stats_returns_empty_on_cache_failure(tmp_path, monkeypatch):

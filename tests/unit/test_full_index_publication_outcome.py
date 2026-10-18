@@ -136,7 +136,9 @@ async def test_aborted_snapshot_handoff_reuses_the_admission_code(
     assert result["error_code"] == "INDEX_CANDIDATE_SUPERSEDED"
     assert result["cause_code"] == "INDEX_CACHE_HIERARCHY_CHANGED"
     assert result["retryable"] is True
-    assert result["next_step"] == ADMISSION_CODES["INDEX_CANDIDATE_SUPERSEDED"].next_step
+    assert (
+        result["next_step"] == ADMISSION_CODES["INDEX_CANDIDATE_SUPERSEDED"].next_step
+    )
     assert "INDEX_CACHE_HIERARCHY_CHANGED" in result["error"]
 
 
@@ -149,11 +151,15 @@ def test_error_envelope_keeps_the_tools_own_next_step():
         "error_type": "index_not_published",
         "next_step": "Nothing was published: retry the same index call.",
     }
-    shaped = ensure_canonical_error_envelope("index", response, arguments={"mode": "full"})
+    shaped = ensure_canonical_error_envelope(
+        "index", response, arguments={"mode": "full"}
+    )
 
     assert shaped["agent_summary"]["next_step"] == (
         "Nothing was published: retry the same index call."
     )
-    assert shaped["recovery_hint"] == "Nothing was published: retry the same index call."
+    assert (
+        shaped["recovery_hint"] == "Nothing was published: retry the same index call."
+    )
     assert shaped["error_type"] == "index_not_published"
     assert "internal" not in shaped["summary_line"]
