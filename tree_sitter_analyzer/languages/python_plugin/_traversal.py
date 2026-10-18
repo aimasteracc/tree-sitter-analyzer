@@ -157,6 +157,10 @@ def _iter_child_nodes(current_node: Any) -> Iterator[Any]:
         return iter(())
 
     try:
-        return reversed(list(children))
+        # mypy 2.4 resolves ``reversed(list[Any])`` to ``Any`` (the ``Any``
+        # element type makes the ``reversed.__new__`` overloads ambiguous),
+        # which trips ``no-any-return``; bind the declared iterator type.
+        reversed_children: Iterator[Any] = reversed(list(children))
     except TypeError:
         return iter(())
+    return reversed_children
