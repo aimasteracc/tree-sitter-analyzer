@@ -127,10 +127,13 @@ def _assert_no_writer_holds_lock(db) -> None:
         connection.close()
 
 
+def _codes(exc: BaseException) -> tuple[str, str] | None:
+    failure = admission_failure_of(exc)
+    return (failure.code, failure.cause_code) if failure is not None else None
+
+
 def _assert_superseded(excinfo, cause=REVISION_SUPERSEDED) -> None:
-    failure = admission_failure_of(excinfo.value)
-    assert failure is not None
-    assert (failure.code, failure.cause_code) == (INDEX_CANDIDATE_SUPERSEDED, cause)
+    assert _codes(excinfo.value) == (INDEX_CANDIDATE_SUPERSEDED, cause)
 
 
 # --- schema 18 迁移 ---------------------------------------------------------------
@@ -159,6 +162,17 @@ def _downgrade_to_v17(db) -> None:
 
 def test_new_custom_database_records_schema_18_writer_state(project):
     root, db = project
+    fresh = ASTCache(str(root), str(db))
+    try:
+        seeded = fresh.writer_revision()
+    finally:
+        fresh.close()
+    assert isinstance(seeded, WriterRevision)
+    assert (18 in _versions(db), len(seeded.cache_uuid), seeded.revision) == (
+        True,
+        32,
+        0,
+    )
     _sync_path(root, db)
     connection = sqlite3.connect(db)
     try:
@@ -167,12 +181,8 @@ def test_new_custom_database_records_schema_18_writer_state(project):
         ).fetchone()
     finally:
         connection.close()
-    assert (18 in _versions(db), len(cache_uuid), int(cache_uuid, 16) >= 0) == (
-        True,
-        32,
-        True,
-    )
-    assert revision > 0  # 同步的每次写入提交都推进修订号
+    # 同一实体（uuid 不变）；同步的每次写入提交都推进了修订号。
+    assert (cache_uuid, revision > seeded.revision) == (seeded.cache_uuid, True)
 
 
 def test_v17_custom_database_is_migrated_without_touching_index_rows(project):
@@ -439,8 +449,7 @@ def test_two_writers_on_one_custom_path_only_one_publishes(project, pause):
         loser_cache.close()
     assert loser.is_alive() is False
     assert isinstance(outcome.get("error"), Superseded), outcome
-    failure = admission_failure_of(outcome["error"])
-    assert failure is not None and failure.code == INDEX_CANDIDATE_SUPERSEDED
+    assert _codes(outcome["error"]) == (INDEX_CANDIDATE_SUPERSEDED, REVISION_SUPERSEDED)
     assert outcome["in_transaction"] is False
     # 胜者的完整结果（含认证清单与调用图标记）逐行保留，失败者没有留下任何写入。
     assert _dump(db) == after_winner
@@ -513,8 +522,7 @@ def test_missing_writer_state_fails_closed_as_recovery_required(project):
             cache.index_file(str(root / "a.py"))
     finally:
         cache.close()
-    failure = admission_failure_of(excinfo.value)
-    assert failure is not None and failure.code == INDEX_RECOVERY_REQUIRED
+    assert _codes(excinfo.value) == (INDEX_RECOVERY_REQUIRED, STATE_MISSING)
     assert _dump(db) == before
 
 
