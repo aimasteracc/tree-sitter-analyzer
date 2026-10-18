@@ -216,3 +216,34 @@ def test_receiver_proof_helpers(
         constructed_class(qualifier),
         receiver_type_name(qualifier),
     ) == (receiver, unproven, constructed, type_name)
+
+
+def test_graph_receiver_proof_via_module_import() -> None:
+    from tree_sitter_analyzer.call_graph import FunctionRef
+    from tree_sitter_analyzer.cached_edge_resolution import (
+        CachedEdgeResolver,
+        _module_name,
+    )
+
+    fetch = FunctionRef(
+        file_path="client.py", name="fetch", start_line=1, language="python"
+    )
+    resolver = CachedEdgeResolver(
+        functions_by_name={"fetch": [fetch]},
+        functions_by_file={"client.py": [fetch]},
+        file_import_map={"main.py": {"client": "client.py"}},
+    )
+    edge = {
+        "callee_name": "fetch",
+        "callee_full": "client.fetch",
+        "callee_resolution": "unknown",
+        "callee_resolved_file": "",
+    }
+
+    assert resolver.resolve(edge, "main.py").certain == [fetch]
+    # 未导入该模块的文件里，`client.fetch` 的接收者未被证明。
+    assert resolver.resolve(edge, "other.py").certain == []
+    assert (_module_name("pkg/__init__.py"), _module_name("pkg/client.py")) == (
+        "pkg",
+        "client",
+    )
