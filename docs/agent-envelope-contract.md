@@ -193,6 +193,17 @@ just because `m` is the only project method of that name. Such a call is at most
 a name-only possible caller: it is not listed in `callers`, it keeps the answer
 non-`complete` (`NAME_ONLY_INBOUND` / `UNRESOLVED_INBOUND`), and the
 over-approximating consumers (impact, test_map, pr_review, risk) still see it.
+### Callers through an aliased import (#1670)
+
+A call made through a renamed import, `from m import f as _f; _f()`, is a caller
+of `m.f`. Its entry carries `resolution_kind: "import_alias"` and `import_alias`
+(the local name used at the call, here `_f`). The import line of such an alias
+is not counted as a non-call reference of `f` only when the answer already has
+callers and every use of the alias in that file is a call bound to `f`. A public
+alias, an alias another module imports or calls, or an alias that is also used
+without a call (a callback, an assignment, `__all__`) keeps the import line as a
+reference; the non-call uses are listed in `non_call_reference_sites` too. With
+no caller at all, the import line always stays a reference (#1645).
 
 ## Index write admission codes (RFC-0032)
 

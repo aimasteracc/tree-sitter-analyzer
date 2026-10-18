@@ -124,7 +124,7 @@ async def test_alias_also_passed_as_callback_stays_incomplete(
     assert result["completeness"] == "incomplete"
     assert "NON_CALL_REFERENCES" in result["completeness_reasons"]
     # 回调传递的位置以别名点名，而不只是导入行。
-    assert ("pkg/user.py", 14) in {
+    assert ("pkg/user.py", 15) in {
         (s["file"], s["line"]) for s in result["non_call_reference_sites"]
     }
 

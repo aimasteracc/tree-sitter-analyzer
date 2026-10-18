@@ -127,6 +127,17 @@
   The extractor version goes from 40 to 41, so the next refresh re-resolves
   files indexed by older versions.
 
+- `nav action=callers` now resolves calls made through a renamed import
+  (#1670): `from m import f as _f; _f()` is listed as a caller of `m.f`, with
+  `resolution_kind: "import_alias"` and `import_alias: "_f"`. Before, such
+  callers were never listed and the answer was always `unknown` with
+  `NON_CALL_REFERENCES`, pointing at the import line. Resolution follows package
+  re-exports for up to 4 hops. The import line of a called alias no longer
+  counts as a non-call reference when the answer has callers and every use of a
+  private (`_`-prefixed) alias in that file is a call bound to the target. A
+  re-exported or public alias, or one that is also passed as a callback, keeps
+  the answer non-`complete`. The extractor version goes from 40 to 41, so the
+  next refresh re-resolves files indexed by older versions.
 - RFC-0032 follow-ups (#1664):
   - **Lease wait is 30 s**, as the RFC specifies (was 5 s). Measured on
     Windows with this repository (2,865 files), a refresh holds the publication
