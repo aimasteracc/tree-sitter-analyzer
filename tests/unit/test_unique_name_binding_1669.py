@@ -42,7 +42,9 @@ _USERS = (
     "def by_class(h):\n"
     "    HealthHistory.append(h, 4)\n\n\n"
     "def chained(owner):\n"
-    "    owner.history.append(5)\n"
+    "    owner.history.append(5)\n\n\n"
+    "def fresh():\n"
+    "    HealthHistory().append(6)\n"
 )
 _MODULES = (
     "import health\n"
@@ -54,7 +56,7 @@ _MODULES = (
 )
 
 #: ``HealthHistory.append`` 的确定调用方：调用方名 → 定义行。
-_CERTAIN = {"record": 8, "typed": 12, "constructed": 16, "by_class": 25}
+_CERTAIN = {"record": 8, "typed": 12, "constructed": 16, "by_class": 25, "fresh": 33}
 #: 接收者未知或已知为别的类型的同名调用：不得成为确定调用方。
 _NOT_CERTAIN = ("append", "add", "untyped", "chained")
 
@@ -149,3 +151,40 @@ def test_extractor_version_is_bumped_for_unique_name_binding() -> None:
         ast_cache._AST_CACHE_EXTRACTOR_VERSION,
         indexer._AST_CACHE_EXTRACTOR_VERSION,
     ) == (41, 41)
+
+
+@pytest.mark.parametrize(
+    ("callee_full", "receiver", "unproven", "constructed", "type_name"),
+    [
+        ("xs.append", "xs", True, None, "xs"),
+        ("self.append", "self", False, None, "self"),
+        ("super().run", "super()", False, "super", "super"),
+        ("self._entries.append", "self._entries", True, None, "_entries"),
+        ("Foo().bar", "Foo()", True, "Foo", "Foo"),
+        ("mod.Foo(a.b, 2).bar", "mod.Foo(a.b, 2)", True, "mod.Foo", "Foo"),
+        ("get_foo().bar", "get_foo()", True, "get_foo", "get_foo"),
+        ("Foo(1).x(2).bar", "Foo(1).x(2)", True, None, "x(2)"),
+        ("helper", "", False, None, ""),
+    ],
+)
+def test_receiver_proof_helpers(
+    callee_full: str,
+    receiver: str,
+    unproven: bool,
+    constructed: str | None,
+    type_name: str,
+) -> None:
+    from tree_sitter_analyzer.receiver_proof import (
+        constructed_class,
+        has_unproven_receiver,
+        receiver_type_name,
+        split_receiver,
+    )
+
+    qualifier, _base = split_receiver(callee_full)
+    assert (
+        qualifier,
+        has_unproven_receiver(callee_full),
+        constructed_class(qualifier),
+        receiver_type_name(qualifier),
+    ) == (receiver, unproven, constructed, type_name)
