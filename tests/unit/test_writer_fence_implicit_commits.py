@@ -258,3 +258,76 @@ def test_projection_repair_by_a_loser_is_refused_typed_and_publishes_nothing(pro
     assert admission_failure_of(raised.value).cause_code == REVISION_SUPERSEDED
     assert _dump(db) == winner_dump
     _assert_no_writer_holds_lock(db)
+
+
+def _index_files(conn: sqlite3.Connection) -> list[str]:
+    return [r[0] for r in conn.execute("SELECT file_path FROM ast_index")]
+
+
+def test_failed_auto_savepoint_leaves_no_transaction(project):
+    root, db = project
+    cache = ASTCache(str(root), str(db))
+    try:
+        conn = cache.get_conn()
+        with pytest.raises(sqlite3.OperationalError):
+            conn.execute("SAVEPOINT select")  # a keyword is not a savepoint name
+        assert conn.in_transaction is False
+    finally:
+        cache.close()
+
+
+def test_inner_rollback_keeps_the_outer_writes_fenced(project):
+    root, db = project
+    cache = ASTCache(str(root), str(db))
+    try:
+        before = _revision(db)
+        conn = cache.get_conn()
+        conn.execute("SAVEPOINT outer_write")
+        conn.execute(_TOUCH)
+        conn.execute("SAVEPOINT inner_write")
+        conn.execute("DELETE FROM ast_index")
+        conn.execute("ROLLBACK TO SAVEPOINT inner_write")
+        conn.execute("RELEASE inner_write")
+        assert conn.in_transaction is True
+        conn.execute("RELEASE outer_write")
+        assert conn.in_transaction is False
+        assert _index_files(conn) == ["a.py"]
+    finally:
+        cache.close()
+    assert _revision(db) == before + 1
+
+
+def test_failed_fenced_release_rolls_back(project, monkeypatch):
+    root, db = project
+    cache = ASTCache(str(root), str(db))
+    try:
+        before = _dump(db)
+
+        def refuse(_conn, _base_commit):
+            raise RuntimeError("commit refused")
+
+        monkeypatch.setattr(cache._writer_fence, "commit", refuse)
+        conn = cache.get_conn()
+        conn.execute("SAVEPOINT doomed")
+        conn.execute("DELETE FROM ast_index")
+        with pytest.raises(RuntimeError, match="^commit refused$"):
+            conn.execute("RELEASE doomed")
+        assert conn.in_transaction is False
+    finally:
+        cache.close()
+    assert _dump(db) == before
+
+
+def test_failed_executescript_rolls_back_its_rows(project):
+    root, db = project
+    cache = ASTCache(str(root), str(db))
+    try:
+        before = _revision(db)
+        conn = cache.get_conn()
+        with pytest.raises(sqlite3.OperationalError):
+            conn.executescript("DELETE FROM ast_index; NOT VALID SQL;")
+        assert conn.in_transaction is False
+        assert _index_files(conn) == ["a.py"]
+    finally:
+        cache.close()
+    assert _revision(db) == before

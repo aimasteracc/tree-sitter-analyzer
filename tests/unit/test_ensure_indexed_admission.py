@@ -201,3 +201,36 @@ def test_visualization_falls_back_to_source_when_the_warm_is_refused(
     assert isinstance(graph, CallGraph)
     assert not isinstance(graph, CachedCallGraph)
     assert is_indexed(str(root)) is False
+
+
+def _boom(*_args, **_kwargs):
+    raise RuntimeError("boom")
+
+
+def test_routes_do_not_mask_non_admission_failures(tmp_path, monkeypatch):
+    # Only admission failures become the typed payload; anything else surfaces.
+    import tree_sitter_analyzer.mcp.tools.auto_index_tool as auto_index_owner
+    import tree_sitter_analyzer.mcp.tools.codegraph_refactor_tool as refactor_owner
+    import tree_sitter_analyzer.mcp.tools.codegraph_visualization_hub as hub_owner
+    import tree_sitter_analyzer.mcp.tools.incremental_sync_tool as sync_owner
+
+    root = _never_indexed(tmp_path)
+    for owner in (auto_index_owner, refactor_owner, hub_owner, sync_owner):
+        monkeypatch.setattr(owner, "ensure_indexed", _boom)
+    calls = (
+        lambda: asyncio.run(
+            CodeGraphIncrementalSyncTool(str(root)).execute({"mode": "sync"})
+        ),
+        lambda: asyncio.run(
+            CodeGraphAutoIndexTool(str(root)).execute({"mode": "warm"})
+        ),
+        lambda: asyncio.run(
+            refactor_owner.CodeGraphRefactorTool(str(root)).execute(
+                {"symbol": "alpha", "new_name": "omega", "mode": "preview"}
+            )
+        ),
+        lambda: hub_owner.CodeGraphVisualizationHub(str(root)).cache(),
+    )
+    for call in calls:
+        with pytest.raises(RuntimeError, match="^boom$"):
+            call()
