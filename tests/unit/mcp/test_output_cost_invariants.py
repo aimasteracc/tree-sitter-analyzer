@@ -596,19 +596,21 @@ def _impact_response_with_long_command(n_tests: int) -> dict:
 
 
 def test_impact_long_command_appears_once_per_contract_field() -> None:
-    """#1582 结构不变量：长命令只出现在顶层契约字段与 agent_summary.verification_command。"""
+    """#1582 / #1676 结构不变量：长命令只出现在顶层契约字段，摘要按字段名引用。"""
     response = _impact_response_with_long_command(60)
     local = response["local_verification_command"]
     focused = response["focused_test_command"]
     text = json.dumps(response, ensure_ascii=False)
 
     # 顶层 verification/test/pytest/local/low_impact 5 处 + verification_steps[0]
-    # 1 处 + 摘要 verification_command 1 处；修复前为 11 处。
-    assert text.count(local) == 7
+    # 1 处；#1582 前为 11 处，#1676 前另有摘要 verification_command 1 处。
+    assert text.count(local) == 6
     # 顶层 focused 与 ci 各 1 处；摘要与文案不再重复。
     assert text.count(focused) == 2
     summary = response["agent_summary"]
-    assert summary["verification_command"] == local
+    assert summary["verification_command"] == (
+        f"`verification_command` ({len(local)} chars)"
+    )
     assert summary["next_step"] == (
         f"Run low-impact local verification: `local_verification_command` "
         f"({len(local)} chars); keep `ci_verification_command` ({len(focused)} "
@@ -634,9 +636,10 @@ def test_impact_response_bytes_pinned_after_dedup() -> None:
     """#1582 字节不变量：60 个测试目标的确定性响应，修复前后字节精确钉住。
 
     实测 2026-10-14：修复前 34336 B，修复后 19334 B（-43.7%）。
+    #1676（2026-10-18）：摘要中的长命令改为按字段名引用，17488 B。
     """
     response = _impact_response_with_long_command(60)
-    assert len(json.dumps(response, ensure_ascii=False)) == 19334
+    assert len(json.dumps(response, ensure_ascii=False)) == 17488
 
 
 # ── #1617: edit action=impact (diff) — 明细列表默认摘要 ──────────────────────
@@ -670,4 +673,6 @@ def test_impact_default_summary_smaller_than_details(tmp_path, monkeypatch) -> N
     assert summary_bytes <= IMPACT_SUMMARY_BUDGET_BYTES
     # 精确钉住（夹具确定、不含临时路径）：实测 2026-10-17 默认 19701 B，
     # include_details 173567 B（与 dogfood 的 104-224 KB 同量级），缩小 8.8 倍。
-    assert (summary_bytes, details_bytes) == (19701, 173567)
+    # #1676（2026-10-18）：local 命令按 command_aliases 指向规范命令、摘要中的命令
+    # 按字段名引用后，默认 19213 B，include_details 173330 B。
+    assert (summary_bytes, details_bytes) == (19213, 173330)

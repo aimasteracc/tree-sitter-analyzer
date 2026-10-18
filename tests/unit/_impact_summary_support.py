@@ -7,6 +7,7 @@ test_change_impact_tool_execute_and_mapping（决策字段与 include_details �
 from __future__ import annotations
 
 import asyncio
+import shlex
 
 IMPACT_CHANGED = [f"src/pkg/mod_{i}.py" for i in range(10)]
 
@@ -168,19 +169,122 @@ def impact_full_result() -> dict:
     return result
 
 
-def run_impact_tool(tmp_path, monkeypatch, **arguments) -> dict:
+#: #1676：dogfood 第 8 轮形状——8 个改动文件、40 个测试目标、低影响档位的
+#: 4 步验证。命令按 PowerShell 引用形式渲染（Windows 上的真实形状），与平台无关。
+DOGFOOD_CHANGED = [f"src/pkg/core_{i}.py" for i in range(8)]
+DOGFOOD_TESTS = [f"tests/unit/test_area_{i:02d}_behaviour.py" for i in range(40)]
+
+
+def _powershell(steps: list[str]) -> str:
+    """把 POSIX 步骤渲染为 ``& { & 'a' 'b'; if (-not $?) { throw ... } }``。"""
+    rendered = [
+        "& "
+        + " ".join(f"'{token}'" for token in shlex.split(step))
+        + "; if (-not $?) { throw 'Verification failed' }"
+        for step in steps
+    ]
+    return "& { " + "; ".join(rendered) + " }"
+
+
+def dogfood_impact_result() -> dict:
+    """确定性的“真实形状”diff 响应：长命令、4 个验证步骤、无 scope_paths。"""
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_command_refs import (
+        command_ref,
+    )
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_response import (
+        AgentSummaryContext,
+        ChangeImpactResponseContext,
+        build_agent_summary,
+        build_change_impact_response,
+    )
+
+    marker = "-m 'not network and not benchmark' "
+    steps = [
+        "uv run pytest " + marker + " ".join(DOGFOOD_TESTS) + " -n 2 -q",
+        "uv run pytest " + marker + " ".join(DOGFOOD_TESTS) + " -q",
+        "uv run ruff check " + " ".join(DOGFOOD_CHANGED),
+        "uv run pytest -q",
+    ]
+    local = _powershell(steps[:1])
+    ci = _powershell(steps[1:])
+    verification = {
+        "test_required": True,
+        "test_runner": "pytest",
+        "default_test_command": "uv run pytest -q",
+        "pytest_required": True,
+        "verification_command": ci,
+        "verification_reason": "changed Python source",
+    }
+    strategy = {
+        "focused_test_command": steps[1],
+        "low_impact_focused_test_command": steps[0],
+        "local_verification_command": local,
+        "ci_verification_command": ci,
+        "resource_profile": "local_low_impact",
+        "verification_strategy": "local_low_impact_focused_then_ci",
+        "verification_steps": steps,
+        "verification_hint": (
+            "Run the low-impact local verification command while iterating; keep "
+            f"{command_ref('ci_verification_command', ci)} as the CI or "
+            "queue-boundary verification command."
+        ),
+    }
+    affected = {f"src/app/user_{j}.py" for j in range(6)}
+    summary = build_agent_summary(
+        AgentSummaryContext(
+            risk="medium",
+            changed_files=DOGFOOD_CHANGED,
+            scope_paths=None,
+            verification=verification,
+            strategy=strategy,
+            affected_count=len(affected),
+            tests_to_run_count=len(DOGFOOD_TESTS),
+        )
+    )
+    request = SimpleNamespace(
+        mode="diff", scope_paths=None, changed_files=DOGFOOD_CHANGED, diff_stat=""
+    )
+    result = build_change_impact_response(
+        ChangeImpactResponseContext(
+            request=request,
+            risk="medium",
+            affected=affected,
+            file_impacts=[
+                {"file": path, "direct_dependents": sorted(affected)}
+                for path in DOGFOOD_CHANGED
+            ],
+            visible_tests=DOGFOOD_TESTS[:20],
+            all_tests=DOGFOOD_TESTS,
+            verification=verification,
+            strategy=strategy,
+            test_mapping=dict.fromkeys(DOGFOOD_CHANGED, DOGFOOD_TESTS[:3]),
+            agent_summary=summary,
+        )
+    )
+    result["risk_factors"] = []
+    result["constraint_violations"] = []
+    return result
+
+
+def run_impact_tool(
+    tmp_path, monkeypatch, *, factory=None, scope_paths=("src",), **arguments
+) -> dict:
     """经由真实的 ChangeImpactTool.execute（diff 模式）返回响应，只替换分析计算。"""
     from tree_sitter_analyzer.mcp.tools import change_impact_tool as tool_module
 
+    build = factory or impact_full_result
+    changed = DOGFOOD_CHANGED if build is dogfood_impact_result else IMPACT_CHANGED
     (tmp_path / "src").mkdir(exist_ok=True)
     monkeypatch.setattr(
-        tool_module, "_get_changed_files", lambda *_a, **_k: list(IMPACT_CHANGED)
+        tool_module, "_get_changed_files", lambda *_a, **_k: list(changed)
     )
     monkeypatch.setattr(tool_module, "_get_diff_stat", lambda *_a, **_k: "")
     monkeypatch.setattr(
-        tool_module, "_build_change_impact_result", lambda _req: impact_full_result()
+        tool_module, "_build_change_impact_result", lambda _req: build()
     )
     tool = tool_module.ChangeImpactTool(project_root=str(tmp_path))
     return asyncio.run(
-        tool.execute({"mode": "diff", "scope_paths": ["src"], **arguments})
+        tool.execute({"mode": "diff", "scope_paths": list(scope_paths), **arguments})
     )

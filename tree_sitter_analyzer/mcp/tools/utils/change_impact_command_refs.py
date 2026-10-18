@@ -9,7 +9,9 @@ dogfood round 2 实测：``edit action=impact`` 的完整响应约 100 KB，其�
 * 顶层命令字段（``verification_command`` / ``test_command`` / ``pytest_command`` /
   ``focused_test_command`` / ``local_verification_command`` / ``ci_verification_command``
   等）是可直接复制执行的契约字段，取值不变。
-* ``agent_summary.verification_command`` 是摘要块中唯一的规范命令，保留原值。
+* ``agent_summary.verification_command``：命令不超过 ``INLINE_COMMAND_LIMIT`` 时保留
+  原值；更长时（#1676）与文案相同，改为指向顶层 ``verification_command`` 的引用——
+  dogfood 第 8 轮实测同一条 2.1 KB 命令在默认响应中仍有 3 份逐字副本。
 * ``agent_summary`` 中与顶层同名同值的其他命令镜像被移除——顶层就是唯一来源。
 * ``next_step`` / ``stop_condition`` / ``queue_ledger.handoff`` 等文案：命令不超过
   ``INLINE_COMMAND_LIMIT`` 字符时照旧内联（短命令可直接复制）；更长时改为按字段名
@@ -56,3 +58,23 @@ def drop_mirrored_commands(
         for key, value in summary.items()
         if not (key in MIRRORED_COMMAND_KEYS and response.get(key) == value)
     }
+
+
+def reference_summary_command(response: dict[str, Any]) -> dict[str, Any]:
+    """#1676：摘要中与顶层相同的长 ``verification_command`` 改为按字段名引用。
+
+    完整命令只在顶层出现一次；短命令照旧内联。须在命令定稿（包括
+    ``verify-plan`` 替换超长命令）之后调用，引用中的长度才与顶层一致。
+    返回新字典，不修改入参。
+    """
+    summary = response.get("agent_summary")
+    command = response.get("verification_command")
+    if not isinstance(summary, dict) or not isinstance(command, str):
+        return response
+    if summary.get("verification_command") != command:
+        return response
+    referenced = {
+        **summary,
+        "verification_command": command_ref("verification_command", command),
+    }
+    return {**response, "agent_summary": referenced}

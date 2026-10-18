@@ -12,6 +12,9 @@ from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
     ChangeImpactRequest,
     _build_test_only_change_impact_result,
 )
+from tree_sitter_analyzer.mcp.tools.utils.change_impact_command_refs import (
+    command_ref,
+)
 from tree_sitter_analyzer.verification_plan import decode_request, digest, within_budget
 from tree_sitter_analyzer.verification_runner import rebuild_request
 
@@ -98,7 +101,10 @@ def test_thousand_targets_rebuild_without_inline_target_list(
     assert len(stages) == 50
     assert response["pytest_command"] == command
     assert response["test_command"] == command
-    assert response["agent_summary"]["verification_command"] == command
+    # #1676：摘要按字段名引用顶层命令（引用中的长度是定稿后的 verify-plan 命令）。
+    assert response["agent_summary"]["verification_command"] == command_ref(
+        "verification_command", command
+    )
 
 
 def test_complete_plan_digest_preserves_order_role_and_arguments():

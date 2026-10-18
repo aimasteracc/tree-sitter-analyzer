@@ -152,7 +152,8 @@ After any code edit, agents should run the per-change verification command surfa
 
 ```bash
 uv run python -m tree_sitter_analyzer --change-impact --format json
-# → look at agent_summary.verification_command
+# → look at verification_command (agent_summary.verification_command names it
+#   by field when it is longer than 200 characters, #1676)
 ```
 
 The command is tailored to the change: `pytest <specific tests>`, `mypy <touched module>`,
