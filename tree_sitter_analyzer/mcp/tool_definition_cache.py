@@ -4,58 +4,30 @@
 （约 500 个模块）；定义本身只取决于包源码（动作名、描述、核心参数、昂贵路由
 表），与项目根、环境变量和已安装语法无关。
 
-缓存键是包源码的内容指纹：包版本、Python 版本，以及包目录下每个 ``.py``
-文件的相对路径、字节数与 mtime（``os.scandir`` 自带，无需逐个打开文件）。
-任何源码变化都会改变键而未命中，未命中即照旧构建注册表并写回缓存；读写
-失败只会退回构建，绝不影响答复。缓存内容是定义的 JSON 原文，命中与构建
-交给 MCP SDK 的字典逐字节相同。
+缓存键是包源码指纹（:mod:`tree_sitter_analyzer.source_fingerprint`：包版本、
+Python 版本，以及每个 ``.py`` 文件的相对路径、字节数与 mtime）。任何源码变化
+都会改变键而未命中，未命中即照旧构建注册表并写回缓存；读写失败只会退回
+构建，绝不影响答复。缓存内容是定义的 JSON 原文，命中与构建交给 MCP SDK 的
+字典逐字节相同。
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
-import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from ..source_fingerprint import source_fingerprint
+
+__all__ = ["CACHE_DIR_ENV", "cache_dir", "cached_definitions", "source_fingerprint"]
+
 #: 覆盖缓存目录（测试与只读主目录）；值为 ``off`` 时停用缓存。
 CACHE_DIR_ENV = "TSA_TOOL_DEFINITION_CACHE_DIR"
 _CACHE_PREFIX = "tool-definitions-"
-_FORMAT = 1
 #: 保留的缓存文件个数（不同工作树或版本各一份）。
 _KEEP = 8
-
-
-def _package_dir() -> Path:
-    return Path(__file__).resolve().parent.parent
-
-
-def source_fingerprint(package_dir: Path | None = None) -> str:
-    """包源码的指纹：版本、解释器与每个 ``.py`` 的 (相对路径, 字节数, mtime)。"""
-    from .. import __version__
-
-    root = package_dir or _package_dir()
-    hasher = hashlib.blake2b(digest_size=20)
-    hasher.update(f"{_FORMAT}|{__version__}|{sys.version}\n".encode())
-    stack = [root]
-    entries: list[str] = []
-    while stack:
-        directory = stack.pop()
-        with os.scandir(directory) as scan:
-            for entry in scan:
-                if entry.is_dir(follow_symlinks=False):
-                    if entry.name != "__pycache__":
-                        stack.append(Path(entry.path))
-                elif entry.name.endswith(".py"):
-                    info = entry.stat(follow_symlinks=False)
-                    rel = Path(entry.path).relative_to(root).as_posix()
-                    entries.append(f"{rel}|{info.st_size}|{info.st_mtime_ns}")
-    for line in sorted(entries):
-        hasher.update(line.encode("utf-8") + b"\n")
-    return hasher.hexdigest()
 
 
 def cache_dir() -> Path | None:

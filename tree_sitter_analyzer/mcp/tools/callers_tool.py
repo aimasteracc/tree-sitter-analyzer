@@ -389,8 +389,12 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             if bound_cache is not None:
                 from ...call_graph import CachedCallGraph
 
+                # #1675：边解析结果落盘，冷进程的首个 callers 不再重新解析。
                 graph = CachedCallGraph(
-                    self.project_root or ".", cache=bound_cache, fallback=False
+                    self.project_root or ".",
+                    cache=bound_cache,
+                    fallback=False,
+                    persist=True,
                 )
                 data_source = "cache"
             else:
