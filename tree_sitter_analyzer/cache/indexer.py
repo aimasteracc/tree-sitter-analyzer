@@ -400,8 +400,12 @@ def _update_authoritative_manifest(
     candidate_snapshot: IndexCandidateSnapshot | None,
     stats: dict[str, Any],
     source_scope: SourceScopeDescriptor,
-) -> None:
-    """Certify only an exact, successful full-index inventory."""
+) -> bool:
+    """Certify only an exact, successful full-index inventory.
+
+    Returns whether this call stamped a manifest (#1671: only a run that stamped
+    may issue the converged-refresh record for a failure-free index).
+    """
     conn = cache._get_conn()
     selected_paths = (
         {entry.rel_path for entry in candidate_snapshot.selected_entries}
@@ -426,7 +430,7 @@ def _update_authoritative_manifest(
 
         try:
             stamp_full_index_manifest(conn, cache.project_root, source_scope)
-            return
+            return True
         except Exception:
             # The stamper rolls back its transaction, preserving the prior
             # manifest. Revoke the prerequisite marker in a separate committed
@@ -443,11 +447,12 @@ def _update_authoritative_manifest(
             stats["certification_errors"] = stats.get("certification_errors", 0) + 1
             stats["scope_complete"] = False
             stats["verdict"] = "WARN"
-            return
+            return False
     if exact_paths and not _call_graph_marker_is_built(conn):
         stats["manifest_warning"] = "CALL_GRAPH_INCOMPLETE"
     # Do not delete a manifest epoch this operation did not publish. Status
     # compares source/index/marker fingerprints and classifies it as stale.
+    return False
 
 
 def _record_backfill_result(stats: dict[str, Any], key: str, result: Any) -> None:

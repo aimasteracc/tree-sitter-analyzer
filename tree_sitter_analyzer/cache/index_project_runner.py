@@ -15,8 +15,9 @@ def _issue_stable_failure_record(
     scope_json: str,
     *,
     converged: bool,
+    stamped: bool,
 ) -> None:
-    """#1671：仅稳定失败、且本次回填已收敛的运行签发零变化判定的内容证据。
+    """#1671：精确（或仅稳定失败）且调用图已收敛的运行签发零变化判定的内容证据。
 
     本函数不经门面全局绑定（``run_index_project`` 才是），所需值全部显式传入。
     """
@@ -37,8 +38,9 @@ def _issue_stable_failure_record(
             and stats.get("incomplete_skips", 0) == 0
             and not stats.get("truncated_by_max_files", False)
         ),
+        stamped=stamped,
     )
-    if issued:
+    if issued and stats.get("errors"):
         stats["stable_failures_recorded"] = int(stats.get("errors", 0) or 0)
 
 
@@ -511,11 +513,13 @@ def run_index_project(
                 _ast_cache_mod._reclaim_storage_after_full_rebuild(conn, cache.db_path)
             )
         if certify_manifest:
-            _update_authoritative_manifest(
+            stamped = _update_authoritative_manifest(
                 cache, candidate_snapshot, stats, source_scope
             )
             from .index_project_runner import _issue_stable_failure_record
 
+            # 回填或已在本次运行中零错误执行（needs_backfill），或因调用图标记
+            # 当前而无需执行——两种情况下图都已在本次内容上收敛。
             _issue_stable_failure_record(
                 cache,
                 conn,
@@ -523,11 +527,11 @@ def run_index_project(
                 candidate_snapshot,
                 canonical_source_scope_descriptor(source_scope),
                 converged=bool(
-                    needs_backfill
-                    and language_filter is None
+                    language_filter is None
                     and not projection_repair
                     and not stats.get("activation_errors")
                 ),
+                stamped=bool(stamped),
             )
         return stats
     finally:

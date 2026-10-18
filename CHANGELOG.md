@@ -30,6 +30,35 @@
 
 ### Fixed
 
+- **A no-op refresh with stable per-file failures no longer publishes** (#1671).
+  On a project with files whose optional grammar is not installed (this
+  repository: one Swift and two Lua/Swift fixtures), every
+  `index action=cache mode=index` copied and published a new ~343 MB
+  generation, re-ran the full call-graph backfill (about 70 s) and made the
+  next `nav callers` rebuild its graph, because `errors: 3` disabled the #1631
+  no-op skip. A run that converges with only stable failures now records them
+  in the generation (`ast_cache_metadata` key `tsa.stable_failures`: file,
+  content hash of the rejected bytes, reason, plus root, scope, extractor and
+  pipeline versions). Before copying the parent, a refresh compares the
+  captured candidate with the parent: every selected file must have a row with
+  the same content hash, `mtime_ns` and size, there must be no extra rows, and
+  the parent must be either certified (manifest and call-graph marker current)
+  or carry the record, in which case each missing file must be a recorded
+  failure with the same content hash that still fails to parse with the same
+  reason. When all of that holds the refresh returns `published: false`,
+  `publication_reason: INDEX_UNCHANGED` without copying, building or
+  publishing, on both `index action=cache mode=index` and the incremental-sync
+  route (`SyncResult` now reports `published` / `publication_reason`). Any
+  difference — edited, added, deleted or touched files, a different failure
+  reason, a failure that now parses, an extractor or pipeline version bump —
+  takes the normal build-and-publish path. Every private build drops the
+  inherited record, and only a run whose backfill converged re-issues it, so a
+  single-file write or invalidation cannot pass an unbackfilled graph off as
+  converged. Stable failures still keep the index `partial`.
+- Removing a file whose symbols other files call left `"callee_symbol_id":
+  null` in the reset edges' metadata, where a fresh build has no such key; the
+  refreshed index now equals a fresh rebuild byte for byte (#1671 equivalence
+  gate).
 - RFC-0032 follow-ups (#1664):
   - **Lease wait is 30 s**, as the RFC specifies (was 5 s). Measured on
     Windows with this repository (2,865 files), a refresh holds the publication

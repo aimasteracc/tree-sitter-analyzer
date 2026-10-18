@@ -128,6 +128,8 @@ def _change(root, scenario):
         os.remove(os.path.join(root, "pkg/api.py"))
 
 
+# slow_ok：每个用例做四次真实刷新（含一次全新重建）并转储两份完整索引。
+@pytest.mark.slow_ok
 @pytest.mark.parametrize("route", ["index_project", "sync"])
 @pytest.mark.parametrize("scenario", ["noop", "edit", "add_delete"])
 def test_refreshed_index_equals_a_fresh_rebuild(root, route, scenario) -> None:

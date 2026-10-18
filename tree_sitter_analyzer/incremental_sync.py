@@ -402,6 +402,7 @@ class IncrementalSync:
             operational_complete and candidate_snapshot is not None
         )
         expected_paths = set(disk_files)
+        stamped = False
         if (
             result.scope_complete
             and candidate_snapshot is not None
@@ -412,6 +413,7 @@ class IncrementalSync:
 
             try:
                 stamp_full_index_manifest(conn, self._cache.project_root, source_scope)
+                stamped = True
             except Exception:
                 logger.warning(
                     "incremental snapshot manifest certification failed",
@@ -434,7 +436,7 @@ class IncrementalSync:
 
                 clear_call_graph_built_strict(conn)
                 conn.commit()
-        if certify_manifest and not result.scope_complete:
+        if certify_manifest:
             self._issue_stable_failure_record(
                 conn,
                 candidate_snapshot,
@@ -446,6 +448,7 @@ class IncrementalSync:
                     and result.changed_during_run == 0
                     and not result.truncated_by_max_files
                 ),
+                stamped=stamped,
             )
         return result
 
@@ -457,8 +460,9 @@ class IncrementalSync:
         result: SyncResult,
         *,
         converged: bool,
+        stamped: bool,
     ) -> None:
-        """#1671：仅稳定失败、且调用图流水线已收敛的同步签发零变化判定证据。"""
+        """#1671：精确（或仅稳定失败）且调用图已收敛的同步签发零变化判定证据。"""
         from .cache.stable_failures import current_extractor_version, issue_after_run
         from .index_source_snapshot import canonical_source_scope_descriptor
 
@@ -471,6 +475,7 @@ class IncrementalSync:
             details=result.details,
             errors=result.errors,
             converged=converged,
+            stamped=stamped,
         )
 
     @staticmethod

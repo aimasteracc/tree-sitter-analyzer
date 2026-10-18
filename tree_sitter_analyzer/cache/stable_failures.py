@@ -1,23 +1,27 @@
-"""已收敛版本的稳定失败记录：零变化判定的内容证据（#1671）。
+"""已收敛刷新的记录：零变化判定的内容证据（#1671）。
 
 缺少可选语法等稳定失败（``failure_kind: stable``）不写索引行，清单因而不认证，
 调用图标记也保持撤销。#1631 的零变化判定只认可已认证的父版本，于是含此类文件
 的项目每次刷新都重新回填并发布一份完整副本。
 
-本记录说明一个版本“除下列稳定失败外与源码一致，且调用图流水线已在这些内容上
-收敛”。只有满足以下全部条件的索引运行才写入它：
+本记录说明一个版本“是一次完整项目刷新运行的直接结果：除下列稳定失败（可以为空）
+外与源码一致，调用图流水线已在这些内容上收敛”。只有满足以下全部条件的索引运行
+才写入它：
 
 * 候选完整（无发现错误、无截断、计数对账），运行中无文件变化、无回填错误；
 * 每个错误都是带文件与内容摘要的稳定失败，索引行恰好等于“选中文件减失败文件”；
-* 本次运行完整执行了调用图流水线（回填零错误）。
+* 本次运行完整执行了调用图流水线（回填零错误）；没有失败时，本次运行还必须
+  成功盖了清单（认证为 complete）。
 
 记录逐项绑定 ``(文件, 内容摘要, 失败原因)``，并绑定项目根、源码范围描述、提取器
 版本与调用图流水线版本。任何写入私有副本的操作开始前都会清除继承自父版本的
 记录（``GenerationStore.begin``，运行自身开始时亦然），只有满足上述条件的运行在
-结束时重新签发，因此单文件写入、失效、仅解析等操作产生的版本不带记录。
+结束时重新签发。单文件写入、失效、仅解析、派生数据持久化等操作产生的版本因此
+不带记录：其后的刷新照常运行（并重新盖清单），不会把未经回填或已过期的认证
+当作零变化保留下来。
 
 它是 ``ast_cache_metadata`` 中的一个控制键，不进入 ``index_fingerprint``；不改变
-完整性语义：带记录的版本仍是 partial，读者照旧拒绝把它认证为 complete。
+完整性语义：带稳定失败的版本仍是 partial，读者照旧拒绝把它认证为 complete。
 """
 
 from __future__ import annotations
@@ -34,7 +38,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 #: ``ast_cache_metadata`` 中的键。
-RECORD_KEY = "tsa.stable_failures"
+RECORD_KEY = "tsa.converged_refresh"
 RECORD_VERSION = 1
 #: 记录的字节上限；超过即不签发（失败文件过多时退回真实运行）。
 _RECORD_BYTE_LIMIT = 1024 * 1024
@@ -82,7 +86,7 @@ def _is_sha256(value: object) -> bool:
 def failures_from_details(
     details: Iterable[Any], errors: int
 ) -> tuple[StableFailure, ...] | None:
-    """全部错误都是带文件与完整摘要的稳定失败时返回它们，否则 ``None``。"""
+    """全部错误都是带文件与完整摘要的稳定失败时返回它们（无错误为空元组），否则 ``None``。"""
     from .publication_policy import FAILURE_KIND, STABLE
 
     found: dict[str, StableFailure] = {}
@@ -104,7 +108,7 @@ def failures_from_details(
         ):
             return None
         found[file] = StableFailure(file, str(content_hash), reason)
-    if not found or count != errors:
+    if count != errors:
         return None
     return tuple(sorted(found.values(), key=lambda failure: failure.file))
 
@@ -146,7 +150,6 @@ def _decode(value: object) -> StableFailureRecord | None:
         or type(extractor) is not int
         or type(pipeline) is not int
         or not isinstance(raw, list)
-        or not raw
     ):
         return None
     failures: list[StableFailure] = []
@@ -262,16 +265,18 @@ def issue_after_run(
     details: Iterable[Any],
     errors: int,
     converged: bool,
+    stamped: bool,
 ) -> bool:
     """运行结束时签发记录：仅当除稳定失败外完全精确且调用图流水线已收敛。
 
     ``converged`` 由调用方给出：本次运行完整执行了回填且零错误、运行中无文件
-    变化、无截断、无不完整跳过。其余条件在此核验。
+    变化、无截断、无不完整跳过。``stamped``：本次运行成功盖了清单；没有失败时
+    必须为真（继承自父版本的清单不能代表本次内容）。其余条件在此核验。
     """
     if not converged or not candidate_is_exact(candidate):
         return False
     failures = failures_from_details(details, errors)
-    if failures is None:
+    if failures is None or (not failures and not stamped):
         return False
     selected = {entry.rel_path for entry in candidate.selected_entries}
     failed = {failure.file for failure in failures}

@@ -74,13 +74,10 @@ def _reset_incoming_edge_resolutions(
     rows = conn.execute(INCOMING_RESOLUTION_ROWS_SQL, (rel_path, rel_path)).fetchall()
     for row in rows:
         metadata = json.loads(row["metadata"] or "{}")
-        metadata.update(
-            {
-                "callee_resolution": "unknown",
-                "callee_resolved_file": "",
-                "callee_symbol_id": None,
-            }
-        )
+        metadata.update({"callee_resolution": "unknown", "callee_resolved_file": ""})
+        # 与新提取的未解析边同形（无此键）：增量删除后的索引须与全新重建逐字节
+        # 相同（#1671 等价门）；读者以缺键与 null 同义。
+        metadata.pop("callee_symbol_id", None)
         conn.execute(
             "UPDATE edges SET callee_resolution = 'unknown', "
             "callee_resolved_file = '', callee_symbol_id = NULL, metadata = ? "

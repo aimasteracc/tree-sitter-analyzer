@@ -11,10 +11,11 @@
 * 每个选中文件都有一行，**内容摘要**、``mtime_ns``、``file_size`` 与捕获时完全
   相同（摘要来自本次读取的字节，RFC-0030：绝不只看路径或元数据），父版本
   没有多余的行（无需清除已删除文件）；
-* 父版本已认证：清单与本次范围、根目录、文件数一致，调用图标记当前；或者
-* 父版本记录了稳定失败（``stable_failures``）：除缺行的文件外与上相同，缺行的
-  文件恰好是记录中的文件，各自的摘要与记录相同，且现在重新解析这份字节仍以
-  **同一原因**失败；记录绑定的根目录、范围、提取器与流水线版本均未变化。
+* 父版本带收敛刷新记录（``stable_failures``）：它是一次收敛的完整刷新运行的
+  直接结果，记录绑定的根目录、范围、提取器与流水线版本均未变化；并且
+* 记录无失败时，父版本已认证：清单与本次范围、根目录、文件数一致，调用图标记
+  当前；或者记录有稳定失败时，缺行的文件恰好是记录中的文件，各自的摘要与记录
+  相同，且现在重新解析这份字节仍以**同一原因**失败。
 
 任一条件不满足即返回 ``None``，调用方照常建库（判定只会让刷新退回原路径，不会
 放宽发布）。全部满足时，真实运行在私有副本上只会得到与父版本相同的内容：全部
@@ -221,25 +222,26 @@ def _certified_parent(
     )
 
 
-def _recorded_failures_hold(
-    conn: sqlite3.Connection,
-    record: StableFailureRecord | None,
-    missing: Iterable[tuple[IndexSnapshotEntry, str]],
-    *,
-    root: str,
-    scope: str,
-    extractor_version: int,
-) -> tuple[StableFailure, ...] | None:
+def _record_binds(
+    record: StableFailureRecord | None, *, root: str, scope: str, version: int
+) -> bool:
+    """记录存在，且绑定的根目录、范围、提取器与流水线版本与本次刷新相同。"""
     from .callgraph_state import CALL_GRAPH_PIPELINE_VERSION
 
-    if (
-        record is None
-        or record.root != root
-        or record.scope != scope
-        or record.extractor_version != extractor_version
-        or record.pipeline_version != CALL_GRAPH_PIPELINE_VERSION
-    ):
-        return None
+    return bool(
+        record is not None
+        and record.root == root
+        and record.scope == scope
+        and record.extractor_version == version
+        and record.pipeline_version == CALL_GRAPH_PIPELINE_VERSION
+    )
+
+
+def _recorded_failures_hold(
+    conn: sqlite3.Connection,
+    record: StableFailureRecord,
+    missing: Iterable[tuple[IndexSnapshotEntry, str]],
+) -> tuple[StableFailure, ...] | None:
     if conn.execute("SELECT 1 FROM ast_index_snapshot_manifest LIMIT 1").fetchone():
         return None
     recorded = record.by_file()
@@ -282,19 +284,19 @@ def _evidence(
         cached += 1
     if rows:
         return None  # 父版本有已不在范围内的行：真实运行会清除它们。
+    # 记录证明父版本是一次收敛的完整刷新运行的直接结果：没有失败时清单由该运行
+    # 本身盖出。单文件写入、失效、派生数据持久化等路由产生的版本不带记录，其
+    # 清单或调用图可能已不代表内容，必须照常运行。
     record = read_record(conn)
+    if record is None or not _record_binds(
+        record, root=root, scope=scope, version=extractor_version
+    ):
+        return None
     if not missing:
-        if record is not None or not _certified_parent(conn, root, scope, cached):
+        if record.failures or not _certified_parent(conn, root, scope, cached):
             return None
         return UnchangedEvidence(cached, (), True)
-    failures = _recorded_failures_hold(
-        conn,
-        record,
-        missing,
-        root=root,
-        scope=scope,
-        extractor_version=extractor_version,
-    )
+    failures = _recorded_failures_hold(conn, record, missing)
     if failures is None:
         return None
     return UnchangedEvidence(cached, failures, False)

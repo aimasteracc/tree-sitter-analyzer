@@ -111,9 +111,12 @@ def _active(root) -> str:
     from tree_sitter_analyzer.cache.generation_routing import resolve_index_location
 
     location = resolve_index_location(root)
-    assert location.published is True
-    assert location.selector is not None
-    return location.selector.generation_id
+    selector = location.selector
+    assert (location.published, type(selector).__name__) == (
+        True,
+        "GenerationSelector",
+    )
+    return str(getattr(selector, "generation_id", ""))
 
 
 def _symbols(root) -> list[str]:
@@ -270,6 +273,101 @@ def test_single_file_write_drops_the_stable_failure_record(root, route) -> None:
     assert refresh(root) == (True, None)
     assert _active(root) != after_single
     assert refresh(root) == (False, "INDEX_UNCHANGED")
+
+
+@pytest.mark.parametrize("route", sorted(_ROUTES))
+def test_same_metadata_different_bytes_publish(root, route) -> None:
+    # 同样大小、同样 mtime、不同字节：只有内容摘要能看出变化（RFC-0030）。
+    refresh = _established(root, route)
+    path = os.path.join(root, "b.py")
+    info = os.stat(path)
+    with open(path, "w", encoding="utf-8") as stream:
+        stream.write(_B.replace("3", "7"))
+    os.utime(path, ns=(info.st_atime_ns, info.st_mtime_ns))
+    assert os.stat(path).st_size == info.st_size
+
+    assert refresh(root) == (True, None)
+
+
+@pytest.mark.parametrize("route", sorted(_ROUTES))
+def test_single_file_write_on_a_complete_parent_is_refreshed(root, route) -> None:
+    # 已认证父版本之后经单文件路由写入的版本不带收敛记录：其后的刷新必须照常
+    # 运行（重新盖清单），不能把单文件写入留下的清单当作零变化保留。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    os.remove(os.path.join(root, "broken.py"))
+    refresh = _established(root, route)
+    _write(root, "b.py", _B + "\n\ndef beta2():\n    return beta()\n")
+    cache = ASTCache(root)
+    try:
+        assert cache.index_file(os.path.join(root, "b.py"))["status"] == "indexed"
+    finally:
+        cache.close()
+    after_single = _active(root)
+
+    assert refresh(root) == (True, None)
+    assert _active(root) != after_single
+    assert refresh(root) == (False, "INDEX_UNCHANGED")
+
+
+@pytest.mark.parametrize("route", sorted(_ROUTES))
+def test_line_ending_change_with_same_mtime_publishes(root, route) -> None:
+    # 只换行符不同：归一化后的内容摘要相同，但大小不同；索引记录的大小必须更新。
+    refresh = _established(root, route)
+    path = os.path.join(root, "b.py")
+    info = os.stat(path)
+    with open(path, "rb") as stream:
+        data = stream.read()
+    toggled = (
+        data.replace(b"\r\n", b"\n")
+        if b"\r\n" in data
+        else data.replace(b"\n", b"\r\n")
+    )
+    with open(path, "wb") as stream:
+        stream.write(toggled)
+    os.utime(path, ns=(info.st_atime_ns, info.st_mtime_ns))
+    assert os.stat(path).st_size != info.st_size
+
+    assert refresh(root) == (True, None)
+
+
+def test_failed_certification_is_not_a_noop(root, monkeypatch) -> None:
+    # 清单盖戳失败的运行不签发收敛记录：其后的零变化刷新必须照常运行并重新盖戳。
+    from tree_sitter_analyzer import index_snapshot_schema
+
+    os.remove(os.path.join(root, "broken.py"))
+    refresh = _established(root, "index_project")
+    original = index_snapshot_schema.stamp_full_index_manifest
+
+    def refuse(*_args, **_kwargs):
+        raise RuntimeError("stamp refused for the test")
+
+    monkeypatch.setattr(index_snapshot_schema, "stamp_full_index_manifest", refuse)
+    _write(root, "b.py", _B + "\n\ndef beta3():\n    return 9\n")
+    refresh(root)
+    monkeypatch.setattr(index_snapshot_schema, "stamp_full_index_manifest", original)
+
+    assert refresh(root) == (True, None)
+    assert refresh(root) == (False, "INDEX_UNCHANGED")
+
+
+@pytest.mark.parametrize("failing", [True, False])
+def test_changed_source_scope_publishes(root, failing) -> None:
+    # 范围描述（排除模式）不同，即使选中文件相同，清单与记录也必须按新范围重签。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    if not failing:
+        os.remove(os.path.join(root, "broken.py"))
+    _established(root, "index_project")
+    cache = ASTCache(root)
+    try:
+        result = cache.index_project(
+            workers=0, exclude_patterns=frozenset({"no_such_dir/*"})
+        )
+    finally:
+        cache.close()
+
+    assert (result["published"], result.get("publication_reason")) == (True, None)
 
 
 def test_unchanged_mcp_refresh_reports_stable_failures(root) -> None:
