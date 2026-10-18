@@ -3,14 +3,57 @@
 * 封存父版本按字节复制成私有副本：内容与 backup 相同、保持 ``begin`` 记录的文件
   身份；父版本带旁路文件时退回 backup。
 * 一次项目索引运行只校验候选快照一次（Windows 上每项 ``realpath`` 要开句柄）。
+* 普通文件的 realpath 由其目录的 realpath 拼接得到，结果与 ``realpath`` 相同；
+  目录联接（junction）仍被解析，越出根目录的路径照常被识别。
 """
 
 from __future__ import annotations
 
 import os
 import sqlite3
+import subprocess
+
+import pytest
 
 from tree_sitter_analyzer.cache import generation_store
+from tree_sitter_analyzer.indexing_snapshot import _realpath_of_regular_file
+
+
+def test_directory_level_realpath_matches_realpath(tmp_path) -> None:
+    nested = tmp_path / "Pkg" / "Sub"
+    nested.mkdir(parents=True)
+    paths = [nested / "Mod.py", tmp_path / "Pkg" / "x.py", tmp_path / "top.py"]
+    for path in paths:
+        path.write_text("x = 1\n", encoding="utf-8")
+    directories: dict[str, str] = {}
+
+    resolved = [
+        _realpath_of_regular_file(str(p), os.lstat(p), directories) for p in paths
+    ]
+
+    assert resolved == [os.path.realpath(p) for p in paths]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="NTFS 目录联接（junction）仅 Windows")
+def test_junction_directory_still_resolves_outside_the_root(tmp_path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "a.py").write_text("x = 1\n", encoding="utf-8")
+    root = tmp_path / "root"
+    root.mkdir()
+    subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(root / "link"), str(outside)],
+        check=True,
+        capture_output=True,
+    )
+    target = root / "link" / "a.py"
+
+    resolved = _realpath_of_regular_file(str(target), os.lstat(target), {})
+
+    assert (resolved, resolved.startswith(str(root))) == (
+        os.path.realpath(target),
+        False,
+    )
 
 
 def _database(path, rows: int) -> None:

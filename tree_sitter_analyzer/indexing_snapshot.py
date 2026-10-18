@@ -5,7 +5,9 @@ from __future__ import annotations
 import fnmatch
 import hashlib
 import os
+import os as _native_os  # 目录级 realpath 复用只用真实平台（测试会替换 ``os``）
 import stat
+import sys
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -138,6 +140,34 @@ def _capture_candidate_fingerprint(
     return fingerprint
 
 
+def _realpath_of_regular_file(
+    abs_path: str, info: os.stat_result | None, directories: dict[str, str]
+) -> str:
+    """``os.path.realpath`` of a file already ``lstat``-checked as regular.
+
+    #1673: on Windows ``realpath`` opens a handle for every call (about 2 ms per
+    file under load, twice per candidate). A regular file that is not a reparse
+    point cannot redirect its own last component, so its real path is the real
+    path of its directory joined with its name; directory real paths (which do
+    resolve junctions and symlinks) are computed once per directory. Anything
+    that is not a plain regular file, and every POSIX path, uses ``realpath``.
+    """
+    reparse = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    if (
+        sys.platform != "win32"
+        or info is None
+        or not stat.S_ISREG(info.st_mode)
+        or getattr(info, "st_file_attributes", 0) & reparse
+    ):
+        return os.path.realpath(abs_path)
+    parent, name = _native_os.path.split(abs_path)
+    resolved_parent = directories.get(parent)
+    if resolved_parent is None:
+        resolved_parent = _native_os.path.realpath(parent)
+        directories[parent] = resolved_parent
+    return _native_os.path.join(resolved_parent, name)
+
+
 @dataclass(frozen=True, slots=True)
 class IndexSnapshotEntry:
     """One file inside the max-files selection window."""
@@ -227,9 +257,16 @@ def validate_index_candidate_snapshot(
         raise ValueError("candidate snapshot uses a different max_files limit")
 
     resolved_root = os.path.realpath(logical_root)
+    directories: dict[str, str] = {}
     for entry in snapshot.entries:
         logical_path = os.path.abspath(entry.abs_path)
-        resolved_path = os.path.realpath(logical_path)
+        entry_info: os.stat_result | None = None
+        if sys.platform == "win32":  # #1673：只有 Windows 走目录级 realpath 复用
+            try:
+                entry_info = os.stat(logical_path, follow_symlinks=False)
+            except OSError:
+                entry_info = None
+        resolved_path = _realpath_of_regular_file(logical_path, entry_info, directories)
         if not Path(resolved_path).is_relative_to(resolved_root):
             raise ValueError(f"candidate path escapes project root: {entry.abs_path}")
         expected_rel_path = os.path.relpath(logical_path, logical_root)
@@ -299,6 +336,7 @@ def build_index_candidate_snapshot(
     yielded = path_bytes = 0
     discovery_error: str | None = None
     started = time.monotonic()
+    directories: dict[str, str] = {}
 
     walker = iter(walk_fn(logical_root))
     while True:
@@ -420,7 +458,7 @@ def build_index_candidate_snapshot(
             )
             continue
 
-        resolved_path = os.path.realpath(abs_path)
+        resolved_path = _realpath_of_regular_file(abs_path, source_info, directories)
         if not Path(resolved_path).is_relative_to(resolved_root):
             raise ValueError(f"candidate path escapes project root: {raw_path}")
         if resolved_path in resolved_paths:
