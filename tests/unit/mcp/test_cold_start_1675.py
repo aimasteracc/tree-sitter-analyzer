@@ -11,6 +11,11 @@ import pytest
 from tree_sitter_analyzer.mcp import tool_definition_cache as cache
 from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
 
+# These tests build the real 8-facade registry (about 100 inner tools) on
+# purpose: the property under test is what tools/list and tools/call avoid
+# building. That is several seconds on a loaded Windows runner.
+pytestmark = pytest.mark.slow_ok
+
 
 @pytest.fixture
 def definition_cache(tmp_path, monkeypatch):

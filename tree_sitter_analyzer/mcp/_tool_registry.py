@@ -25,19 +25,21 @@ import importlib
 from collections.abc import Mapping
 from typing import Any
 
-#: Public registration order of the facades (governs ``tools/list`` order).
-FACADE_NAMES: tuple[str, ...] = (
-    "search",
-    "nav",
-    "structure",
-    "health",
-    "edit",
-    "project",
-    "index",
-    "viz",
-)
-#: Facades whose builder also takes the subscription lifecycle manager.
-_LIFECYCLE_FACADES = frozenset({"search", "index"})
+#: Registered facades in public registration order (governs ``tools/list``
+#: order) -> whether the builder ``tools/<name>_facade.build_<name>_facade``
+#: also takes the subscription lifecycle manager. A dict literal keyed by the
+#: public name, so ``scripts/codemap_surface.py`` reads the surface statically.
+_FACADES: dict[str, bool] = {
+    "search": True,
+    "nav": False,
+    "structure": False,
+    "health": False,
+    "edit": False,
+    "project": False,
+    "index": True,
+    "viz": False,
+}
+FACADE_NAMES: tuple[str, ...] = tuple(_FACADES)
 
 
 def build_facade(
@@ -51,11 +53,11 @@ def build_facade(
     all 8 facades (~100 inner tools, ~500 modules) first; building just the
     facade being called skips the other seven.
     """
-    if name not in FACADE_NAMES:
+    if name not in _FACADES:
         raise ValueError(f"unknown facade: {name!r}")
     module = importlib.import_module(f".tools.{name}_facade", __package__)
     builder = getattr(module, f"build_{name}_facade")
-    if name in _LIFECYCLE_FACADES:
+    if _FACADES[name]:
         return builder(project_root, lifecycle_manager)
     return builder(project_root)
 

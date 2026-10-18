@@ -960,7 +960,9 @@ class CachedCallGraph(CallGraph):
             if record is None:
                 continue
             caller_ref, certain, possible, binding, line = record
-            self._add_possible_edges(caller_ref, list(possible))
+            self._add_possible_edges(
+                caller_ref, possible if isinstance(possible, list) else list(possible)
+            )
             for callee_ref in certain:
                 self._callees[caller_ref].append(callee_ref)
                 self._callers[callee_ref].append(caller_ref)

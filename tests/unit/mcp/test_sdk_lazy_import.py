@@ -15,6 +15,10 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
+# Each test needs a fresh interpreter (the deferral only acts before ``mcp`` is
+# imported), so each one spawns a real subprocess.
+pytestmark = pytest.mark.slow_ok
+
 
 def _run(code: str) -> str:
     completed = subprocess.run(

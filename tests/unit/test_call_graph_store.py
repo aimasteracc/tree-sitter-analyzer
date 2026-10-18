@@ -199,6 +199,7 @@ print("replayed" if used else "built", len(graph._call_edges))
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(900)
+@pytest.mark.slow_ok  # Two real interpreters with different PYTHONHASHSEED values.
 async def test_a_new_process_with_another_hash_seed_reuses_the_store(
     indexed_project,
 ):

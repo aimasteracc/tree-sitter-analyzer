@@ -190,19 +190,22 @@ def decode(
             end_line=end_line,
         )
 
+    def refs(values: Sequence[Any]) -> list[Any]:
+        # 快路径：全是函数表下标（绝大多数）；含按值保存的引用时逐个还原。
+        try:
+            if values and min(values) < 0:
+                raise ValueError("function index out of range")
+            return [functions[value] for value in values]
+        except TypeError:
+            return [ref(value) for value in values]
+        except IndexError:
+            raise ValueError("function index out of range") from None
+
     records: list[EdgeRecord] = []
     for item in encoded:
         if item is None:
             records.append(None)
             continue
         caller, certain, possible, binding, line = item
-        records.append(
-            (
-                ref(caller),
-                [ref(value) for value in certain],
-                [ref(value) for value in possible],
-                binding,
-                int(line),
-            )
-        )
+        records.append((ref(caller), refs(certain), refs(possible), binding, int(line)))
     return records
