@@ -1728,8 +1728,9 @@ def test_late_mutation_unresolves_edges_from_other_files(tmp_path):
         after["callee_symbol_id"],
         metadata["callee_resolution"],
         metadata["callee_resolved_file"],
-        metadata["callee_symbol_id"],
-    ) == ("target.py", "external", "", None, "unknown", "", None)
+        # #1671：撤销后的元数据与新提取的未解析边同形——没有该键。
+        metadata.get("callee_symbol_id", "absent"),
+    ) == ("target.py", "external", "", None, "unknown", "", "absent")
 
 
 def test_new_file_cleanup_failure_preserves_original_index_error():

@@ -390,6 +390,38 @@ def test_refresh_after_full_index_is_a_noop(root, mode, copies) -> None:
     )
 
 
+def test_noop_against_a_superseded_parent_is_not_reported_unchanged(
+    root, monkeypatch
+) -> None:
+    # 比较完成后、返回之前另一写入者发布了更新的版本：不能报告“与活动版本相同”。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cache import generation_noop_precheck
+
+    _established(root, "index_project")
+    original = generation_noop_precheck._evidence
+    interleaved: list[bool] = []
+
+    def then_publish(*args, **kwargs):
+        evidence = original(*args, **kwargs)
+        if not interleaved:
+            interleaved.append(True)
+            _write(root, "c.py", "def gamma():\n    return 5\n")
+            # 另一写入者经同步路由发布（项目索引路由持有同进程写锁）。
+            assert _sync(root) == (True, None)
+        return evidence
+
+    monkeypatch.setattr(generation_noop_precheck, "_evidence", then_publish)
+    cache = ASTCache(root)
+    try:
+        result = cache.index_project(workers=0)
+    except Exception as exc:  # 准入拒绝以类型化异常越过 Python 入口
+        result = {"error": type(exc).__name__}
+    finally:
+        cache.close()
+
+    assert result.get("publication_reason") != "INDEX_UNCHANGED"
+
+
 def test_unchanged_mcp_refresh_reports_stable_failures(root) -> None:
     # MCP 答复如实说明：未发布、原因 INDEX_UNCHANGED，且稳定失败仍计入 errors。
     import asyncio

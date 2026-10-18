@@ -320,7 +320,7 @@ def unchanged_before_build(store: Any, candidate: Any) -> UnchangedEvidence | No
         database = store.database(candidate.parent)
         connection = sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)
         try:
-            return _evidence(
+            evidence = _evidence(
                 connection,
                 snapshot,
                 root=os.path.realpath(str(store.root)),
@@ -328,7 +328,17 @@ def unchanged_before_build(store: Any, candidate: Any) -> UnchangedEvidence | No
             )
         finally:
             connection.close()
+        if evidence is None or not _parent_still_active(store, candidate):
+            return None
+        return evidence
     except (sqlite3.Error, OSError, ValueError, RuntimeError):
         return None
     finally:
         pin.release()
+
+
+def _parent_still_active(store: Any, candidate: Any) -> bool:
+    """比较的父版本仍是活动版本（在发布租约内读取）；被更新的发布取代时照常
+    进入建库路径，由 ``begin`` 的准入如实报告 ``INDEX_CANDIDATE_SUPERSEDED``。"""
+    with store._lease():
+        return bool(store._publication_parent() == candidate.parent)

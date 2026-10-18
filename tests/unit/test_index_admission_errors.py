@@ -252,6 +252,9 @@ def test_mcp_ast_cache_index_reports_superseded_candidate(tmp_path, monkeypatch)
         return original_begin(self, candidate)
 
     monkeypatch.setattr(GenerationStore, "begin", newer_publication_then_begin)
+    # #1671：零变化的刷新在 begin 之前即以内容摘要判定为未变；本次刷新须有真实
+    # 变化，才会进入 begin 并遇到注入的交错发布。
+    (tmp_path / "a.py").write_text("def alpha():\n    return 10\n", encoding="utf-8")
     result = asyncio.run(ASTCacheTool(str(tmp_path)).execute({"mode": "index"}))
     monkeypatch.setattr(GenerationStore, "begin", original_begin)
     assert _core(result) == _SUPERSEDED

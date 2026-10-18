@@ -223,10 +223,9 @@ def run_incremental_sync(
     try:
         if supplied is not None and supplied.publication_parent != candidate.parent:
             raise Superseded("INDEX_GENERATION_SUPERSEDED")
-        if arguments.get("certify_manifest", True) and sync_factory in (
-            None,
-            IncrementalSync,
-        ):
+        # 只用于默认同步路由（watcher、``IncrementalSync.sync``）；显式给出同步
+        # 工厂的调用方（``codegraph_incremental_sync`` 工具）始终运行该工厂。
+        if arguments.get("certify_manifest", True) and sync_factory is None:
             # #1671：内容摘要证明零变化时不复制父版本、不建库、不发布。
             evidence = unchanged_before_build(store, candidate)
             if evidence is not None:
