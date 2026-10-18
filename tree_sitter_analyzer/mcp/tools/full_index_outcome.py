@@ -35,10 +35,10 @@ INDEX_CANDIDATE_SNAPSHOT_CHANGED = "INDEX_CANDIDATE_SNAPSHOT_CHANGED"
 #: ``skipped_files`` 列出的上限；总数始终写明。
 SKIPPED_FILES_CAP = 20
 
+_NOTHING_PUBLISHED = "Nothing was published and the active index (if any) is unchanged."
 RUN_FAILED_NEXT_STEP = (
-    "Nothing was published and the active index (if any) is unchanged. Fix the "
-    "cause named in `error` (see `phases` for per-phase details), then re-run "
-    "index action=full mode=full."
+    f"{_NOTHING_PUBLISHED} Fix the cause named in `error` (see `phases` for "
+    "per-phase details), then re-run index action=full mode=full."
 )
 
 
@@ -69,7 +69,12 @@ def unpublished_result(result: dict[str, Any]) -> dict[str, Any]:
             failure["error_code"] = INDEX_RUN_FAILED
             reason = f"{INDEX_RUN_FAILED} ({'; '.join(_run_failure_reasons(result))})"
         failure.setdefault("error", f"index not published: {reason}")
-    failure.setdefault("next_step", RUN_FAILED_NEXT_STEP)
+    if not failure.get("next_step"):
+        # 工具已给出的具体补救（如清单警告的说明）优先于通用的下一步。
+        own_step = (result.get("agent_summary") or {}).get("next_step")
+        failure["next_step"] = (
+            f"{_NOTHING_PUBLISHED} {own_step}" if own_step else RUN_FAILED_NEXT_STEP
+        )
     failure.setdefault("error_type", INDEX_NOT_PUBLISHED)
     summary_line = f"codegraph_full_index: not published ({failure['error_code']})"
     failure["verdict"] = "ERROR"

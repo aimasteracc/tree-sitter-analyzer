@@ -213,7 +213,7 @@ class TestExecute:
             )
 
         assert result["success"] is False
-        assert result["verdict"] == "WARN"
+        assert result["verdict"] == "ERROR"  # #1674: not published
         assert result["phases"]["incremental_sync"]["status"] == "error"
         assert result["phases"]["incremental_sync"]["errors"] == 1
 
@@ -252,7 +252,7 @@ class TestExecute:
             )
 
         assert result["success"] is False
-        assert result["verdict"] == "WARN"
+        assert result["verdict"] == "ERROR"  # #1674: not published
         assert collect_stats.call_args.kwargs["stamp_manifest"] is False
 
     async def test_manifest_certification_warning_escalates_all_verdicts(
@@ -296,10 +296,10 @@ class TestExecute:
             result["agent_summary"]["summary_line"],
         ) == (
             False,
-            "WARN",
-            "WARN",
-            "codegraph_full_index: completed with warn",
-            "codegraph_full_index: completed with warn",
+            "ERROR",
+            "ERROR",
+            "codegraph_full_index: not published (INDEX_RUN_FAILED)",
+            "codegraph_full_index: not published (INDEX_RUN_FAILED)",
         )
 
     async def test_incremental_manifest_certification_failure_is_not_operational_success(
@@ -335,7 +335,7 @@ class TestExecute:
                 }
             )
 
-        assert (result["success"], result["verdict"]) == (False, "WARN")
+        assert (result["success"], result["verdict"]) == (False, "ERROR")
 
     async def test_manifest_warning_next_step_reaches_the_caller(self, tool_with_root):
         """The remedial step must be in the response, not just derivable.
@@ -586,7 +586,7 @@ class TestExecute:
 
         assert _cache_total_files(tmp_path) == 0
         assert result["success"] is False
-        assert result["verdict"] == "WARN"
+        assert result["verdict"] == "ERROR"  # #1674: not published
         assert result["phases"]["ast_cache"]["truncated_by_max_files"] is True
         assert result["phases"]["ast_cache"]["errors"] == 1
         assert result["phases"]["ast_cache"]["abort_remaining_phases"] is True
@@ -1590,7 +1590,7 @@ async def test_grammar_only_errors_require_independent_certification(
         )
 
     assert result["success"] is success
-    assert result["verdict"] == "WARN"
+    assert result["verdict"] == "ERROR"  # #1674: not published
 
 
 def test_collect_final_stats_returns_empty_on_cache_failure(tmp_path, monkeypatch):
