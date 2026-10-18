@@ -62,6 +62,9 @@ def pytest_addoption(parser):
 def pytest_configure(config):
     """Configure pytest with custom markers and safety checks."""
     configure_pytest_temp_root(config)
+    # #1675: the tools/list definition cache writes under the user's home; the
+    # suite builds definitions live unless a test opts in with its own dir.
+    os.environ.setdefault("TSA_TOOL_DEFINITION_CACHE_DIR", "off")
     if not hasattr(config, "workerinput"):
         _cleanup_pytest_git_repos()
     # #1638: a test stuck past the hard deadline dumps every thread stack and
