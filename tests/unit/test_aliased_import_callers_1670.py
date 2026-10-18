@@ -37,11 +37,10 @@ _USER = (
     "def plain(node):\n"
     "    return direct(node)\n"
 )
-_API = (
-    "from .core import reexported as public_name\n\n"
-    '__all__ = ["public_name"]\n'
+_API = 'from .core import reexported as public_name\n\n__all__ = ["public_name"]\n'
+_MODS = (
+    "import pkg.core as cc\n\n\ndef via_module(node):\n    return cc.extract(node)\n"
 )
-_MODS = "import pkg.core as cc\n\n\ndef via_module(node):\n    return cc.extract(node)\n"
 
 
 @pytest.fixture
@@ -158,3 +157,51 @@ def test_extractor_version_is_bumped_for_alias_resolution() -> None:
         ast_cache._AST_CACHE_EXTRACTOR_VERSION,
         indexer._AST_CACHE_EXTRACTOR_VERSION,
     ) == (41, 41)
+
+
+def test_import_binding_masks_only_accounted_aliases() -> None:
+    from tree_sitter_analyzer.mcp.tools.callers_import_bindings import (
+        alias_bindings,
+        mask_import_bindings,
+    )
+
+    text = (
+        "from m import f as _f, g\n"
+        "from m import f as f\n"
+        "from n import (\n    f as _other,\n)\n"
+    )
+
+    assert [alias for alias, _start, _end in alias_bindings(text, "f")] == [
+        "_f",
+        "_other",
+    ]
+    masked = mask_import_bindings(text, "f", frozenset({"_f"}))
+    assert masked.splitlines()[0] == "from m import   as _f, g"
+    # `f as f` 是显式再导出，未列入的别名也保留。
+    assert masked.splitlines()[1:] == text.splitlines()[1:]
+    assert mask_import_bindings(text, "absent") == text
+
+
+def test_alias_provenance_helpers() -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.graph.alias_edges import alias_call_rows, import_alias_of
+    from tree_sitter_analyzer.mcp.tools.callers_alias_refs import _alias_name
+    from tree_sitter_analyzer.mcp.tools.callers_annotated import alias_provenance
+
+    class _Edge:
+        metadata = {"import_alias": {"local": "_f", "name": "f", "line": 1}}
+
+    assert alias_provenance("_f") == {
+        "resolution_kind": "import_alias",
+        "import_alias": "_f",
+    }
+    assert alias_provenance(None) == {}
+    assert import_alias_of(_Edge()) == "_f"
+    assert import_alias_of(object()) is None
+    conn = sqlite3.connect(":memory:")
+    assert alias_call_rows(conn, "f") == []
+    assert alias_call_rows(conn, "a.f") == []
+    assert _alias_name('{"import_alias": {"name": "f"}}') == "f"
+    assert _alias_name("import_alias not json") is None
+    assert _alias_name(None) is None

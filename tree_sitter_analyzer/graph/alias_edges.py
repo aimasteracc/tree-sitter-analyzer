@@ -30,7 +30,9 @@ def alias_call_rows(conn: sqlite3.Connection, callee_name: str) -> list[sqlite3.
     if not callee_name or "." in callee_name:
         return []
     try:
-        imports = conn.execute(_ALIAS_IMPORTS_SQL, (callee_name, callee_name)).fetchall()
+        imports = conn.execute(
+            _ALIAS_IMPORTS_SQL, (callee_name, callee_name)
+        ).fetchall()
     except sqlite3.OperationalError:
         return []
     rows: list[sqlite3.Row] = []

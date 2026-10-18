@@ -35,6 +35,7 @@ from typing import Any
 
 from ..languages.language_family import languages_compatible
 from ..receiver_proof import constructed_class, split_receiver
+from ._aliases import resolve_import_alias
 from ._constants import (
     BUILTIN_QUALIFIED_PY,
     BUILTIN_TYPE_NAMES_PY,
@@ -43,7 +44,6 @@ from ._constants import (
     STDLIB_METHODS_PY,
     STDLIB_NAMES_PY,
 )
-from ._aliases import resolve_import_alias
 from ._context import ResolverContext, build_resolver_context, is_enabled
 from ._imports import ImportEntry, parse_imports
 from ._reexports import resolve_reexported_name

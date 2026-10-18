@@ -116,7 +116,9 @@ def _reexported(cache: Any, rel_path: str, alias: str) -> bool:
     """别的文件导入了这个别名，或以它为被调名；读取失败按“已再导出”处理。"""
     try:
         conn = cache.get_conn()
-        imported = conn.execute(_REEXPORT_IMPORT_SQL, (rel_path, alias, alias)).fetchone()
+        imported = conn.execute(
+            _REEXPORT_IMPORT_SQL, (rel_path, alias, alias)
+        ).fetchone()
         called = conn.execute(_REEXPORT_CALL_SQL, (alias, rel_path)).fetchone()
     except (sqlite3.Error, AttributeError):
         return True
