@@ -219,11 +219,11 @@ def test_receiver_proof_helpers(
 
 
 def test_graph_receiver_proof_via_module_import() -> None:
-    from tree_sitter_analyzer.call_graph import FunctionRef
     from tree_sitter_analyzer.cached_edge_resolution import (
         CachedEdgeResolver,
         _module_name,
     )
+    from tree_sitter_analyzer.call_graph import FunctionRef
 
     fetch = FunctionRef(
         file_path="client.py", name="fetch", start_line=1, language="python"
