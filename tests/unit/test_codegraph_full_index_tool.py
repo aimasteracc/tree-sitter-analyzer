@@ -1108,7 +1108,10 @@ class TestExecute:
 
         scope = result["candidate_snapshot"]
         incremental = result["phases"]["incremental_sync"]
-        assert result["verdict"] == "WARN"
+        assert (result["verdict"], result["error_code"]) == (
+            "ERROR",
+            "INDEX_CANDIDATE_SUPERSEDED",
+        )  # #1674: source changed during the run, nothing published
         assert scope["selected"] == 1
         # PR #1253：冻结候选仍被处理，但源码漂移禁止发布新版本。
         assert scope["processed"] == 1
