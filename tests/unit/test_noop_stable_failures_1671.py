@@ -370,13 +370,18 @@ def test_changed_source_scope_publishes(root, failing) -> None:
     assert (result["published"], result.get("publication_reason")) == (True, None)
 
 
+@pytest.mark.parametrize("failing", [True, False])
 @pytest.mark.parametrize("mode", ["full", "incremental"])
-def test_refresh_after_full_index_is_a_noop(root, mode, copies) -> None:
+def test_refresh_after_full_index_is_a_noop(root, mode, failing, copies) -> None:
     # dogfood 第 8 轮的复现步骤：先 ``index action=full``，再零变化的
-    # ``index action=cache mode=index``——后者不得复制、不得发布。
+    # ``index action=cache mode=index``——后者不得复制、不得发布。无失败时记录由
+    # 全量索引盖清单的一步签发（issue_after_stamp）。
     import asyncio
 
     from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    if not failing:
+        os.remove(os.path.join(root, "broken.py"))
 
     built = asyncio.run(CodeGraphFullIndexTool(root).execute({"mode": mode}))
     assert built["published"] is True
