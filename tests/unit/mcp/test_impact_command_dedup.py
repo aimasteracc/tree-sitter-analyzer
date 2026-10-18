@@ -130,3 +130,55 @@ def test_realistic_diff_default_reply_size_is_pinned(tmp_path, monkeypatch) -> N
     assert summary_bytes <= IMPACT_SUMMARY_BUDGET_BYTES
     assert summary_bytes < details_bytes
     assert summary_bytes == 13250
+
+
+def test_summary_reference_rules_without_mutation() -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_command_refs import (
+        reference_summary_command,
+    )
+
+    long_command = "uv run pytest " + "x" * 300
+    response = {
+        "verification_command": long_command,
+        "agent_summary": {"verification_command": long_command, "risk": "low"},
+    }
+
+    referenced = reference_summary_command(response)
+
+    assert referenced["agent_summary"] == {
+        "verification_command": f"`verification_command` ({len(long_command)} chars)",
+        "risk": "low",
+    }
+    assert response["agent_summary"]["verification_command"] == long_command
+    # 短命令照旧内联；摘要与顶层不同、或没有摘要时原样返回。
+    short = {
+        "verification_command": "uv run pytest -q",
+        "agent_summary": {"verification_command": "uv run pytest -q"},
+    }
+    assert reference_summary_command(short) == short
+    differs = {
+        "verification_command": long_command,
+        "agent_summary": {"verification_command": "git diff --check"},
+    }
+    assert reference_summary_command(differs) is differs
+    bare = {"verification_command": long_command}
+    assert reference_summary_command(bare) is bare
+
+
+def test_compact_view_passes_the_absence_reason_through() -> None:
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_response import (
+        attach_queue_ledger,
+        build_agent_summary_only_response,
+    )
+
+    result = attach_queue_ledger(
+        dogfood_impact_result(),
+        mode="diff",
+        scope_paths=[],
+        scoped_changed_files=[],
+        workspace_changed_files=[],
+    )
+    compact = build_agent_summary_only_response(result)
+
+    assert compact["queue_ledger"] == {}
+    assert compact["queue_ledger_absent_reason"] == "NO_SCOPE_PATHS"
