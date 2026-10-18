@@ -265,12 +265,15 @@ class CachedEdgeResolver:
         self, full_name: str, qualifier: str, caller_file: str
     ) -> EdgeTargets:
         """没有可用的持久化解析：本地 / import 两档，然后是唯一候选的全局兜底。"""
-        certain = [
-            ref
-            for ref, _confidence in self._resolver.resolve_items(
-                full_name, caller_file, include_global=False
-            )
-        ]
+        certain = _bare_reachable(
+            [
+                ref
+                for ref, _confidence in self._resolver.resolve_items(
+                    full_name, caller_file, include_global=False
+                )
+            ],
+            qualifier,
+        )
         if certain and qualifier in _SELF_QUALIFIERS:
             # self / cls / super：由 ``resolve`` 按调用方的外围类分派（#1635）。
             return EdgeTargets(certain=certain)
@@ -286,12 +289,15 @@ class CachedEdgeResolver:
             ):
                 return EdgeTargets(certain=scoped)
             return EdgeTargets(possible=scoped)
-        globals_ = [
-            ref
-            for ref, _confidence in self._resolver.resolve_items(
-                full_name, caller_file, include_local=False, include_import=False
-            )
-        ]
+        globals_ = _bare_reachable(
+            [
+                ref
+                for ref, _confidence in self._resolver.resolve_items(
+                    full_name, caller_file, include_local=False, include_import=False
+                )
+            ],
+            qualifier,
+        )
         narrowed = _narrow_by_receiver(globals_, qualifier)
         if len(narrowed) == 1 and _qualifier_admits_global(qualifier, narrowed[0]):
             return EdgeTargets(certain=narrowed)
@@ -346,6 +352,13 @@ _KEY_GETTERS: dict[tuple[str, ...], Callable[[dict[str, Any]], tuple[Any, ...]]]
 def _split_qualifier(name: str) -> tuple[str, str]:
     # #1669：`Foo(a.b).m` 的接收者是 `Foo(a.b)`，括号内的点不参与拆分。
     return split_receiver(name)
+
+
+def _bare_reachable(refs: list[FunctionRef], qualifier: str) -> list[FunctionRef]:
+    """#1669：无接收者的调用到达不了方法（`open()` 不是 `NativeFiles.open`）。"""
+    if qualifier:
+        return refs
+    return [ref for ref in refs if not ref.receiver]
 
 
 def _module_name(file_path: str) -> str:

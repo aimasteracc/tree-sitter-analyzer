@@ -126,15 +126,15 @@ def _try_local(
         if sym_id is not None:
             return ResolvedCallee(sym_id, "local", caller_file)
         return None
-    match = ctx.callee_resolver.resolve_first_item(
+    # #1669：无接收者的调用到达不了方法——同文件的 `NativeFiles.open` 不是 `open()`。
+    for item, _confidence in ctx.callee_resolver.resolve_items(
         base,
         caller_file,
         include_import=False,
         include_global=False,
-    )
-    if match is not None:
-        item, _confidence = match
-        return ResolvedCallee(_item_symbol_id(item), "local", _item_file(item))
+    ):
+        if _item_symbol_id(item) not in ctx.method_symbol_ids:
+            return ResolvedCallee(_item_symbol_id(item), "local", _item_file(item))
     return None
 
 
@@ -412,18 +412,27 @@ def _try_single_global(
 ) -> ResolvedCallee | None:
     if qualifier:
         return None
+    # #1669：无接收者的调用到达不了方法。项目里唯一的 `open` 若是方法
+    # `NativeFiles.open`，裸调用 `open(path)` 是内建函数，不是它的调用方。
+    methods = ctx.method_symbol_ids
     if ctx.callee_resolver is not None:
-        matches = ctx.callee_resolver.resolve_items(
-            base,
-            "",
-            include_local=False,
-            include_import=False,
-        )
+        matches = [
+            match
+            for match in ctx.callee_resolver.resolve_items(
+                base,
+                "",
+                include_local=False,
+                include_import=False,
+            )
+            if _item_symbol_id(match[0]) not in methods
+        ]
         if len(matches) == 1:
             item, _confidence = matches[0]
             return ResolvedCallee(_item_symbol_id(item), "project", _item_file(item))
         return None
-    cands = ctx.global_name_table.get(base, [])
+    cands = [
+        cand for cand in ctx.global_name_table.get(base, []) if cand[1] not in methods
+    ]
     if len(cands) == 1:
         target_file, sym_id = cands[0]
         return ResolvedCallee(sym_id, "project", target_file)
@@ -452,6 +461,24 @@ def _try_class_method(
     if found is None and constructed is not None:
         # #1669：``Foo().bar()`` 的接收者由构造调用给出类型，与 ``x = Foo()`` 同理。
         found = ctx.class_method_index.get((constructed.rsplit(".", 1)[-1], base))
+    if found is not None:
+        return ResolvedCallee(found[1], "project", found[0])
+    return None
+
+
+def _try_inherited_class_method(
+    base: str, qualifier: str, ctx: ResolverContext
+) -> ResolvedCallee | None:
+    """#1669：接收者已证明是项目类 ``T``（类名或 ``T(...)``），但 ``T`` 自己没有 ``m``。
+
+    ``m`` 来自基类。接收者是被证明的项目类，``m`` 在项目里只有一个方法定义时
+    绑定到它（``x = Sub(); x.m()`` 调用 ``Base.m``）。接收者未被证明的调用不走这里。
+    """
+    constructed = constructed_class(qualifier)
+    receiver = constructed.rsplit(".", 1)[-1] if constructed else qualifier
+    if not receiver.isidentifier() or receiver not in ctx.project_class_names:
+        return None
+    found = ctx.unique_method_index.get(base)
     if found is not None:
         return ResolvedCallee(found[1], "project", found[0])
     return None
@@ -533,6 +560,7 @@ def _resolve_callee_python(
         # (RFC-0002 criterion 2 — shadowing preserved).
         lambda: _try_single_global(base, qualifier, ctx),
         lambda: _try_class_method(base, qualifier, ctx),
+        lambda: _try_inherited_class_method(base, qualifier, ctx),
         # #1669：接收者未被证明（不是 self/cls、导入的模块或类、类名、注解或构造
         # 得到的类型）的 ``x.m()`` 不再因 ``m`` 在项目里只有一个定义就记为
         # ``project``——``xs.append()`` 曾因此成为 ``HealthHistory.append`` 的

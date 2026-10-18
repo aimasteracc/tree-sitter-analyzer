@@ -44,7 +44,19 @@ _USERS = (
     "def chained(owner):\n"
     "    owner.history.append(5)\n\n\n"
     "def fresh():\n"
-    "    HealthHistory().append(6)\n"
+    "    HealthHistory().append(6)\n\n\n"
+    "class Sub(HealthHistory):\n"
+    "    pass\n\n\n"
+    "def via_sub():\n"
+    "    s = Sub()\n"
+    "    s.append(7)\n"
+)
+_FILES = (
+    "class Files:\n"
+    "    def open(self, path):\n"
+    "        return path\n\n\n"
+    "def read(path):\n"
+    "    return open(path)\n"
 )
 _MODULES = (
     "import health\n"
@@ -56,7 +68,14 @@ _MODULES = (
 )
 
 #: ``HealthHistory.append`` 的确定调用方：调用方名 → 定义行。
-_CERTAIN = {"record": 8, "typed": 12, "constructed": 16, "by_class": 25, "fresh": 33}
+_CERTAIN = {
+    "record": 8,
+    "typed": 12,
+    "constructed": 16,
+    "by_class": 25,
+    "fresh": 33,
+    "via_sub": 41,
+}
 #: 接收者未知或已知为别的类型的同名调用：不得成为确定调用方。
 _NOT_CERTAIN = ("append", "add", "untyped", "chained")
 
@@ -68,6 +87,7 @@ async def history_root(tmp_path: Path) -> str:
     (tmp_path / "health.py").write_text(_HEALTH, encoding="utf-8")
     (tmp_path / "users.py").write_text(_USERS, encoding="utf-8")
     (tmp_path / "modules.py").write_text(_MODULES, encoding="utf-8")
+    (tmp_path / "files.py").write_text(_FILES, encoding="utf-8")
     indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
         {"mode": "full", "max_files": 10}
     )
@@ -134,6 +154,14 @@ async def test_unproven_receivers_stay_possible_for_impact(history_root: str) ->
         "untyped": "name_only",
         "chained": "name_only",
     }
+
+
+@pytest.mark.asyncio
+async def test_bare_call_never_binds_to_a_method(history_root: str) -> None:
+    # 项目里唯一的 `open` 是方法 `Files.open`：裸调用 `open(path)` 是内建函数。
+    result = await _callers(history_root, "Files.open", "files.py")
+
+    assert result["caller_count"] == 0
 
 
 @pytest.mark.asyncio
