@@ -737,14 +737,23 @@ def test_index_mode_returns_typed_retryable_error_when_source_changes(
 ):
     # Issue #1595: INDEX_GENERATION_SOURCE_CHANGED escaped as error_type=internal
     # with "Review the error message"; it is retryable and names the change.
+    # RFC-0032 slice 4: the admission code is INDEX_CANDIDATE_SUPERSEDED.
     result = _index_while_editing(tmp_path, monkeypatch)
     assert (
         result["success"],
         result["error_code"],
+        result["cause_code"],
         result["retryable"],
         result["published"],
         result["changes"],
-    ) == (False, "INDEX_GENERATION_SOURCE_CHANGED", True, False, ["modified: a.py"])
+    ) == (
+        False,
+        "INDEX_CANDIDATE_SUPERSEDED",
+        "INDEX_GENERATION_SOURCE_CHANGED",
+        True,
+        False,
+        ["modified: a.py"],
+    )
 
 
 def test_index_mode_source_change_leaves_no_orphan_generation(tmp_path, monkeypatch):

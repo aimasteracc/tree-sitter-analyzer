@@ -30,6 +30,35 @@
 
 ### Fixed
 
+- Index writes that are refused before they change anything now say why with a
+  typed code (RFC-0032 slice 4, #1554). Before, a second writer got
+  `"error": "Sync failed: OperationalError: database is locked"` after a 5 s
+  wait, with no `error_code`; a damaged selector escaped MCP `index
+  action=cache` as an exception and gave CLI `--incremental-sync` an untyped
+  error; and the watcher returned `{"error": ...}` and retried every failure
+  the same way. The three codes:
+  - `INDEX_CANDIDATE_SUPERSEDED` (retryable): another write or a source edit
+    superseded the candidate (`INDEX_GENERATION_SUPERSEDED`,
+    `INDEX_GENERATION_SOURCE_CHANGED`, ...);
+  - `INDEX_WRITER_BUSY` (retryable): the publication lease wait timed out, or
+    Windows could not replace the selector atomically;
+  - `INDEX_RECOVERY_REQUIRED` (not retryable): the selector is damaged or
+    missing, or the storage path is a link.
+  Each reply carries `error_code`, `cause_code` (the specific reason),
+  `retryable`, `retry_after_ms` (5000 or 0), `next_action` (`recapture` or
+  `recover_index`) and `next_step`, identically on MCP `index action=cache` /
+  `index action=full` / `codegraph_incremental_sync`, the CLI routes that
+  print them (`--ast-cache`, `--full-index`, `--incremental-sync`, still exit
+  1), and `FileWatcherDaemon.trigger_sync()`. `error` keeps its text, with the
+  new exception name for a busy lease (`Sync failed: IndexWriterBusy:
+  INDEX_WRITER_BUSY`). **Changed code:** a source edit during an index build
+  now reports `error_code: INDEX_CANDIDATE_SUPERSEDED` (was
+  `INDEX_GENERATION_SOURCE_CHANGED`, which moves to `cause_code` and stays in
+  `error`). The watcher retries only the retryable codes, after 5, 10, 20, 40
+  and then every 60 seconds with a fresh capture, never retries
+  `INDEX_RECOVERY_REQUIRED`, and reports the last failure as
+  `stats.last_admission_error` until a sync completes. The codes are
+  documented in `docs/agent-envelope-contract.md`.
 - `detect_routes` (CLI `--detect-routes`) now finds Django routes (#1650).
   The Django scanner read the call field `func`, but tree-sitter-python names
   it `function`, so no `urls.py` ever produced a route even though Django was

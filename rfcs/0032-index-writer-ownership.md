@@ -1,9 +1,9 @@
 # RFC-0032: Index writer ownership and obsolete-candidate fencing
 
-- **Status**: accepted — Revision 1 accepted by the owner on 2026-10-14 (generation-store CAS as the write fence; decisions under "Deferred / open questions")
+- **Status**: accepted — Revision 1 accepted by the owner on 2026-10-14 (generation-store CAS as the write fence; decisions under "Deferred / open questions"); implementation in progress, see "Implementation status"
 - **Author(s)**: @aimasteracc, Codex
 - **Created**: 2026-09-08
-- **Last updated**: 2026-10-14
+- **Last updated**: 2026-10-18
 - **Tracking issue**: #1554
 - **Affected source paths**:
   - `tree_sitter_analyzer/ast_cache.py`, `_ast_cache_*_mixin.py`
@@ -91,6 +91,16 @@ all three are deferred.
 5. custom-path cooperative revision CAS (schema 18);
 6. bounded retirement of unreferenced generations;
 7. *(optional, major version)* custom locator relocation and a read-session type.
+
+**Implementation status** (2026-10-18): slices 1 (#1565), 2 (#1550), 3 (#1551) and
+6 (#1567) are merged. Slice 4 adds `cache/admission.py`: `ADMISSION_CODES` holds the
+three codes above with the table's `retryable` / `retry_after_ms` / `next_action`
+values, and `CAUSE_CODES` maps each internal reason to one of them. The
+publication-lease timeout now raises `IndexWriterBusy` instead of a raw
+`OperationalError`. MCP, CLI and the watcher return the same payload, documented in
+`docs/agent-envelope-contract.md`. `INDEX_CANDIDATE_UNBOUND` and
+`INDEX_WRITER_FENCED` are not emitted: unbound custom-path candidates stay accepted
+(owner decision), and no fenced late callback exists on generation routes.
 
 ## Motivation
 

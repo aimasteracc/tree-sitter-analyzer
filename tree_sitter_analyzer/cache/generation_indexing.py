@@ -17,6 +17,7 @@ from ..incremental_sync_support import SyncResult
 from ..index_source_scope import SourceScopeDescriptor, make_source_scope_descriptor
 from ..indexing_candidate_materialization import release_index_candidate_snapshot
 from ..indexing_snapshot import IndexCandidateSnapshot
+from .admission import admission_failure_of, admission_fields
 from .generation_noop import (
     index_run_unchanged,
     not_publishable_result,
@@ -44,7 +45,10 @@ from .source_recheck import SourceChanged, source_changed_failure
 _T = TypeVar("_T")
 _SOURCE_CHANGED_KEYS = (
     "error_code",
+    "cause_code",
     "retryable",
+    "retry_after_ms",
+    "next_action",
     "changes",
     "changes_total",
     "changes_truncated",
@@ -337,7 +341,12 @@ def _publication_error(exc: Exception, root: str, phase: str) -> dict[str, Any]:
     elif isinstance(exc, SourceChanged):
         # #1595：源码变化/复核未完成可直接重试，并给出有界差异清单。
         typed = source_changed_failure(exc)
-        failure.update({key: typed[key] for key in _SOURCE_CHANGED_KEYS})
+        failure.update(
+            {key: typed[key] for key in _SOURCE_CHANGED_KEYS if key in typed}
+        )
+    elif (admission := admission_failure_of(exc)) is not None:
+        # RFC-0032 slice 4：准入失败与 CLI/MCP/watcher 使用同一组机器字段。
+        failure.update(admission_fields(admission))
     return failure
 
 

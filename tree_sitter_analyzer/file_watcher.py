@@ -24,6 +24,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from .ast_cache import _EXT_TO_LANG
+from .cache.admission import (
+    AdmissionFailure,
+    admission_failure_of,
+    admission_failure_payload,
+)
 from .file_watcher_polling import PollingScanner
 from .incremental_sync import IncrementalSync
 
@@ -54,6 +59,8 @@ class WatcherStats:
     last_sync_at: float = 0.0
     errors: int = 0
     uptime_seconds: float = 0.0
+    # RFC-0032 slice 4：最近一次准入失败的答复；成功的完整同步后清空。
+    last_admission_error: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -62,6 +69,11 @@ class WatcherStats:
             "last_sync_at": self.last_sync_at,
             "errors": self.errors,
             "uptime_seconds": round(self.uptime_seconds, 1),
+            "last_admission_error": (
+                dict(self.last_admission_error)
+                if self.last_admission_error is not None
+                else None
+            ),
         }
 
 
@@ -179,6 +191,7 @@ class FileWatcherDaemon:
                 syncs_triggered=self._stats.syncs_triggered,
                 last_sync_at=self._stats.last_sync_at,
                 errors=self._stats.errors,
+                last_admission_error=self._stats.last_admission_error,
             )
         if self._started_at:
             stats.uptime_seconds = time.monotonic() - self._started_at
@@ -262,8 +275,14 @@ class FileWatcherDaemon:
 
         self._request_sync()
 
-    def _request_sync(self, *, retry: bool = False) -> None:
-        """合并通知与重试，临时故障指数退避且不推迟已排队的文件通知。"""
+    def _request_sync(
+        self, *, retry: bool = False, base_delay: float | None = None
+    ) -> None:
+        """合并通知与重试，临时故障指数退避且不推迟已排队的文件通知。
+
+        ``base_delay`` 给出重试退避的起点（准入失败为 ``retry_after_ms``）；
+        缺省时沿用轮询间隔。
+        """
         if retry and not self.is_running():
             return
         with self._pending_lock:
@@ -273,7 +292,8 @@ class FileWatcherDaemon:
                 return
             delay = self._debounce
             if retry:
-                delay = min(60.0, self._poll_interval * 2**self._retry_attempt)
+                base = self._poll_interval if base_delay is None else base_delay
+                delay = min(60.0, base * 2**self._retry_attempt)
                 self._retry_attempt = min(6, self._retry_attempt + 1)
             else:
                 self._retry_attempt = 0
@@ -361,13 +381,36 @@ class FileWatcherDaemon:
             elif result.scope_complete:
                 with self._pending_lock:
                     self._retry_attempt = 0
+                with self._stats_lock:
+                    # RFC-0032：成功的完整同步清除准入诊断。
+                    self._stats.last_admission_error = None
             return result.to_dict()
         except Exception as exc:
             with self._stats_lock:
                 self._stats.errors += 1
             logger.error("sync failed: %s", exc)
-            self._request_sync(retry=True)
-            return {"error": str(exc)}
+            failure = admission_failure_of(exc)
+            if failure is None:
+                self._request_sync(retry=True)
+                return {"error": str(exc)}
+            return self._admission_failed(failure, str(exc))
+
+    def _admission_failed(
+        self, failure: AdmissionFailure, error: str
+    ) -> dict[str, Any]:
+        """返回与 CLI/MCP 相同的类型化答复，记录诊断，只为可重试码安排重试。
+
+        RFC-0032 slice 4：重试间隔 5、10、20、40 秒，之后封顶 60 秒，每次重新捕获
+        候选；需要恢复的存储不会自动重放。
+        """
+        payload = admission_failure_payload(failure, error)
+        with self._stats_lock:
+            self._stats.last_admission_error = payload
+        if failure.contract.retryable:
+            self._request_sync(
+                retry=True, base_delay=failure.contract.retry_after_ms / 1000
+            )
+        return dict(payload)
 
 
 class _WatchdogHandler:

@@ -20,6 +20,7 @@ from ...index_source_snapshot import make_source_scope_descriptor
 from ...indexing_candidate_materialization import release_index_candidate_snapshot
 from ...indexing_limits import normalize_index_max_files
 from ...utils import setup_logger
+from ..utils.admission_response import admission_error_response
 from ..utils.auto_index_guard import ensure_indexed, is_indexed
 from ..utils.error_sanitizer import (
     bounded_safe_error_message,
@@ -137,10 +138,28 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
 
         return ASTCache(str(self.project_root))
 
+    def _storage_admission_error(self) -> dict[str, Any] | None:
+        """``ensure_indexed`` 吞掉了打开失败；重新打开一次以报告类型化的存储失败。
+
+        损坏的选择器或不安全的存储路径属于 ``INDEX_RECOVERY_REQUIRED``，不能
+        退化成无代码的 "Failed to initialize AST cache"（RFC-0032 slice 4）。
+        """
+        from ...ast_cache import ASTCache
+
+        try:
+            ASTCache(str(self.project_root)).close()
+        except Exception as exc:
+            return admission_error_response(
+                exc, str(self.project_root), prefix="Sync failed: "
+            )
+        return None
+
     def _sync(self, max_files: int, output_format: str) -> dict[str, Any]:
         cache = self._ensure_cache(output_format, max_files=max_files)
         if cache is None:
-            result = build_error(error="Failed to initialize AST cache")
+            result = self._storage_admission_error() or build_error(
+                error="Failed to initialize AST cache"
+            )
             return apply_output_format_to_response(result, output_format)
 
         try:
@@ -167,6 +186,12 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
                 release_index_candidate_snapshot(candidate_snapshot)
         except Exception as exc:
             logger.error("Incremental sync raised %s", type(exc).__name__)
+            typed = admission_error_response(
+                exc, str(self.project_root), prefix="Sync failed: "
+            )
+            if typed is not None:
+                # RFC-0032 slice 4：准入失败带 error_code/retryable 等机器字段。
+                return apply_output_format_to_response(typed, output_format)
             error, truncated = bounded_safe_error_message(
                 exc,
                 str(self.project_root),
