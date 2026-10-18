@@ -175,18 +175,39 @@ def _read_bound_source(entry: IndexSnapshotEntry) -> str | None:
     return decode_index_source(data)
 
 
-def _content_hash(entry: IndexSnapshotEntry) -> str | None:
-    """候选已绑定的摘要（路径平台在捕获时逐文件读取）；否则现在读取并计算。"""
+def bound_digests(candidate: Any) -> dict[str, str]:
+    """捕获时绑定的内容摘要（``GenerationCandidate.source_contents``）。
+
+    路径平台在捕获时逐文件读取并摘要，摘要保存在 ``source_contents`` 中（候选
+    快照本身只带不可读标记）；这里复用它们，不再为比较重读每个文件。
+    """
+    digests: dict[str, str] = {}
+    for item in getattr(candidate, "source_contents", None) or ():
+        try:
+            rel_path, evidence = item
+            digest = evidence[0] if evidence is not None else ""
+        except (TypeError, ValueError, IndexError):
+            continue
+        if isinstance(rel_path, str) and isinstance(digest, str) and digest:
+            digests[rel_path] = digest
+    return digests
+
+
+def _content_hash(
+    entry: IndexSnapshotEntry, bound: dict[str, str] | None = None
+) -> str | None:
+    """捕获时绑定的摘要（路径平台逐文件读取所得）；没有时现在读取并计算。"""
     from ..index_source_stream import unreadable_source_reason
     from ..indexing_snapshot import index_source_content_hash
 
     fingerprint = entry.fingerprint
     if fingerprint is None:
         return None
-    if fingerprint.content_hash:
-        if unreadable_source_reason(fingerprint.content_hash) is not None:
+    digest = (bound or {}).get(entry.rel_path) or fingerprint.content_hash
+    if digest:
+        if unreadable_source_reason(digest) is not None or digest == "<unsafe>":
             return None
-        return fingerprint.content_hash
+        return digest
     source = _read_bound_source(entry)
     return None if source is None else index_source_content_hash(source)
 
@@ -261,6 +282,7 @@ def _evidence(
     *,
     root: str,
     scope: str,
+    bound: dict[str, str] | None = None,
 ) -> UnchangedEvidence | None:
     if not _schema_is_current(conn):
         return None
@@ -272,7 +294,7 @@ def _evidence(
     cached = 0
     for entry in snapshot.selected_entries:
         fingerprint = entry.fingerprint
-        digest = _content_hash(entry)
+        digest = _content_hash(entry, bound)
         if fingerprint is None or digest is None:
             return None
         row = rows.pop(entry.rel_path, None)
@@ -325,6 +347,7 @@ def unchanged_before_build(store: Any, candidate: Any) -> UnchangedEvidence | No
                 snapshot,
                 root=os.path.realpath(str(store.root)),
                 scope=canonical_source_scope_descriptor(store.scope),
+                bound=bound_digests(candidate),
             )
         finally:
             connection.close()

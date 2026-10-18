@@ -422,6 +422,25 @@ def test_noop_against_a_superseded_parent_is_not_reported_unchanged(
     assert result.get("publication_reason") != "INDEX_UNCHANGED"
 
 
+def test_noop_check_reuses_the_digests_bound_at_capture(root, monkeypatch) -> None:
+    # 捕获已逐文件读取并摘要（路径平台）；比较不得为每个文件再读一遍，只有
+    # 稳定失败文件为重新解析而读取。
+    from tree_sitter_analyzer.cache import generation_noop_precheck, generation_store
+
+    monkeypatch.setattr(generation_store, "_PATH_ONLY_SOURCE", True)
+    refresh = _established(root, "index_project")
+    reads: list[str] = []
+    original = generation_noop_precheck._read_bound_source
+
+    def counted(entry):
+        reads.append(entry.rel_path)
+        return original(entry)
+
+    monkeypatch.setattr(generation_noop_precheck, "_read_bound_source", counted)
+
+    assert (refresh(root), reads) == ((False, "INDEX_UNCHANGED"), ["broken.py"])
+
+
 def test_unchanged_mcp_refresh_reports_stable_failures(root) -> None:
     # MCP 答复如实说明：未发布、原因 INDEX_UNCHANGED，且稳定失败仍计入 errors。
     import asyncio
