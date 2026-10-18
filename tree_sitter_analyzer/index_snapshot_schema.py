@@ -23,7 +23,10 @@ from .index_source_snapshot import (
     recorded_source_rows,
 )
 
-SNAPSHOT_SCHEMA_VERSION = CURRENT_SCHEMA_VERSION
+# 读者要求的版本：最近一次改变查询可见内容的迁移（17）。schema 18 只增加写入修订
+# 控制表（RFC-0032 slice 5），读者不依赖它，因此已发布的 v17 版本照常可读；
+# 高于 CURRENT_SCHEMA_VERSION 的未来版本仍被拒绝。
+SNAPSHOT_SCHEMA_VERSION = min(17, CURRENT_SCHEMA_VERSION)
 SCHEMA_V13_INDEX_SNAPSHOT = """
 CREATE TABLE IF NOT EXISTS ast_index_snapshot_manifest (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
@@ -43,6 +46,8 @@ _CONTROL_TABLES = frozenset(
         "ast_call_graph_state",
         "ast_resolve_state",
         "sqlite_sequence",
+        # RFC-0032 slice 5：写入修订号随每次提交推进，是写入权威而非索引内容。
+        "ast_writer_state",
     }
 )
 _REQUIRED_COLUMNS = {
@@ -286,7 +291,7 @@ def validate_snapshot_schema(
             "AND version = ? THEN 1 ELSE 0 END "
             "FROM ast_schema_version LIMIT ?",
             (
-                SNAPSHOT_SCHEMA_VERSION,
+                CURRENT_SCHEMA_VERSION,
                 SNAPSHOT_SCHEMA_VERSION,
                 _SCHEMA_VALIDATION_ROW_BUDGET + 1,
             ),

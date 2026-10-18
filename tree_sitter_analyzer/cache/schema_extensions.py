@@ -1,4 +1,4 @@
-"""已发布 canonical 14/15 与 Pulse 16/LSP 17 的原子扩展迁移。"""
+"""已发布 canonical 14/15、Pulse 16/LSP 17 与写入修订号 18 的原子扩展迁移。"""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import sqlite3
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 
-CURRENT_SCHEMA_VERSION = 17
+CURRENT_SCHEMA_VERSION = 18
 RecordFn = Callable[[sqlite3.Connection, int, str], None]
 
 SCHEMA_V16_COMMENTS = """
@@ -130,3 +130,17 @@ def apply_migration_v17(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
             "SELECT symbol_id,edge_id,resolved_type,resolved_file,resolved_line,lsp_server,cached_at FROM lsp_resolution_cache LIMIT 0"
         )
         record_fn(conn, 17, "LSP resolution cache")
+
+
+def apply_migration_v18(conn: sqlite3.Connection, record_fn: RecordFn) -> None:
+    """RFC-0032 slice 5：写入修订号单行表，新随机 cache_uuid、revision 0。
+
+    只增加控制表，不改任何查询可见行，因此不撤销已有认证；读者不依赖它
+    （``index_snapshot_schema.SNAPSHOT_SCHEMA_VERSION`` 仍为 17）。已存在但形状不符的
+    表使整次扩展升级回滚，不会被 ``CREATE IF NOT EXISTS`` 当成升级成功。
+    """
+    from .writer_state import seed_writer_state
+
+    with schema_update(conn):
+        seed_writer_state(conn)
+        record_fn(conn, 18, "Writer revision state (RFC-0032 custom-path CAS)")

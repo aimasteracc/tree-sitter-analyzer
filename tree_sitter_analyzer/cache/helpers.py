@@ -132,13 +132,14 @@ def _commit_index_results(
             if pending >= batch_size:
                 if batch_guard is not None:
                     batch_guard(pending_results)
-                conn.execute("COMMIT")
+                # ``commit()`` 而非裸 COMMIT：原地库的提交须经修订号 CAS（RFC-0032）。
+                conn.commit()
                 pending = 0
                 pending_results.clear()
                 conn.execute("BEGIN")
         if batch_guard is not None and pending_results:
             batch_guard(pending_results)
-        conn.execute("COMMIT")
+        conn.commit()
     except Exception:
-        conn.execute("ROLLBACK")
+        conn.rollback()  # 围栏拒绝时事务已回滚；rollback() 对无事务是空操作
         raise

@@ -108,7 +108,7 @@ def test_legacy_layout_upgrade_preserves_data_and_is_idempotent(tmp_path, layout
             for r in db.execute(
                 "SELECT version FROM ast_schema_version WHERE version>=13 ORDER BY version"
             )
-        ] == [13, 14, 15, 16, 17]
+        ] == [13, 14, 15, 16, 17, 18]
         assert validate_snapshot_schema(db) is None
         assert db.execute("SELECT certified_at FROM ast_index").fetchone()[0] == (
             456 if layout == "canonical15" else None
@@ -174,20 +174,19 @@ def test_entire_extension_upgrade_rolls_back_and_retries(tmp_path, layout, fault
     _, path = _legacy_cache_layout(tmp_path, layout)
     db = sqlite3.connect(path)
     migrations = [(13, apply_snapshot_migration)] + [
-        (v, getattr(schema, f"apply_migration_v{v}")) for v in range(14, 18)
+        (v, getattr(schema, f"apply_migration_v{v}")) for v in range(14, 19)
     ]
     try:
         if fault == "record":
             db.execute(
-                "CREATE TEMP TRIGGER deny_record BEFORE INSERT ON ast_schema_version WHEN NEW.version=17 BEGIN SELECT RAISE(ABORT,'record denied'); END"
+                "CREATE TEMP TRIGGER deny_record BEFORE INSERT ON ast_schema_version WHEN NEW.version=18 BEGIN SELECT RAISE(ABORT,'record denied'); END"
             )
         elif fault == "interrupt":
 
             def interrupt(sql):
-                if (
-                    sql.startswith("INSERT OR IGNORE INTO ast_schema_version")
-                    and "LSP resolution cache" in sql
-                ):
+                # RFC-0032 slice 5：中断末次迁移 v18 的数据写入（写入状态行）。中断标志
+                # 由下一条语句消费；v18 版本凭证 INSERT 之后已没有检查它的语句。
+                if sql.startswith("INSERT OR IGNORE INTO ast_writer_state"):
                     db.interrupt()
 
             db.set_trace_callback(interrupt)
@@ -223,11 +222,11 @@ def test_entire_extension_upgrade_rolls_back_and_retries(tmp_path, layout, fault
 
 
 def test_future_schema_is_rejected_without_mutating_cache(tmp_path):
-    """PR #1350/#1352：未来 v18 在任何迁移写入之前被拒绝，原库保持可由新版处理。"""
+    """PR #1350/#1352：未来 v19 在任何迁移写入之前被拒绝，原库保持可由新版处理。"""
 
     root, path = _legacy_cache_layout(tmp_path, "experimental15")
     with sqlite3.connect(path) as db:
-        db.execute("INSERT INTO ast_schema_version VALUES (18,0,'future')")
+        db.execute("INSERT INTO ast_schema_version VALUES (19,0,'future')")
     with sqlite3.connect(path) as db:
         before = tuple(db.iterdump())
     with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
@@ -287,6 +286,8 @@ def test_failed_optional_migration_does_not_certify_schema(tmp_path, version, ta
 
 def test_schema_version_rejects_unknown_row_immediately():
     # PR #1352：未来版本测试必须相对当前版本，不能用已支持的 14。
+    # RFC-0032 slice 5：读者要求 17、接受至 CURRENT（18）；未来版本相对 CURRENT。
+    from tree_sitter_analyzer.cache.schema import CURRENT_SCHEMA_VERSION
     from tree_sitter_analyzer.index_snapshot_schema import (
         SNAPSHOT_SCHEMA_VERSION,
         validate_snapshot_schema,
@@ -296,16 +297,18 @@ def test_schema_version_rejects_unknown_row_immediately():
     conn.execute("CREATE TABLE ast_schema_version(version)")
     conn.executemany(
         "INSERT INTO ast_schema_version VALUES(?)",
-        [(SNAPSHOT_SCHEMA_VERSION + 1,), (SNAPSHOT_SCHEMA_VERSION,)],
+        [(CURRENT_SCHEMA_VERSION + 1,), (SNAPSHOT_SCHEMA_VERSION,)],
     )
     with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
         validate_snapshot_schema(conn)
     conn.close()
 
 
-@pytest.mark.parametrize("future_version", [None, 18])
+@pytest.mark.parametrize("future_version", [None, 19])
 def test_snapshot_reader_matches_latest_real_migration(tmp_path, future_version):
-    # PR #1350/#1352：canonical 14/15 与新 16/17 必须同时存在，未来 18 不可接受。
+    # PR #1350/#1352：canonical 14/15 与新 16/17 必须同时存在，未来 19 不可接受。
+    # RFC-0032 slice 5：18 只增加写入修订控制表，读者仍要求 17（不随 18 提升）。
+    from tree_sitter_analyzer.cache.schema import CURRENT_SCHEMA_VERSION
     from tree_sitter_analyzer.index_snapshot_schema import (
         SNAPSHOT_SCHEMA_VERSION,
         validate_snapshot_schema,
@@ -320,8 +323,8 @@ def test_snapshot_reader_matches_latest_real_migration(tmp_path, future_version)
                 "SELECT version FROM ast_schema_version WHERE version >= 13 ORDER BY version"
             )
         ]
-        assert versions == [13, 14, 15, 16, 17]
-        assert SNAPSHOT_SCHEMA_VERSION == max(versions) == 17
+        assert versions == [13, 14, 15, 16, 17, 18]
+        assert (SNAPSHOT_SCHEMA_VERSION, CURRENT_SCHEMA_VERSION) == (17, max(versions))
         assert "certified_at" in {
             row[1] for row in conn.execute("PRAGMA table_info(ast_index)")
         }

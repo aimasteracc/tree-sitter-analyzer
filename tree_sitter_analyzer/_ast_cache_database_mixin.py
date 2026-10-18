@@ -59,6 +59,9 @@ from .cache.schema import (
     apply_migration_v17 as _apply_migration_v17,
 )
 from .cache.schema import (
+    apply_migration_v18 as _apply_migration_v18,
+)
+from .cache.schema import (
     backfill_schema_version_row as _backfill_schema_version_row,
 )
 from .cache.schema import (
@@ -67,6 +70,8 @@ from .cache.schema import (
 from .cache.schema import (
     init_db as _schema_init_db,
 )
+from .cache.writer_state import FencedConnection, read_writer_revision
+from .cache.writer_state import WriterRevision as WriterRevision
 from .core.parser import Parser
 from .index_snapshot_schema import apply_snapshot_migration as _apply_migration_v13
 
@@ -180,7 +185,12 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
 
                     track_scoped_reader(self)
             else:
-                conn = sqlite3.connect(database_path, timeout=10)
+                # RFC-0032 slice 5：原地写入的每次提交经修订号 CAS（schema 18）。
+                fenced = sqlite3.connect(
+                    database_path, timeout=10, factory=FencedConnection
+                )
+                fenced.tsa_fence = getattr(self, "_writer_fence", None)
+                conn = fenced
                 conn.execute("PRAGMA journal_mode=WAL")
                 conn.execute("PRAGMA synchronous=NORMAL")
             conn.execute("PRAGMA cache_size=-65536")
@@ -225,6 +235,7 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
             (15, _apply_migration_v15),
             (16, _apply_migration_v16),
             (17, _apply_migration_v17),
+            (18, _apply_migration_v18),
         ]
         self._fts5_available = _schema_init_db(
             conn,
@@ -233,6 +244,25 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
             migrations,
         )
         self._verify_schema_integrity(conn)
+        fence = getattr(self, "_writer_fence", None)
+        if fence is not None:
+            # 迁移提交不推进修订号；此后每次写入提交都经 CAS（RFC-0032 slice 5）。
+            fence.armed = True
+
+    def writer_revision(self) -> WriterRevision | None:
+        """自定义路径缓存的当前写入修订，供保留的候选在捕获前绑定。
+
+        先调用本方法、再构建候选（``build_index_candidate_snapshot(...,
+        writer_revision=...)``）：重放时若期间有任何写入提交，同步在写入前以
+        ``INDEX_CANDIDATE_SUPERSEDED`` 拒绝（RFC-0032 slice 5）。默认定位符返回
+        ``None``，由版本选择器 CAS 防护。
+        """
+        fence = getattr(self, "_writer_fence", None)
+        if getattr(self, "_default_locator", False) or fence is None:
+            return None
+        if not fence.armed:
+            return None
+        return read_writer_revision(self.get_conn())
 
     @staticmethod
     def _ensure_large_repo_indexes(conn: sqlite3.Connection) -> None:

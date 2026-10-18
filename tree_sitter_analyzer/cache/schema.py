@@ -40,6 +40,9 @@ from .schema_extensions import (
     apply_migration_v17 as apply_migration_v17,
 )
 from .schema_extensions import (
+    apply_migration_v18 as apply_migration_v18,
+)
+from .schema_extensions import (
     schema_update,
 )
 
@@ -627,6 +630,14 @@ EXPECTED_SCHEMA_VERSIONS: list[Any] = [
                 "lsp_server",
                 "cached_at",
             ],
+        },
+    ),
+    (
+        18,
+        "Writer revision state (RFC-0032 custom-path CAS)",
+        {
+            "tables": ["ast_writer_state"],
+            "ast_writer_state_columns": ["id", "cache_uuid", "revision"],
         },
     ),
 ]

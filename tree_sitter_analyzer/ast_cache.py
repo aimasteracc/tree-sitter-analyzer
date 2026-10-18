@@ -30,6 +30,7 @@ from .cache.maintenance import (  # noqa: F401
 from .cache.schema import (
     EXPECTED_SCHEMA_VERSIONS as _EXPECTED_SCHEMA_VERSIONS,  # noqa: F401
 )
+from .cache.writer_state import WriterFence
 from .core.parser import Parser
 from ._ast_cache_database_mixin import (
     ASTCacheDatabaseMixin,
@@ -128,6 +129,8 @@ class ASTCache(
                 unindexed = self._open_unindexed_reader(db_path)
         self.db_path = db_path
         self._local = threading.local()
+        # RFC-0032 slice 5：原地写入的修订号围栏，schema 初始化完成后启用。
+        self._writer_fence = WriterFence()
         self._parser = Parser()
         self._index_lock = _shared_writer_lock(
             default_db_path if self._read_only else db_path

@@ -185,9 +185,9 @@ Source of truth: `ADMISSION_CODES` and `CAUSE_CODES` in
 <!-- drift:index-admission-codes:start -->
 | Code | retryable | retry_after_ms | next_action | Causes | What to do |
 |---|---|---|---|---|---|
-| `INDEX_CANDIDATE_SUPERSEDED` | true | 5000 | `recapture` | `INDEX_GENERATION_SUPERSEDED`, `INDEX_GENERATION_SOURCE_CHANGED`, `INDEX_GENERATION_DIRECTORY_CHANGED`, `INDEX_GENERATION_FOREIGN_STORE`, `INDEX_GENERATION_RETIRING` | Retry the same call; it captures a fresh candidate. Never replay the old candidate. |
+| `INDEX_CANDIDATE_SUPERSEDED` | true | 5000 | `recapture` | `INDEX_GENERATION_SUPERSEDED`, `INDEX_GENERATION_SOURCE_CHANGED`, `INDEX_GENERATION_DIRECTORY_CHANGED`, `INDEX_GENERATION_FOREIGN_STORE`, `INDEX_GENERATION_RETIRING`, `INDEX_WRITER_REVISION_SUPERSEDED`, `INDEX_WRITER_CACHE_REPLACED` (custom `db_path`) | Retry the same call; it captures a fresh candidate. Never replay the old candidate. |
 | `INDEX_WRITER_BUSY` | true | 5000 | `recapture` | `INDEX_WRITER_BUSY` (publication lease wait timed out, or Windows could not replace the selector atomically) | Wait `retry_after_ms`, then retry; if it stays busy, stop the other writer for this project. |
-| `INDEX_RECOVERY_REQUIRED` | false | 0 | `recover_index` | `INDEX_GENERATION_SELECTOR_INVALID`, `INDEX_GENERATION_SELECTOR_MISSING`, `INDEX_GENERATION_PATH_UNSAFE`, `INDEX_GENERATION_LOCK_UNSAFE` | Do not retry. Stop every TSA process for the project, move `.ast-cache` aside (replace a linked `.ast-cache` with a real directory), then rebuild with `index action=full mode=full`. |
+| `INDEX_RECOVERY_REQUIRED` | false | 0 | `recover_index` | `INDEX_GENERATION_SELECTOR_INVALID`, `INDEX_GENERATION_SELECTOR_MISSING`, `INDEX_GENERATION_PATH_UNSAFE`, `INDEX_GENERATION_LOCK_UNSAFE`, `INDEX_WRITER_STATE_MISSING` (custom `db_path`) | Do not retry. Stop every TSA process for the project, move `.ast-cache` (or the custom database) aside, replacing a linked `.ast-cache` with a real directory, then rebuild with `index action=full mode=full`. |
 <!-- drift:index-admission-codes:end -->
 
 The watcher retries only the two retryable codes, with a fresh capture after

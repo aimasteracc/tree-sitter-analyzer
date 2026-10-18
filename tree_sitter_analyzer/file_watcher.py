@@ -330,6 +330,7 @@ class FileWatcherDaemon:
 
     def _perform_sync(self) -> dict[str, Any]:
         try:
+            from .cache.writer_state import bind_writer_revision
             from .constants import EXCLUDE_DIRS
             from .index_source_scope import make_source_scope_descriptor
             from .indexing_candidate_materialization import (
@@ -344,6 +345,8 @@ class FileWatcherDaemon:
 
             # 与手动同步使用相同默认范围和冻结候选，自动刷新也必须重建认证。
             scope = make_source_scope_descriptor()
+            # RFC-0032 slice 5：自定义路径缓存先绑定写入修订再捕获；默认定位符为 None。
+            writer_revision = bind_writer_revision(self._cache)
             candidate = build_index_candidate_snapshot(
                 self._cache.project_root,
                 max_files=scope.certification_max_files,
@@ -352,6 +355,7 @@ class FileWatcherDaemon:
                     root, excluded_dir_names=frozenset(EXCLUDE_DIRS)
                 ),
                 language_fn=_language_from_ext,
+                writer_revision=writer_revision,
             )
             try:
                 result = self._sync.sync(
