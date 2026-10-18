@@ -90,7 +90,8 @@ receiver name. The rules, in precedence order:
    `NAME = T(...)`, or a factory call. `None` is ignored, and no function may
    rebind the name through `global`. The hint applies to three call shapes:
    - `NAME.m()` in the defining module, when no enclosing function binds `NAME`;
-   - `alias.NAME.m()` after `import pkg.mod as alias`;
+   - `alias.NAME.m()` after `import pkg.mod as alias`, at module level or
+     inside the function;
    - `NAME.m()` after `from pkg.mod import NAME`.
 
    For the second and third shapes, the extractor records only where to look.
