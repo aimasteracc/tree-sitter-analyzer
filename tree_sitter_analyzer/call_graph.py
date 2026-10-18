@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from . import call_graph_memo
-from .cache.graph_input_rows import CallEdgeRows, FunctionRows
+from .cache import graph_input_rows
 from .cached_edge_resolution import CachedEdgeResolver
 from .cached_reexport_binding import PackageReexportBinder
 from .call_graph_binding import RefIdentity, pick_caller_ref, ref_identity
@@ -768,8 +768,8 @@ class CachedCallGraph(CallGraph):
         try:
             if self._cache is None:
                 return
-            edge_source = _read_edge_source(self._cache)
-            function_source = _read_function_source(self._cache)
+            edge_source = graph_input_rows.read_edge_source(self._cache)
+            function_source = graph_input_rows.read_function_source(self._cache)
             imports_raw = self._cache.get_imports()
         except sqlite3.Error:
             if getattr(self._cache, "strict_sql_errors", False):
@@ -784,8 +784,8 @@ class CachedCallGraph(CallGraph):
         subclasses = SubclassIndex(self._cache)
         root = str(self.project_root)
         digest = call_graph_memo.input_digest(
-            *_digest_parts(edge_source),
-            *_digest_parts(function_source),
+            *graph_input_rows.source_digest_parts(edge_source),
+            *graph_input_rows.source_digest_parts(function_source),
             imports_raw,
             reexport_binder.evidence(),
             subclasses.evidence(),
@@ -795,10 +795,12 @@ class CachedCallGraph(CallGraph):
             if state is not None:
                 self._adopt_state(state)
                 return
+        # 输入已变：先释放本根的旧状态，构图期间内存里不同时保留两张图。
+        call_graph_memo.discard(root)
 
         try:
-            edges = _materialize_edges(edge_source)
-            functions = _materialize_functions(function_source)
+            edges = graph_input_rows.materialize_edges(edge_source)
+            functions = graph_input_rows.materialize_functions(function_source)
         except Exception:
             return
         self._build_from_inputs(
@@ -912,40 +914,6 @@ class CachedCallGraph(CallGraph):
 
 #: 不随复用的图状态共享的属性：缓存句柄属于各自的图对象，项目根由构造参数给出。
 _UNSHARED_STATE = frozenset({"_cache", "_fallback", "project_root"})
-
-
-def _read_edge_source(cache: Any) -> Any:
-    """优先读原始边元组（#1657）；缓存未提供时退回 ``get_call_edges``。"""
-    reader = getattr(cache, "get_call_edge_rows", None)
-    if callable(reader):
-        rows = reader()
-        if isinstance(rows, CallEdgeRows):
-            return rows
-    return cache.get_call_edges()
-
-
-def _read_function_source(cache: Any) -> Any:
-    """优先读未解析的函数定义原始行（#1657）；缓存未提供时退回 ``get_functions``。"""
-    reader = getattr(cache, "get_function_rows", None)
-    if callable(reader):
-        rows = reader()
-        if isinstance(rows, FunctionRows):
-            return rows
-    return cache.get_functions()
-
-
-def _digest_parts(source: Any) -> tuple[Any, ...]:
-    if isinstance(source, CallEdgeRows | FunctionRows):
-        return (type(source).__name__, *source.digest_parts())
-    return ("list", source)
-
-
-def _materialize_edges(source: Any) -> list[dict[str, Any]]:
-    return source.to_dicts() if isinstance(source, CallEdgeRows) else list(source)
-
-
-def _materialize_functions(source: Any) -> list[dict[str, Any]]:
-    return source.to_functions() if isinstance(source, FunctionRows) else list(source)
 
 
 def _edge_caller_ref(

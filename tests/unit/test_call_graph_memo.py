@@ -53,6 +53,12 @@ _SOURCES = {
         "    impl.go()\n"
         "    return run(None)\n"
     ),
+    # RFC-0038：参数注解把接收者绑定到 Widget（annotated_receiver 边）。
+    "annotated.py": (
+        "from widget import Widget\n\n\n"
+        "def poke(w: Widget) -> int:\n"
+        "    return w.unused()\n"
+    ),
 }
 
 
@@ -241,6 +247,12 @@ _MUTATIONS = {
         "WHERE kind = 'class' AND name = 'Impl'"
     ),
     "extends_edge": "DELETE FROM edges WHERE kind = 'extends'",
+    # RFC-0038：只改注解绑定的来源（metadata.receiver_binding），其余列不变。
+    "receiver_binding": (
+        "UPDATE edges SET metadata = "
+        "json_set(metadata, '$.receiver_binding.owner', 'Gone') "
+        "WHERE kind = 'calls' AND callee_resolution = 'annotated_receiver'"
+    ),
 }
 
 
@@ -275,7 +287,7 @@ def test_extends_change_is_evidence_even_without_binding_evidence(
 
 def test_edit_and_refresh_rebuilds_with_the_new_answer(indexed: Path) -> None:
     first = _built(indexed)
-    assert [c["name"] for c in first.callers_of("Widget.unused")] == []
+    assert [c["name"] for c in first.callers_of("Widget.unused")] == ["poke"]
 
     (indexed / "caller.py").write_text(
         "from widget import Widget\n\n\ndef go_unused():\n    Widget().unused()\n",
@@ -422,3 +434,31 @@ async def test_callers_after_noop_refresh_reuse_the_graph_and_answer_identically
     assert [c["name"] for c in after["callers"]] == ["run"]
     assert _without_timing(after) == _without_timing(fresh)
     assert _without_timing(after) == _without_timing(before)
+
+
+def test_discard_releases_only_that_root() -> None:
+    call_graph_memo.store("/p", "d", {"g": 1})
+    call_graph_memo.store("/q", "d", {"g": 2})
+    call_graph_memo.discard("/p")
+    assert call_graph_memo.lookup("/p", "d") is None
+    assert call_graph_memo.lookup("/q", "d") == {"g": 2}
+
+
+def test_changed_input_releases_the_old_state_before_rebuilding(
+    indexed: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # #1657：输入变化时旧状态先被释放，构图期间不同时持有两张图。
+    _built(indexed)
+    _write_index(indexed, _MUTATIONS["call_edge_line"])
+    seen: list[int] = []
+    original = CachedCallGraph._build_from_inputs
+
+    def spy(self: CachedCallGraph, *args: Any, **kwargs: Any) -> None:
+        seen.append(len(call_graph_memo._MEMO))
+        original(self, *args, **kwargs)
+
+    monkeypatch.setattr(CachedCallGraph, "_build_from_inputs", spy)
+    _built(indexed)
+
+    assert seen == [0]
+    assert len(call_graph_memo._MEMO) == 1

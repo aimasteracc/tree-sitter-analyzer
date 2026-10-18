@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from .helpers import _build_function_entry
 
@@ -91,3 +91,38 @@ def read_call_edge_rows(conn: sqlite3.Connection) -> CallEdgeRows:
 def read_function_rows(conn: sqlite3.Connection) -> FunctionRows:
     """读取全部 ``ast_index`` 的函数定义原始行；SQL 错误原样抛出。"""
     return FunctionRows(_tuple_cursor(conn, FUNCTION_ROWS_SQL).fetchall())
+
+
+def read_edge_source(cache: Any) -> CallEdgeRows | list[dict[str, Any]]:
+    """构图的边输入：优先原始元组；缓存未提供时退回 ``get_call_edges``。"""
+    reader = getattr(cache, "get_call_edge_rows", None)
+    if callable(reader):
+        rows = reader()
+        if isinstance(rows, CallEdgeRows):
+            return rows
+    return cast(list[dict[str, Any]], cache.get_call_edges())
+
+
+def read_function_source(cache: Any) -> FunctionRows | list[dict[str, Any]]:
+    """构图的函数输入：优先未解析的原始行；缓存未提供时退回 ``get_functions``。"""
+    reader = getattr(cache, "get_function_rows", None)
+    if callable(reader):
+        rows = reader()
+        if isinstance(rows, FunctionRows):
+            return rows
+    return cast(list[dict[str, Any]], cache.get_functions())
+
+
+def source_digest_parts(source: Any) -> tuple[Any, ...]:
+    """摘要用的表示；带类型标记，原始行与字典列表永不混同。"""
+    if isinstance(source, CallEdgeRows | FunctionRows):
+        return (type(source).__name__, *source.digest_parts())
+    return ("list", source)
+
+
+def materialize_edges(source: Any) -> list[dict[str, Any]]:
+    return source.to_dicts() if isinstance(source, CallEdgeRows) else list(source)
+
+
+def materialize_functions(source: Any) -> list[dict[str, Any]]:
+    return source.to_functions() if isinstance(source, FunctionRows) else list(source)

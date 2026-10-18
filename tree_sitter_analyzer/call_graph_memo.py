@@ -89,6 +89,12 @@ def store(root: str, digest: str, state: dict[str, Any]) -> None:
             _MEMO.popitem(last=False)
 
 
+def discard(root: str) -> None:
+    """丢弃 ``root`` 的记忆（输入已变、即将重建时调用）。"""
+    with _LOCK:
+        _MEMO.pop(root, None)
+
+
 def clear() -> None:
     """清空记忆（测试与项目根切换后的显式释放）。"""
     with _LOCK:
