@@ -237,7 +237,34 @@ async def test_already_running_rejects_token_revoked_before_tool_rebind(tmp_path
 async def test_late_pending_checker_cannot_clear_replacement_watcher(
     tmp_path, monkeypatch
 ):
-    """两个 checker 交错时，迟到者不能清掉先到者之后启动的新 daemon。"""
+    """两个 checker 交错时，迟到者不能清掉先到者之后启动的新 daemon。
+
+    #1667：替换 daemon 是注入的桩。被测的是工具的所有权簿记，不是 daemon 的后台
+    线程；真实 daemon 的停止时长取决于负载（见 test_file_watcher_shutdown），曾让
+    最后一次 watch_stop 在 Windows CI 上偶发超时。
+    """
+    from tests.unit._thread_waits import wait_or_dump
+    from tree_sitter_analyzer.mcp.tools import ast_cache_tool
+
+    class InjectedDaemon:
+        def __init__(self, _cache, *, poll_interval=5.0, backend="poll", **_kw):
+            self.poll_interval = poll_interval
+            self.backend = backend
+            self.running = False
+
+        def start(self):
+            self.running = True
+
+        def stop(self, timeout=5.0):
+            self.running = False
+
+        def is_running(self):
+            return self.running
+
+        def get_stats(self):
+            return {}
+
+    monkeypatch.setattr(ast_cache_tool, "FileWatcherDaemon", InjectedDaemon)
     tool = ASTCacheTool(str(tmp_path))
     tool.get_cache()
 
@@ -265,14 +292,14 @@ async def test_late_pending_checker_cannot_clear_replacement_watcher(
         calls += 1
         if calls == 1:
             entered.set()
-            assert release.wait(3)
+            wait_or_dump(release, 3, "the replacement watcher to start")
         return False
 
     monkeypatch.setattr(old, "is_running", paused_first_check)
     late = asyncio.create_task(
         asyncio.to_thread(asyncio.run, tool.execute({"mode": "stats"}))
     )
-    assert await asyncio.to_thread(entered.wait, 3)
+    await asyncio.to_thread(wait_or_dump, entered, 3, "the late checker")
     assert (await tool.execute({"mode": "stats"}))["success"] is True
     assert (await tool.execute({"mode": "watch_start"}))["status"] == "started"
     replacement = tool._watcher
