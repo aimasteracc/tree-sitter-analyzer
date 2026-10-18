@@ -8,7 +8,9 @@
   * ``ast_constraint_violations.detected_at``
   * ``lsp_resolution_cache.cached_at``
   * ``ast_schema_version.applied_at``
-  * ``ast_call_graph_state.built_at``、``ast_build_state.started_at`` 与 ``pid``
+  * ``ast_call_graph_state.built_at``、``ast_build_state.started_at`` 与 ``pid``；
+    ``ast_build_state`` 中 ``building = 0`` 的行与无行同义（强制重建结束后留下
+    该行，增量首建不写），不参与比较
   * ``ast_resolve_state.fingerprint``（值为 ``<行数>:<max(indexed_at)>``，由时间戳派生）
   * ``ast_index_snapshot_manifest.index_fingerprint``（覆盖上面各时间戳列的摘要）
 
@@ -23,6 +25,8 @@
     FTS 文档 rowid 都按此映射
   * ``edges.id`` → ``(source_node_id, target_node_id, kind, line)``；
     ``ast_imports.id``、``ast_symbol_comments.id`` 直接省略（无外部引用）
+  * ``edges.metadata`` JSON 内的 ``callee_symbol_id`` / ``resolved_symbol_id`` /
+    ``symbol_id`` 同样映射为符号自然键（JSON 按键排序重排，其余字段不变）
   * ``ast_symbol_projection_state.projection_digest`` 是按 ``id`` 顺序对该文件
     符号行（含 ``id``）的摘要，随代理键变化；改为在同一库内用
     ``symbol_rows_digest`` 重新计算，只比较“与实际行一致”这一布尔值
@@ -118,6 +122,10 @@ def _dump(conn: sqlite3.Connection) -> dict[str, list[tuple[Any, ...]]]:
                 values[symbol_column] = symbols.get(int(values[symbol_column]), "?")
             if table == "lsp_resolution_cache" and values.get("edge_id") is not None:
                 values["edge_id"] = edge_keys.get(int(values["edge_id"]), "?")
+            if table == "edges" and isinstance(values.get("metadata"), str):
+                values["metadata"] = _canonical_metadata(values["metadata"], symbols)
+            if table == "ast_build_state" and values.get("building") == 0:
+                continue  # “未在构建”与无行同义（见模块文档）
             rows.append(tuple(values[c] for c in keep))
         if table == "ast_symbol_projection_state" and "projection_digest" in keep:
             rows = _projection_rows(conn, keep, rows)
@@ -132,6 +140,26 @@ def _dump(conn: sqlite3.Connection) -> dict[str, list[tuple[Any, ...]]]:
         dump[table] = _sorted(rows)
     dump["fts5vocab(instance)"] = _fts_dump(conn, symbols)
     return dump
+
+
+_METADATA_SYMBOL_KEYS = ("callee_symbol_id", "resolved_symbol_id", "symbol_id")
+
+
+def _canonical_metadata(raw: str, symbols: dict[int, tuple[Any, ...]]) -> str:
+    """边元数据 JSON 中的符号代理键映射为自然键；其余字段原样保留。"""
+    import json
+
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return raw
+    if not isinstance(data, dict):
+        return raw
+    for key in _METADATA_SYMBOL_KEYS:
+        value = data.get(key)
+        if isinstance(value, int) and not isinstance(value, bool):
+            data[key] = list(symbols.get(value, ("?",)))
+    return json.dumps(data, sort_keys=True, ensure_ascii=False)
 
 
 def _projection_rows(
