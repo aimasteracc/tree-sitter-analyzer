@@ -93,7 +93,7 @@ all three are deferred.
 7. *(optional, major version)* custom locator relocation and a read-session type.
 
 **Implementation status** (2026-10-18): slices 1 (#1565), 2 (#1550), 3 (#1551) and
-6 (#1567) are merged; slices 4 (#1661) and 5 are in review. Slice 4 adds `cache/admission.py`: `ADMISSION_CODES` holds the
+6 (#1567) are merged; slice 4 is merged (#1661) and slice 5 is in review (#1662). Slice 4 adds `cache/admission.py`: `ADMISSION_CODES` holds the
 three codes above with the table's `retryable` / `retry_after_ms` / `next_action`
 values, and `CAUSE_CODES` maps each internal reason to one of them. The
 publication-lease timeout now raises `IndexWriterBusy` instead of a raw
@@ -114,7 +114,7 @@ generations stay readable. Not covered: already-open older-version writers and r
 on independent connections (same-version cooperative fence only). Transactions that
 SQLite commits implicitly (`executescript`, releasing the outermost `SAVEPOINT`) do not
 advance the revision, but the next fenced commit still checks it.
-Once slices 4 and 5 merge, slices 1–6 are implemented; slice 7 remains deferred
+Once slice 5 merges, slices 1–6 are implemented; slice 7 remains deferred
 (major version).
 
 ## Motivation
