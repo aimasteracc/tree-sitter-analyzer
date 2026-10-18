@@ -28,7 +28,9 @@ MAX_TOTAL_BYTES = 256 * 1024 * 1024
 #: 单文件字节上限；更大的文件每次都直接读取。
 MAX_FILE_BYTES = 8 * 1024 * 1024
 
-_Key = tuple[int, int, int, int, int]
+#: stat 证据 ``(size, mtime_ns, ctime_ns, ino, dev)``。
+StatKey = tuple[int, int, int, int, int]
+_Key = StatKey
 
 
 def _stat_key(info: os.stat_result) -> _Key:
@@ -70,6 +72,15 @@ class EvidenceFileCache:
 
     def read_bytes(self, path: str) -> bytes | None:
         """``path`` 的当前字节；不可 stat 或不可读为 ``None``（不抛异常）。"""
+        found = self.read_stamped(path)
+        return None if found is None else found[0]
+
+    def read_stamped(self, path: str) -> tuple[bytes, StatKey | None] | None:
+        """当前字节及其 stat 证据 ``(size, mtime_ns, ctime_ns, ino, dev)``。
+
+        #1672：引用扫描用这份证据与索引戳记比对，判断命中文件是否已与索引不一致，
+        无需再 stat 一次。读取期间被改写时证据为 ``None``（字节不对应任何一次 stat）。
+        """
         try:
             before = os.stat(path)
         except OSError:
@@ -79,7 +90,7 @@ class EvidenceFileCache:
             cached = self._entries.get(path)
             if cached is not None and cached[0] == key:
                 self._entries.move_to_end(path)
-                return cached[1]
+                return cached[1], key
         try:
             with open(path, "rb") as handle:
                 data = handle.read()
@@ -87,11 +98,14 @@ class EvidenceFileCache:
         except OSError:
             self._forget(path)
             return None
-        if _stat_key(after) != key or self._racy(after):
+        if _stat_key(after) != key:
             self._forget(path)
-            return data
+            return data, None
+        if self._racy(after):
+            self._forget(path)
+            return data, key
         self._store(path, key, data)
-        return data
+        return data, key
 
     def read_text(self, path: str) -> str | None:
         """与 ``open(path, encoding="utf-8", errors="replace").read()`` 相同的文本。

@@ -311,16 +311,6 @@ def not_in_index_hint(
     )
 
 
-def name_only_hint(func_name: str, count: int) -> str:
-    """#1578：同名入边无法绑定到目标时的提示——它们可能就是调用方。"""
-    return (
-        f"No resolved caller for {func_name!r}, but {count} call site(s) reach a "
-        "same-named method through a receiver that could not be bound to it, so "
-        "it may still be called. Read those call sites directly rather than "
-        "treating this as absence."
-    )
-
-
 def relation_files(cache: Any, func_name: str, entries: list[dict]) -> list[str]:
     """答案涉及的文件：目标符号的声明文件加上每条关系所在的文件。
 

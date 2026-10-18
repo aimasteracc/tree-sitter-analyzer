@@ -40,10 +40,11 @@ from .callers_decorators import (
 )
 from .callers_excluded import EXCLUDED_REASON, excluded_definition, excluded_hint
 from .callers_import_bindings import mask_import_bindings
+from .callers_reference_freshness import stale_reference_files
 from .callers_target import NOT_DEFINED_REASON, not_defined_hint, resolve_target
 from .callers_target import UNCHECKED_REASON as TARGET_UNCHECKED_REASON
-from .evidence_file_cache import FILE_CACHE
-from .relation_freshness import SCOPED_REASON
+from .evidence_file_cache import FILE_CACHE, StatKey
+from .relation_freshness import SCOPED_REASON, STALE_REASON
 from .unindexed_sources import FILES_CAP as UNINDEXED_FILES_CAP
 from .unindexed_sources import UNCHECKED_REASON as UNINDEXED_UNCHECKED_REASON
 from .unindexed_sources import (
@@ -113,6 +114,10 @@ class AbsenceVerdict:
     reason: str | None = None
     hint: str | None = None
     fields: dict[str, Any] = field(default_factory=dict)
+    #: 主因之后仍成立的原因（#1672：MISMATCH 之后，未变文件里的非调用引用）。
+    also: tuple[str, ...] = ()
+    #: 引用扫描发现已与索引不一致的文件（#1672）；非空时答案的证据为 stale。
+    stale_files: tuple[str, ...] = ()
 
 
 def assess_completeness(
@@ -202,14 +207,14 @@ def _assess_absence(
     bare = func_name.rpartition(".")[2]
     owner = func_name.rpartition(".")[0]
     declarations = _declarations(cache, bare, owner, file_path)
-    sites = None
+    scan = None
     if declarations is not None:
         new_files_verdict, config_files = _new_files_gap(
             cache, project_root, func_name, declarations, fields
         )
         if new_files_verdict is not None:
             return new_files_verdict
-        sites = _non_call_sites(
+        scan = _reference_scan(
             cache,
             project_root,
             bare,
@@ -217,9 +222,17 @@ def _assess_absence(
             config_files,
             mask_imports=with_callers,
         )
+    sites = None if scan is None else scan[0]
     fields["non_call_references"] = None if sites is None else len(sites)
     fields["non_call_reference_sites"] = None if sites is None else sites[:_SITES_CAP]
-    if declarations and _is_accessor(project_root, declarations, bare):
+    accessor = bool(declarations) and _is_accessor(
+        project_root, declarations or [], bare
+    )
+    if scan is not None:
+        stale = _stale_verdict(cache, project_root, func_name, scan, accessor, fields)
+        if stale is not None:
+            return stale
+    if accessor:
         hint = (
             f"{func_name!r} is a property/accessor: it is read by attribute "
             "access, which the call graph does not record, so 0 callers is not "
@@ -249,6 +262,46 @@ def _assess_absence(
         hint = registered_hint(func_name, decorator)
         return AbsenceVerdict("unknown", DECORATED_REASON, hint, fields)
     return AbsenceVerdict("complete", None, None, fields)
+
+
+def _stale_verdict(
+    cache: Any,
+    project_root: str,
+    func_name: str,
+    scan: tuple[list[dict[str, Any]], dict[str, StatKey | None]],
+    accessor: bool,
+    fields: dict[str, Any],
+) -> AbsenceVerdict | None:
+    """#1672：引用命中的文件已与索引不一致时，原因是源码与索引不一致。
+
+    这样的命中可能是刷新前新增的调用（还没有调用边），称它为非调用引用是误诊；
+    未变文件里的命中仍是非调用引用，按表序列在主因之后。
+    """
+    sites, stamps = scan
+    stale = stale_reference_files(cache, project_root, sites, stamps)
+    fields["stale_reference_files"] = None if stale is None else stale[:_SITES_CAP]
+    fields["stale_reference_files_total"] = None if stale is None else len(stale)
+    if not stale:
+        return None
+    stale_set = frozenset(stale)
+    flags = (
+        (NON_CALL_REASON, any(site["file"] not in stale_set for site in sites)),
+        (ACCESSOR_REASON, accessor),
+    )
+    in_stale = [site for site in sites if site["file"] in stale_set]
+    hint = (
+        f"No resolved caller for {func_name!r}, but it is referenced in file(s) "
+        f"that changed since the index was built: {_describe(in_stale)}. The "
+        "index may be missing those calls, so this is not evidence of absence."
+    )
+    return AbsenceVerdict(
+        "unknown",
+        STALE_REASON,
+        hint,
+        fields,
+        also=tuple(code for code, applies in flags if applies),
+        stale_files=tuple(stale[:_SITES_CAP]),
+    )
 
 
 def _new_files_gap(
@@ -342,9 +395,25 @@ def _non_call_sites(
     mask_imports: bool = False,
 ) -> list[dict[str, Any]] | None:
     """同语言已索引文件与配置文件（#1624）中名字的非调用出现位置；超时或读取失败为 None。"""
+    scan = _reference_scan(
+        cache, project_root, bare, declarations, config_files, mask_imports=mask_imports
+    )
+    return None if scan is None else scan[0]
+
+
+def _reference_scan(
+    cache: Any,
+    project_root: str,
+    bare: str,
+    declarations: list[tuple[str, int, str]],
+    config_files: Sequence[str] = (),
+    *,
+    mask_imports: bool = False,
+) -> tuple[list[dict[str, Any]], dict[str, StatKey | None]] | None:
+    """非调用出现位置，及每个命中文件读取时的 stat 证据（#1672 据此比对索引戳记）。"""
     languages = sorted({language for _file, _line, language in declarations})
     if not languages:
-        return []
+        return [], {}
     started = time.monotonic()
     try:
         conn = cache.get_conn()
@@ -375,7 +444,9 @@ def _non_call_sites(
         return None
     pattern = re.compile(r"(?<![\w$])" + re.escape(bare) + r"(?![\w$])")
     sites: list[dict[str, Any]] = []
-    for rel_path, language, data in hits:
+    stamps: dict[str, StatKey | None] = {}
+    for rel_path, language, data, stamp in hits:
+        stamps[rel_path] = stamp
         decoded = data.decode("utf-8", "replace")
         text = _strip_comments_and_prose(decoded, language, bare)
         if mask_imports and language in _PY_LANGUAGES:
@@ -384,18 +455,24 @@ def _non_call_sites(
         for line in _reference_lines(text, pattern, covered):
             if (rel_path, line) not in declared_lines:
                 sites.append({"file": rel_path, "line": line})
-    return sites
+    return sites, stamps
 
 
-def _read_if_contains(path: str, needle: bytes) -> bytes | None:
-    """读取文件；不含 ``needle`` 时返回空串，读取失败返回 None。
+#: 一次读取的结果：字节（不含 needle 时为空串）及读取时的 stat 证据。
+_Read = tuple[bytes, StatKey | None]
 
-    字节经 :data:`FILE_CACHE` 按 stat 证据复用（每次重新 stat，变即重读）。
+
+def _read_if_contains(path: str, needle: bytes) -> _Read | None:
+    """读取文件；不含 ``needle`` 时字节为空串，读取失败返回 None。
+
+    字节经 :data:`FILE_CACHE` 按 stat 证据复用（每次重新 stat，变即重读）；
+    同一份证据随结果返回，供 #1672 与索引戳记比对。
     """
-    data = FILE_CACHE.read_bytes(path)
-    if data is None:
+    found = FILE_CACHE.read_stamped(path)
+    if found is None:
         return None
-    return data if needle in data else b""
+    data, stamp = found
+    return (data if needle in data else b""), stamp
 
 
 def _files_containing(
@@ -403,13 +480,13 @@ def _files_containing(
     files: list[tuple[str, str]],
     needle: bytes,
     deadline: float,
-) -> list[tuple[str, str, bytes]] | None:
+) -> list[tuple[str, str, bytes, StatKey | None]] | None:
     """并行读取并按字节预筛；超时或任一文件不可读即为 None（不以部分结果冒充）。
 
     实测（Windows，约 1,700 个 Python 文件）：串行打开读取约 2 s，打开文件的
     开销主导耗时且会释放 GIL，因此用线程池并行读取。
     """
-    hits: list[tuple[str, str, bytes]] = []
+    hits: list[tuple[str, str, bytes, StatKey | None]] = []
     # dogfood 第 7 轮：逐文件提交 future 的调度开销与（已缓存的）读取相当；
     # 改为按块提交、块内顺序读取。期限与“任一不可读即 None”的判定不变。
     size = max(1, -(-len(files) // (_READ_WORKERS * _CHUNKS_PER_WORKER)))
@@ -429,11 +506,11 @@ def _files_containing(
             except FutureTimeout:
                 return None
             # 块在首个不可读文件处停止，结果可能短于块，因此不用 strict。
-            for (rel_path, language), data in zip(chunk, results, strict=False):
-                if data is None:
+            for (rel_path, language), read in zip(chunk, results, strict=False):
+                if read is None:
                     return None
-                if data:
-                    hits.append((rel_path, language, data))
+                if read[0]:
+                    hits.append((rel_path, language, read[0], read[1]))
     finally:
         executor.shutdown(wait=False, cancel_futures=True)
     return hits
@@ -441,9 +518,9 @@ def _files_containing(
 
 def _read_chunk(
     project_root: str, chunk: list[tuple[str, str]], needle: bytes
-) -> list[bytes | None]:
+) -> list[_Read | None]:
     """顺序读取一块文件；遇到不可读文件即停止（其后的结果已不再需要）。"""
-    results: list[bytes | None] = []
+    results: list[_Read | None] = []
     for rel_path, _language in chunk:
         data = _read_if_contains(os.path.join(project_root, rel_path), needle)
         results.append(data)

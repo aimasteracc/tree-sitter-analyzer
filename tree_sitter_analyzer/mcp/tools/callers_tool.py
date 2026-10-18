@@ -23,7 +23,9 @@ from .callers_annotated import (
     graph_bound_targets,
     name_bound_targets,
 )
+from .callers_call_lines import call_edge_lines
 from .callers_dispatch import narrow_to_target
+from .callers_name_only import name_only_fields, name_only_sites, name_only_step
 from .callers_reasons import EdgeEvidence, edge_completeness, final_reasons
 from .codegraph_relation_tool import (
     _STALE_CACHE_WARNING,
@@ -37,8 +39,8 @@ from .index_rebuild_signal import (
     rebuild_in_progress_next_step,
 )
 from .relation_freshness import (
+    STALE_REASON,
     apply_source_evidence,
-    name_only_hint,
     not_in_index_hint,
     relation_files,
     relation_source_evidence,
@@ -360,6 +362,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
 
         unattributed_call_sites = 0
         name_only_inbound = 0
+        possible_callers: list[dict[str, Any]] = []
         # RFC-0038：本次查询涉及的定义；经注解绑定到它们的边对本查询已解析。
         bound_targets: frozenset[tuple[str, int]] = frozenset()
         cache = bound_cache if bound_cache is not None else self._try_get_cache()
@@ -396,7 +399,8 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             callers = graph.callers_of(func_name, file_path)
             bound_targets = graph_bound_targets(graph, func_name, file_path)
             # #1578：仅同名匹配、无法绑定到目标的入边——它们存在时不能宣称 complete。
-            name_only_inbound = len(graph.possible_callers_of(func_name, file_path))
+            possible_callers = graph.possible_callers_of(func_name, file_path)
+            name_only_inbound = len(possible_callers)
             callers = label_graph_relations(
                 graph, func_name, file_path, callers, inbound=True
             )
@@ -483,6 +487,13 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         unresolved_in_declaring_files = (
             None if declaring_sites is None else len(declaring_sites)
         )
+        # #1672：同名入边的证据——调用点取自调用边的行号，按调用方范围归属。
+        name_only_list = name_only_sites(
+            possible_callers,
+            call_edge_lines(cache, count_name)
+            if possible_callers and cache is not None
+            else None,
+        )
 
         # #1632：调用边层的降级（#638 模块级调用点、空证据基等）同时给出原因码。
         completeness, edge_reasons = edge_completeness(
@@ -506,7 +517,14 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             evidence,
         )
         completeness = absence.completeness
-        reasons = final_reasons(completeness, absence.reason, edge_reasons)
+        reasons = final_reasons(
+            completeness, absence.reason, edge_reasons, absence.also
+        )
+        if absence.stale_files:
+            # #1672：引用扫描在已与索引不一致的文件里命中——源码与索引不一致，
+            # 不是非调用引用；与 0 调用方路径给出同一诊断与刷新步骤。
+            evidence = {**evidence, "freshness": "stale", "reason": STALE_REASON}
+            stale_files = list(absence.stale_files)
 
         result = build_response(
             verdict="INFO" if callers or total_callers else "NOT_FOUND",
@@ -523,6 +541,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             **absence.fields,
             unresolved_inbound=unresolved_inbound,
             unresolved_in_declaring_files=unresolved_in_declaring_files,
+            **name_only_fields(name_only_inbound, name_only_list),
             callers=callers,
         )
         if declaring_sites is not None:
@@ -557,6 +576,10 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             # are counted here instead of being emitted as un-navigable ghost
             # rows ({name: '', line: 0}).
             result["unattributed_call_sites"] = unattributed_call_sites
+        if name_only_list and result.get("verdict") != "NOT_FOUND":
+            # #1672：已列出调用方时同样点名同名入边，而不是通用的“Review callers”。
+            name_step = name_only_step(func_name, name_only_list)
+            next_step = f"{name_step} {next_step}" if next_step else name_step
         if truncated:
             trunc_note = (
                 f"showing {len(callers)} of {total_callers} callers — raise limit, "
@@ -592,6 +615,9 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                         "unresolved, so it may still be called. Read those call "
                         "sites directly rather than treating this as absence."
                     )
+                    if name_only_list:
+                        # #1672：同一调用点常常既未解析又按同名匹配——点名它们。
+                        index_hint += " " + name_only_step(func_name, name_only_list)
                 elif unattributed_call_sites:
                     index_hint = (
                         f"{unattributed_call_sites} module-level call site(s) "
@@ -599,8 +625,8 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                         "and are counted rather than listed, so this is not an "
                         "empty result; read them directly."
                     )
-                elif name_only_inbound:
-                    index_hint = name_only_hint(func_name, name_only_inbound)
+                elif name_only_list:
+                    index_hint = name_only_step(func_name, name_only_list)
                 elif unresolved_in_declaring_files:
                     index_hint = (
                         f"{unresolved_in_declaring_files} unresolved call(s) sit "

@@ -115,11 +115,18 @@ def edge_completeness(edges: EdgeEvidence) -> tuple[str, tuple[str, ...]]:
 
 
 def final_reasons(
-    completeness: str, absence_reason: str | None, edge_reasons: tuple[str, ...]
+    completeness: str,
+    absence_reason: str | None,
+    edge_reasons: tuple[str, ...],
+    also: tuple[str, ...] = (),
 ) -> list[str]:
-    """合并两层原因：复核门（新鲜度、非调用引用等）只在调用边层为 complete 时运行。"""
+    """合并两层原因：复核门（新鲜度、非调用引用等）只在调用边层为 complete 时运行。
+
+    复核门的原因通常单独出现；#1672：引用扫描判定源码与索引不一致时，``also``
+    带上同一次扫描在未变文件里仍成立的原因（按表序排在主因之后）。
+    """
     if completeness == "complete":
         return []
     if absence_reason is not None:
-        return [absence_reason]
+        return [absence_reason, *also]
     return list(edge_reasons)
