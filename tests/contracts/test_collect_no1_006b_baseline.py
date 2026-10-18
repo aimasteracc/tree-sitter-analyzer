@@ -397,7 +397,7 @@ def test_rfc_reproduction_command_uses_external_interpreter() -> None:
 
 def test_collector_tool_group_has_exact_independent_pins() -> None:
     groups=tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["dependency-groups"]
-    assert groups[collector.TOOL_GROUP] == ["hatchling==1.32.3","jsonschema==4.26.0","packaging==25.0"]
+    assert groups[collector.TOOL_GROUP] == ["hatchling==1.32.4","jsonschema==4.26.0","packaging==25.0"]
 
 def test_project_build_backend_pins_metadata_2_4_compatible_hatchling() -> None:
     project=tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
