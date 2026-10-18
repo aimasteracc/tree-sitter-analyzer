@@ -8,6 +8,7 @@ import sqlite3
 from typing import Any
 
 from ._ast_cache_database_mixin import ASTCacheSurface
+from .cache.graph_input_rows import FunctionRows, read_function_rows
 from .cache.helpers import _build_function_entry
 from .cache.query import fts_search as _fts_search
 from .cache.query import fts_search_ranked as _fts_search_ranked
@@ -108,17 +109,11 @@ class ASTCacheQueryMixin(ASTCacheSurface):
 
     def get_functions(self) -> list[dict[str, Any]]:
         """Return every indexed function and method definition."""
-        rows = (
-            self._get_conn()
-            .execute("SELECT file_path, symbols_json, language FROM ast_index")
-            .fetchall()
-        )
-        return [
-            _build_function_entry(symbol, row["file_path"], row["language"])
-            for row in rows
-            for symbol in json.loads(row["symbols_json"]).get("symbols", [])
-            if symbol.get("kind") in ("function", "method")
-        ]
+        return read_function_rows(self._get_conn()).to_functions()
+
+    def get_function_rows(self) -> FunctionRows:
+        """#1657：``get_functions`` 解析前的原始行（供构图输入摘要）。"""
+        return read_function_rows(self._get_conn())
 
     def get_functions_by_file(self, file_path: str) -> list[dict[str, Any]]:
         """Return indexed function definitions for one file."""

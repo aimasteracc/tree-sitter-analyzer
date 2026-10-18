@@ -26,10 +26,16 @@ class CalleeResolver:
         functions_by_name: dict[str, list[Any]],
         functions_by_file: dict[str, list[Any]],
         name_to_source: dict[str, dict[str, str]],
+        memoize_global: bool = False,
     ) -> None:
         self._functions_by_name = functions_by_name
         self._functions_by_file = functions_by_file
         self._name_to_source = name_to_source
+        # #1657：全局兜底只取决于 (裸名, 调用方语言, 调用方是否测试文件, keep_items)。
+        # 仅当索引在解析期间不再变化时可记忆（内存调用图构建完成后的解析器）。
+        self._global_memo: dict[tuple[Any, ...], list[CalleeResolution]] | None = (
+            {} if memoize_global else None
+        )
 
     def resolve_items(
         self,
@@ -163,47 +169,66 @@ class CalleeResolver:
                 _append_file_resolution(results, seen, target_file, 0.7)
 
         if include_global and not results:
-            # Global fallback is a last-resort bare-name match across the whole
-            # project. Gate it to the caller file's own language: a Python
-            # ``config.get(...)`` must never bind to a JavaScript ``get`` just
-            # because no Python ``get`` exists — that produced cross-language
-            # false callees (and inlined foreign-language bodies into the
-            # response, both wrong and token-bloat). When the source language is
-            # unknown, keep the un-gated behaviour.
-            #
-            # Builtin-receiver gate (path 3, issue #447): this path receives only
-            # the bare callee name without the qualifier/receiver context. The
-            # inverted gate (fire only when receiver IS in BUILTIN_TYPE_NAMES_PY)
-            # requires knowing the receiver — unavailable here. However, path 3 is
-            # a bare-name global fallback: it is only reached for UNQUALIFIED calls
-            # (``get()`` with no receiver). Qualified calls (``result.get``,
-            # ``store.get``) have a receiver in callee_full that is processed by
-            # the synapse cascade (path 1) and second-pass resolver (path 2), both
-            # of which carry the inverted gate. Therefore path 3 does not gate on
-            # builtin receiver type — it already lacks the data to do so, and the
-            # callers that reach it have no receiver anyway.
-            source_lang = self._source_language(source_file)
-            globals_ = [
-                func
-                for func in self._functions_by_name.get(base_name, [])
-                if not (
-                    source_lang
-                    and _item_language(func)
-                    and not languages_compatible(source_lang, _item_language(func))
-                )
-            ]
-            # Demote test-only shadows for a non-test caller: a production call
-            # must not bind to a test mock (e.g. ``fts_search`` -> FallbackCache)
-            # just because the test def is enumerated first. A test caller may
-            # legitimately reference a test helper, so only filter for non-test
-            # callers and only when a non-test def actually exists.
-            if not is_test_file(source_file):
-                non_test = [f for f in globals_ if not is_test_file(_item_file(f))]
-                if non_test:
-                    globals_ = non_test
-            for func in globals_:
-                _append_resolution(results, seen, func, 0.5, keep_items=keep_items)
+            results.extend(
+                self._global_resolutions(base_name, source_file, keep_items=keep_items)
+            )
 
+        return results
+
+    def _global_resolutions(
+        self, base_name: str, source_file: str, *, keep_items: bool
+    ) -> list[CalleeResolution]:
+        """全局兜底的结果；只在本地 / import 两档都没有结果时调用。"""
+        source_lang = self._source_language(source_file)
+        source_is_test = is_test_file(source_file)
+        key = (base_name, source_lang, source_is_test, keep_items)
+        if self._global_memo is not None:
+            cached = self._global_memo.get(key)
+            if cached is not None:
+                return cached
+        # Global fallback is a last-resort bare-name match across the whole
+        # project. Gate it to the caller file's own language: a Python
+        # ``config.get(...)`` must never bind to a JavaScript ``get`` just
+        # because no Python ``get`` exists — that produced cross-language
+        # false callees (and inlined foreign-language bodies into the
+        # response, both wrong and token-bloat). When the source language is
+        # unknown, keep the un-gated behaviour.
+        #
+        # Builtin-receiver gate (path 3, issue #447): this path receives only
+        # the bare callee name without the qualifier/receiver context. The
+        # inverted gate (fire only when receiver IS in BUILTIN_TYPE_NAMES_PY)
+        # requires knowing the receiver — unavailable here. However, path 3 is
+        # a bare-name global fallback: it is only reached for UNQUALIFIED calls
+        # (``get()`` with no receiver). Qualified calls (``result.get``,
+        # ``store.get``) have a receiver in callee_full that is processed by
+        # the synapse cascade (path 1) and second-pass resolver (path 2), both
+        # of which carry the inverted gate. Therefore path 3 does not gate on
+        # builtin receiver type — it already lacks the data to do so, and the
+        # callers that reach it have no receiver anyway.
+        globals_ = [
+            func
+            for func in self._functions_by_name.get(base_name, [])
+            if not (
+                source_lang
+                and _item_language(func)
+                and not languages_compatible(source_lang, _item_language(func))
+            )
+        ]
+        # Demote test-only shadows for a non-test caller: a production call
+        # must not bind to a test mock (e.g. ``fts_search`` -> FallbackCache)
+        # just because the test def is enumerated first. A test caller may
+        # legitimately reference a test helper, so only filter for non-test
+        # callers and only when a non-test def actually exists.
+        if not source_is_test:
+            non_test = [f for f in globals_ if not is_test_file(_item_file(f))]
+            if non_test:
+                globals_ = non_test
+        results: list[CalleeResolution] = []
+        seen: set[Hashable] = set()
+        for func in globals_:
+            _append_resolution(results, seen, func, 0.5, keep_items=keep_items)
+        if self._global_memo is not None:
+            self._global_memo[key] = results
         return results
 
     def _source_language(self, source_file: str) -> str:

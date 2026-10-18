@@ -62,6 +62,10 @@ class SubclassIndex:
             self._children = children
         return self._children
 
+    def evidence(self) -> dict[str, set[str]]:
+        """#1657：构图实际使用的子类关系（读库失败时为空），供输入摘要使用。"""
+        return self._load()
+
     def subclasses(self, class_name: str) -> set[str]:
         """``class_name`` 的全部传递子类名（不含自身）。"""
         children = self._load()

@@ -96,6 +96,10 @@ class PackageReexportBinder:
                 self._index = None
         return self._index
 
+    def evidence(self) -> _BindingIndex | None:
+        """#1657：构图实际使用的绑定证据（读库失败时为 None），供输入摘要使用。"""
+        return self._get_index()
+
     def bind(
         self,
         resolved_file: str,

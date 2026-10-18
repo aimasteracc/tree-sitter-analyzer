@@ -10,6 +10,7 @@ from ._ast_cache_database_mixin import ASTCacheSurface
 from .cache.callgraph_state import call_graph_built as _call_graph_built
 from .cache.graph import bfs_callees as _bfs_callees_impl
 from .cache.graph import bfs_callers as _bfs_callers_impl
+from .cache.graph_input_rows import CallEdgeRows, read_call_edge_rows
 from .cache.query import (
     backfill_cross_file_edges as _backfill_cross_file_edges,
 )
@@ -65,6 +66,13 @@ def _edge_store_traversal(
         return None
 
 
+def _call_edge_rows(cache: ASTCacheSurface) -> CallEdgeRows:
+    try:
+        return read_call_edge_rows(cache._get_conn())
+    except sqlite3.OperationalError:
+        return CallEdgeRows((), [])
+
+
 class ASTCacheGraphMixin(ASTCacheSurface):
     """Stable call-edge and graph-query API."""
 
@@ -74,23 +82,11 @@ class ASTCacheGraphMixin(ASTCacheSurface):
         #1559/#1560：同时返回持久化解析列，内存调用图据此绑定目标，
         不再按裸名重新猜测。
         """
-        try:
-            rows = (
-                self._get_conn()
-                .execute(
-                    "SELECT caller_name, file_path AS caller_file, caller_line, "
-                    "callee_name, callee_full, callee_line, file_path, language, "
-                    "callee_resolution, callee_resolved_file, "
-                    "CASE WHEN callee_resolution = 'annotated_receiver' "
-                    "THEN json_extract(metadata, '$.receiver_binding') END "
-                    "AS receiver_binding "
-                    "FROM edges WHERE kind = 'calls'"
-                )
-                .fetchall()
-            )
-        except sqlite3.OperationalError:
-            return []
-        return [dict(row) for row in rows]
+        return _call_edge_rows(self).to_dicts()
+
+    def get_call_edge_rows(self) -> CallEdgeRows:
+        """#1657：``get_call_edges`` 的原始元组形式；读失败时与之一样为空。"""
+        return _call_edge_rows(self)
 
     def get_resolved_call_edges(self) -> list[dict[str, Any]]:
         """Return caller files paired with persisted resolved callee files."""

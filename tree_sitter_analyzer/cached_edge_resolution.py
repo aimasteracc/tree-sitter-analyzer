@@ -48,6 +48,8 @@ _PROJECT_RESOLUTIONS = frozenset({"project", "local"})
 _SELF_QUALIFIERS = frozenset({"self", "cls", "this", "super", "super()"})
 #: ``super`` 接收者：指向基类，而不是外围类自己的方法（#1635）。
 _SUPER_QUALIFIERS = frozenset({"super", "super()"})
+#: ``_static_targets`` 不读取的边字段（只描述调用方与调用点位置），不进入记忆键。
+_CALLER_ONLY_EDGE_FIELDS = frozenset({"caller_name", "caller_line", "callee_line"})
 
 
 @dataclass(frozen=True)
@@ -75,6 +77,7 @@ class CachedEdgeResolver:
         file_import_map: dict[str, dict[str, str]],
         reexport_binder: PackageReexportBinder | None = None,
         subclasses: SubclassIndex | None = None,
+        memoize: bool = False,
     ) -> None:
         self._functions_by_file = functions_by_file
         self._functions_by_name = functions_by_name
@@ -84,6 +87,12 @@ class CachedEdgeResolver:
             functions_by_name=functions_by_name,
             functions_by_file=functions_by_file,
             name_to_source=file_import_map,
+            memoize_global=memoize,
+        )
+        # #1657：``_static_targets`` 是边的解析字段与调用方文件的纯函数（索引在构图
+        # 期间不变）。18.7 万条边只有约 7 万种不同输入，相同输入只解析一次。
+        self._static_memo: dict[tuple[Any, ...], EdgeTargets] | None = (
+            {} if memoize else None
         )
 
     @property
@@ -99,7 +108,7 @@ class CachedEdgeResolver:
         ``caller_class`` 为调用方的外围类（#1635）：``self.m()`` 绑定到它自己的
         ``m``，其子类的覆写记为可能目标。
         """
-        targets = self._static_targets(edge, caller_file)
+        targets = self._memoized_static_targets(edge, caller_file)
         full_name = str(edge.get("callee_full") or "") or str(
             edge.get("callee_name") or ""
         )
@@ -137,6 +146,26 @@ class CachedEdgeResolver:
                 if ref not in certain and ref not in possible:
                     possible.append(ref)
         return EdgeTargets(certain=certain, possible=possible)
+
+    def _memoized_static_targets(
+        self, edge: dict[str, Any], caller_file: str
+    ) -> EdgeTargets:
+        """``_static_targets`` 的构图内记忆；结果只读共享。
+
+        键是调用方文件加上边的全部字段，只去掉 ``_static_targets`` 不读取的调用方
+        身份与行号——新增的边字段自动进入键，不会被忽略。
+        """
+        if self._static_memo is None:
+            return self._static_targets(edge, caller_file)
+        try:
+            key = _static_memo_key(edge, caller_file)
+            cached = self._static_memo.get(key)
+        except TypeError:  # 不可哈希的字段值：不记忆。
+            return self._static_targets(edge, caller_file)
+        if cached is None:
+            cached = self._static_targets(edge, caller_file)
+            self._static_memo[key] = cached
+        return cached
 
     def _static_targets(self, edge: dict[str, Any], caller_file: str) -> EdgeTargets:
         """按持久化解析与本地 / import / 全局兜底给出目标（与调用方类无关）。"""
@@ -248,6 +277,13 @@ class CachedEdgeResolver:
         if len(narrowed) == 1 and _qualifier_admits_global(qualifier, narrowed[0]):
             return EdgeTargets(certain=narrowed)
         return EdgeTargets(possible=globals_)
+
+
+def _static_memo_key(edge: dict[str, Any], caller_file: str) -> tuple[Any, ...]:
+    return (
+        caller_file,
+        *(item for item in edge.items() if item[0] not in _CALLER_ONLY_EDGE_FIELDS),
+    )
 
 
 def _split_qualifier(name: str) -> tuple[str, str]:

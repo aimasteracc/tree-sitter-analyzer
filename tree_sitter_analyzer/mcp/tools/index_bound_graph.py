@@ -10,6 +10,11 @@ navigate、overview、pr_review 与可视化 hub 仍在首次使用时构建
 本模块提供唯一的共享入口，避免五份拷贝：记录构建时的索引身份，身份变化时
 丢弃旧图并重建。身份检查只做几条聚合 SQL（见 ``relation_freshness``），
 不遍历源码树。
+
+#1657：身份变化后新建的 ``CachedCallGraph`` 在构建时按构图输入的内容摘要查询
+``call_graph_memo``——内容相同的新 generation（无变化的刷新）直接采用已建好的
+状态，不再重新解析全部边。身份仍决定何时丢弃旧图对象；摘要只决定重建是否
+需要重新计算，二者都不以 generation id 或路径作为内容未变的证据。
 """
 
 from __future__ import annotations
