@@ -205,3 +205,151 @@ def test_alias_provenance_helpers() -> None:
     assert _alias_name('{"import_alias": {"name": "f"}}') == "f"
     assert _alias_name("import_alias not json") is None
     assert _alias_name(None) is None
+
+
+def _alias_store():
+    import sqlite3
+
+    from tree_sitter_analyzer.graph.edge_store import Edge, EdgeKind, EdgeStore
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE ast_imports (file_path TEXT, language TEXT, module_path TEXT, "
+        "local_name TEXT, is_relative INTEGER, is_star INTEGER, alias_of TEXT, "
+        "line INTEGER)"
+    )
+    conn.execute(
+        "INSERT INTO ast_imports VALUES ('u.py', 'python', '.core', '_f', 1, 0, 'f', 1)"
+    )
+    store = EdgeStore(conn)
+
+    def call(caller_line: int, alias: dict | None, full: str = "_f") -> Edge:
+        meta = {
+            "callee_full": full,
+            "callee_resolution": "project",
+            "callee_resolved_file": "core.py",
+        }
+        if alias is not None:
+            meta["import_alias"] = alias
+        return Edge(
+            f"u.py:use{caller_line}:{caller_line}",
+            f"u.py:_f:{caller_line + 1}",
+            EdgeKind.CALLS,
+            caller_line + 1,
+            metadata=meta,
+        )
+
+    store.upsert_edges(
+        [
+            call(1, {"local": "_f", "name": "f", "line": 1}),
+            call(3, {"local": "_f", "name": "other", "line": 1}),
+            call(5, None),
+        ]
+    )
+    return conn, store
+
+
+def test_alias_rows_need_persisted_provenance_for_the_target() -> None:
+    from tree_sitter_analyzer.graph.alias_edges import _row_alias, alias_call_rows
+    from tree_sitter_analyzer.graph.edge_store import Edge, EdgeKind
+
+    conn, store = _alias_store()
+
+    rows = alias_call_rows(conn, "f")
+    assert [row["caller_line"] for row in rows] == [1]
+    callers = store.query_callers("f", "core.py")
+    assert [(c["caller_name"], c.get("import_alias")) for c in callers] == [
+        ("use1", "_f")
+    ]
+    # 限定名查询：同名而接收者不同的边被跳过，改名导入的边只按目标真实名字匹配。
+    store.upsert_edges(
+        [
+            Edge(
+                "u.py:other:9",
+                "u.py:f:10",
+                EdgeKind.CALLS,
+                10,
+                metadata={"callee_full": "b.f", "callee_resolution": "unknown"},
+            )
+        ]
+    )
+    assert store.query_callers("a.f") == []
+    assert _row_alias({}) is None
+    assert _row_alias({"metadata": "import_alias but not json"}) is None
+    assert _row_alias({"metadata": '{"import_alias": "flat"}'}) is None
+
+
+def test_alias_reference_check_is_conservative_on_failures() -> None:
+    from tree_sitter_analyzer.mcp.tools.callers_alias_refs import (
+        _bound_alias_call_lines,
+        _reexported,
+    )
+    from tree_sitter_analyzer.mcp.tools.callers_import_bindings import alias_bindings
+
+    class _Broken:
+        def get_conn(self):
+            raise AttributeError("no index")
+
+    class _Cache:
+        def __init__(self, conn):
+            self._conn = conn
+
+        def get_conn(self):
+            return self._conn
+
+    conn, _store = _alias_store()
+    assert _bound_alias_call_lines(_Broken(), "u.py", "_f", "f", {"core.py"}) is None
+    assert _reexported(_Broken(), "u.py", "_f") is True
+    # 解析到别的文件、或来源指向别的名字的别名调用不算核对过的使用。
+    assert _bound_alias_call_lines(_Cache(conn), "u.py", "_f", "f", {"x.py"}) == (
+        frozenset()
+    )
+    assert _bound_alias_call_lines(_Cache(conn), "u.py", "_f", "f", {"core.py"}) == (
+        frozenset({2})
+    )
+    assert alias_bindings("import os\n", "f") == []
+
+
+def test_alias_and_binding_metadata_are_written_independently() -> None:
+    import json
+
+    from tree_sitter_analyzer.cache.synapse import _update_params
+    from tree_sitter_analyzer.synapse_resolver import ResolvedCallee
+
+    row = {"id": 9, "metadata": '{"callee_full": "_f"}'}
+    aliased = _update_params(
+        ResolvedCallee(3, "project", "core.py", alias={"local": "_f", "name": "f"}),
+        row,
+    )
+    bound = _update_params(
+        ResolvedCallee(4, "annotated_receiver", "s.py", binding={"line": 2}), row
+    )
+
+    assert json.loads(aliased[3])["import_alias"] == {"local": "_f", "name": "f"}
+    assert "receiver_binding" not in json.loads(aliased[3])
+    assert "import_alias" not in json.loads(bound[3])
+
+
+def test_alias_resolution_falls_back_without_a_definition() -> None:
+    from tree_sitter_analyzer.synapse_resolver import _reexported_or
+    from tree_sitter_analyzer.synapse_resolver._aliases import resolve_import_alias
+    from tree_sitter_analyzer.synapse_resolver._context import ResolverContext
+    from tree_sitter_analyzer.synapse_resolver._imports import ImportEntry
+
+    entry = ImportEntry("u.py", "python", ".core", "_f", True, False, "f", 1)
+    no_target = ResolverContext(
+        "/repo", None, imports_by_file={"u.py": [entry]}, name_to_source={}
+    )
+    no_definition = ResolverContext(
+        "/repo",
+        None,
+        imports_by_file={"u.py": [entry]},
+        name_to_source={"u.py": {"_f": "core.py"}},
+        file_symbols={"core.py": []},
+    )
+
+    assert resolve_import_alias("_f", "u.py", no_target) is None
+    assert resolve_import_alias("_f", "u.py", no_definition) is None
+    kept = _reexported_or("f", "", "u.py", no_definition, None, "core.py")
+    assert (kept.resolved_file, kept.callee_symbol_id) == ("core.py", None)
