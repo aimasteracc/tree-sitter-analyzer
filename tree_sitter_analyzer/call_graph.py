@@ -803,6 +803,8 @@ class CachedCallGraph(CallGraph):
             functions = graph_input_rows.materialize_functions(function_source)
         except Exception:
             return
+        # 原始行已转换完毕：构图期间不再同时持有两份边数据。
+        del edge_source, function_source
         self._build_from_inputs(
             edges, functions, imports_raw, reexport_binder, subclasses
         )

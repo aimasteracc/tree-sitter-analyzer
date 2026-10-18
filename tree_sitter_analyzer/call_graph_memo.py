@@ -32,6 +32,8 @@ from typing import Any
 
 #: marshal 格式版本：0 不含引用 / 驻留标记（版本 ≥3 会按引用计数写引用标记）。
 _MARSHAL_VERSION = 0
+#: 大列表每块的行数（调用边约 18.7 万行，分块后每块的字节副本只有数 MB）。
+_CHUNK_ROWS = 8192
 #: 记忆保存的项目根个数上限（每个根只保留最近一次构图）。
 _MAX_ROOTS = 4
 
@@ -50,22 +52,36 @@ def input_digest(*parts: Any) -> str | None:
     """
     hasher = hashlib.blake2b(digest_size=32)
     for part in parts:
-        encoded = _encode(part)
-        if encoded is None:
+        if isinstance(part, list) and len(part) > _CHUNK_ROWS:
+            # 大列表分块序列化：峰值内存只多一个块，而不是整份边数据的字节副本。
+            hasher.update(b"L" + len(part).to_bytes(8, "big"))
+            for start in range(0, len(part), _CHUNK_ROWS):
+                if not _feed(hasher, part[start : start + _CHUNK_ROWS]):
+                    return None
+        elif not _feed(hasher, part):
             return None
-        hasher.update(len(encoded).to_bytes(8, "big"))
-        hasher.update(encoded)
     return hasher.hexdigest()
 
 
-def _encode(part: Any) -> bytes | None:
+def _feed(hasher: Any, part: Any) -> bool:
+    """写入 ``标记 + 长度 + 字节``；标记决定结构，前缀无二义。"""
+    encoded = _encode(part)
+    if encoded is None:
+        return False
+    tag, payload = encoded
+    hasher.update(tag + len(payload).to_bytes(8, "big"))
+    hasher.update(payload)
+    return True
+
+
+def _encode(part: Any) -> tuple[bytes, bytes] | None:
     try:
         # 版本 0：不写对象引用标记与驻留标记，字节只取决于值，不取决于引用计数。
-        return b"m" + marshal.dumps(part, _MARSHAL_VERSION)
+        return b"m", marshal.dumps(part, _MARSHAL_VERSION)
     except ValueError:
         pass
     try:
-        return b"p" + pickle.dumps(part, protocol=pickle.HIGHEST_PROTOCOL)
+        return b"p", pickle.dumps(part, protocol=pickle.HIGHEST_PROTOCOL)
     except (pickle.PicklingError, TypeError, AttributeError, RecursionError):
         return None
 

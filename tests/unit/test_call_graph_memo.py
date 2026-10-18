@@ -462,3 +462,19 @@ def test_changed_input_releases_the_old_state_before_rebuilding(
 
     assert seen == [0]
     assert len(call_graph_memo._MEMO) == 1
+
+
+def test_chunked_digest_of_large_lists_is_exact() -> None:
+    # 大列表分块摘要：内容相同则相同；跨块边界交换、截断、拆成两部分都不同。
+    size = call_graph_memo._CHUNK_ROWS * 2 + 5
+    rows = [(index, f"f{index}.py") for index in range(size)]
+    boundary = call_graph_memo._CHUNK_ROWS
+    swapped = list(rows)
+    swapped[boundary - 1], swapped[boundary] = swapped[boundary], swapped[boundary - 1]
+    digest = call_graph_memo.input_digest(rows)
+
+    assert digest == call_graph_memo.input_digest([tuple(row) for row in rows])
+    assert digest != call_graph_memo.input_digest(swapped)
+    assert digest != call_graph_memo.input_digest(rows[:-1])
+    assert digest != call_graph_memo.input_digest(rows[:boundary], rows[boundary:])
+    assert digest != call_graph_memo.input_digest(rows + [(size, "x")])
