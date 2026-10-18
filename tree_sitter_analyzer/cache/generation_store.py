@@ -27,6 +27,7 @@ from ..project_graph import _language_from_ext
 from ..read_only_files import mark_read_only
 from ._win_fileops import IS_WINDOWS, replace_file
 from ._win_fileops import IndexWriterBusy as IndexWriterBusy  # 发布失败关闭的类型
+from .admission import IndexWriteAdmissionError
 from .generation_bootstrap import adopt_legacy_database
 from .generation_pins import GenerationPin, pin_generation
 from .generation_reader_release import release_idle_readers
@@ -53,7 +54,17 @@ from .source_recheck import permanent_rejections_only as permanent_rejections_on
 from .source_recheck import source_contents as _source_contents
 
 _PATH_ONLY_SOURCE = os.name != "posix"
+# 发布租约的等待上限（秒）；超时报 ``INDEX_WRITER_BUSY``。
+LEASE_TIMEOUT_S = 5.0
 logger = logging.getLogger(__name__)
+
+
+def _lease_busy(exc: sqlite3.OperationalError) -> bool:
+    """SQLITE_BUSY / SQLITE_LOCKED；Python 3.10 没有 ``sqlite_errorcode``。"""
+    code = getattr(exc, "sqlite_errorcode", None)
+    if code is not None:
+        return (int(code) & 0xFF) in (5, 6)
+    return "locked" in str(exc) or "busy" in str(exc)
 
 
 def _bind_source_hashes(snapshot: IndexCandidateSnapshot) -> IndexCandidateSnapshot:
@@ -133,8 +144,11 @@ def _with_unreadable_marks(
     return replace(snapshot, entries=entries)
 
 
-class Superseded(RuntimeError):
-    """候选所属的父版本已被替换，不能借用新版本的发布权限。"""
+class Superseded(IndexWriteAdmissionError):
+    """候选所属的父版本已被替换，不能借用新版本的发布权限。
+
+    准入码见 ``admission.CAUSE_CODES``（通常为 ``INDEX_CANDIDATE_SUPERSEDED``）。
+    """
 
 
 @dataclass(frozen=True)
@@ -242,9 +256,15 @@ class GenerationStore:
                 or getattr(info, "st_file_attributes", 0) & 0x400
             ):
                 raise Superseded("INDEX_GENERATION_LOCK_UNSAFE")
-        connection = sqlite3.connect(lock_path, timeout=5)
+        connection = sqlite3.connect(lock_path, timeout=LEASE_TIMEOUT_S)
         try:
-            connection.execute("BEGIN IMMEDIATE")
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+            except sqlite3.OperationalError as exc:
+                # 租约超时是可重试的忙错误，而非裸 ``database is locked``（E3/E5）。
+                if _lease_busy(exc):
+                    raise IndexWriterBusy() from exc
+                raise
             self._verify_directories()
             yield
         finally:

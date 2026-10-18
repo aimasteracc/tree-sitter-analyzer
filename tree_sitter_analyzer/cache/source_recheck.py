@@ -20,6 +20,7 @@ from ..indexing_snapshot import (
     IndexCandidateSnapshot,
     IndexSnapshotEntry,
 )
+from .admission import ADMISSION_CODES, INDEX_CANDIDATE_SUPERSEDED, RETRY_AFTER_MS
 
 SOURCE_CHANGED = "INDEX_GENERATION_SOURCE_CHANGED"
 SOURCE_RECHECK_INCOMPLETE = "INDEX_GENERATION_SOURCE_RECHECK_INCOMPLETE"
@@ -150,16 +151,29 @@ def source_changed_next_step(exc: SourceChanged) -> str:
 
 
 def source_changed_failure(exc: SourceChanged) -> dict[str, Any]:
-    """``index action=cache`` 等直接写入口的类型化可重试失败（#1595）。"""
+    """``index action=cache`` 等直接写入口的类型化可重试失败（#1595）。
+
+    源码确实变化时候选已过时：``error_code`` 为 RFC-0032 准入码
+    ``INDEX_CANDIDATE_SUPERSEDED``，原因码保留在 ``error`` 与 ``cause_code``。
+    复核未完成不是准入失败，仍以自身代码报告。
+    """
     next_step = source_changed_next_step(exc)
     summary_line = f"index not published: {exc.code} ({exc.total} change(s))"
+    typed: dict[str, Any] = {"error_code": exc.code, "retryable": True}
+    if exc.code == SOURCE_CHANGED:
+        typed = {
+            "error_code": INDEX_CANDIDATE_SUPERSEDED,
+            "cause_code": exc.code,
+            "retryable": True,
+            "retry_after_ms": RETRY_AFTER_MS,
+            "next_action": ADMISSION_CODES[INDEX_CANDIDATE_SUPERSEDED].next_action,
+        }
     return {
         "success": False,
         "verdict": "ERROR",
         "published": False,
-        "error_code": exc.code,
         "error": exc.code,
-        "retryable": True,
+        **typed,
         "changes": list(exc.changes),
         "changes_total": exc.total,
         "changes_truncated": exc.total > len(exc.changes),

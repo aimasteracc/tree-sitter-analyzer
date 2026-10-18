@@ -144,13 +144,17 @@ def test_typed_failure_tells_the_caller_to_retry():
         "it keeps failing, stop the process that is modifying the listed files or "
         "exclude them with exclude_patterns."
     )
+    # RFC-0032 slice 4：error_code 是准入码，原因码保留在 error 与 cause_code。
     assert failure == {
         "success": False,
         "verdict": "ERROR",
         "published": False,
-        "error_code": "INDEX_GENERATION_SOURCE_CHANGED",
+        "error_code": "INDEX_CANDIDATE_SUPERSEDED",
+        "cause_code": "INDEX_GENERATION_SOURCE_CHANGED",
         "error": "INDEX_GENERATION_SOURCE_CHANGED",
         "retryable": True,
+        "retry_after_ms": 5000,
+        "next_action": "recapture",
         "changes": ["modified: a.py"],
         "changes_total": 1,
         "changes_truncated": False,
