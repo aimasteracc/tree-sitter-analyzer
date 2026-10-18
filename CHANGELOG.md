@@ -30,6 +30,39 @@
 
 ### Fixed
 
+- RFC-0032 follow-ups (#1664):
+  - **Lease wait is 30 s**, as the RFC specifies (was 5 s). Measured on
+    Windows with this repository (2,865 files), a refresh holds the publication
+    lease for 3.4–6.6 s while it rechecks every source file, so a second writer
+    got `INDEX_WRITER_BUSY` in 3 of 5 ordinary contentions. The waiter proceeds
+    as soon as the lease is released; the full 30 s is only reached when the
+    other writer's critical section is itself that long.
+  - **First warm of a never-indexed project.** `ensure_indexed` swallowed a
+    refused warm (for example a busy writer) and returned `None`, so
+    `codegraph_incremental_sync mode=sync` (and CLI `--incremental-sync`)
+    answered with an untyped `Failed to initialize AST cache`, and
+    `auto_index mode=warm` with `auto-index failed`. They now return the same
+    typed payload as the watcher (`error_code: INDEX_WRITER_BUSY`, ...);
+    `auto_index` keeps its `reason` key and `codegraph_refactor` returns the
+    payload too. Read-only visualizations still fall back to parsing source.
+  - **`INDEX_CANDIDATE_UNBOUND`** (not retryable, `next_action:
+    obtain_bound_candidate`) is now reported when a `candidate_snapshot` passed
+    to a default-location write (`IncrementalSync.sync`, `ASTCache.index_project`)
+    was not captured by `build_index_candidate_snapshot`. It was reported as
+    `INDEX_CANDIDATE_SUPERSEDED`, whose retry advice repeated the failure and
+    made the watcher retry it. Custom `db_path` caches still accept unbound
+    candidates. `INDEX_WRITER_FENCED` is removed from the RFC table: no route
+    delivers a result after its write operation ends.
+  - **Implicit commits on custom `db_path` caches are fenced.** Releasing the
+    outermost `SAVEPOINT` (projection repair, call-graph marker certification,
+    activation flush) and `executescript` committed without checking or
+    advancing the writer revision, so a writer that had lost the race could
+    still publish through them. They now commit through the revision CAS;
+    transactions that change no rows end without a revision advance.
+  - **Change impact reads v17 indexes.** The cached dependency graph required
+    schema 18, so a published v17 index fell back to parsing every source file
+    until its next write. It now requires the reader version (17), like
+    snapshot validation, and gives the same graph as on v18.
 - Custom `db_path` caches are now fenced against obsolete and concurrent
   writers (RFC-0032 slice 5, #1554). Before, replaying a candidate captured
   before a newer sync, or a writer that paused and resumed after another

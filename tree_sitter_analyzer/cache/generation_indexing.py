@@ -17,7 +17,7 @@ from ..incremental_sync_support import SyncResult
 from ..index_source_scope import SourceScopeDescriptor, make_source_scope_descriptor
 from ..indexing_candidate_materialization import release_index_candidate_snapshot
 from ..indexing_snapshot import IndexCandidateSnapshot
-from .admission import admission_failure_of, admission_fields
+from .admission import CandidateUnbound, admission_failure_of, admission_fields
 from .generation_noop import (
     index_run_unchanged,
     not_publishable_result,
@@ -87,6 +87,17 @@ def _unchanged(
     )
 
 
+def _require_bound_candidate(snapshot: IndexCandidateSnapshot | None) -> None:
+    """默认定位符只接受绑定了发布选择器的候选；未绑定者不能授权写入（#1664）。
+
+    ``build_index_candidate_snapshot`` 产出的候选都已绑定；手工构造或来自旧开发
+    接口的候选在取得租约、开始私有构建之前即被拒绝，什么都不写。重新捕获同样
+    方式构造的候选不会成功，因此它不是可重试的 ``INDEX_CANDIDATE_SUPERSEDED``。
+    """
+    if snapshot is not None and not snapshot.publication_bound:
+        raise CandidateUnbound()
+
+
 def _first_publication(candidate: Any) -> bool:
     """首次发布前旧路由原地保留部分结果（如缺少可选语法时的其余文件）。
 
@@ -118,6 +129,7 @@ def mutate_published_cache(
     from ..ast_cache import ASTCache
     from .generation_store import Superseded
 
+    _require_bound_candidate(candidate_snapshot)
     store = project_store(cache.project_root, scope or make_source_scope_descriptor())
     with cache._index_lock:
         candidate = store.capture(
@@ -131,9 +143,9 @@ def mutate_published_cache(
                 else logical_index_path(cache.project_root)
             ):
                 raise Superseded("INDEX_GENERATION_SUPERSEDED")
-            if candidate_snapshot is not None and (
-                not candidate_snapshot.publication_bound
-                or candidate_snapshot.publication_parent != candidate.parent
+            if (
+                candidate_snapshot is not None
+                and candidate_snapshot.publication_parent != candidate.parent
             ):
                 raise Superseded("INDEX_GENERATION_SUPERSEDED")
             selector = store.begin(candidate)
@@ -180,14 +192,12 @@ def run_incremental_sync(
     from .generation_store import Superseded
 
     scope = arguments["source_scope"]
-    store = project_store(cache.project_root, scope)
     supplied = arguments.get("candidate_snapshot")
+    _require_bound_candidate(supplied)
+    store = project_store(cache.project_root, scope)
     candidate = store.capture((lambda: supplied) if supplied is not None else None)
     try:
-        if supplied is not None and (
-            not supplied.publication_bound
-            or supplied.publication_parent != candidate.parent
-        ):
+        if supplied is not None and supplied.publication_parent != candidate.parent:
             raise Superseded("INDEX_GENERATION_SUPERSEDED")
         selector = store.begin(candidate)
         with store.abandoning(selector):  # #1595：未发布即回收

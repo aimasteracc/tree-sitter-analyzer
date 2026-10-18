@@ -42,6 +42,7 @@ import logging
 import threading
 from typing import Any
 
+from ...cache.admission import admission_failure_of
 from ...indexing_limits import normalize_index_max_files
 
 logger = logging.getLogger(__name__)
@@ -63,6 +64,12 @@ def ensure_indexed(
     legacy/non-current marker is repaired by a normal cached ``index_project``
     run so all three graph backfill stages execute and the current marker is
     stamped.  ``auto_build=False`` is strictly read-only at this layer.
+
+    Raises the original exception when warming a never-indexed project is
+    refused by write admission (``admission_failure_of`` classifies it, e.g.
+    ``INDEX_WRITER_BUSY``).  Write routes map it with ``admission_error_response``
+    so MCP, CLI and the watcher report the same typed payload (RFC-0032).
+    Other warm failures still return the populated cache, or ``None``.
     """
     max_files = normalize_index_max_files(max_files)
     if project_root is None:
@@ -111,7 +118,13 @@ def ensure_indexed(
             # Deliberately not resolve_only: legacy markers need the complete
             # cached indexing/backfill/certification pipeline.
             cache.index_project(max_files=max_files)
-        except Exception:
+        except Exception as exc:
+            if not populated and admission_failure_of(exc) is not None:
+                # RFC-0032 (#1664): a never-indexed project has no cache to fall
+                # back on, so a refused write (busy writer, superseded candidate,
+                # recovery required) must reach the caller typed, not as None.
+                cache.close()
+                raise
             logger.exception("auto-index: failed for %s", project_root)
             return cache if populated else None
 

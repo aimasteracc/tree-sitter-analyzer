@@ -19,6 +19,7 @@ from typing import Any
 
 from ...indexing_limits import normalize_index_max_files
 from ...utils import setup_logger
+from ..utils.admission_response import admission_error_response
 from ..utils.auto_index_guard import (
     ensure_indexed,
     is_indexed,
@@ -163,7 +164,19 @@ class CodeGraphAutoIndexTool(BaseMCPTool):
             )
             return apply_output_format_to_response(result, output_format)
 
-        cache = ensure_indexed(self.project_root, max_files=max_files)
+        try:
+            cache = ensure_indexed(self.project_root, max_files=max_files)
+        except Exception as exc:
+            # 从未索引的项目首次预热被拒（RFC-0032 #1664）：类型化准入答复，
+            # 保留历史上的 ``reason`` 键。
+            typed = admission_error_response(
+                exc, self.project_root, prefix="auto-index failed: "
+            )
+            if typed is None:
+                raise
+            return apply_output_format_to_response(
+                {**typed, "reason": "auto-index failed"}, output_format
+            )
         if cache is None:
             result = build_response(
                 verdict="ERROR",

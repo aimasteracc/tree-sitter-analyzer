@@ -7,6 +7,7 @@ from typing import Any
 
 from ...rename_symbol import rename_symbol
 from ...utils import setup_logger
+from ..utils.admission_response import admission_error_response
 from ..utils.auto_index_guard import ensure_indexed
 from ..utils.format_helper import apply_output_format_to_response
 from .base_tool import BaseMCPTool
@@ -113,7 +114,16 @@ class CodeGraphRefactorTool(BaseMCPTool):
         output_format = arguments.get("output_format", "json")
         dry_run = mode == "preview"
 
-        cache = self._get_cache()
+        try:
+            cache = self._get_cache()
+        except Exception as exc:
+            # 从未索引的项目首次预热被拒（RFC-0032 #1664）：返回类型化准入答复。
+            typed = admission_error_response(
+                exc, self.project_root, prefix="auto-index failed: "
+            )
+            if typed is None:
+                raise
+            return apply_output_format_to_response(typed, output_format)
         if cache is None:
             return apply_output_format_to_response(
                 {

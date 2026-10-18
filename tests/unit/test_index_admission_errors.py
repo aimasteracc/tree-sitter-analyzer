@@ -22,6 +22,7 @@ from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache.admission import (
     ADMISSION_CODES,
     INDEX_CANDIDATE_SUPERSEDED,
+    INDEX_CANDIDATE_UNBOUND,
     INDEX_RECOVERY_REQUIRED,
     INDEX_WRITER_BUSY,
     IndexWriteAdmissionError,
@@ -115,6 +116,8 @@ def test_admission_code_table_matches_rfc():
     } == {
         INDEX_CANDIDATE_SUPERSEDED: (True, 5000, "recapture"),
         INDEX_WRITER_BUSY: (True, 5000, "recapture"),
+        # #1664：默认定位符上的未绑定候选；INDEX_WRITER_FENCED 已从 RFC 表移除。
+        INDEX_CANDIDATE_UNBOUND: (False, 0, "obtain_bound_candidate"),
         INDEX_RECOVERY_REQUIRED: (False, 0, "recover_index"),
     }
     assert all(contract.next_step for contract in ADMISSION_CODES.values())

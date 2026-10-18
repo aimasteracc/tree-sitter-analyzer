@@ -19,7 +19,8 @@ from typing import Any
 from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 
 from ....ast_cache import _AST_CACHE_EXTRACTOR_VERSION
-from ....cache.schema import CURRENT_SCHEMA_VERSION, already_applied_versions
+from ....cache.schema import already_applied_versions
+from ....index_snapshot_schema import reader_schema_supported
 from ....index_source_snapshot import (
     capture_current_source_snapshot,
     recorded_source_rows,
@@ -104,10 +105,8 @@ def load_cached_dependency_graph(
         conn.execute("PRAGMA query_only=ON")
         conn.row_factory = sqlite3.Row
         conn.execute("BEGIN")
-        versions = already_applied_versions(conn)
-        if CURRENT_SCHEMA_VERSION not in versions or any(
-            version < 1 or version > CURRENT_SCHEMA_VERSION for version in versions
-        ):
+        # 读者要求 v17（schema 18 只加写入修订控制表）：已发布的 v17 版本照常可读。
+        if not reader_schema_supported(already_applied_versions(conn)):
             return None
         recorded = recorded_source_rows(conn)
         rows = _cached_index_rows(conn)
