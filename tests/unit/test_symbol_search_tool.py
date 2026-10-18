@@ -55,6 +55,7 @@ class TestCodeGraphSymbolSearchExecution:
         self, tmp_path
     ):
         # PR #1350/#1352：v17 操作平面仍不依赖快照认证；这不是 Windows 原生模拟验收。
+        # RFC-0032 slice 5：当前 schema 为 18（写入修订控制表）。
         from tree_sitter_analyzer.cache.schema_extensions import CURRENT_SCHEMA_VERSION
         from tree_sitter_analyzer.incremental_sync import IncrementalSync
 
@@ -70,7 +71,7 @@ class TestCodeGraphSymbolSearchExecution:
                     0
                 ]
                 == CURRENT_SCHEMA_VERSION
-                == 17
+                == 18
             )
             assert (
                 conn.execute(

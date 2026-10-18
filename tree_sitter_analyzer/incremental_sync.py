@@ -69,6 +69,30 @@ class IncrementalSync:
                 source_scope=source_scope,
                 certify_manifest=certify_manifest,
             )
+        from .cache.writer_state import writer_operation
+
+        # RFC-0032 slice 5：原地写入（自定义 db_path）是一次以修订号 CAS 绑定的操作；
+        # 候选已绑定修订号时，期间任何其他写入都使本次同步在写入前被拒绝。
+        with writer_operation(self._cache, candidate_snapshot):
+            return self._sync_in_place(
+                max_files,
+                callback,
+                exclude_patterns,
+                candidate_snapshot,
+                source_scope,
+                certify_manifest,
+            )
+
+    def _sync_in_place(
+        self,
+        max_files: int,
+        callback: Any | None,
+        exclude_patterns: frozenset[str] | None,
+        candidate_snapshot: IndexCandidateSnapshot | None,
+        source_scope: SourceScopeDescriptor,
+        certify_manifest: bool,
+    ) -> SyncResult:
+        """Reconcile in place: a custom ``db_path`` or a private generation build."""
         result = SyncResult()
         conn = self._cache.get_conn()
         indexed_rows = self._load_indexed_rows(conn)

@@ -30,6 +30,42 @@
 
 ### Fixed
 
+- Custom `db_path` caches are now fenced against obsolete and concurrent
+  writers (RFC-0032 slice 5, #1554). Before, replaying a candidate captured
+  before a newer sync, or a writer that paused and resumed after another
+  writer finished, deleted the newer rows (`b.py`) and revoked the call-graph
+  marker while exiting normally. The default cache location was already fenced
+  by the generation store (slice 1); custom paths still write in place.
+  - **Schema 18** adds `ast_writer_state(id=1, cache_uuid, revision)`. Opening
+    a v17 custom database migrates it in the same atomic upgrade as earlier
+    migrations, with a fresh `cache_uuid` and revision 0; no index row or
+    certification changes. A database recorded at a newer version (19+) is
+    rejected with `INCOMPATIBLE_SCHEMA` and left unchanged, as before. An
+    older TSA (v17) cannot open a v18 database for writing: it rejects it with
+    the same error. Read-only routes still accept published v17 generations
+    (the reader-required snapshot version stays 17), so upgrading does not
+    make existing indexes unreadable.
+  - Every write transaction committed through `ASTCache.get_conn()` advances
+    `revision` by compare-and-set inside that transaction. `index_project`,
+    `index_file`, `invalidate` and in-place `IncrementalSync.sync` bind the
+    revision when they start. If another writer commits first, the next commit
+    is rolled back and the operation raises `Superseded` (`error_code`
+    `INDEX_CANDIDATE_SUPERSEDED`, `cause_code` `INDEX_WRITER_REVISION_SUPERSEDED`,
+    or `INDEX_WRITER_CACHE_REPLACED` when the database file was replaced). Its
+    later commits are refused too and no transaction is left open, so only one
+    of two concurrent writers publishes. A missing or damaged writer-state row
+    fails closed as `INDEX_RECOVERY_REQUIRED` (`INDEX_WRITER_STATE_MISSING`).
+  - New `ASTCache.writer_revision()` and
+    `build_index_candidate_snapshot(..., writer_revision=...)`: call the first
+    before capturing a candidate you keep, and a later replay is rejected
+    before any write if anything was committed in between, including an
+    identical-bytes (ABA) rewrite. Unbound candidates are still accepted on
+    custom paths until a major version (owner decision). A custom-path
+    `FileWatcherDaemon` binds its candidates automatically.
+  - Scope: this fences TSA writers of the same version that go through
+    `ASTCache`. An already-running older TSA process, or raw SQL on a separate
+    connection, does not advance the revision. The revision is excluded from
+    `index_fingerprint`, so certification is unaffected.
 - Index writes that are refused before they change anything now say why with a
   typed code (RFC-0032 slice 4, #1554). Before, a second writer got
   `"error": "Sync failed: OperationalError: database is locked"` after a 5 s

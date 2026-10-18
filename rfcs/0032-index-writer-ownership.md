@@ -93,7 +93,7 @@ all three are deferred.
 7. *(optional, major version)* custom locator relocation and a read-session type.
 
 **Implementation status** (2026-10-18): slices 1 (#1565), 2 (#1550), 3 (#1551) and
-6 (#1567) are merged. Slice 4 adds `cache/admission.py`: `ADMISSION_CODES` holds the
+6 (#1567) are merged; slice 4 is merged (#1661) and slice 5 is in review (#1662). Slice 4 adds `cache/admission.py`: `ADMISSION_CODES` holds the
 three codes above with the table's `retryable` / `retry_after_ms` / `next_action`
 values, and `CAUSE_CODES` maps each internal reason to one of them. The
 publication-lease timeout now raises `IndexWriterBusy` instead of a raw
@@ -101,6 +101,21 @@ publication-lease timeout now raises `IndexWriterBusy` instead of a raw
 `docs/agent-envelope-contract.md`. `INDEX_CANDIDATE_UNBOUND` and
 `INDEX_WRITER_FENCED` are not emitted: unbound custom-path candidates stay accepted
 (owner decision), and no fenced late callback exists on generation routes.
+Slice 5 adds schema 18 `ast_writer_state(id=1, cache_uuid, revision)` and
+`cache/writer_state.py`. Every write transaction committed through `ASTCache.get_conn()`
+advances `revision` by compare-and-set inside that transaction. `index_project`,
+`index_file`, `invalidate` and in-place `IncrementalSync.sync` bind the revision at
+operation start, or take it from a candidate bound with `ASTCache.writer_revision()`.
+A mismatch rolls back the transaction and raises `Superseded` (cause codes
+`INDEX_WRITER_REVISION_SUPERSEDED`, `INDEX_WRITER_CACHE_REPLACED`,
+`INDEX_WRITER_STATE_MISSING`). The revision table is a control table outside
+`index_fingerprint`. The reader-required snapshot version stays 17, so published v17
+generations stay readable. Not covered: already-open older-version writers and raw SQL
+on independent connections (same-version cooperative fence only). Transactions that
+SQLite commits implicitly (`executescript`, releasing the outermost `SAVEPOINT`) do not
+advance the revision, but the next fenced commit still checks it.
+Once slice 5 merges, slices 1–6 are implemented; slice 7 remains deferred
+(major version).
 
 ## Motivation
 

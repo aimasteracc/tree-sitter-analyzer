@@ -88,12 +88,15 @@ class ASTCacheQueryMixin(ASTCacheSurface):
             return mutate_published_cache(
                 self, lambda writable: writable.invalidate(file_path)
             )
-        removed = _invalidate(
-            self._get_conn(),
-            file_path,
-            self.project_root,
-            self._fts5_available,
-        )
+        from .cache.writer_state import writer_operation
+
+        with writer_operation(self):  # RFC-0032 slice 5：原地写入的修订号绑定
+            removed = _invalidate(
+                self._get_conn(),
+                file_path,
+                self.project_root,
+                self._fts5_available,
+            )
         if removed:
             try:
                 from .knowledge_graph.stores import LadybugKnowledgeGraphStore

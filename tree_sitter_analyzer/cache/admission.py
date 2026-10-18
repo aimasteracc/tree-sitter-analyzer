@@ -68,13 +68,13 @@ ADMISSION_CODES: dict[str, AdmissionContract] = {
         next_action="recover_index",
         summary="the index storage needs recovery",
         next_step=(
-            "Nothing was written: the index selector is damaged or missing, or "
-            "the index storage path is a link. Retrying will not help and TSA "
-            "does not repair it automatically. Stop every TSA process for this "
-            "project, move the project's .ast-cache directory aside (replace a "
-            "linked .ast-cache with a real directory), then rebuild with "
-            "`index action=full mode=full` (CLI `--full-index --full-index-mode "
-            "full`)."
+            "Nothing was written: the index selector or writer state is damaged "
+            "or missing, or the index storage path is a link. Retrying will not "
+            "help and TSA does not repair it automatically. Stop every TSA "
+            "process for this project, move the project's .ast-cache directory "
+            "(or the custom index database) aside, replacing a linked .ast-cache "
+            "with a real directory, then rebuild with `index action=full "
+            "mode=full` (CLI `--full-index --full-index-mode full`)."
         ),
     ),
 }
@@ -88,11 +88,16 @@ CAUSE_CODES: dict[str, str] = {
     "INDEX_GENERATION_DIRECTORY_CHANGED": INDEX_CANDIDATE_SUPERSEDED,
     "INDEX_GENERATION_FOREIGN_STORE": INDEX_CANDIDATE_SUPERSEDED,
     "INDEX_GENERATION_RETIRING": INDEX_CANDIDATE_SUPERSEDED,
+    # slice 5：自定义路径的修订号 CAS 失败，或数据库被整体替换（cache_uuid 变化）。
+    "INDEX_WRITER_REVISION_SUPERSEDED": INDEX_CANDIDATE_SUPERSEDED,
+    "INDEX_WRITER_CACHE_REPLACED": INDEX_CANDIDATE_SUPERSEDED,
     "INDEX_WRITER_BUSY": INDEX_WRITER_BUSY,
     "INDEX_GENERATION_SELECTOR_INVALID": INDEX_RECOVERY_REQUIRED,
     "INDEX_GENERATION_SELECTOR_MISSING": INDEX_RECOVERY_REQUIRED,
     "INDEX_GENERATION_PATH_UNSAFE": INDEX_RECOVERY_REQUIRED,
     "INDEX_GENERATION_LOCK_UNSAFE": INDEX_RECOVERY_REQUIRED,
+    # slice 5：schema 18 的写入状态行缺失或损坏，写入失败关闭。
+    "INDEX_WRITER_STATE_MISSING": INDEX_RECOVERY_REQUIRED,
 }
 
 
@@ -120,6 +125,15 @@ class IndexWriteAdmissionError(RuntimeError):
     @property
     def next_action(self) -> str:
         return ADMISSION_CODES[self.code].next_action
+
+
+class Superseded(IndexWriteAdmissionError):
+    """候选所属的父版本或写入修订号已被替换，不能借用新状态的写入权限。
+
+    默认定位符由发布选择器 CAS 抛出，自定义路径由 ``ast_writer_state`` 修订号
+    CAS 抛出（slice 5）；准入码见 ``CAUSE_CODES``（通常为
+    ``INDEX_CANDIDATE_SUPERSEDED``）。``generation_store.Superseded`` 是同一类。
+    """
 
 
 @dataclass(frozen=True)

@@ -27,7 +27,7 @@ from ..project_graph import _language_from_ext
 from ..read_only_files import mark_read_only
 from ._win_fileops import IS_WINDOWS, replace_file
 from ._win_fileops import IndexWriterBusy as IndexWriterBusy  # 发布失败关闭的类型
-from .admission import IndexWriteAdmissionError
+from .admission import Superseded as Superseded  # 发布选择器 CAS 的拒绝类型
 from .generation_bootstrap import adopt_legacy_database
 from .generation_pins import GenerationPin, pin_generation
 from .generation_reader_release import release_idle_readers
@@ -142,13 +142,6 @@ def _with_unreadable_marks(
         return snapshot
     entries = tuple(marked.get(entry.rel_path, entry) for entry in snapshot.entries)
     return replace(snapshot, entries=entries)
-
-
-class Superseded(IndexWriteAdmissionError):
-    """候选所属的父版本已被替换，不能借用新版本的发布权限。
-
-    准入码见 ``admission.CAUSE_CODES``（通常为 ``INDEX_CANDIDATE_SUPERSEDED``）。
-    """
 
 
 @dataclass(frozen=True)

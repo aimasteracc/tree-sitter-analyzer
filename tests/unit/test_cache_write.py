@@ -643,8 +643,10 @@ def test_activation_driver_os_error_rolls_back_without_git_degradation(
 ):
     # PR #1350：驱动层在第二条统计写入抛出 OS 错误，不能遗留第一条更新或降级状态。
     from tree_sitter_analyzer.cache.write import _flush_pending_activations
+    from tree_sitter_analyzer.cache.writer_state import FencedConnection
 
-    class InterruptibleConnection(sqlite3.Connection):
+    # RFC-0032 slice 5：可写连接本身是 FencedConnection，故障替身在其上派生。
+    class InterruptibleConnection(FencedConnection):
         interrupt = False
         writes = 0
 
@@ -660,7 +662,7 @@ def test_activation_driver_os_error_rolls_back_without_git_degradation(
         sqlite3,
         "connect",
         lambda *args, **kwargs: connect(
-            *args, **kwargs, factory=InterruptibleConnection
+            *args, **{**kwargs, "factory": InterruptibleConnection}
         ),
     )
     path = tmp_path / "app.py"

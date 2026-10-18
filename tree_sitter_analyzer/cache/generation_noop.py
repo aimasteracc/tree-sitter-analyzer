@@ -24,7 +24,8 @@ UNCHANGED_REASON = "INDEX_UNCHANGED"
 NOT_PUBLISHABLE_REASON = "INDEX_NOT_PUBLISHABLE"
 
 #: 与 ``index_snapshot_schema._CONTROL_TABLES`` 相同：不进入 ``index_fingerprint``
-#: 的表，必须逐行比较。
+#: 的表，必须逐行比较。唯一例外是 ``ast_writer_state``（RFC-0032 slice 5）：私有副本
+#: 的每次提交都推进修订号，它是写入权威而非内容，比较它会让零变化刷新永远发布。
 _CONTROL_TABLES = (
     "ast_index_snapshot_manifest",
     "ast_cache_metadata",

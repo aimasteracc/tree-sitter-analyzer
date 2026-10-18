@@ -180,6 +180,9 @@ class IndexCandidateSnapshot:
     )
     frozen_error: str | None = field(default=None, repr=False, compare=False)
     frozen_read_deadline: float | None = field(default=None, repr=False, compare=False)
+    # RFC-0032 slice 5：自定义路径缓存在捕获前的写入修订（``ASTCache.writer_revision()``）；
+    # 原地同步据此在写入前拒绝过时候选。``None`` 为未绑定，仍被接受。
+    writer_revision: object | None = field(default=None, repr=False, compare=False)
 
     @property
     def selected_entries(self) -> tuple[IndexSnapshotEntry, ...]:
@@ -268,12 +271,16 @@ def build_index_candidate_snapshot(
     language_filter: str | None = None,
     materialize: bool = False,
     discovery_seconds: float | None = None,
+    writer_revision: object | None = None,
 ) -> IndexCandidateSnapshot:
     """Walk once and freeze file ordering, scope decisions, and fingerprints.
 
     Supported paths are validated as yielded, before canonical-path de-duplication.
     This prevents a regular path followed by a symlink alias from hiding unsafe
     source-scope evidence.
+
+    ``writer_revision`` binds the candidate to a custom-path cache: read it with
+    ``ASTCache.writer_revision()`` *before* calling this function (RFC-0032 slice 5).
     """
     normalized_max = normalize_index_max_files(max_files)
     logical_root = os.path.abspath(project_root)
@@ -492,6 +499,7 @@ def build_index_candidate_snapshot(
         root_identity=root_identity,
         publication_parent=publication_parent,
         publication_bound=True,
+        writer_revision=writer_revision,
     )
     if materialize:
         from .indexing_candidate_materialization import (

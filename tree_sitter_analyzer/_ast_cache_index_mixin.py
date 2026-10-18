@@ -20,6 +20,7 @@ from .cache.callgraph_state import (
 from .cache.extraction import _content_hash
 from .cache.helpers import _canonical_project_path
 from .cache.schema import clear_activation_for_file as _clear_activation_for_file_fn
+from .cache.writer_state import writer_operation
 from .index_source_snapshot import SourceScopeDescriptor
 from .indexing_snapshot import IndexCandidateSnapshot
 from .project_graph import _language_from_ext
@@ -97,6 +98,26 @@ class ASTCacheIndexMixin(ASTCacheSurface):
                     _frozen_deadline=_frozen_deadline,
                 ),
             )
+        with writer_operation(self):  # RFC-0032 slice 5：原地写入的修订号绑定
+            return self._index_file_in_place(
+                file_path,
+                language,
+                _source_path=_source_path,
+                _source_fingerprint=_source_fingerprint,
+                _frozen_identity=_frozen_identity,
+                _frozen_deadline=_frozen_deadline,
+            )
+
+    def _index_file_in_place(
+        self,
+        file_path: str,
+        language: str | None,
+        *,
+        _source_path: str | None,
+        _source_fingerprint: Any | None,
+        _frozen_identity: tuple[int, int, int] | None,
+        _frozen_deadline: float | None,
+    ) -> dict[str, Any]:
         abs_path = _canonical_project_path(file_path, self.project_root)
         rel_path = os.path.relpath(abs_path, self.project_root).replace("\\", "/")
         if language is None:
@@ -361,7 +382,8 @@ class ASTCacheIndexMixin(ASTCacheSurface):
         # cache/indexer.py parallel workers run INSIDE _index_lock's critical
         # section (called via run_index_project), so WAL parallelism does not
         # conflict with them.
-        with self._index_lock:
+        # RFC-0032 slice 5：原地写入以修订号 CAS 绑定为一次操作（自定义 db_path）。
+        with self._index_lock, writer_operation(self, candidate_snapshot):
             return _indexer.run_index_project(
                 self,
                 max_files,

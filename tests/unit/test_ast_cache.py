@@ -193,7 +193,10 @@ class TestIndexFile:
         self, tmp_path, monkeypatch
     ):
         # PR #1350：使用真实 SQLite connection 的故障边界，不绕过 schema 校验器。
-        class FlakyConnection(sqlite3.Connection):
+        # RFC-0032 slice 5：可写连接本身是 FencedConnection，故障替身在其上派生。
+        from tree_sitter_analyzer.cache.writer_state import FencedConnection
+
+        class FlakyConnection(FencedConnection):
             def execute(self, sql, *args, **kwargs):
                 if "PRAGMA table_info(ast_index)" in sql:
                     raise sqlite3.OperationalError("metadata temporarily unavailable")
@@ -203,7 +206,8 @@ class TestIndexFile:
         opened = []
 
         def connect_with_failure(*args, **kwargs):
-            conn = connect(*args, **kwargs, factory=FlakyConnection)
+            kwargs["factory"] = FlakyConnection
+            conn = connect(*args, **kwargs)
             opened.append(conn)
             return conn
 
