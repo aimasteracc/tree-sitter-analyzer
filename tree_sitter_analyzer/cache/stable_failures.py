@@ -244,6 +244,32 @@ def _indexed_paths(conn: sqlite3.Connection) -> set[str]:
     }
 
 
+def issue_after_stamp(
+    conn: sqlite3.Connection, project_root: str, candidate: Any, scope: Any
+) -> bool:
+    """调用方刚成功盖出清单（无失败、调用图标记当前）后签发记录。
+
+    供在索引运行之外单独盖清单的路由（``index action=full``）使用：盖戳本身已
+    要求调用图标记当前、源码清单与索引行一致；这里再核验候选精确与行集合。
+    """
+    from ..index_source_snapshot import canonical_source_scope_descriptor
+    from .callgraph_state import call_graph_marker_is_current
+
+    if scope is None or not call_graph_marker_is_current(conn):
+        return False
+    return issue_after_run(
+        conn,
+        project_root=project_root,
+        candidate=candidate,
+        scope=canonical_source_scope_descriptor(scope),
+        extractor_version=current_extractor_version(),
+        details=(),
+        errors=0,
+        converged=True,
+        stamped=True,
+    )
+
+
 def candidate_is_exact(candidate: Any) -> bool:
     """候选覆盖完整范围：无发现错误、无截断、计数对账。"""
     return bool(

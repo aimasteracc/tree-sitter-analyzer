@@ -436,20 +436,21 @@ class IncrementalSync:
 
                 clear_call_graph_built_strict(conn)
                 conn.commit()
-        if certify_manifest:
-            self._issue_stable_failure_record(
-                conn,
-                candidate_snapshot,
-                source_scope,
-                result,
-                converged=bool(
-                    backfill_complete
-                    and result.backfill_errors == 0
-                    and result.changed_during_run == 0
-                    and not result.truncated_by_max_files
-                ),
-                stamped=stamped,
-            )
+        # 不盖清单的调用（``index action=full`` 的分阶段运行）只能签发带失败的
+        # 记录：stamped 为假时 issue_after_run 拒绝无失败的记录。
+        self._issue_stable_failure_record(
+            conn,
+            candidate_snapshot,
+            source_scope,
+            result,
+            converged=bool(
+                backfill_complete
+                and result.backfill_errors == 0
+                and result.changed_during_run == 0
+                and not result.truncated_by_max_files
+            ),
+            stamped=stamped,
+        )
         return result
 
     def _issue_stable_failure_record(

@@ -512,27 +512,28 @@ def run_index_project(
             stats["db_maintenance"] = (
                 _ast_cache_mod._reclaim_storage_after_full_rebuild(conn, cache.db_path)
             )
-        if certify_manifest:
-            stamped = _update_authoritative_manifest(
-                cache, candidate_snapshot, stats, source_scope
-            )
-            from .index_project_runner import _issue_stable_failure_record
+        stamped = certify_manifest and _update_authoritative_manifest(
+            cache, candidate_snapshot, stats, source_scope
+        )
+        from .index_project_runner import _issue_stable_failure_record
 
-            # 回填或已在本次运行中零错误执行（needs_backfill），或因调用图标记
-            # 当前而无需执行——两种情况下图都已在本次内容上收敛。
-            _issue_stable_failure_record(
-                cache,
-                conn,
-                stats,
-                candidate_snapshot,
-                canonical_source_scope_descriptor(source_scope),
-                converged=bool(
-                    language_filter is None
-                    and not projection_repair
-                    and not stats.get("activation_errors")
-                ),
-                stamped=bool(stamped),
-            )
+        # 回填或已在本次运行中零错误执行（needs_backfill），或因调用图标记
+        # 当前而无需执行——两种情况下图都已在本次内容上收敛。不盖清单的
+        # 调用（``index action=full`` 的分阶段运行）只能签发带失败的记录；
+        # 无失败时由盖清单的一方签发（``issue_after_stamp``）。
+        _issue_stable_failure_record(
+            cache,
+            conn,
+            stats,
+            candidate_snapshot,
+            canonical_source_scope_descriptor(source_scope),
+            converged=bool(
+                language_filter is None
+                and not projection_repair
+                and not stats.get("activation_errors")
+            ),
+            stamped=bool(stamped),
+        )
         return stats
     finally:
         try:

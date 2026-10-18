@@ -370,6 +370,26 @@ def test_changed_source_scope_publishes(root, failing) -> None:
     assert (result["published"], result.get("publication_reason")) == (True, None)
 
 
+@pytest.mark.parametrize("mode", ["full", "incremental"])
+def test_refresh_after_full_index_is_a_noop(root, mode, copies) -> None:
+    # dogfood 第 8 轮的复现步骤：先 ``index action=full``，再零变化的
+    # ``index action=cache mode=index``——后者不得复制、不得发布。
+    import asyncio
+
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    built = asyncio.run(CodeGraphFullIndexTool(root).execute({"mode": mode}))
+    assert built["published"] is True
+    active = _active(root)
+    copies.clear()
+
+    assert (_index_project(root), _active(root), copies) == (
+        (False, "INDEX_UNCHANGED"),
+        active,
+        [],
+    )
+
+
 def test_unchanged_mcp_refresh_reports_stable_failures(root) -> None:
     # MCP 答复如实说明：未发布、原因 INDEX_UNCHANGED，且稳定失败仍计入 errors。
     import asyncio
