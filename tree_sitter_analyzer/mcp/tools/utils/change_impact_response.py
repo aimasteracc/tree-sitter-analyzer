@@ -5,10 +5,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .change_impact_command_refs import command_ref, drop_mirrored_commands, steps_ref
+from .change_impact_command_refs import (
+    command_ref,
+    drop_mirrored_commands,
+    reference_summary_command,
+    steps_ref,
+)
 from .verification_command import join_verification_steps
 
 LARGE_DIRTY_DIFF_THRESHOLD = 25
+
+#: #1676：``queue_ledger`` 缺席的原因码。ledger 把一个按 ``scope_paths`` 划定的队列
+#: 与工作区里其余的脏文件分开；没有范围时没有可分的两侧。
+QUEUE_LEDGER_ABSENT_NO_SCOPE = "NO_SCOPE_PATHS"
 
 # Pol3 (round-21): the in-response preview lists (``changed_preview``,
 # ``scoped_changed_preview``, ``out_of_scope_changed_preview``) are
@@ -211,6 +220,7 @@ def build_agent_summary_only_response(result: dict[str, Any]) -> dict[str, Any]:
         "low_impact_focused_test_command",
         "ci_verification_command",
         "dependency_graph",
+        "queue_ledger_absent_reason",
     ):
         value = result.get(key, summary.get(key))
         if value:
@@ -296,8 +306,11 @@ def attach_queue_ledger(
       ``out_of_scope_changed_count`` is retained (faithful reporting — the agent
       still learns untouched dirt exists), but the preview is emptied and an
       ``out_of_scope_muted`` flag is set.
+    #1676：没有 ``scope_paths`` 时不生成 ledger（整个工作区就是队列，没有“范围外”
+    可报告），并以 ``queue_ledger_absent_reason`` 如实说明缺席原因。
     """
     if not scope_paths:
+        result["queue_ledger_absent_reason"] = QUEUE_LEDGER_ABSENT_NO_SCOPE
         return result
 
     strict = scope_mode == "strict"
@@ -443,7 +456,8 @@ def build_change_impact_response(
     response["agent_summary"] = drop_mirrored_commands(agent_summary, response)
     from ....verification_plan import attach_commands
 
-    return attach_commands(response, context)
+    # #1676：命令定稿后，摘要中的长命令改为按字段名引用（完整命令只在顶层一份）。
+    return reference_summary_command(attach_commands(response, context))
 
 
 def _agent_next_step(verification: dict[str, Any], strategy: dict[str, Any]) -> str:

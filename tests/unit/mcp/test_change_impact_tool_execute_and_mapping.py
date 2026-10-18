@@ -2741,6 +2741,7 @@ _IMPACT_DECISION_KEYS = (
     "constraint_violations",
     "activation_diagnostic",
     "queue_ledger",
+    "queue_ledger_absent_reason",
     "scope_paths_invalid",
     "agent_summary",
     "changed_count",
@@ -2836,13 +2837,15 @@ def test_impact_summary_caps_symbol_lists_and_aliases_commands(
     assert summary["command_aliases"] == {
         "pytest_command": "verification_command",
         "test_command": "verification_command",
+        "local_verification_command": "verification_command",
     }
     assert "pytest_command" not in summary
+    assert "local_verification_command" not in summary
     text = json.dumps(summary, ensure_ascii=False)
-    # 顶层 verification / local 2 处 + verification_steps[0] 1 处 + 摘要
-    # verification_command 1 处；include_details 时另有 pytest / test /
-    # low_impact_focused 3 处。
-    assert text.count(summary["verification_command"]) == 4
+    # #1676：顶层 verification 1 处 + verification_steps[0] 1 处（步骤列表是另一
+    # 决策字段）；摘要按字段名引用。include_details 时另有 local / pytest / test /
+    # low_impact_focused 4 处。
+    assert text.count(summary["verification_command"]) == 2
     # 未被文案引用的 focused 子集命令省略并如实列出。
     assert summary["command_fields_omitted"] == [
         "focused_test_command",

@@ -37,8 +37,10 @@ DETAILS_NEXT_STEP = (
 )
 
 #: 与规范 verification_command 逐字相同时只保留规范字段的命令字段。
-#: ``local_verification_command`` 不在其中：next_step / stop_condition 按字段名引用它。
-_ALIASABLE_COMMANDS = ("pytest_command", "test_command")
+#: #1676：``local_verification_command`` 也在其中——有 local 命令时规范命令就是它
+#: （``_effective_verification_command``），next_step / stop_condition 中对它的字段名
+#: 引用经 ``command_aliases`` 解析到 ``verification_command``。
+_ALIASABLE_COMMANDS = ("pytest_command", "test_command", "local_verification_command")
 
 #: verification_steps 第一步的 focused 子集命令；未被文案引用时默认省略。
 _FOCUSED_COMMANDS = ("focused_test_command", "low_impact_focused_test_command")
