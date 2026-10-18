@@ -23,6 +23,9 @@
     FTS 文档 rowid 都按此映射
   * ``edges.id`` → ``(source_node_id, target_node_id, kind, line)``；
     ``ast_imports.id``、``ast_symbol_comments.id`` 直接省略（无外部引用）
+  * ``ast_symbol_projection_state.projection_digest`` 是按 ``id`` 顺序对该文件
+    符号行（含 ``id``）的摘要，随代理键变化；改为在同一库内用
+    ``symbol_rows_digest`` 重新计算，只比较“与实际行一致”这一布尔值
 
 FTS5 影子表（``ast_symbols_fts_*``）的 B 树布局取决于写入历史，不可比较；改为用
 ``fts5vocab(instance)`` 转储完整倒排索引（词项、文档、列、偏移），文档按上面的
@@ -116,6 +119,8 @@ def _dump(conn: sqlite3.Connection) -> dict[str, list[tuple[Any, ...]]]:
             if table == "lsp_resolution_cache" and values.get("edge_id") is not None:
                 values["edge_id"] = edge_keys.get(int(values["edge_id"]), "?")
             rows.append(tuple(values[c] for c in keep))
+        if table == "ast_symbol_projection_state" and "projection_digest" in keep:
+            rows = _projection_rows(conn, keep, rows)
         if table == "ast_index":
             # ``certified_at`` 的值是时间戳，只比较“是否已认证”。
             certified = dict(
@@ -127,6 +132,29 @@ def _dump(conn: sqlite3.Connection) -> dict[str, list[tuple[Any, ...]]]:
         dump[table] = _sorted(rows)
     dump["fts5vocab(instance)"] = _fts_dump(conn, symbols)
     return dump
+
+
+def _projection_rows(
+    conn: sqlite3.Connection, keep: list[str], rows: list[tuple[Any, ...]]
+) -> list[tuple[Any, ...]]:
+    """把依赖代理键的摘要换成“与该文件实际符号行一致”的布尔值。"""
+    from tree_sitter_analyzer.index_symbol_projection import symbol_rows_digest
+
+    path_at = keep.index("file_path")
+    digest_at = keep.index("projection_digest")
+    converted = []
+    for row in rows:
+        actual = symbol_rows_digest(
+            conn.execute(
+                "SELECT id, name, kind, file_path, language, line, end_line "
+                "FROM ast_symbol_rows WHERE file_path = ? ORDER BY id",
+                (row[path_at],),
+            ).fetchall()
+        )
+        values = list(row)
+        values[digest_at] = actual == row[digest_at]
+        converted.append(tuple(values))
+    return converted
 
 
 def _fts_dump(
