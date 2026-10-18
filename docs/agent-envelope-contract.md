@@ -120,7 +120,10 @@ machine-readable reason, so you can branch on a code instead of parsing prose
 Source of truth: `COMPLETENESS_REASONS` in
 [`tree_sitter_analyzer/mcp/tools/callers_reasons.py`](../tree_sitter_analyzer/mcp/tools/callers_reasons.py).
 The first six come from the call-edge layer and can combine; the rest come from
-the gates that re-check an edge-level `complete` and appear alone.
+the gates that re-check an edge-level `complete` and appear alone, with one
+exception: when the non-call reference scan reports `SOURCE_INDEX_MISMATCH`, it
+is followed by `NON_CALL_REFERENCES` (and `ACCESSOR_NOT_CALL_EDGES`) if those
+still hold for the unchanged files (#1672).
 
 <!-- drift:completeness-reasons:start -->
 | Code | Meaning | What to do |
@@ -128,10 +131,10 @@ the gates that re-check an edge-level `complete` and appear alone.
 | `UNRESOLVED_INBOUND_UNCHECKED` | The unresolved-edge count or the declaring-file guard could not be read. | Retry; rebuild the index if it persists. |
 | `UNRESOLVED_INBOUND` | Inbound edges name the target but did not resolve to its definition (`unresolved_inbound`). | Read those call sites; qualify the name to narrow. |
 | `UNRESOLVED_IN_DECLARING_FILE` | A file that declares the target holds unresolved calls that could reach it (computed dispatch or same name; see `unresolved_sites`). | Read `unresolved_sites`. |
-| `NAME_ONLY_INBOUND` | Inbound edges match by name only and cannot be bound to this target. | Read them; qualify the name. |
+| `NAME_ONLY_INBOUND` | Inbound edges match by name only and cannot be bound to this target (`name_only_inbound` callers; `name_only_sites`). | Read `name_only_sites` (`next_step` names them); a site calls the target only if its receiver is an instance of the target's class; qualify the name. |
 | `UNATTRIBUTED_CALL_SITES` | Module-level call sites are counted, not listed (`unattributed_call_sites`). | Read them directly. |
 | `EMPTY_EVIDENCE_BASE` | The call graph holds no call edges at all. | Build the full index (`index action=full`). |
-| `SOURCE_INDEX_MISMATCH` | The index is stale for the files in scope. | Refresh the index (`next_step`). |
+| `SOURCE_INDEX_MISMATCH` | The index is stale for the files in scope, or the non-call reference scan found the name in a file whose content no longer matches the index (`stale_reference_files`; `source_evidence.freshness` is `stale`). | Refresh the index (`next_step`). |
 | `SOURCE_SCOPE_UNKNOWN` | The source could not be revalidated against the index. | Refresh the index. |
 | `MISSING_INDEX` | No index backs the answer. | Build the index. |
 | `SYMBOL_NOT_DEFINED` | The exact target is not defined in the index (`close_matches`). | Check spelling / qualification. |
@@ -144,6 +147,29 @@ the gates that re-check an edge-level `complete` and appear alone.
 | `ACCESSOR_NOT_CALL_EDGES` | The target is a property/accessor; reads are not call edges. | Search attribute reads. |
 | `DECORATOR_MAY_REGISTER` | A decorator may register the target for dispatch. | Inspect the decorator. |
 <!-- drift:completeness-reasons:end -->
+
+### Evidence behind the codes (#1672)
+
+Every code that names sites carries them in the same bounded shape: a list
+capped at 20, the exact total beside it, and a `*_truncated` flag.
+
+| Code | Count | Sites (`file`, `line`, …) | Total / truncated |
+|---|---|---|---|
+| `UNRESOLVED_IN_DECLARING_FILE` | `unresolved_in_declaring_files` | `unresolved_sites` (+ `mechanism`, `callee`) | `unresolved_sites_total` / `unresolved_sites_truncated` |
+| `NAME_ONLY_INBOUND` | `name_only_inbound` (callers) | `name_only_sites` (+ `caller`) | `name_only_sites_total` / `name_only_sites_truncated` |
+| `NON_CALL_REFERENCES` | `non_call_references` | `non_call_reference_sites` (capped at 5) | `non_call_references` |
+| `SOURCE_INDEX_MISMATCH` (reference scan) | `stale_reference_files_total` | `stale_reference_files` (paths, capped at 5) | `stale_reference_files_total` |
+
+`name_only_sites[].line` is the call line from the call-graph edge; when no edge
+line is readable it falls back to the caller's definition line. `next_step`
+names the first three sites inline and says how many more there are.
+
+A reference-scan hit in a file whose size, mtime and normalised content digest
+no longer match its `ast_index` row is most likely a call added since the last
+index (it has no call edge yet), so it is reported as `SOURCE_INDEX_MISMATCH`
+with `source_evidence.freshness: "stale"` and the refresh `next_step` — the same
+diagnosis the 0-caller path gives for the same edit. The check reuses the stat
+evidence the scan already read; it does not stat or hash the whole tree.
 
 ### Callers bound through an annotation (RFC-0038)
 
