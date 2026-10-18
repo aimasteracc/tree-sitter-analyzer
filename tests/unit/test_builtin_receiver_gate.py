@@ -221,7 +221,9 @@ def test_self_attr_receiver_unique_method_binds(tmp_path: Path) -> None:
     project_edges = [
         e
         for e in svc_edges
-        if e["callee_resolution"] == "project"
+        # RFC-0038：注解 / 构造器给出的接收者类型绑定到同一方法，来源为
+        # annotated_receiver（比按唯一方法名绑定更具体）。
+        if e["callee_resolution"] in ("project", "annotated_receiver")
         and "data_store" in (e["callee_resolved_file"] or "")
     ]
     assert project_edges, (
@@ -256,7 +258,9 @@ def test_singleton_receiver_unique_method_binds(tmp_path: Path) -> None:
     project_edges = [
         e
         for e in client_edges
-        if e["callee_resolution"] == "project"
+        # RFC-0038：注解 / 构造器给出的接收者类型绑定到同一方法，来源为
+        # annotated_receiver（比按唯一方法名绑定更具体）。
+        if e["callee_resolution"] in ("project", "annotated_receiver")
         and "cache_store" in (e["callee_resolved_file"] or "")
     ]
     assert project_edges, (
