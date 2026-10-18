@@ -156,3 +156,186 @@ def test_load_hierarchy_tolerates_a_broken_index() -> None:
     conn = sqlite3.connect(":memory:")
     assert load_hierarchy(conn).parents == {}
     assert resolve_inherited_self_calls(conn) == 0
+
+
+def test_mro_edge_cases_stay_conservative() -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.call_graph import _lazy_hierarchy
+    from tree_sitter_analyzer.class_mro import (
+        ClassKey,
+        Hierarchy,
+        _node,
+        _ordered_parents,
+        external_lacks,
+    )
+
+    assert external_lacks("", "m") is False
+    assert external_lacks("os.no_such_module.Base", "m") is False
+    assert _ordered_parents("not json", []) == []
+    assert _ordered_parents('["Base"]', [ClassKey("b.py", "Other")]) == [
+        "Base",
+        "<unordered Other>",
+    ]
+    assert _node("a.py:C:notaline") is None
+    assert _node("class:Base") is None
+
+    class _NoConn:
+        def get_conn(self):
+            raise AttributeError("closed")
+
+    lazy = _lazy_hierarchy(_NoConn())
+    assert lazy().parents == {} and lazy() is lazy()
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, language TEXT, symbols_json TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE edges (source_node_id TEXT, target_node_id TEXT, kind TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('a.py', 'python', ?)",
+        ('{"symbols": [{"kind": "class", "name": "", "line": 1}]}',),
+    )
+    from tree_sitter_analyzer.class_mro import load_hierarchy
+
+    assert load_hierarchy(conn) == Hierarchy()
+
+
+def test_inherited_target_needs_the_symbol_row_and_an_absent_own_method() -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.cache.inherited_self_calls import _certain_target
+    from tree_sitter_analyzer.cached_edge_resolution import CachedEdgeResolver
+    from tree_sitter_analyzer.call_graph import FunctionRef
+    from tree_sitter_analyzer.class_mro import ClassKey, Hierarchy
+
+    base, child = ClassKey("b.py", "Base"), ClassKey("c.py", "Child")
+    hierarchy = Hierarchy(
+        parents={child: [base], base: []},
+        methods={base: {"m": 2}, child: {"own": 5}},
+    )
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE ast_symbol_rows (id INTEGER, file_path TEXT, name TEXT, "
+        "line INTEGER, kind TEXT)"
+    )
+    # 外围类自己定义了它：交给 Synapse 的 self 规则；找到定义但没有符号行：不写入。
+    assert _certain_target(conn, hierarchy, child, "own") is None
+    assert _certain_target(conn, hierarchy, child, "m") is None
+
+    own_a = FunctionRef(
+        file_path="c.py", name="own", start_line=5, language="python", receiver="Child"
+    )
+    own_b = FunctionRef(
+        file_path="c.py", name="own", start_line=9, language="python", receiver="Child"
+    )
+    resolver = CachedEdgeResolver(
+        functions_by_name={"own": [own_a, own_b]},
+        functions_by_file={"c.py": [own_a, own_b]},
+        file_import_map={},
+        hierarchy=lambda: hierarchy,
+    )
+    assert resolver._inherited_target("c.py", "Child", "own") is None
+
+
+def test_second_pass_skips_own_receiver_calls_only() -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.cache.unresolved import _call_refs
+
+    edges = [
+        {
+            "caller_name": "run",
+            "caller_line": 1,
+            "callee_name": "m",
+            "callee_full": "self.m",
+            "callee_line": 2,
+        },
+        {
+            "caller_name": "run",
+            "caller_line": 1,
+            "callee_name": "m",
+            "callee_full": "obj.m",
+            "callee_line": 3,
+        },
+    ]
+    refs = _call_refs(sqlite3.connect(":memory:"), "c.py", "python", edges, set())
+
+    assert [ref["line"] for ref in refs] == [3]
+
+
+def test_index_pass_skips_unknown_owners_and_survives_a_readonly_index(
+    tmp_path: Path,
+) -> None:
+    import json
+    import sqlite3
+
+    from tree_sitter_analyzer.cache.inherited_self_calls import (
+        resolve_inherited_self_calls,
+    )
+
+    db = tmp_path / "index.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, language TEXT, symbols_json TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE ast_symbol_rows (id INTEGER, file_path TEXT, name TEXT, "
+        "line INTEGER, kind TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE edges (id INTEGER PRIMARY KEY, kind TEXT, language TEXT, "
+        "file_path TEXT, caller_name TEXT, caller_line INTEGER, callee_name TEXT, "
+        "callee_full TEXT, callee_resolution TEXT, callee_resolved_file TEXT, "
+        "callee_symbol_id INTEGER, source_node_id TEXT, target_node_id TEXT)"
+    )
+    symbols = {
+        "b.py": [
+            {"kind": "class", "name": "Base", "line": 1, "parents": []},
+            {"kind": "method", "name": "m", "line": 2, "class": "Base"},
+        ],
+        "c.py": [
+            {"kind": "class", "name": "Child", "line": 1, "parents": ["Base"]},
+            {"kind": "method", "name": "run", "line": 2, "class": "Child"},
+        ],
+    }
+    for path, items in symbols.items():
+        conn.execute(
+            "INSERT INTO ast_index VALUES (?, 'python', ?)",
+            (path, json.dumps({"symbols": items})),
+        )
+    conn.execute("INSERT INTO ast_symbol_rows VALUES (7, 'b.py', 'm', 2, 'method')")
+    conn.execute(
+        "INSERT INTO edges (kind, source_node_id, target_node_id) "
+        "VALUES ('extends', 'c.py:Child:1', 'b.py:Base:1')"
+    )
+    pending = (
+        "INSERT INTO edges (kind, language, file_path, caller_name, caller_line, "
+        "callee_name, callee_full, callee_resolution, callee_resolved_file) "
+        "VALUES ('calls', 'python', 'c.py', ?, ?, 'm', 'self.m', 'unknown', '')"
+    )
+    conn.execute(pending, ("ghost", 40))
+    conn.commit()
+    # 调用方不是任何类的方法：跳过，不更新任何边。
+    assert resolve_inherited_self_calls(conn) == 0
+    conn.execute(pending, ("run", 2))
+    conn.commit()
+    conn.close()
+
+    readonly = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        assert resolve_inherited_self_calls(readonly) == 0
+    finally:
+        readonly.close()
+    writable = sqlite3.connect(db)
+    try:
+        assert resolve_inherited_self_calls(writable) == 1
+        row = writable.execute(
+            "SELECT callee_resolution, callee_resolved_file, callee_symbol_id "
+            "FROM edges WHERE caller_name = 'run'"
+        ).fetchone()
+    finally:
+        writable.close()
+    assert row == ("project", "b.py", 7)
