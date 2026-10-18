@@ -30,7 +30,14 @@ _SOURCES = {
 
 
 def _key(ref):
-    return (ref.file_path, ref.name, ref.start_line, ref.end_line, ref.language, ref.receiver)
+    return (
+        ref.file_path,
+        ref.name,
+        ref.start_line,
+        ref.end_line,
+        ref.language,
+        ref.receiver,
+    )
 
 
 def _snapshot(graph: CachedCallGraph) -> dict:
@@ -109,7 +116,9 @@ async def test_replayed_graph_equals_the_fresh_build(indexed_project, monkeypatc
 @pytest.mark.asyncio
 async def test_nothing_is_written_without_persist(indexed_project):
     _build(indexed_project, persist=False)
-    assert not (Path(indexed_project) / ".ast-cache" / call_graph_store.DIR_NAME).exists()
+    assert not (
+        Path(indexed_project) / ".ast-cache" / call_graph_store.DIR_NAME
+    ).exists()
 
 
 @pytest.mark.asyncio
@@ -161,11 +170,75 @@ async def test_changed_inputs_miss_and_store_a_new_entry(indexed_project):
     assert result["published"] is True
     fresh = _build(indexed_project, persist=True)
     assert len(_stored_files(indexed_project)) == 2
-    assert any(ref.name == "extra" for ref in fresh.caller_refs_of(
-        next(r for r in fresh.function_refs() if r.name == "helper")
-    ))
+    assert any(
+        ref.name == "extra"
+        for ref in fresh.caller_refs_of(
+            next(r for r in fresh.function_refs() if r.name == "helper")
+        )
+    )
     replayed = _build(indexed_project, persist=False)
     assert _snapshot(replayed) == _snapshot(fresh)
+
+
+_CROSS_PROCESS = """
+import sys
+from tree_sitter_analyzer import call_graph_store
+from tree_sitter_analyzer.ast_cache import ASTCache
+from tree_sitter_analyzer.call_graph import CachedCallGraph
+
+used = []
+original = call_graph_store.decode
+call_graph_store.decode = lambda *a: used.append(1) or original(*a)
+cache = ASTCache(sys.argv[1])
+graph = CachedCallGraph(sys.argv[1], cache=cache, persist=True)
+graph.build()
+cache.close()
+print("replayed" if used else "built", len(graph._call_edges))
+"""
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(900)
+async def test_a_new_process_with_another_hash_seed_reuses_the_store(
+    indexed_project,
+):
+    """String hashing differs per process; the store key must not (#1675)."""
+    import os
+    import subprocess
+    import sys
+
+    outputs = []
+    for seed in ("1", "2"):
+        env = {**os.environ, "PYTHONHASHSEED": seed}
+        completed = subprocess.run(
+            [sys.executable, "-c", _CROSS_PROCESS, indexed_project],
+            capture_output=True,
+            text=True,
+            timeout=600,
+            env=env,
+        )
+        assert completed.returncode == 0, completed.stderr
+        outputs.append(completed.stdout.split())
+    (first, first_edges), (second, second_edges) = outputs
+    assert (first, second) == ("built", "replayed")
+    assert first_edges == second_edges
+    assert len(_stored_files(indexed_project)) == 1
+
+
+def test_stable_form_orders_sets_and_unfolds_dataclasses():
+    from dataclasses import dataclass
+
+    @dataclass
+    class Box:
+        items: set[str]
+
+    a = call_graph_memo.stable_form({"k": Box({"b", "a", "c"})})
+    b = call_graph_memo.stable_form({"k": Box({"c", "a", "b"})})
+    assert a == b
+    ((key, (type_name, fields)),) = a[1]
+    assert (key, type_name.rsplit(".", 1)[-1]) == ("k", "Box")
+    assert fields == [("items", ("set", ["a", "b", "c"]))]
+    assert call_graph_memo.input_digest(a) == call_graph_memo.input_digest(b)
 
 
 def test_store_needs_an_existing_real_ast_cache_dir(tmp_path):

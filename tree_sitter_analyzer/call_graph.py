@@ -797,8 +797,9 @@ class CachedCallGraph(CallGraph):
             *graph_input_rows.source_digest_parts(edge_source),
             *graph_input_rows.source_digest_parts(function_source),
             imports_raw,
-            reexport_binder.evidence(),
-            subclasses.evidence(),
+            # #1675：集合按值排序后再摘要，摘要跨进程稳定（落盘结果按它取用）。
+            call_graph_memo.stable_form(reexport_binder.evidence()),
+            call_graph_memo.stable_form(subclasses.evidence()),
         )
         if digest is not None:
             state = call_graph_memo.lookup(root, digest)
