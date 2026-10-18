@@ -101,13 +101,32 @@ def test_every_mode_flag_token_exists_in_parser() -> None:
 # --- exemption path (--watch is a shortcut for --ast-cache --ast-cache-mode) ---
 
 
-def test_watch_exempts_ast_cache_mode() -> None:
+def test_watch_exempts_ast_cache_mode(tmp_path, monkeypatch) -> None:
     """``--watch --ast-cache-mode <val>`` (no ``--ast-cache``) must NOT error.
 
     ``--watch`` is a documented shortcut for ``--ast-cache --ast-cache-mode
     watch_start``, so the guard must treat it as satisfying the trigger.
+
+    #1685: the command now holds its watcher until Ctrl-C and stops it before
+    returning. Interrupt the hold at once, and watch a throwaway project rather
+    than the repository: this test used to leave a watcher indexing the whole
+    checkout inside the pytest worker.
     """
-    exc_info = _run_main(["--watch", "--ast-cache-mode", "watch_start"])
+    from tree_sitter_analyzer.cli.commands.mcp_commands import _watch_hold
+
+    def interrupted() -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(_watch_hold, "wait_until_interrupted", interrupted)
+    exc_info = _run_main(
+        [
+            "--project-root",
+            str(tmp_path),
+            "--watch",
+            "--ast-cache-mode",
+            "watch_start",
+        ]
+    )
 
     # Guard did not fire (it would have produced exit code 2 with our message).
     assert exc_info.value.code == 0
