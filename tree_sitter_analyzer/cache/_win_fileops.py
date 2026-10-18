@@ -18,7 +18,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
-WRITER_BUSY = "INDEX_WRITER_BUSY"
+from .admission import INDEX_WRITER_BUSY as WRITER_BUSY
+from .admission import IndexWriteAdmissionError
+
 # 按真实平台判定；测试会把 ``os.name`` 改成 "nt" 来模拟非 POSIX，不能借此进入原生路径。
 IS_WINDOWS = sys.platform == "win32"
 
@@ -39,12 +41,16 @@ _INVALID_HANDLE = ctypes.c_void_p(-1).value
 _BUSY_ERRORS = frozenset({1, 32, 33, 50, 87})
 
 
-class IndexWriterBusy(RuntimeError):
-    """无法以 POSIX 语义原子替换选择器；失败关闭，活动选择器保持不变，可稍后重试。"""
+class IndexWriterBusy(IndexWriteAdmissionError):
+    """写入者忙：发布租约超时，或无法以 POSIX 语义原子替换选择器。
 
-    retryable = True
+    失败关闭，活动选择器保持不变，可稍后重试（``INDEX_WRITER_BUSY``）。
+    ``winerror`` 仅在原生改名失败时给出。
+    """
 
-    def __init__(self, winerror: int) -> None:
+    default_code = WRITER_BUSY
+
+    def __init__(self, winerror: int | None = None) -> None:
         super().__init__(WRITER_BUSY)
         self.winerror = winerror
 

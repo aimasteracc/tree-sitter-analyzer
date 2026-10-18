@@ -37,6 +37,8 @@ logger = setup_logger(__name__)
 # user has an older DB and avoids forcing a full re-index for a quirk
 # that would otherwise confuse FTS callers.
 _IMPORT_NAME_LIMIT = 100
+# 会写入索引的模式；其失败以类型化答复返回（RFC-0032 slice 4）。
+_WRITE_MODES = frozenset({"index", "sync", "invalidate"})
 _BOUND_NAME_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
@@ -551,35 +553,48 @@ class ASTCacheTool(BaseMCPTool):
         if mode == "watch_status":
             return self._handle_watch_status()
 
+        if mode in _WRITE_MODES:
+            return self._execute_write(mode, arguments)
+
         cache = self._get_cache()
-
-        if mode == "index":
-            from ...cache.source_hash_budget import SourceHashBudgetExceeded
-            from ...cache.source_recheck import SourceChanged, source_changed_failure
-
-            try:
-                return self._handle_index(arguments, cache)
-            except SourceHashBudgetExceeded as exc:
-                # #1562：预算耗尽返回类型化失败，绝不让裸异常越过 MCP 边界。
-                from ...cache.generation_indexing import source_hash_budget_failure
-
-                return source_hash_budget_failure(exc)
-            except SourceChanged as exc:
-                # #1595：源码变化是可重试的类型化失败，不是 internal 错误。
-                return source_changed_failure(exc)
         if mode == "lookup":
             return self._handle_lookup(arguments, cache)
         if mode in ("search", "fts_search"):
             return self._handle_search(arguments, cache, mode)
         if mode == "stats":
             return self._handle_stats(cache)
-        if mode == "sync":
-            return self._handle_sync(arguments)
         if mode == "changes":
             return self._handle_changes()
-        if mode == "invalidate":
-            return self._handle_invalidate(arguments, cache)
         return _build_unknown_mode_response(mode)
+
+    def _execute_write(self, mode: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        """写入模式：失败以类型化答复越过 MCP 边界，绝不报 internal 错误。
+
+        #1562 源码摘要预算、#1595 源码变化，以及 RFC-0032 slice 4 的准入失败
+        （``INDEX_CANDIDATE_SUPERSEDED`` / ``INDEX_WRITER_BUSY`` /
+        ``INDEX_RECOVERY_REQUIRED``）；打开缓存本身失败（如选择器损坏）同样归类。
+        """
+        from ...cache.generation_indexing import source_hash_budget_failure
+        from ...cache.source_hash_budget import SourceHashBudgetExceeded
+        from ...cache.source_recheck import SourceChanged, source_changed_failure
+        from ..utils.admission_response import admission_error_response
+
+        try:
+            cache = self._get_cache()
+            if mode == "index":
+                return self._handle_index(arguments, cache)
+            if mode == "sync":
+                return self._handle_sync(arguments)
+            return self._handle_invalidate(arguments, cache)
+        except SourceHashBudgetExceeded as exc:
+            return source_hash_budget_failure(exc)
+        except SourceChanged as exc:
+            return source_changed_failure(exc)
+        except Exception as exc:
+            typed = admission_error_response(exc, self._project_root)
+            if typed is None:
+                raise
+            return typed
 
     def _handle_index(self, arguments: dict[str, Any], cache: Any) -> dict[str, Any]:
         """``mode=index``: per-file or whole-project AST cache build."""

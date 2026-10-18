@@ -156,6 +156,46 @@ resolved only for the method it is bound to. For every other method of that
 name it stays an unresolved inbound edge, an override in a subclass included.
 So it never makes another answer `complete`.
 
+## Index write admission codes (RFC-0032)
+
+An index write can be refused before it changes anything: another write
+superseded its candidate, another writer holds the index, or the index storage
+needs recovery. Every write route reports this with one of three `error_code`
+values and the same machine fields:
+
+- MCP `index action=cache` (`mode=index` / `sync` / `invalidate`),
+  `index action=full` and `codegraph_incremental_sync` `mode=sync`;
+- the CLI routes that print those responses (`--ast-cache`, `--full-index`,
+  `--incremental-sync`), which exit 1 as for any other failure;
+- `FileWatcherDaemon.trigger_sync()`, whose result is the same payload. The
+  watcher's status (`ast_cache mode=watch_status` → `stats`) carries the last
+  one as `last_admission_error` until a later sync completes.
+
+Fields: `error_code`, `retryable`, `retry_after_ms`, `next_action`,
+`next_step`, and `cause_code`, the specific internal reason (for example
+`INDEX_GENERATION_SUPERSEDED`). `error` keeps the route's existing text. The
+Python exceptions behind these codes (`Superseded`, `IndexWriterBusy`, both
+`IndexWriteAdmissionError` subclasses) keep their messages, which are the
+`cause_code`. Nothing is written in any of these cases, and a one-shot CLI or
+MCP call never retries by itself.
+
+Source of truth: `ADMISSION_CODES` and `CAUSE_CODES` in
+[`tree_sitter_analyzer/cache/admission.py`](../tree_sitter_analyzer/cache/admission.py).
+
+<!-- drift:index-admission-codes:start -->
+| Code | retryable | retry_after_ms | next_action | Causes | What to do |
+|---|---|---|---|---|---|
+| `INDEX_CANDIDATE_SUPERSEDED` | true | 5000 | `recapture` | `INDEX_GENERATION_SUPERSEDED`, `INDEX_GENERATION_SOURCE_CHANGED`, `INDEX_GENERATION_DIRECTORY_CHANGED`, `INDEX_GENERATION_FOREIGN_STORE`, `INDEX_GENERATION_RETIRING` | Retry the same call; it captures a fresh candidate. Never replay the old candidate. |
+| `INDEX_WRITER_BUSY` | true | 5000 | `recapture` | `INDEX_WRITER_BUSY` (publication lease wait timed out, or Windows could not replace the selector atomically) | Wait `retry_after_ms`, then retry; if it stays busy, stop the other writer for this project. |
+| `INDEX_RECOVERY_REQUIRED` | false | 0 | `recover_index` | `INDEX_GENERATION_SELECTOR_INVALID`, `INDEX_GENERATION_SELECTOR_MISSING`, `INDEX_GENERATION_PATH_UNSAFE`, `INDEX_GENERATION_LOCK_UNSAFE` | Do not retry. Stop every TSA process for the project, move `.ast-cache` aside (replace a linked `.ast-cache` with a real directory), then rebuild with `index action=full mode=full`. |
+<!-- drift:index-admission-codes:end -->
+
+The watcher retries only the two retryable codes, with a fresh capture after
+5, 10, 20 and 40 seconds and then every 60 seconds. It does not retry
+`INDEX_RECOVERY_REQUIRED`. `INDEX_GENERATION_SOURCE_RECHECK_INCOMPLETE` and
+`INDEX_GENERATION_SOURCE_HASH_BUDGET_EXCEEDED` are not admission failures; they
+keep their own `error_code`.
+
 ## Worked examples (paste-real)
 
 Both examples were produced by running the tool classes' `execute()` directly
