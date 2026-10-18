@@ -75,7 +75,11 @@
   Any other receiver, including `self.x` without an annotation and the same
   file's `self._entries.append()`, stays unresolved: it is not listed, keeps the
   answer non-`complete`, and is still a name-only possible caller for impact,
-  test_map, pr_review and risk. This applies to the index-time resolver, the
+  test_map, pr_review and risk. A receiver proven to be a project class that
+  does not define the method itself (`x = Sub(); x.m()`) binds to the only
+  project method of that name. A bare call (`open(path)`) never binds to a
+  method: 247 bare `open()` calls had been bound to `NativeFiles.open`.
+  This applies to the index-time resolver, the
   name-based second pass and cross-file backfill, and the in-memory call graph.
   The extractor version goes from 40 to 41, so the next refresh re-resolves
   files indexed by older versions.
