@@ -478,3 +478,40 @@ def test_chunked_digest_of_large_lists_is_exact() -> None:
     assert digest != call_graph_memo.input_digest(rows[:-1])
     assert digest != call_graph_memo.input_digest(rows[:boundary], rows[boundary:])
     assert digest != call_graph_memo.input_digest(rows + [(size, "x")])
+
+
+def test_build_pauses_cyclic_gc_and_restores_it(
+    indexed: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # #1657：构图期间暂停循环 GC；结束（含异常）后恢复进入时的状态。
+    import gc
+
+    states: list[bool] = []
+    original = CachedCallGraph._build_from_inputs
+
+    def spy(self: CachedCallGraph, *args: Any, **kwargs: Any) -> None:
+        states.append(gc.isenabled())
+        original(self, *args, **kwargs)
+
+    monkeypatch.setattr(CachedCallGraph, "_build_from_inputs", spy)
+    assert gc.isenabled()
+    _built(indexed)
+    assert (states, gc.isenabled()) == ([False], True)
+
+    def boom(self: CachedCallGraph, *args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(CachedCallGraph, "_build_from_inputs", boom)
+    call_graph_memo.clear()
+    with pytest.raises(RuntimeError):
+        _built(indexed)
+    assert gc.isenabled()
+
+    gc.disable()
+    try:
+        monkeypatch.setattr(CachedCallGraph, "_build_from_inputs", original)
+        call_graph_memo.clear()
+        _built(indexed)
+        assert not gc.isenabled()  # 进入时已关闭：不擅自开启。
+    finally:
+        gc.enable()

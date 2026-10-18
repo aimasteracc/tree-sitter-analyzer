@@ -12,10 +12,13 @@ Key classes:
 - FunctionRef: Qualified function reference (file, name, line, language)
 """
 
+import gc
 import os
 import sqlite3
 from collections import defaultdict, deque
+from collections.abc import Iterator
 from collections.abc import Set as AbstractSet
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -753,7 +756,11 @@ class CachedCallGraph(CallGraph):
             return
 
         if self._cache is not None:
-            self._build_from_cache()
+            # #1657：构图一次分配数百万个对象，循环 GC 会反复扫描进程里已有的大堆
+            # （长驻服务器还持有旧图与各类缓存）。构图期间暂停循环回收，实测省
+            # 1.1–1.4 s；结束后（含异常）恢复原状态，引用计数回收不受影响。
+            with _cyclic_gc_paused():
+                self._build_from_cache()
         if not self._built and self._fallback:
             super().build()
 
@@ -916,6 +923,19 @@ class CachedCallGraph(CallGraph):
 
 #: 不随复用的图状态共享的属性：缓存句柄属于各自的图对象，项目根由构造参数给出。
 _UNSHARED_STATE = frozenset({"_cache", "_fallback", "project_root"})
+
+
+@contextmanager
+def _cyclic_gc_paused() -> Iterator[None]:
+    """暂停循环垃圾回收；只在进入时处于开启状态才在退出时重新开启。"""
+    was_enabled = gc.isenabled()
+    if was_enabled:
+        gc.disable()
+    try:
+        yield
+    finally:
+        if was_enabled:
+            gc.enable()
 
 
 def _edge_caller_ref(
