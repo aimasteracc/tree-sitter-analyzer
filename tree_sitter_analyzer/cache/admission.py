@@ -2,11 +2,16 @@
 
 写入路由（MCP ``index``/``sync``、CLI、watcher）此前把准入失败报告为裸异常文本，
 例如 ``Sync failed: OperationalError: database is locked``，调用方无法区分
-"稍后重试即可" 与 "需要人工恢复"。本模块是三类准入码的唯一定义：
+"稍后重试即可" 与 "需要人工恢复"。本模块是四类准入码的唯一定义：
 
 * ``INDEX_CANDIDATE_SUPERSEDED``：候选所属父版本或源码已变化，必须重新捕获；
 * ``INDEX_WRITER_BUSY``：另一写入者持有发布租约，或 Windows 无法原子替换选择器；
+* ``INDEX_CANDIDATE_UNBOUND``：默认定位符上传入的候选未绑定发布选择器（不是
+  ``build_index_candidate_snapshot`` 捕获的），重放同一候选无效（#1664）；
 * ``INDEX_RECOVERY_REQUIRED``：选择器损坏/缺失或存储路径不安全，重试无效。
+
+RFC 表中的 ``INDEX_WRITER_FENCED`` 不定义：没有任何路由会在操作结束后再交付
+结果（见 RFC-0032 实现状态）。
 
 异常消息（``str(exc)``）保持为细粒度原因码（``cause_code``），已有 ``error``
 文本与 CLI 退出码 1 不变；类型化字段是追加的。本模块只依赖标准库，
@@ -20,6 +25,7 @@ from typing import Any
 
 INDEX_CANDIDATE_SUPERSEDED = "INDEX_CANDIDATE_SUPERSEDED"
 INDEX_WRITER_BUSY = "INDEX_WRITER_BUSY"
+INDEX_CANDIDATE_UNBOUND = "INDEX_CANDIDATE_UNBOUND"
 INDEX_RECOVERY_REQUIRED = "INDEX_RECOVERY_REQUIRED"
 
 RETRY_AFTER_MS = 5000
@@ -62,6 +68,19 @@ ADMISSION_CODES: dict[str, AdmissionContract] = {
             "(watcher, MCP server or CLI run) for this project."
         ),
     ),
+    INDEX_CANDIDATE_UNBOUND: AdmissionContract(
+        retryable=False,
+        retry_after_ms=0,
+        next_action="obtain_bound_candidate",
+        summary="the index candidate is not bound to the index it would write",
+        next_step=(
+            "Nothing was written: the supplied candidate snapshot does not record "
+            "which published index it was captured against, so it cannot "
+            "authorize a write. Retrying the same candidate will not help. "
+            "Capture a fresh one with build_index_candidate_snapshot (or omit "
+            "candidate_snapshot and let the call capture it), then retry."
+        ),
+    ),
     INDEX_RECOVERY_REQUIRED: AdmissionContract(
         retryable=False,
         retry_after_ms=0,
@@ -92,6 +111,8 @@ CAUSE_CODES: dict[str, str] = {
     "INDEX_WRITER_REVISION_SUPERSEDED": INDEX_CANDIDATE_SUPERSEDED,
     "INDEX_WRITER_CACHE_REPLACED": INDEX_CANDIDATE_SUPERSEDED,
     "INDEX_WRITER_BUSY": INDEX_WRITER_BUSY,
+    # #1664：默认定位符上未绑定发布选择器的候选（自定义路径仍接受未绑定候选）。
+    "INDEX_CANDIDATE_UNBOUND": INDEX_CANDIDATE_UNBOUND,
     "INDEX_GENERATION_SELECTOR_INVALID": INDEX_RECOVERY_REQUIRED,
     "INDEX_GENERATION_SELECTOR_MISSING": INDEX_RECOVERY_REQUIRED,
     "INDEX_GENERATION_PATH_UNSAFE": INDEX_RECOVERY_REQUIRED,
@@ -134,6 +155,15 @@ class Superseded(IndexWriteAdmissionError):
     CAS 抛出（slice 5）；准入码见 ``CAUSE_CODES``（通常为
     ``INDEX_CANDIDATE_SUPERSEDED``）。``generation_store.Superseded`` 是同一类。
     """
+
+
+class CandidateUnbound(IndexWriteAdmissionError):
+    """默认定位符上传入的候选没有绑定发布选择器，不能授权写入（#1664）。"""
+
+    default_code = INDEX_CANDIDATE_UNBOUND
+
+    def __init__(self) -> None:
+        super().__init__(INDEX_CANDIDATE_UNBOUND)
 
 
 @dataclass(frozen=True)

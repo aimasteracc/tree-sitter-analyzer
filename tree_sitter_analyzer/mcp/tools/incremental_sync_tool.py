@@ -155,7 +155,16 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
         return None
 
     def _sync(self, max_files: int, output_format: str) -> dict[str, Any]:
-        cache = self._ensure_cache(output_format, max_files=max_files)
+        try:
+            cache = self._ensure_cache(output_format, max_files=max_files)
+        except Exception as exc:
+            # 从未索引的项目首次预热被拒（#1664）：与同步本身的准入失败同一答复。
+            typed = admission_error_response(
+                exc, str(self.project_root), prefix="Sync failed: "
+            )
+            if typed is None:
+                raise
+            return apply_output_format_to_response(typed, output_format)
         if cache is None:
             result = self._storage_admission_error() or build_error(
                 error="Failed to initialize AST cache"

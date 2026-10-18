@@ -3,13 +3,17 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
+from ...cache.admission import admission_failure_of
 from ...call_graph import CachedCallGraph, CallGraph
 from ...uml_export import UMLEdge, UMLExporter, render_flowchart_mermaid
 from ..utils.auto_index_guard import ensure_indexed
 from .index_bound_graph import index_bound_graph, reset_index_bound_graph
+
+logger = logging.getLogger(__name__)
 
 
 def safe_node_id(
@@ -190,7 +194,15 @@ class CodeGraphVisualizationHub:
         if not self.project_root:
             return None
         if self._cache is None:
-            self._cache = ensure_indexed(self.project_root)
+            try:
+                self._cache = ensure_indexed(self.project_root)
+            except Exception as exc:
+                if admission_failure_of(exc) is None:
+                    raise
+                # 只读可视化：首次预热被拒（RFC-0032 #1664）时照常从源码构建，
+                # 下次调用重新尝试预热；答复不声称来自索引。
+                logger.debug("visualization warm refused: %s", exc)
+                return None
         return self._cache
 
     def call_graph(self) -> CallGraph | None:

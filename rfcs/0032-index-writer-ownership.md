@@ -92,15 +92,14 @@ all three are deferred.
 6. bounded retirement of unreferenced generations;
 7. *(optional, major version)* custom locator relocation and a read-session type.
 
-**Implementation status** (2026-10-18): slices 1 (#1565), 2 (#1550), 3 (#1551) and
-6 (#1567) are merged; slice 4 is merged (#1661) and slice 5 is in review (#1662). Slice 4 adds `cache/admission.py`: `ADMISSION_CODES` holds the
-three codes above with the table's `retryable` / `retry_after_ms` / `next_action`
+**Implementation status** (2026-10-18): slices 1 (#1565), 2 (#1550), 3 (#1551),
+4 (#1661), 5 (#1662) and 6 (#1567) are merged; the follow-ups of #1664 are listed
+at the end of this note. Slice 4 adds `cache/admission.py`: `ADMISSION_CODES` holds
+the codes of the table below with its `retryable` / `retry_after_ms` / `next_action`
 values, and `CAUSE_CODES` maps each internal reason to one of them. The
 publication-lease timeout now raises `IndexWriterBusy` instead of a raw
 `OperationalError`. MCP, CLI and the watcher return the same payload, documented in
-`docs/agent-envelope-contract.md`. `INDEX_CANDIDATE_UNBOUND` and
-`INDEX_WRITER_FENCED` are not emitted: unbound custom-path candidates stay accepted
-(owner decision), and no fenced late callback exists on generation routes.
+`docs/agent-envelope-contract.md`.
 Slice 5 adds schema 18 `ast_writer_state(id=1, cache_uuid, revision)` and
 `cache/writer_state.py`. Every write transaction committed through `ASTCache.get_conn()`
 advances `revision` by compare-and-set inside that transaction. `index_project`,
@@ -111,11 +110,48 @@ A mismatch rolls back the transaction and raises `Superseded` (cause codes
 `INDEX_WRITER_STATE_MISSING`). The revision table is a control table outside
 `index_fingerprint`. The reader-required snapshot version stays 17, so published v17
 generations stay readable. Not covered: already-open older-version writers and raw SQL
-on independent connections (same-version cooperative fence only). Transactions that
-SQLite commits implicitly (`executescript`, releasing the outermost `SAVEPOINT`) do not
-advance the revision, but the next fenced commit still checks it.
-Once slice 5 merges, slices 1–6 are implemented; slice 7 remains deferred
-(major version).
+on independent connections (same-version cooperative fence only).
+Slices 1–6 are implemented; slice 7 remains deferred (major version).
+
+Follow-ups (#1664, 2026-10-18):
+- **Lease wait: 30 s, as specified** (`LEASE_TIMEOUT_S`, was 5 s). Measured on
+  Windows 11 / NTFS with a copy of this repository (2,865 indexed files; record
+  `e6-lease-wait` in [`evidence/0032-feasibility/observations.jsonl`](evidence/0032-feasibility/observations.jsonl)):
+  a second writer released at the instant a refresh (`run_incremental_sync`) took
+  the publish lease waited 3.4, 5.4, 4.1, 6.6 and 5.2 s (median 5.2 s; 3 of 5 over 5 s). The publish critical section rechecks every
+  source file (walk plus content hash on path-only platforms), so it grows with the
+  project; capture and admission hold the lease for under 10 ms. A 5 s bound
+  therefore reported `INDEX_WRITER_BUSY` for ordinary contention on a mid-size
+  repository. The wait ends as soon as the lease is released, so a caller waits for
+  the holder's actual critical section, and the full 30 s only when that section is
+  itself longer; it stays a wait bound, not a feedback SLA. The watcher's backoff
+  starts after a failed attempt and is unchanged.
+- **`ensure_indexed`** no longer turns a refused first warm of a never-indexed
+  project into `None`: it raises the typed admission error. `codegraph_incremental_sync`,
+  `auto_index mode=warm` and `codegraph_refactor` return the same payload as the other
+  write routes; read-only visualizations fall back to parsing source.
+- **`INDEX_CANDIDATE_UNBOUND` is emitted** on the default locator when a supplied
+  candidate is not publication-bound (it was not captured by
+  `build_index_candidate_snapshot`), before any lease or private build. It was
+  reported as `INDEX_CANDIDATE_SUPERSEDED`, whose `recapture` advice repeats the
+  failure for a caller that builds its candidate the same way. Custom paths still
+  accept unbound candidates (owner decision). **`INDEX_WRITER_FENCED` is removed**
+  from the table: every TSA write operation is synchronous, so no route can deliver
+  a result after its operation ends. Generation builds are private until the
+  publication CAS, and a custom-path operation that loses the revision race mid-way
+  has all its later commits refused as `INDEX_CANDIDATE_SUPERSEDED`. Retrying that
+  with a fresh capture is the correct remedy: the loser may hold source edits the
+  winner did not capture, so a non-retryable `discard_result` would lose them.
+- **Implicit commits are fenced.** On an armed `FencedConnection`, a `SAVEPOINT`
+  opened outside a transaction now starts one with `BEGIN`; releasing the outermost
+  savepoint ends it through the fenced commit. `executescript` first commits a
+  pending transaction through the fence, then runs the script inside a `BEGIN` and
+  commits it through the fence as well. Transactions that change no rows (read-only
+  savepoints, a rollback to the outermost savepoint, DDL-only scripts) end without a
+  revision advance, so readers take no write lock and bound candidates stay valid.
+- **The cached dependency graph reads v17 indexes.** Both change-impact loaders
+  require the reader version (`SNAPSHOT_SCHEMA_VERSION`, 17) instead of schema 18,
+  so a published v17 index serves the graph without a parse fallback.
 
 ## Motivation
 
@@ -551,7 +587,11 @@ Existing ordinary indexing errors retain their current result semantics.
 | `INDEX_CANDIDATE_SUPERSEDED` | true | 5000 | `recapture` |
 | `INDEX_CANDIDATE_UNBOUND` | false | 0 | `obtain_bound_candidate` |
 | `INDEX_RECOVERY_REQUIRED` | false | 0 | `recover_index` |
-| `INDEX_WRITER_FENCED` | false | 0 | `discard_result` |
+
+`INDEX_WRITER_FENCED` (`discard_result`) was removed from this table on 2026-10-18
+(#1664): no TSA route delivers a result after its write operation ends, and a
+writer that loses ownership mid-operation is refused as `INDEX_CANDIDATE_SUPERSEDED`
+so that it recaptures. See the follow-ups under "Implementation status".
 
 MCP adapters use `build_error` with `success=false`, `verdict="ERROR"`, a sanitized
 human-readable `error`, and these exact machine fields (`code` maps to `error_code`).
@@ -570,8 +610,7 @@ SQL exception, or operation token belongs in the human-readable error.
 admission errors, rather than reducing them to `{"error": ...}`. Background watchers
 retry only the two retryable codes, using fresh capture after delays of 5, 10, 20, 40,
 then 60 seconds (60-second cap). Existing notification coalescing and stop ownership
-remain mandatory. An unbound candidate or fenced late callback does not cause an
-automatic replay loop. Normal mutating coordination performs admitted recovery;
+remain mandatory. An unbound candidate does not cause an automatic replay loop. Normal mutating coordination performs admitted recovery;
 capture-only callers must explicitly request recovery through a mutating route.
 
 Watch status exposes `last_admission_error` (null or the failure payload) and increments

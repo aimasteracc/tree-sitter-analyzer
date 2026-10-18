@@ -140,7 +140,9 @@ def test_never_indexed_busy_payload_matches_across_mcp_cli_and_watcher(
             CodeGraphIncrementalSyncTool(str(root)).execute({"mode": "sync"})
         )
         warm = asyncio.run(CodeGraphAutoIndexTool(str(root)).execute({"mode": "warm"}))
-        code, cli = _run_cli(["--project-root", str(root), "--incremental-sync"], capsys)
+        code, cli = _run_cli(
+            ["--project-root", str(root), "--incremental-sync"], capsys
+        )
         cache = ASTCache(str(root))
         watcher = FileWatcherDaemon(cache, poll_interval=1, debounce=0)
         try:
@@ -154,8 +156,48 @@ def test_never_indexed_busy_payload_matches_across_mcp_cli_and_watcher(
     assert sync["next_step"] == warm["next_step"] == cli["next_step"]
     assert sync["next_step"] == watched["next_step"]
     # Each route keeps its own sanitized ``error`` text.
-    assert sync["error"] == cli["error"] == "Sync failed: IndexWriterBusy: INDEX_WRITER_BUSY"
+    assert (
+        sync["error"]
+        == cli["error"]
+        == "Sync failed: IndexWriterBusy: INDEX_WRITER_BUSY"
+    )
     assert watched["error"] == INDEX_WRITER_BUSY
     # The warm route keeps its historical ``reason`` key next to the typed fields.
     assert warm["reason"] == "auto-index failed"
     assert not (generation_storage_path(str(root)) / "active.json").exists()
+
+
+def test_refactor_tool_reports_the_typed_busy_payload(tmp_path, monkeypatch):
+    from tree_sitter_analyzer.mcp.tools.codegraph_refactor_tool import (
+        CodeGraphRefactorTool,
+    )
+
+    root = _never_indexed(tmp_path)
+    with _held_lease(root, monkeypatch):
+        result = asyncio.run(
+            CodeGraphRefactorTool(str(root)).execute(
+                {"symbol": "alpha", "new_name": "omega", "mode": "preview"}
+            )
+        )
+    assert _core(result) == _BUSY
+    assert (root / "a.py").read_text(encoding="utf-8").startswith("def alpha")
+
+
+def test_visualization_falls_back_to_source_when_the_warm_is_refused(
+    tmp_path, monkeypatch
+):
+    # Read-only: a refused first warm is not an error; the graph is parsed from
+    # source (``CallGraph``), never presented as index-backed.
+    from tree_sitter_analyzer.call_graph import CachedCallGraph, CallGraph
+    from tree_sitter_analyzer.mcp.tools.codegraph_visualization_hub import (
+        CodeGraphVisualizationHub,
+    )
+
+    root = _never_indexed(tmp_path)
+    hub = CodeGraphVisualizationHub(str(root))
+    with _held_lease(root, monkeypatch):
+        assert hub.cache() is None
+        graph = hub.call_graph()
+    assert isinstance(graph, CallGraph)
+    assert not isinstance(graph, CachedCallGraph)
+    assert is_indexed(str(root)) is False

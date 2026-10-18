@@ -373,7 +373,8 @@ def ensure_symbol_rows_backfilled(
         return True
     except Exception as exc:
         conn.set_progress_handler(None, 0)
-        if savepoint_started:
+        # 经修订号围栏的最外层 RELEASE 提交失败时，围栏已回滚整个事务（#1664）。
+        if savepoint_started and conn.in_transaction:
             conn.execute("ROLLBACK TO ast_symbol_rows_upgrade")
             conn.execute("RELEASE ast_symbol_rows_upgrade")
         if isinstance(exc, sqlite3.OperationalError) and (

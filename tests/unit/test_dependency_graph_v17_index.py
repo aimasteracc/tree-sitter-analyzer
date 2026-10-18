@@ -52,7 +52,9 @@ def _indexed(root: Path) -> Path:
 def _versions(db: Path) -> set[int]:
     connection = sqlite3.connect(db)
     try:
-        return {r[0] for r in connection.execute("SELECT version FROM ast_schema_version")}
+        return {
+            r[0] for r in connection.execute("SELECT version FROM ast_schema_version")
+        }
     finally:
         connection.close()
 

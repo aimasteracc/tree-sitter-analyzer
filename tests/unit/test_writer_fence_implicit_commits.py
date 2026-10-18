@@ -36,6 +36,8 @@ from tree_sitter_analyzer.incremental_sync import IncrementalSync
 
 _A = "def alpha():\n    return 1\n"
 _A_CHANGED = "def alpha():\n    return 2\n"
+# One changed row without touching content (a real UPDATE counts as a change).
+_TOUCH = "UPDATE ast_index SET indexed_at = indexed_at"
 
 
 @pytest.fixture
@@ -151,7 +153,7 @@ def test_outer_savepoint_commit_advances_the_revision(project):
         conn = cache.get_conn()
         conn.execute("SAVEPOINT outer_write")
         conn.execute("SAVEPOINT inner_write")
-        conn.execute("DELETE FROM ast_symbol_activation")
+        conn.execute(_TOUCH)
         conn.execute("RELEASE inner_write")
         assert conn.in_transaction is True  # inner release never commits
         conn.execute("RELEASE SAVEPOINT outer_write")
@@ -208,13 +210,51 @@ def test_commit_inside_an_auto_opened_savepoint_still_ends_the_transaction(proje
         before = _revision(db)
         conn = cache.get_conn()
         conn.execute("SAVEPOINT flush")
-        conn.execute("DELETE FROM ast_symbol_activation")
+        conn.execute(_TOUCH)
         conn.commit()
         assert conn.in_transaction is False
         conn.execute("SAVEPOINT again")
-        conn.execute("DELETE FROM ast_symbol_activation")
+        conn.execute(_TOUCH)
         conn.execute("RELEASE again")
         assert conn.in_transaction is False
     finally:
         cache.close()
     assert _revision(db) == before + 2
+
+
+def test_projection_repair_by_a_loser_is_refused_typed_and_publishes_nothing(project):
+    # The real projection-repair writer (index_symbol_migration) commits only by
+    # releasing its outermost savepoint. The winner revokes the projection marker,
+    # so the loser's repair writes state rows and the marker, then must be refused
+    # with the typed error rather than "no such savepoint" from its cleanup.
+    from tree_sitter_analyzer.index_snapshot_symbols import (
+        ensure_symbol_rows_backfilled,
+    )
+
+    root, db = project
+    loser = ASTCache(str(root), str(db))
+    winner = ASTCache(str(root), str(db))
+    try:
+        with pytest.raises(Superseded) as raised:
+            with writer_operation(loser):
+                conn = winner.get_conn()
+                conn.execute(
+                    "DELETE FROM ast_cache_metadata "
+                    "WHERE key = 'symbol_rows_projection_v1'"
+                )
+                conn.commit()
+                winner_dump = _dump(db)
+                with pytest.raises(Superseded) as repair:
+                    ensure_symbol_rows_backfilled(
+                        loser.get_conn(),
+                        require_fts=loser.fts5_available,
+                        allow_incomplete=True,
+                    )
+        assert loser.get_conn().in_transaction is False
+    finally:
+        winner.close()
+        loser.close()
+    assert admission_failure_of(repair.value).cause_code == REVISION_SUPERSEDED
+    assert admission_failure_of(raised.value).cause_code == REVISION_SUPERSEDED
+    assert _dump(db) == winner_dump
+    _assert_no_writer_holds_lock(db)

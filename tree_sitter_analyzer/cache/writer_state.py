@@ -22,6 +22,7 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
 import threading
 import uuid
@@ -183,17 +184,123 @@ def _mismatch(expected: WriterRevision, current: WriterRevision) -> str:
     return REVISION_SUPERSEDED
 
 
+_SAVEPOINT_SQL = re.compile(
+    r"\s*(SAVEPOINT|RELEASE(?:\s+SAVEPOINT)?|ROLLBACK\s+TO(?:\s+SAVEPOINT)?)"
+    r"\s+(\"?)(\w+)\2\s*;?\s*\Z",
+    re.IGNORECASE,
+)
+
+
 class FencedConnection(sqlite3.Connection):
-    """``commit()`` 先经修订号围栏；无围栏时与普通连接相同。"""
+    """所有提交都先经修订号围栏；无围栏或未武装时与普通连接相同。
+
+    除显式 ``commit()`` 外，SQLite 还会自行提交（#1664）：
+
+    * 无事务时 ``SAVEPOINT`` 自己开启事务，释放最外层保存点即提交。武装后改为先
+      ``BEGIN``，最外层 ``RELEASE`` 再交给 :meth:`commit`（经 CAS）；
+    * ``executescript`` 先隐式提交挂起事务，再以自动提交逐句执行。武装后先经
+      :meth:`commit` 提交挂起事务，脚本在 ``BEGIN`` 开启的事务内执行后同样经 CAS。
+
+    没有行变化的事务（只读保存点、回滚到起点、只有 DDL 的脚本）不发布任何索引
+    内容，直接结束而不推进修订号：读者不取写锁，也不使已绑定的候选失效。
+    """
 
     tsa_fence: WriterFence | None = None
+    # 本连接为最外层保存点自动开启的事务：保存点名栈与开启时的 total_changes。
+    _tsa_savepoints: list[str] | None = None
+    _tsa_changes_at_begin = 0
+
+    def _fence_armed(self) -> bool:
+        fence = self.tsa_fence
+        return fence is not None and fence.armed
 
     def commit(self) -> None:
+        self._tsa_savepoints = None
         fence = self.tsa_fence
         if fence is None:
             super().commit()
             return
         fence.commit(self, super().commit)
+
+    def rollback(self) -> None:
+        self._tsa_savepoints = None
+        super().rollback()
+
+    def execute(self, sql: str, parameters: Any = (), /) -> sqlite3.Cursor:
+        match = _SAVEPOINT_SQL.match(sql) if self._fence_armed() else None
+        if match is None:
+            return super().execute(sql, parameters)
+        return self._savepoint(match.group(1).split()[0].upper(), match.group(3), sql)
+
+    def _savepoint(self, verb: str, name: str, sql: str) -> sqlite3.Cursor:
+        """跟踪本连接自动开启的事务里的保存点；调用方自己的事务不受影响。"""
+        stack = self._tsa_savepoints if self.in_transaction else None
+        name = name.lower()
+        if verb == "SAVEPOINT":
+            if self.in_transaction:
+                cursor = super().execute(sql)
+            else:
+                super().execute("BEGIN")
+                stack = []
+                self._tsa_changes_at_begin = self.total_changes
+                try:
+                    cursor = super().execute(sql)
+                except BaseException:
+                    self.rollback()  # 不留下没有保存点的自动事务
+                    raise
+            if stack is not None:
+                stack.append(name)
+            self._tsa_savepoints = stack
+            return cursor
+        cursor = super().execute(sql)
+        if stack is None or name not in stack:
+            return cursor  # 调用方自己事务内的保存点：释放它不会提交
+        # SQLite 按名字匹配最近的同名保存点。
+        depth = len(stack) - 1 - stack[::-1].index(name)
+        if verb == "ROLLBACK":
+            del stack[depth + 1 :]
+            if depth == 0:
+                # 回到自动事务的起点：此前的行变化都已撤销。
+                self._tsa_changes_at_begin = self.total_changes
+            return cursor
+        del stack[depth:]
+        if not stack:
+            self._end_auto_transaction()
+        return cursor
+
+    def _end_auto_transaction(self) -> None:
+        """最外层保存点已释放：SQLite 原本在此隐式提交，现在经围栏提交。"""
+        try:
+            if self.total_changes == self._tsa_changes_at_begin:
+                self._tsa_savepoints = None
+                super().commit()  # 无行变化：不发布内容，不推进修订号
+            else:
+                self.commit()
+        except BaseException:
+            # 与原先 RELEASE 失败不同，保存点已不存在：回滚，不留可能日后提交的事务。
+            if self.in_transaction:
+                self.rollback()
+            raise
+
+    def executescript(self, sql_script: str, /) -> sqlite3.Cursor:
+        if not self._fence_armed():
+            return super().executescript(sql_script)
+        if self.in_transaction:
+            self.commit()  # 代替 executescript 自己的隐式 COMMIT
+        changes = self.total_changes
+        try:
+            cursor = super().executescript("BEGIN;\n" + sql_script)
+        except BaseException:
+            if self.in_transaction:
+                self.rollback()
+            raise
+        if not self.in_transaction:
+            return cursor
+        if self.total_changes == changes:
+            super().commit()  # 只有 DDL 或只读语句
+        else:
+            self.commit()
+        return cursor
 
 
 def _armed_fence(cache: Any) -> WriterFence | None:

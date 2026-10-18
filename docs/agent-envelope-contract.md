@@ -159,12 +159,15 @@ So it never makes another answer `complete`.
 ## Index write admission codes (RFC-0032)
 
 An index write can be refused before it changes anything: another write
-superseded its candidate, another writer holds the index, or the index storage
-needs recovery. Every write route reports this with one of three `error_code`
-values and the same machine fields:
+superseded its candidate, another writer holds the index, the supplied candidate
+is not bound to the index, or the index storage needs recovery. Every write route
+reports this with one of four `error_code` values and the same machine fields:
 
 - MCP `index action=cache` (`mode=index` / `sync` / `invalidate`),
-  `index action=full` and `codegraph_incremental_sync` `mode=sync`;
+  `index action=full` and `codegraph_incremental_sync` `mode=sync`, including
+  the first automatic warm of a never-indexed project (also `auto_index`
+  `mode=warm` and `codegraph_refactor`; read-only visualizations fall back to
+  parsing source instead);
 - the CLI routes that print those responses (`--ast-cache`, `--full-index`,
   `--incremental-sync`), which exit 1 as for any other failure;
 - `FileWatcherDaemon.trigger_sync()`, whose result is the same payload. The
@@ -177,7 +180,9 @@ Fields: `error_code`, `retryable`, `retry_after_ms`, `next_action`,
 Python exceptions behind these codes (`Superseded`, `IndexWriterBusy`, both
 `IndexWriteAdmissionError` subclasses) keep their messages, which are the
 `cause_code`. Nothing is written in any of these cases, and a one-shot CLI or
-MCP call never retries by itself.
+MCP call never retries by itself. While another writer holds the publication
+lease, a writer waits up to 30 seconds for it before reporting
+`INDEX_WRITER_BUSY`; it proceeds as soon as the lease is released.
 
 Source of truth: `ADMISSION_CODES` and `CAUSE_CODES` in
 [`tree_sitter_analyzer/cache/admission.py`](../tree_sitter_analyzer/cache/admission.py).
@@ -187,12 +192,13 @@ Source of truth: `ADMISSION_CODES` and `CAUSE_CODES` in
 |---|---|---|---|---|---|
 | `INDEX_CANDIDATE_SUPERSEDED` | true | 5000 | `recapture` | `INDEX_GENERATION_SUPERSEDED`, `INDEX_GENERATION_SOURCE_CHANGED`, `INDEX_GENERATION_DIRECTORY_CHANGED`, `INDEX_GENERATION_FOREIGN_STORE`, `INDEX_GENERATION_RETIRING`, `INDEX_WRITER_REVISION_SUPERSEDED`, `INDEX_WRITER_CACHE_REPLACED` (custom `db_path`) | Retry the same call; it captures a fresh candidate. Never replay the old candidate. |
 | `INDEX_WRITER_BUSY` | true | 5000 | `recapture` | `INDEX_WRITER_BUSY` (publication lease wait timed out, or Windows could not replace the selector atomically) | Wait `retry_after_ms`, then retry; if it stays busy, stop the other writer for this project. |
+| `INDEX_CANDIDATE_UNBOUND` | false | 0 | `obtain_bound_candidate` | `INDEX_CANDIDATE_UNBOUND` (Python API only: a `candidate_snapshot` passed to a default-locator write was not captured by `build_index_candidate_snapshot`; custom `db_path` caches still accept unbound candidates) | Do not replay that candidate. Capture a fresh one with `build_index_candidate_snapshot`, or omit `candidate_snapshot`, then retry. |
 | `INDEX_RECOVERY_REQUIRED` | false | 0 | `recover_index` | `INDEX_GENERATION_SELECTOR_INVALID`, `INDEX_GENERATION_SELECTOR_MISSING`, `INDEX_GENERATION_PATH_UNSAFE`, `INDEX_GENERATION_LOCK_UNSAFE`, `INDEX_WRITER_STATE_MISSING` (custom `db_path`) | Do not retry. Stop every TSA process for the project, move `.ast-cache` (or the custom database) aside, replacing a linked `.ast-cache` with a real directory, then rebuild with `index action=full mode=full`. |
 <!-- drift:index-admission-codes:end -->
 
 The watcher retries only the two retryable codes, with a fresh capture after
 5, 10, 20 and 40 seconds and then every 60 seconds. It does not retry
-`INDEX_RECOVERY_REQUIRED`. `INDEX_GENERATION_SOURCE_RECHECK_INCOMPLETE` and
+`INDEX_CANDIDATE_UNBOUND` or `INDEX_RECOVERY_REQUIRED`. `INDEX_GENERATION_SOURCE_RECHECK_INCOMPLETE` and
 `INDEX_GENERATION_SOURCE_HASH_BUDGET_EXCEEDED` are not admission failures; they
 keep their own `error_code`.
 

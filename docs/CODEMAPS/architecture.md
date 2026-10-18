@@ -90,12 +90,14 @@ POSIX 枚举通过固定父目录描述符和 no-follow 打开，并核对目录
 此后不再写旧库；只读调用不引导、不复制。`cache/generation_reads.py` 在 MCP 调用内固定版本，下次调用刷新缓存读路径；
 旧读会话继续可用，约束持久化也发布私有副本；当前不自动回收版本。
 同进程 watcher 从候选捕获到提交使用逻辑数据库共享锁；跨进程并发发布通过父身份
-比较拒绝过期候选。准入失败由 `cache/admission.py` 归类为 `INDEX_CANDIDATE_SUPERSEDED` /
-`INDEX_WRITER_BUSY` / `INDEX_RECOVERY_REQUIRED`（RFC-0032 slice 4），MCP、CLI 与 watcher
-返回同一答复；watcher 只按 5–60 秒退避重试前两种。自定义 `db_path` 仍原地写入，由
-`cache/writer_state.py` 的 schema 18 `ast_writer_state` 修订号 CAS 防护（slice 5）：经
-`ASTCache.get_conn()` 的每次写提交在事务内推进修订号，写入操作开始时绑定修订号，失配即回滚并
-报 `INDEX_CANDIDATE_SUPERSEDED`；只防护同版本 TSA 写入者。完成激活标记阻止选择器或版本目录丢失后退回旧库；首次激活中断仅允许
+比较拒绝过期候选（发布租约最多等待 30 秒，#1664）。准入失败由 `cache/admission.py` 归类为
+`INDEX_CANDIDATE_SUPERSEDED` / `INDEX_WRITER_BUSY` / `INDEX_CANDIDATE_UNBOUND`（默认定位符上
+未绑定的候选，#1664）/ `INDEX_RECOVERY_REQUIRED`（RFC-0032 slice 4），MCP、CLI、watcher 与
+`ensure_indexed` 的首次预热返回同一答复；watcher 只按 5–60 秒退避重试前两种。自定义 `db_path`
+仍原地写入，由 `cache/writer_state.py` 的 schema 18 `ast_writer_state` 修订号 CAS 防护（slice 5）：经
+`ASTCache.get_conn()` 的每次写提交（含释放最外层保存点与 `executescript` 的隐式提交，#1664）在事务内
+推进修订号，写入操作开始时绑定修订号，失配即回滚并报 `INDEX_CANDIDATE_SUPERSEDED`；只防护同版本
+TSA 写入者。完成激活标记阻止选择器或版本目录丢失后退回旧库；首次激活中断仅允许
 持有发布租约的写者重试，普通读者仍拒绝缺失选择器。
 POSIX 发布包含文件与目录同步；Windows 目录掉电持久性仍不作保证。
 停止时在统一超时预算内等待监听和计时器线程；未退出的后台线程仍计入运行状态，

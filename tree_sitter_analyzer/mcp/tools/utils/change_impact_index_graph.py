@@ -25,11 +25,12 @@ from pathlib import Path
 from typing import Any
 
 from ....cache.generation_routing import resolve_index_path
-from ....cache.schema import CURRENT_SCHEMA_VERSION, already_applied_versions
+from ....cache.schema import already_applied_versions
 from ....constants import EXCLUDE_DIRS, GRAPH_SOURCE_EXTS
 from ....core.parser import Parser
 from ....import_extractors import walk_imports
 from ....incremental_sync_support import file_content_hash
+from ....index_snapshot_schema import reader_schema_supported
 from ....project_graph import (
     _IMPORT_RESOLVERS,
     DependencyGraph,
@@ -131,10 +132,8 @@ def _read_index_rows(project_root: str) -> dict[str, dict[str, Any]]:
         conn.row_factory = sqlite3.Row
         # 版本检查与行读取处于同一读事务，避免读到不同代的混合状态。
         conn.execute("BEGIN")
-        versions = already_applied_versions(conn)
-        if CURRENT_SCHEMA_VERSION not in versions or any(
-            version < 1 or version > CURRENT_SCHEMA_VERSION for version in versions
-        ):
+        # 读者要求 v17（schema 18 只加写入修订控制表）：已发布的 v17 版本照常可读。
+        if not reader_schema_supported(already_applied_versions(conn)):
             return {}
         rows = conn.execute(
             "SELECT file_path, language, imports_json, symbols_json, "

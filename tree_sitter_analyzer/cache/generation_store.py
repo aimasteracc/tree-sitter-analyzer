@@ -54,8 +54,10 @@ from .source_recheck import permanent_rejections_only as permanent_rejections_on
 from .source_recheck import source_contents as _source_contents
 
 _PATH_ONLY_SOURCE = os.name != "posix"
-# 发布租约的等待上限（秒）；超时报 ``INDEX_WRITER_BUSY``。
-LEASE_TIMEOUT_S = 5.0
+# 发布租约的等待上限（秒）；超时报 ``INDEX_WRITER_BUSY``。RFC-0032 规定 30 秒。
+# 实测（#1664，Windows，2,865 个文件）：发布临界区要复核全部源码，持有 3.4–6.6 秒，
+# 5 秒上限会把普通竞争报成忙。租约一释放等待即结束，30 秒只是上限而非常态延迟。
+LEASE_TIMEOUT_S = 30.0
 logger = logging.getLogger(__name__)
 
 

@@ -27,6 +27,19 @@ from .index_source_snapshot import (
 # 控制表（RFC-0032 slice 5），读者不依赖它，因此已发布的 v17 版本照常可读；
 # 高于 CURRENT_SCHEMA_VERSION 的未来版本仍被拒绝。
 SNAPSHOT_SCHEMA_VERSION = min(17, CURRENT_SCHEMA_VERSION)
+
+
+def reader_schema_supported(versions: set[int]) -> bool:
+    """只读查询能否使用该索引：已记录读者要求的版本，且没有未知的未来版本。
+
+    与快照校验同一规则：v17 版本照常可读，不必等下一次写入迁移到 18
+    （RFC-0032 #1664）。
+    """
+    return SNAPSHOT_SCHEMA_VERSION in versions and all(
+        1 <= version <= CURRENT_SCHEMA_VERSION for version in versions
+    )
+
+
 SCHEMA_V13_INDEX_SNAPSHOT = """
 CREATE TABLE IF NOT EXISTS ast_index_snapshot_manifest (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
