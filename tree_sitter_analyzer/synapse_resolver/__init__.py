@@ -45,6 +45,7 @@ from ._constants import (
 )
 from ._context import ResolverContext, build_resolver_context, is_enabled
 from ._imports import ImportEntry, parse_imports
+from ._reexports import resolve_reexported_name
 
 
 @dataclass(frozen=True)
@@ -158,8 +159,13 @@ def _try_import(
 
         target = ctx.name_to_source.get(caller_file, {}).get(base)
         if target:
-            return ResolvedCallee(
-                _lookup_symbol_id(target, base, ctx), "project", target
+            return _reexported_or(
+                base,
+                qualifier,
+                caller_file,
+                ctx,
+                _lookup_symbol_id(target, base, ctx),
+                target,
             )
         return None
 
@@ -182,8 +188,35 @@ def _try_import(
     )
     if file_match is not None:
         target, _confidence = file_match
-        return ResolvedCallee(_lookup_symbol_id(target, base, ctx), "project", target)
+        return _reexported_or(
+            base,
+            qualifier,
+            caller_file,
+            ctx,
+            _lookup_symbol_id(target, base, ctx),
+            target,
+        )
     return None
+
+
+def _reexported_or(
+    base: str,
+    qualifier: str,
+    caller_file: str,
+    ctx: ResolverContext,
+    symbol_id: int | None,
+    target: str,
+) -> ResolvedCallee:
+    """导入落在再导出文件时解析到真正的定义文件；否则保持原有的文件级解析。
+
+    ``from facade import f`` 而 ``facade`` 只是 ``from .impl import f``：边须指向
+    ``impl``，否则按定义文件查询 ``f`` 看不到这个已解析的调用，答复会错误地 complete。
+    """
+    if symbol_id is None and not qualifier:
+        reexported = resolve_reexported_name(base, caller_file, ctx)
+        if reexported is not None:
+            return ResolvedCallee(reexported[0], "project", reexported[1])
+    return ResolvedCallee(symbol_id, "project", target)
 
 
 def _try_stdlib(
