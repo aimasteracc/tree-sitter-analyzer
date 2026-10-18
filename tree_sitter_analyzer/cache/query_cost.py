@@ -78,15 +78,47 @@ EXPENSIVE_ROUTES: dict[tuple[str, str], _Route] = {
 }
 
 
+#: Memoized ``_index_holds_rows`` answers, keyed by project root and bound to
+#: the live index content identity they were computed against.
+_HOLDS_ROWS_MEMO: dict[str, tuple[tuple[Any, ...], bool]] = {}
+#: Bound on memo entries (one per project root).
+_HOLDS_ROWS_MEMO_MAX = 32
+
+
 def _index_holds_rows(project_root: str | None) -> bool:
     """Whether the on-disk index holds rows.
 
     The same definition ``CodeGraphAutoIndexTool`` reports as ``indexed``: the
     in-memory guard marker says only that *this* process warmed something, and
     a fresh process facing a fully built cache must not read that as absent.
+
+    dogfood round 7: opening a full ``ASTCache`` for this one bit cost about
+    0.15 s per ``nav callers`` call.  The answer is reused only while the live
+    index content identity (generation, ``ast_index`` row count and newest
+    ``indexed_at``, max edge rowid, call-graph state) is unchanged, and is
+    stored only when that identity held across the whole computation.
     """
     if not project_root:
         return False
+    from .live_index_probe import probe_live_index
+
+    before = probe_live_index(project_root)
+    if before is not None:
+        memo = _HOLDS_ROWS_MEMO.get(project_root)
+        if memo is not None and memo[0] == before.identity:
+            return memo[1]
+    holds = _compute_index_holds_rows(project_root)
+    if before is not None:
+        after = probe_live_index(project_root)
+        if after is not None and after.identity == before.identity:
+            if len(_HOLDS_ROWS_MEMO) >= _HOLDS_ROWS_MEMO_MAX:
+                _HOLDS_ROWS_MEMO.pop(next(iter(_HOLDS_ROWS_MEMO)))
+            _HOLDS_ROWS_MEMO[project_root] = (before.identity, holds)
+    return holds
+
+
+def _compute_index_holds_rows(project_root: str) -> bool:
+    """The uncached definition: open the index and read its file count."""
     try:
         from ..ast_cache import ASTCache
 
