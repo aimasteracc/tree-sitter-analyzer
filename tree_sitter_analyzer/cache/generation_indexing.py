@@ -255,6 +255,8 @@ async def run_full_index(
             scope.certification_max_files, scope.effective_excludes
         )
 
+    from ..mcp.tools.full_index_outcome import published_result, unpublished_result
+
     try:
         store = project_store(root, scope)
         candidate = store.capture(capture)
@@ -280,9 +282,8 @@ async def run_full_index(
             if not stable_only and (
                 not result.get("success") or not result.get("scope_complete")
             ):
-                result["success"] = False
-                result["published"] = False
-                return result
+                # #1674：未发布即失败，并给出类型化的 error / error_code / next_step。
+                return unpublished_result(result)
             try:
                 store.seal(selector)
                 store.publish(PreparedGeneration(candidate, selector, SyncResult()))
@@ -293,10 +294,9 @@ async def run_full_index(
                 except (OSError, ValueError):
                     failure["published"] = None
                 return failure
-        result["published"] = True
-        if stable_only and not result.get("scope_complete"):
-            # 已发布但未认证：success 保持 False（PR #1350），完整性如实为 incomplete。
-            result["completeness"] = "incomplete"
+        # #1674：已发布即成功；只缺可选语法时完整性如实为 incomplete（未认证，
+        # scope_complete 仍为 False），跳过的文件列在 skipped_files。
+        result = published_result(result, stable_only=stable_only)
         result["generation_id"] = selector.generation_id
         result["elapsed_seconds"] = round(time.monotonic() - started_at, 3)
         return result
