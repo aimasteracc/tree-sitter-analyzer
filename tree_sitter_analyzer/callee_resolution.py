@@ -37,6 +37,10 @@ class CalleeResolver:
             {} if memoize_global else None
         )
 
+    def release_global_memo(self) -> None:
+        """丢弃全局兜底记忆并停止记忆（索引此后可能被调用方改变）。"""
+        self._global_memo = None
+
     def resolve_items(
         self,
         callee_name: str,

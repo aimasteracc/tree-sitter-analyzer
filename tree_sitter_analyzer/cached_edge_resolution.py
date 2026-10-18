@@ -97,6 +97,11 @@ class CachedEdgeResolver:
             {} if memoize else None
         )
 
+    def release_memos(self) -> None:
+        """#1657：构图结束后释放记忆（全局兜底列表约占数十 MB），之后不再记忆。"""
+        self._static_memo = None
+        self._resolver.release_global_memo()
+
     @property
     def callee_resolver(self) -> CalleeResolver:
         """底层的裸名解析器（与 :class:`CallGraph` 共用）。"""

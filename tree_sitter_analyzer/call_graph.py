@@ -918,6 +918,8 @@ class CachedCallGraph(CallGraph):
                 )
                 self._record_edge_binding(caller_ref, callee_ref, targets.binding)
 
+        # #1657：构图内记忆只服务这一次构建；保留下来的裸名解析器不再带着它。
+        edge_resolver.release_memos()
         self._built = True
 
 

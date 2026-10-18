@@ -515,3 +515,12 @@ def test_build_pauses_cyclic_gc_and_restores_it(
         assert not gc.isenabled()  # 进入时已关闭：不擅自开启。
     finally:
         gc.enable()
+
+
+def test_build_releases_its_resolution_memos(indexed: Path) -> None:
+    # #1657：构图内记忆只服务一次构建；保留下来的解析器不再记忆、也不持有列表。
+    graph = _fresh(indexed)
+    resolver = graph._callee_resolver
+    assert resolver is not None
+    assert resolver._global_memo is None
+    assert [c["name"] for c in graph.callers_of("Widget.used")] == ["run"]
