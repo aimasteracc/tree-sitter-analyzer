@@ -308,7 +308,12 @@ class CachedEdgeResolver:
         if _qualifier_admits_global(qualifier, ref):
             return True
         imported = self._file_import_map.get(caller_file, {})
-        return imported.get(qualifier.split(".", 1)[0]) == ref.file_path
+        if imported.get(qualifier.split(".", 1)[0]) == ref.file_path:
+            return True
+        # `client.fetch()`：候选经导入落在 `client.py`，接收者正是该模块名。
+        return ref.file_path in imported.values() and _module_name(
+            ref.file_path
+        ) == _receiver_name(qualifier)
 
 
 def _static_memo_key(edge: dict[str, Any], caller_file: str) -> tuple[Any, ...]:
@@ -341,6 +346,15 @@ _KEY_GETTERS: dict[tuple[str, ...], Callable[[dict[str, Any]], tuple[Any, ...]]]
 def _split_qualifier(name: str) -> tuple[str, str]:
     # #1669：`Foo(a.b).m` 的接收者是 `Foo(a.b)`，括号内的点不参与拆分。
     return split_receiver(name)
+
+
+def _module_name(file_path: str) -> str:
+    """``pkg/client.py`` -> ``client``；``pkg/__init__.py`` -> ``pkg``。"""
+    parts = file_path.replace("\\", "/").rsplit("/", 2)
+    stem = parts[-1].rsplit(".", 1)[0]
+    if stem == "__init__" and len(parts) > 1:
+        return parts[-2]
+    return stem
 
 
 def _receiver_name(qualifier: str) -> str:

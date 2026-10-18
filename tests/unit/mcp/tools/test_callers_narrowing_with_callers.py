@@ -173,8 +173,9 @@ async def test_ambiguous_importlib_attribute_call_keeps_incomplete(tmp_path) -> 
 
 @pytest.mark.asyncio
 async def test_unique_importlib_attribute_call_is_listed(tmp_path) -> None:
-    # #1643：名字唯一时 `collector.digest_bytes(...)` 已绑定为调用边并列出，
-    # complete 是真实的普查而不是漏报。
+    # #1643：`collector.digest_bytes(...)` 按名字列出。#1669：`collector` 是
+    # `importlib.import_module` 的返回值，接收者未被证明，名字唯一也不能把它
+    # 绑定为确定调用边——列表因此只是下界。
     support = (
         "def digest_bytes(data):\n    return data\n\n\n"
         "def bundle(blob):\n    return digest_bytes(blob)\n"
@@ -190,7 +191,8 @@ async def test_unique_importlib_attribute_call_is_listed(tmp_path) -> None:
     result = await _callers(root, "digest_bytes")
 
     assert sorted(c["name"] for c in result["callers"]) == ["bundle", "test_digest"]
-    assert result["completeness"] == "complete"
+    assert result["completeness"] == "incomplete"
+    assert result["completeness_reasons"] == ["UNRESOLVED_INBOUND"]
 
 
 @pytest.mark.asyncio
