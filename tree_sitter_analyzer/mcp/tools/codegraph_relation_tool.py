@@ -9,6 +9,7 @@ from typing import Any
 
 from ...call_graph import CachedCallGraph, CallGraph
 from ...graph.edge_store import _RESOLVED_CALLEE_RESOLUTIONS
+from .callers_annotated import annotated_provenance
 from .parse_fallback_budget import index_missing_response
 from .relation_freshness import index_identity
 
@@ -192,21 +193,23 @@ def label_graph_relations(
     找不到对应边的条目如实标为 ``unknown``，不猜解析文件。返回新列表。
     """
     edges: dict[tuple[str, str, int], tuple[str, str, str]] = {}
+    bindings: dict[tuple[str, str, int], dict[str, Any] | None] = {}
+    edge_binding = getattr(graph, "edge_binding", None)
     for target in graph.resolve_targets(func_name, file_path):
         neighbours = (
             graph.caller_refs_of(target) if inbound else graph.callee_refs_of(target)
         )
         for ref in neighbours:
             callee, caller = (target, ref) if inbound else (ref, target)
-            edges.setdefault(
-                (ref.file_path, ref.name, ref.start_line),
-                (callee.name, callee.file_path, caller.file_path),
-            )
+            key = (ref.file_path, ref.name, ref.start_line)
+            edges.setdefault(key, (callee.name, callee.file_path, caller.file_path))
+            binding = edge_binding(caller, callee) if callable(edge_binding) else None
+            # 任一目标经普通边到达即不再标注为注解绑定。
+            bindings[key] = binding if bindings.get(key, binding) else None
     labelled: list[dict[str, Any]] = []
     for entry in entries:
-        edge = edges.get(
-            (entry.get("file", ""), entry.get("name", ""), entry.get("line", 0))
-        )
+        key = (entry.get("file", ""), entry.get("name", ""), entry.get("line", 0))
+        edge = edges.get(key)
         resolution, resolved_file = (
             classify_callee_resolution(*edge) if edge else ("unknown", "")
         )
@@ -215,6 +218,7 @@ def label_graph_relations(
                 **entry,
                 "callee_resolution": resolution,
                 "callee_resolved_file": resolved_file,
+                **annotated_provenance(bindings.get(key)),
             }
         )
     return labelled

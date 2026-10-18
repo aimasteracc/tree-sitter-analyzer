@@ -145,6 +145,17 @@ the gates that re-check an edge-level `complete` and appear alone.
 | `DECORATOR_MAY_REGISTER` | A decorator may register the target for dispatch. | Inspect the decorator. |
 <!-- drift:completeness-reasons:end -->
 
+### Callers bound through an annotation (RFC-0038)
+
+A caller entry whose call was attributed only through the receiver's annotated
+type carries `resolution_kind: "annotated_receiver"`, plus `receiver_type`,
+`type_source` (`param` / `local` / `attribute` / `return` / `module`) and `confidence`
+(`0.8`). Example: `store.publish()` where `store: GenerationStore`, or
+`store = project_store()` with `-> GenerationStore`. Such an edge counts as
+resolved only for the method it is bound to. For every other method of that
+name it stays an unresolved inbound edge, an override in a subclass included.
+So it never makes another answer `complete`.
+
 ## Worked examples (paste-real)
 
 Both examples were produced by running the tool classes' `execute()` directly

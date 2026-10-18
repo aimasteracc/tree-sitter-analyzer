@@ -27,7 +27,8 @@ resolver does NOT promote star-imported names to ``project`` in 3a.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 from ..languages.language_family import languages_compatible
 from ._constants import (
@@ -49,6 +50,9 @@ class ResolvedCallee:
     callee_symbol_id: int | None
     resolution: str
     resolved_file: str
+    #: RFC-0038: provenance of an ``annotated_receiver`` binding, persisted as
+    #: ``metadata.receiver_binding``; ``None`` for every other resolution.
+    binding: dict[str, Any] | None = field(default=None, compare=False)
 
 
 def _split_qualifier(name: str) -> tuple[str, str]:

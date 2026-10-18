@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Collection
 from typing import Any
 
 from ._ast_cache_database_mixin import ASTCacheSurface
@@ -79,7 +80,10 @@ class ASTCacheGraphMixin(ASTCacheSurface):
                 .execute(
                     "SELECT caller_name, file_path AS caller_file, caller_line, "
                     "callee_name, callee_full, callee_line, file_path, language, "
-                    "callee_resolution, callee_resolved_file "
+                    "callee_resolution, callee_resolved_file, "
+                    "CASE WHEN callee_resolution = 'annotated_receiver' "
+                    "THEN json_extract(metadata, '$.receiver_binding') END "
+                    "AS receiver_binding "
                     "FROM edges WHERE kind = 'calls'"
                 )
                 .fetchall()
@@ -187,6 +191,7 @@ class ASTCacheGraphMixin(ASTCacheSurface):
         self,
         callee_name: str,
         callee_file: str | None = None,
+        bound_targets: Collection[tuple[str, int]] | None = None,
     ) -> int | None:
         """Count in-scope CALLS edges into ``callee_name`` not known resolved.
 
@@ -199,7 +204,7 @@ class ASTCacheGraphMixin(ASTCacheSurface):
 
             return EdgeStore(
                 self._get_conn(), ensure_schema=False
-            ).count_unresolved_callers(callee_name, callee_file)
+            ).count_unresolved_callers(callee_name, callee_file, bound_targets)
         except sqlite3.OperationalError:
             return None
 
@@ -270,6 +275,22 @@ class ASTCacheGraphMixin(ASTCacheSurface):
         except sqlite3.OperationalError:
             return None
         return tuple(str(row[0]) for row in rows if row[0])
+
+    def symbol_definitions(self, name: str) -> list[tuple[str, int]] | None:
+        """RFC-0038：名为 ``name`` 的函数 / 方法定义（文件、行）；读取失败为 None。"""
+        try:
+            rows = (
+                self._get_conn()
+                .execute(
+                    "SELECT file_path, line FROM ast_symbol_rows WHERE name = ? "
+                    "AND kind IN ('function', 'method')",
+                    (name,),
+                )
+                .fetchall()
+            )
+        except sqlite3.OperationalError:
+            return None
+        return [(str(row[0]), int(row[1] or 0)) for row in rows if row[0]]
 
     def call_graph_built(self) -> bool:
         """Return whether a completed call-graph build is recorded."""

@@ -166,9 +166,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer import ast_cache
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
-        # v39：分类驱动运行时提取，并保留加载器投影契约。
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 39
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 39
+        # v40：Python 调用边携带接收者类型线索（RFC-0038），并保留加载器投影契约。
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 40
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 40
 
 
 def test_python_star_imported_loader_fails_closed() -> None:

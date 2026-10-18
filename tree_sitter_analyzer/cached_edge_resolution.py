@@ -22,6 +22,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from .cached_annotated_binding import (
+    ANNOTATED_RECEIVER,
+    bound_definition,
+    dispatch_alternatives,
+    parse_binding,
+)
 from .call_graph_self_dispatch import (
     OWN_INSTANCE_QUALIFIERS,
     override_candidates,
@@ -54,6 +60,8 @@ class EdgeTargets:
 
     certain: list[FunctionRef] = field(default_factory=list)
     possible: list[FunctionRef] = field(default_factory=list)
+    #: RFC-0038：经注解绑定的边的来源（``receiver_binding``）；其余为 None。
+    binding: dict[str, Any] | None = None
 
 
 class CachedEdgeResolver:
@@ -138,6 +146,10 @@ class CachedEdgeResolver:
         resolution = edge.get("callee_resolution")
         if resolution in _NON_PROJECT_RESOLUTIONS:
             return EdgeTargets()
+        if resolution == ANNOTATED_RECEIVER:
+            annotated = self._annotated_targets(edge, base_name, qualifier, caller_file)
+            if annotated is not None:
+                return annotated
         if resolution in _PROJECT_RESOLUTIONS:
             resolved_file = str(edge.get("callee_resolved_file") or "")
             persisted = self._persisted_targets(base_name, qualifier, resolved_file)
@@ -148,6 +160,35 @@ class CachedEdgeResolver:
             if persisted is not None:
                 return persisted
         return self._inferred_targets(full_name, qualifier, caller_file)
+
+    def _annotated_targets(
+        self, edge: dict[str, Any], base_name: str, qualifier: str, caller_file: str
+    ) -> EdgeTargets | None:
+        """RFC-0038：注解绑定的方法是确定目标，覆写与其余同名候选是可能目标。"""
+        binding = parse_binding(edge.get("receiver_binding"))
+        if binding is None:
+            return None
+        target = bound_definition(
+            self._functions_by_file,
+            str(edge.get("callee_resolved_file") or ""),
+            base_name,
+            binding,
+        )
+        if target is None:
+            return None
+        full_name = f"{qualifier}.{base_name}" if qualifier else base_name
+        before = self._inferred_targets(full_name, qualifier, caller_file)
+        possible: list[FunctionRef] = []
+        for ref in [
+            *dispatch_alternatives(
+                self._subclasses, self._functions_by_name, base_name, binding, target
+            ),
+            *before.certain,
+            *before.possible,
+        ]:
+            if ref != target and ref not in possible:
+                possible.append(ref)
+        return EdgeTargets(certain=[target], possible=possible, binding=binding)
 
     def _persisted_targets(
         self, base_name: str, qualifier: str, resolved_file: str

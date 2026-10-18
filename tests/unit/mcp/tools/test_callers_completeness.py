@@ -601,7 +601,7 @@ async def test_failed_declaring_read_says_so_instead_of_claiming_a_zero(
     )
     conn.commit()
 
-    def _unreadable(self, func_name, file_path=None):
+    def _unreadable(self, func_name, file_path=None, bound_targets=None):
         return None
 
     monkeypatch.setattr(ASTCache, "count_unresolved_callers", _unreadable)

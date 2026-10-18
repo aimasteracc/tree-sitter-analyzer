@@ -650,6 +650,9 @@ def write_graph_edges_for_file(
         branch_ctx = edge.get("branch")
         if branch_ctx is not None:
             edge_metadata["branch"] = branch_ctx
+        receiver_hint = edge.get("receiver_hint")
+        if receiver_hint is not None:
+            edge_metadata["receiver_hint"] = receiver_hint
         edges.append(
             Edge(
                 source,
