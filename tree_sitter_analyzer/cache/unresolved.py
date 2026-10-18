@@ -27,6 +27,7 @@ from ..graph.edge_store import Edge, EdgeKind, EdgeStore, parse_node_id, symbol_
 from ..languages.language_family import languages_compatible
 from ..receiver_proof import has_unproven_receiver
 from ..utils.test_detection import is_test_file
+from .inherited_self_calls import resolve_inherited_self_calls
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +146,8 @@ def resolve_unresolved_refs(conn: sqlite3.Connection) -> dict[str, int] | None:
             except (sqlite3.OperationalError, TypeError, ValueError) as exc:
                 logger.debug("unresolved ref failed: %s", exc)
                 errors += 1
+    # #1677：基类的 EXTENDS 边此时已解析，继承调用按 MRO 绑定到最近的定义。
+    resolved += resolve_inherited_self_calls(conn)
     try:
         conn.commit()
     except sqlite3.OperationalError:
@@ -326,6 +329,10 @@ def _call_refs(
         if has_unproven_receiver(callee_full):
             # #1669：第二遍只按名字挑候选，看不到接收者类型；`xs.append()` 不能
             # 因项目里只有一个（或同目录有一个）`append` 就被改写为 project。
+            continue
+        if callee_full in (f"self.{callee_name}", f"cls.{callee_name}"):
+            # #1677：外围类没有的 `self.m()` 由 MRO 解析（inherited_self_calls），
+            # 不再按名字挑同目录 / 唯一的同名方法。
             continue
         caller_name = str(edge.get("caller_name") or "")
         caller_line = _line(edge.get("caller_line"))
