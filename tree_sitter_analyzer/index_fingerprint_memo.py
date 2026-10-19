@@ -19,6 +19,8 @@ import threading
 from collections import OrderedDict
 from collections.abc import Callable
 
+from . import index_fingerprint_store
+
 # 快照注册表最多 16 个活跃能力，每个数据库版本占指纹与投影判定两项；
 # 每项仅一个短字符串，内存可忽略。
 _MEMO_CAPACITY = 32
@@ -32,20 +34,29 @@ def memoized_index_fingerprint(
     """命中则返回同一字节内容的既有指纹，否则计算并按 LRU 有界保存。
 
     ``key`` 为 None 表示调用方无法给出内容摘要，此时总是重新计算。
+    ``key[0]`` 为项目根：#1700 起进程内未命中时先查该项目的落盘记录
+    （``index_fingerprint_store``，按完整键逐元素复核），新算出的值也写回。
     """
     if key is None:
         return compute()
+    return _memoized(key, compute, key[0])
+
+
+def _memoized(key: tuple[str, ...], compute: Callable[[], str], root: str) -> str:
     with _MEMO_LOCK:
         cached = _MEMO.get(key)
         if cached is not None:
             _MEMO.move_to_end(key)
             return cached
-    fingerprint = compute()
+    stored = index_fingerprint_store.lookup(root, key)
+    fingerprint = stored if stored is not None else compute()
     with _MEMO_LOCK:
         _MEMO[key] = fingerprint
         _MEMO.move_to_end(key)
         while len(_MEMO) > _MEMO_CAPACITY:
             _MEMO.popitem(last=False)
+    if stored is None:
+        index_fingerprint_store.store(root, key, fingerprint)
     return fingerprint
 
 
@@ -75,8 +86,10 @@ def memoized_projection_exact(
     """
     if key is None:
         return compute()
-    verdict = memoized_index_fingerprint(
-        ("symbol_projection_exact", *key), lambda: "1" if compute() else "0"
+    verdict = _memoized(
+        ("symbol_projection_exact", *key),
+        lambda: "1" if compute() else "0",
+        key[0],
     )
     return verdict == "1"
 
