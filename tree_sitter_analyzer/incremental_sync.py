@@ -534,6 +534,10 @@ class IncrementalSync:
                 if entry.decision == "error"
                 and entry.reason in _PERMANENT_SOURCE_REJECTIONS
             ]
+            # #1673：路径平台的候选快照不带摘要；发布侧捕获时绑定的摘要随私有
+            # 构建传入，比较直接使用它们，不为每个文件重读一遍（file_changed）。
+            supplied = getattr(self._cache, "_bound_source_digests", None)
+            bound = supplied if isinstance(supplied, dict) else {}
             for entry in candidate_snapshot.selected_entries:
                 change_reason = (
                     None
@@ -553,7 +557,8 @@ class IncrementalSync:
                     "frozen_identity": entry.frozen_identity,
                     "mtime_ns": fingerprint.mtime_ns,
                     "file_size": fingerprint.file_size,
-                    "content_hash": fingerprint.content_hash,
+                    "content_hash": bound.get(entry.rel_path)
+                    or fingerprint.content_hash,
                 }
             return (
                 disk_files,

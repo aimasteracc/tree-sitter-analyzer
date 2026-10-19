@@ -259,6 +259,8 @@ def walk_and_partition(
         }
 
     if candidate_snapshot is not None:
+        supplied = getattr(cache, "_bound_source_digests", None)
+        bound_digests: dict[str, str] = supplied if isinstance(supplied, dict) else {}
         if not snapshot_validated:
             validate_index_candidate_snapshot(
                 cache.project_root, max_files, candidate_snapshot
@@ -313,12 +315,16 @@ def walk_and_partition(
             fingerprint = cast(IndexFileFingerprint, entry.fingerprint)
             language = cast(str, entry.language)
             row = indexed_map.get(entry.rel_path)
+            # #1673：路径平台的候选快照不带摘要（只带不可读标记）；发布侧捕获时
+            # 绑定的摘要随私有构建传入，缓存行必须与它相同（RFC-0030：内容证据，
+            # 不只看 mtime 与大小）。
+            digest = bound_digests.get(entry.rel_path) or fingerprint.content_hash
             if (
                 row is not None
                 and row[0] == fingerprint.mtime_ns
                 and row[1] == fingerprint.file_size
                 and row[2] >= extractor_version
-                and (not fingerprint.content_hash or row[3] == fingerprint.content_hash)
+                and (not digest or row[3] == digest)
             ):
                 already_cached.append(
                     {

@@ -25,7 +25,7 @@ from .generation_noop import (
     same_certified_content,
     unpublished_result,
 )
-from .generation_noop_precheck import unchanged_before_build
+from .generation_noop_precheck import bound_digests, unchanged_before_build
 from .generation_routing import (
     generation_storage_path,
     logical_index_path,
@@ -168,6 +168,8 @@ def mutate_published_cache(
             selector = store.begin(candidate)
             with store.abandoning(selector):  # #1595：未发布即回收
                 writable = ASTCache(cache.project_root, str(store.database(selector)))
+                # #1673：本次捕获绑定的内容摘要交给运行本身（不重读文件）。
+                writable._bound_source_digests = bound_digests(candidate)
                 try:
                     if snapshot_operation is not None:
                         result = snapshot_operation(writable, candidate.snapshot)
@@ -239,6 +241,8 @@ def run_incremental_sync(
         with store.abandoning(selector):  # #1595：未发布即回收
             writable = ASTCache(cache.project_root, str(store.database(selector)))
             writable._publishes_project_index = True
+            # #1673：本次捕获绑定的内容摘要交给同步本身（不为比较重读每个文件）。
+            writable._bound_source_digests = bound_digests(candidate)
             try:
                 arguments["candidate_snapshot"] = candidate.snapshot
                 result = (sync_factory or IncrementalSync)(writable).sync(**arguments)

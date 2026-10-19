@@ -152,3 +152,88 @@ def test_a_slow_projection_check_does_not_rewrite_every_file(tmp_path, monkeypat
         cache.close()
 
     assert (second["indexed"], second["cached"]) == (0, 3)
+
+
+def _published_symbols(root) -> list[str]:
+    from tree_sitter_analyzer.cache.generation_routing import resolve_index_location
+
+    path = resolve_index_location(str(root)).path
+    connection = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)
+    try:
+        return [r[0] for r in connection.execute("SELECT name FROM ast_symbol_rows")]
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize("route", ["index_project", "sync"])
+def test_same_size_same_mtime_rewrite_is_reindexed(tmp_path, route) -> None:
+    # 路径平台的候选快照不带摘要：缓存判定若只看 mtime 与大小，等长改写并恢复
+    # mtime 的文件会保留旧行（RFC-0030 要求内容证据）。捕获绑定的摘要必须参与判定。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.incremental_sync import IncrementalSync
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    target = tmp_path / "b.py"
+    target.write_bytes(b"def beta():\n    return 3\n")
+    (tmp_path / "a.py").write_bytes(b"def alpha():\n    return 1\n")
+    scope = make_source_scope_descriptor()
+
+    def refresh() -> None:
+        cache = ASTCache(str(tmp_path))
+        try:
+            if route == "index_project":
+                cache.index_project(workers=0)
+            else:
+                IncrementalSync(cache).sync(
+                    max_files=scope.certification_max_files,
+                    exclude_patterns=scope.effective_excludes,
+                    source_scope=scope,
+                )
+        finally:
+            cache.close()
+
+    refresh()
+    info = os.stat(target)
+    target.write_bytes(b"def betb():\n    return 3\n")
+    os.utime(target, ns=(info.st_atime_ns, info.st_mtime_ns))
+    refresh()
+
+    assert sorted(_published_symbols(tmp_path)) == ["alpha", "betb"]
+
+
+def test_sync_compares_with_the_digests_bound_at_capture(tmp_path, monkeypatch):
+    # 同步路由不为比较重读每个文件：捕获已逐文件摘要（路径平台）。
+    from tree_sitter_analyzer import incremental_sync_support
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cache import generation_store
+    from tree_sitter_analyzer.incremental_sync import IncrementalSync
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    monkeypatch.setattr(generation_store, "_PATH_ONLY_SOURCE", True)
+    for name in ("a", "b", "c"):
+        (tmp_path / f"{name}.py").write_bytes(f"def {name}():\n    return 1\n".encode())
+    scope = make_source_scope_descriptor()
+    reads: list[str] = []
+    original = incremental_sync_support.file_content_hash
+
+    def counted(path):
+        reads.append(path)
+        return original(path)
+
+    def sync() -> None:
+        cache = ASTCache(str(tmp_path))
+        try:
+            IncrementalSync(cache).sync(
+                max_files=scope.certification_max_files,
+                exclude_patterns=scope.effective_excludes,
+                source_scope=scope,
+            )
+        finally:
+            cache.close()
+
+    sync()
+    (tmp_path / "a.py").write_bytes(b"def a2():\n    return 2\n")
+    monkeypatch.setattr(incremental_sync_support, "file_content_hash", counted)
+    sync()
+
+    assert (reads, sorted(_published_symbols(tmp_path))) == ([], ["a2", "b", "c"])
