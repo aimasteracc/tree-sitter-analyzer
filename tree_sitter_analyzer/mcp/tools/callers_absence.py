@@ -30,6 +30,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 from ...discovery_budget import DISCOVERY_SECONDS_PER_ENTRY
+from . import reference_vocab
 from .absence_text_kinds import reference_text, text_language
 from .absence_text_refs import CONFIG_LANGUAGE, string_code
 from .callers_call_lines import call_edge_lines
@@ -44,6 +45,7 @@ from .callers_reference_freshness import stale_reference_files
 from .callers_target import NOT_DEFINED_REASON, not_defined_hint, resolve_target
 from .callers_target import UNCHECKED_REASON as TARGET_UNCHECKED_REASON
 from .evidence_file_cache import FILE_CACHE, StatKey
+from .reference_vocab import ReferenceVocabulary
 from .relation_freshness import SCOPED_REASON, STALE_REASON
 from .unindexed_sources import FILES_CAP as UNINDEXED_FILES_CAP
 from .unindexed_sources import UNCHECKED_REASON as UNINDEXED_UNCHECKED_REASON
@@ -89,14 +91,21 @@ _C_LANGUAGES = frozenset(
         "tsx",
     }
 )
-#: 注释组 1，字符串组 2。左起最先匹配者胜出，因此字符串中的 ``#`` 不会被当作注释。
+#: 注释或字符串。左起最先匹配者胜出，因此字符串中的 ``#`` 不会被当作注释；
+#: 以引号开头的是字符串，其余（``#`` / ``/``）是注释。
+#: #1691：每个分支都以字面字符开头（不包进分组），``re`` 因而能按首字符集跳过
+#: 其余位置；串体与块注释写成展开循环（unrolled loop）。匹配的位置与长度与
+#: 原写法 ``(#…)|("""[\s\S]*?"""|…|"(?:\\.|[^"\\\n])*"|…)`` 完全相同，实测约快 4 倍。
 _PY_LEXEME = re.compile(
-    r"(#[^\n]*)"
-    r"|(\"\"\"[\s\S]*?\"\"\"|'''[\s\S]*?'''|\"(?:\\.|[^\"\\\n])*\"|'(?:\\.|[^'\\\n])*')"
+    r"#[^\n]*"
+    r"|\"\"\"[^\"]*(?:\"(?!\"\")[^\"]*)*\"\"\"|'''[^']*(?:'(?!'')[^']*)*'''"
+    r"|\"[^\"\\\n]*(?:\\.[^\"\\\n]*)*\"|'[^'\\\n]*(?:\\.[^'\\\n]*)*'"
 )
 _C_LEXEME = re.compile(
-    r"(//[^\n]*|/\*[\s\S]*?\*/)" r"|(\"(?:\\.|[^\"\\\n])*\"|'(?:\\.|[^'\\\n])*')"
+    r"//[^\n]*|/\*[^*]*\*+(?:[^/*][^*]*\*+)*/"
+    r"|\"[^\"\\\n]*(?:\\.[^\"\\\n]*)*\"|'[^'\\\n]*(?:\\.[^'\\\n]*)*'"
 )
+_QUOTES = "\"'"
 _IDENTIFIER = re.compile(r"[A-Za-z_$][\w$]*")
 #: 名字之后的前两个非空白字符（区分调用 ``(``、赋值 ``=`` 与比较 ``==``）。
 _FOLLOWING = re.compile(r"[ \t]*(\S{0,2})")
@@ -462,16 +471,23 @@ def _reference_scan(
 _Read = tuple[bytes, StatKey | None]
 
 
-def _read_if_contains(path: str, needle: bytes) -> _Read | None:
+def _read_if_contains(
+    path: str, needle: bytes, vocab: ReferenceVocabulary | None = None
+) -> _Read | None:
     """读取文件；不含 ``needle`` 时字节为空串，读取失败返回 None。
 
     字节经 :data:`FILE_CACHE` 按 stat 证据复用（每次重新 stat，变即重读）；
     同一份证据随结果返回，供 #1672 与索引戳记比对。
+    #1691：``vocab`` 的 stat 证据仍成立且证明不含 ``needle`` 时不打开文件。
     """
+    if vocab is not None and vocab.lacks(path, needle):
+        return b"", None
     found = FILE_CACHE.read_stamped(path)
     if found is None:
         return None
     data, stamp = found
+    if vocab is not None:
+        vocab.learn(path, data, stamp)
     return (data if needle in data else b""), stamp
 
 
@@ -491,10 +507,11 @@ def _files_containing(
     # 改为按块提交、块内顺序读取。期限与“任一不可读即 None”的判定不变。
     size = max(1, -(-len(files) // (_READ_WORKERS * _CHUNKS_PER_WORKER)))
     chunks = [files[start : start + size] for start in range(0, len(files), size)]
+    vocab = reference_vocab.for_root(project_root)
     executor = ThreadPoolExecutor(max_workers=_READ_WORKERS)
     try:
         futures = [
-            executor.submit(_read_chunk, project_root, chunk, needle)
+            executor.submit(_read_chunk, project_root, chunk, needle, vocab)
             for chunk in chunks
         ]
         for chunk, future in zip(chunks, futures, strict=True):
@@ -513,16 +530,20 @@ def _files_containing(
                     hits.append((rel_path, language, read[0], read[1]))
     finally:
         executor.shutdown(wait=False, cancel_futures=True)
+        vocab.flush()
     return hits
 
 
 def _read_chunk(
-    project_root: str, chunk: list[tuple[str, str]], needle: bytes
+    project_root: str,
+    chunk: list[tuple[str, str]],
+    needle: bytes,
+    vocab: ReferenceVocabulary | None = None,
 ) -> list[_Read | None]:
     """顺序读取一块文件；遇到不可读文件即停止（其后的结果已不再需要）。"""
     results: list[_Read | None] = []
     for rel_path, _language in chunk:
-        data = _read_if_contains(os.path.join(project_root, rel_path), needle)
+        data = _read_if_contains(os.path.join(project_root, rel_path), needle, vocab)
         results.append(data)
         if data is None:
             break
@@ -546,7 +567,7 @@ def _strip_comments_and_prose(text: str, language: str, bare: str | None = None)
 
     def _replace(match: re.Match[str]) -> str:
         token = match.group(0)
-        if match.group(2) is not None:
+        if token[0] in _QUOTES:
             quote = 3 if token[:3] in ('"""', "'''") else 1
             body = token[quote:-quote]
             if _IDENTIFIER.fullmatch(body):

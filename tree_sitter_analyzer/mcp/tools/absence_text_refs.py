@@ -115,6 +115,9 @@ def string_mention(body: str, bare: str) -> str | None:
 
     没有任何代码形态的命中时返回 None（调用方按普通字符串剔除）。
     """
+    if bare not in body:
+        # #1691：整词命中必含子串；绝大多数串不含名字，免去编译与逐行切分。
+        return None
     pattern = re.compile(r"(?<![\w$])" + re.escape(bare) + r"(?![\w$])")
     single_token = not any(char.isspace() for char in body)
     hit = False
