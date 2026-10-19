@@ -31,6 +31,8 @@ from .source_oracle import (
 )
 
 _INDEX_SOURCE_BYTE_LIMIT = 64 * 1024 * 1024
+#: 真实平台（测试会替换模块的 `os`；`sys.platform` 不随之改变）。
+_IS_WINDOWS = sys.platform == "win32"
 _INDEX_SOURCE_READ_SECONDS = 5.0
 _SOURCE_NONREGULAR = "supported source is symlinked or non-regular"
 _SOURCE_TOO_LARGE = "supported source exceeds byte limit"
@@ -154,7 +156,7 @@ def _realpath_of_regular_file(
     """
     reparse = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
     if (
-        sys.platform != "win32"
+        not _IS_WINDOWS
         or info is None
         or not stat.S_ISREG(info.st_mode)
         or getattr(info, "st_file_attributes", 0) & reparse
@@ -261,7 +263,7 @@ def validate_index_candidate_snapshot(
     for entry in snapshot.entries:
         logical_path = os.path.abspath(entry.abs_path)
         entry_info: os.stat_result | None = None
-        if sys.platform == "win32":  # #1673：只有 Windows 走目录级 realpath 复用
+        if _IS_WINDOWS:  # #1673：只有 Windows 走目录级 realpath 复用
             try:
                 entry_info = os.stat(logical_path, follow_symlinks=False)
             except OSError:
