@@ -205,6 +205,7 @@ from tree_sitter_analyzer.mcp.tools.verification_tool import (
 # ---------------------------------------------------------------------------
 # Sub-module imports — builders, specs, helpers
 # ---------------------------------------------------------------------------
+from . import _watch_hold
 from ._helpers import _build_error_envelope, _classify_error_type, _run_tool
 from ._specs import MCP_COMMAND_SPECS
 
@@ -335,6 +336,10 @@ def handle_mcp_commands(
         return _emit_builder_error(
             spec, exc, output_format, output_json_fn, output_error_fn
         )
+    # #1685：一次性 CLI 进程中的 watch_start 必须驻留并在退出前停止 watcher。
+    holds_watcher = (
+        spec.flag_name == "ast_cache" and tool_args.get("mode") == "watch_start"
+    )
     return _run_tool(
         args,
         _get_tool_class(spec.tool_attr),
@@ -344,6 +349,7 @@ def handle_mcp_commands(
         output_error_fn,
         output_format_fn,
         fail_on_verdict_worse_than=fail_on_verdict,
+        after_run=_watch_hold.hold_cli_watcher if holds_watcher else None,
     )
 
 

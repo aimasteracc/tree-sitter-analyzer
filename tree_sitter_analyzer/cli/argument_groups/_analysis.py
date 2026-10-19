@@ -517,7 +517,10 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--watch",
         action="store_true",
-        help="Start background file watcher for auto-sync (shortcut for --ast-cache --ast-cache-mode watch_start)",
+        help=(
+            "Run the file watcher for auto-sync until Ctrl-C (shortcut for "
+            "--ast-cache --ast-cache-mode watch_start)"
+        ),
     )
     parser.add_argument(
         "--watch-poll-interval",

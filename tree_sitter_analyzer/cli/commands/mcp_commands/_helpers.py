@@ -96,16 +96,32 @@ def _run_tool(
     output_error_fn: Callable[[str], None],
     output_format_fn: Callable[[], str],
     fail_on_verdict_worse_than: str | None = None,
+    after_run: Callable[..., int] | None = None,
 ) -> int:
-    """Helper: instantiate tool, run execute(), print output."""
+    """Helper: instantiate tool, run execute(), print output.
+
+    ``after_run`` (#1685) owns background work a successful run started (the CLI
+    ``watch_start`` hold): it runs after the answer is printed, and with
+    ``hold=False`` (release only) if printing the answer fails.
+    """
     try:
         project_root = getattr(args, "project_root", None) or os.getcwd()
         tool = tool_cls(project_root=project_root)
         result: dict[str, Any] = asyncio.run(tool.execute(dict(tool_args)))
-        output_format_fn()
-        output_json_fn(result)
+        owns_background = after_run is not None and bool(result.get("success", False))
+        try:
+            output_format_fn()
+            output_json_fn(result)
+        except BaseException:
+            if after_run is not None and owns_background:
+                after_run(tool, result, hold=False)
+            raise
         if not result.get("success", False):
             return 1
+        if after_run is not None and owns_background:
+            hold_code = after_run(tool, result)
+            if hold_code:
+                return hold_code
         if fail_on_verdict_worse_than is not None:
             return _verdict_exit_code(result, fail_on_verdict_worse_than)
         return 0
