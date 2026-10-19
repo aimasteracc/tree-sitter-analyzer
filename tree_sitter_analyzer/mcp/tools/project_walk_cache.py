@@ -16,6 +16,9 @@ dogfood 第 7 轮：``nav callers`` 的“未入索引的新文件”门每次�
 时间戳竞争（racy-git）：遍历期间或之前 :data:`RACY_WINDOW_NS` 内修改过的目录 /
 规则文件，其 mtime 无法区分“遍历前”与“遍历后”的写入，这样的结果不入记忆。
 遍历失败（预算超限、列表错误）从不入记忆，异常原样抛出。
+
+#1691：``persist=True`` 时同一份条目还写入 ``walk_evidence_store``；进程内未命中
+时先读落盘条目，并以与进程内相同的 ``_still_valid`` 全部重新 lstat 复核。
 """
 
 from __future__ import annotations
@@ -27,6 +30,7 @@ from collections import OrderedDict
 from collections.abc import Callable, Iterable
 
 from ...ignore_rules import IGNORE_RULE_FILES
+from . import walk_evidence_store
 
 #: 与 ``evidence_file_cache`` 相同的竞争窗口（覆盖 FAT 2 s 粒度并留余量）。
 RACY_WINDOW_NS = 5_000_000_000
@@ -64,8 +68,10 @@ def _ancestors(start_relative: str) -> list[str]:
 class ProjectWalkCache:
     """以目录 / 规则文件 ``lstat`` 证据为键的遍历结果记忆（线程安全、有界）。"""
 
-    def __init__(self, max_entries: int = MAX_ENTRIES) -> None:
+    def __init__(self, max_entries: int = MAX_ENTRIES, *, persist: bool = False) -> None:
         self._max_entries = max_entries
+        # #1691：为真时同一份条目也落盘（``walk_evidence_store``），冷进程复核后复用。
+        self._persist = persist
         self._entries: OrderedDict[
             tuple[object, ...], tuple[_Evidence, tuple[str, ...]]
         ] = OrderedDict()
@@ -98,19 +104,48 @@ class ProjectWalkCache:
                 if full_key in self._entries:
                     self._entries.move_to_end(full_key)
             return cached[1]
+        stored_key = self._stored_key(full_key)
+        stored = self._load_stored(project_root, stored_key)
+        if stored is not None:
+            self._remember(full_key, stored)
+            return stored[1]
         started_ns = time.time_ns()
         visited: list[str] = []
         paths = tuple(walker(visited))
         evidence = self._collect(project_root, start_relative, visited, started_ns)
-        with self._lock:
-            if evidence is None:
+        if evidence is None:
+            with self._lock:
                 self._entries.pop(full_key, None)
-            else:
-                self._entries[full_key] = (evidence, paths)
-                self._entries.move_to_end(full_key)
-                while len(self._entries) > self._max_entries:
-                    self._entries.popitem(last=False)
+            return paths
+        self._remember(full_key, (evidence, paths))
+        if stored_key is not None:
+            walk_evidence_store.save(project_root, stored_key, evidence, paths)
         return paths
+
+    def _remember(
+        self, full_key: tuple[object, ...], entry: tuple[_Evidence, tuple[str, ...]]
+    ) -> None:
+        with self._lock:
+            self._entries[full_key] = entry
+            self._entries.move_to_end(full_key)
+            while len(self._entries) > self._max_entries:
+                self._entries.popitem(last=False)
+
+    def _stored_key(self, full_key: tuple[object, ...]) -> str | None:
+        if not (self._persist and walk_evidence_store.enabled()):
+            return None
+        return walk_evidence_store.key_text(full_key)
+
+    def _load_stored(
+        self, project_root: str, stored_key: str | None
+    ) -> tuple[_Evidence, tuple[str, ...]] | None:
+        """落盘条目，且其每条证据重新 lstat 后仍相同；否则 None。"""
+        if stored_key is None:
+            return None
+        stored = walk_evidence_store.load(project_root, stored_key)
+        if stored is None or not self._still_valid(stored[0]):
+            return None
+        return stored
 
     @staticmethod
     def _still_valid(evidence: _Evidence) -> bool:
@@ -146,5 +181,5 @@ class ProjectWalkCache:
         return tuple(evidence)
 
 
-#: 进程级共享实例。
-WALK_CACHE = ProjectWalkCache()
+#: 进程级共享实例；条目同时落盘，供新进程复核后复用（#1691）。
+WALK_CACHE = ProjectWalkCache(persist=True)
