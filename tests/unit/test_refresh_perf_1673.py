@@ -129,3 +129,26 @@ def test_index_run_validates_the_candidate_once(tmp_path, monkeypatch) -> None:
 
     # 发布侧捕获之外，私有副本上的运行只校验一次（原为两次）。
     assert calls == ["validate"]
+
+
+def test_a_slow_projection_check_does_not_rewrite_every_file(tmp_path, monkeypatch):
+    # 写入方核验符号投影不用读者的 5 秒期限：未核完被当作“不精确”会重写全部
+    # 文件的投影（负载下一次 1 文件刷新曾因此重新提取 2,504 个文件）。
+    from tree_sitter_analyzer import index_symbol_projection
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    for name in ("a", "b", "c"):
+        (tmp_path / f"{name}.py").write_text(
+            f"def {name}():\n    return 1\n", encoding="utf-8"
+        )
+    database = tmp_path / "custom" / "index.db"
+    database.parent.mkdir()
+    cache = ASTCache(str(tmp_path), str(database))
+    try:
+        assert cache.index_project(workers=0)["indexed"] == 3
+        monkeypatch.setattr(index_symbol_projection, "_PROJECTION_SECONDS", 0.0)
+        second = cache.index_project(workers=0)
+    finally:
+        cache.close()
+
+    assert (second["indexed"], second["cached"]) == (0, 3)

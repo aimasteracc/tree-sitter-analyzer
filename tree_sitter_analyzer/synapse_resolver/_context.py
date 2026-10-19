@@ -349,9 +349,14 @@ def _local_name_as_submodule(
     module_path: str,
     caller_file: str,
     module_to_file: dict[str, str],
+    indexed_files: set[str] | None = None,
 ) -> str:
     """For ``from <pkg> import <name>``, check if ``<name>`` is itself a
     submodule. Returns target file path or ``""``.
+
+    ``indexed_files`` is ``set(module_to_file.values())``; callers looping over
+    every import pass it once (#1673: rebuilding it per import entry made the
+    import-map pass quadratic, 27k imports x 2.5k files on this repository).
 
     Concrete cases:
     * ``from . import b``        — local_name='b',  alias_of=''   → caller_dir/b.py
@@ -364,13 +369,16 @@ def _local_name_as_submodule(
     if not local_name:
         return ""
     lookup_name = alias_of or local_name
+    by_path = (
+        indexed_files if indexed_files is not None else set(module_to_file.values())
+    )
     if not module_path.startswith("."):
         # 绝对导入按包路径定位，不能拼接调用方目录；复用 #1566 的子模块规则（#1579）。
         targets = python_submodule_import_targets(
             module_path,
             (lookup_name,),
             caller_file,
-            set(module_to_file.values()),
+            by_path,
             False,
         )
         return targets[0] if targets else ""
@@ -395,7 +403,6 @@ def _local_name_as_submodule(
         f"{base}/{lookup_name}.py" if base else f"{lookup_name}.py",
         f"{base}/{lookup_name}/__init__.py" if base else f"{lookup_name}/__init__.py",
     )
-    by_path = set(module_to_file.values())
     for cand in candidates:
         if cand in by_path:
             return cand
@@ -469,6 +476,7 @@ def _build_import_maps(
     name_to_source: dict[str, dict[str, str]] = {}
     alias_target: dict[str, dict[str, str]] = {}
     star_imports: list[tuple[str, ImportEntry]] = []
+    indexed_files = set(module_to_file.values())
     for caller_file, entries in imports_by_file.items():
         name_map: dict[str, str] = {}
         alias_map: dict[str, str] = {}
@@ -490,6 +498,7 @@ def _build_import_maps(
                     entry.module_path,
                     caller_file,
                     module_to_file,
+                    indexed_files,
                 )
                 if submod:
                     alias_map[entry.local_name] = submod

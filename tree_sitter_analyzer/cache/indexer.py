@@ -131,6 +131,9 @@ _warned_extensions: set[str] = set()
 # v40：Python 调用边携带接收者类型线索（RFC-0038 receiver_hint）。
 # v41：接收者未被证明的调用不再按项目唯一方法名绑定为 project（#1669）。
 _AST_CACHE_EXTRACTOR_VERSION = 41
+# #1673：写入方核验符号投影的期限（秒）。未核完会被当作不精确并重写全部投影，
+# 因此写入方不使用读者的 5 秒期限；与认证盖戳的期限（120 秒）一致。
+_WRITER_PROJECTION_SECONDS = 120.0
 
 
 def _walk_source_files(project_root: str) -> Iterator[str]:
