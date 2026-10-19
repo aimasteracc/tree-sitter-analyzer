@@ -327,10 +327,13 @@ def run_index_project(
 
 
 def _call_graph_marker_is_built(conn: sqlite3.Connection) -> bool:
-    """Require the shared exact current-pipeline marker predicate."""
-    from .callgraph_state import call_graph_marker_is_current
+    """Require the shared exact current-pipeline marker predicate.
 
-    return call_graph_marker_is_current(conn)
+    Writer-side deadline (#1684): a timed-out check is not "not built".
+    """
+    from .callgraph_state import writer_marker_is_current
+
+    return writer_marker_is_current(conn)
 
 
 def _prune_to_selected_scope(

@@ -173,9 +173,11 @@ def _open_cache(project_root: str) -> Any:
 def _call_graph_marker_is_current(cache: Any) -> bool:
     """Read the exact versioned marker without creating or updating it."""
     try:
-        from ...cache.callgraph_state import call_graph_marker_is_current
+        from ...cache.callgraph_state import writer_marker_is_current
 
-        return bool(call_graph_marker_is_current(cache.get_conn()))
+        # #1684：负载下 5 秒期限内核验不完不等于"标记非当前"；误判会触发一次
+        # 完整的预热索引。
+        return bool(writer_marker_is_current(cache.get_conn()))
     except Exception:
         return False
 

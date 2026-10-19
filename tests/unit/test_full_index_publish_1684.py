@@ -153,3 +153,64 @@ def test_auto_warm_backs_off_after_a_non_converging_warm(project, monkeypatch):
     ensure()
 
     assert (first, warms) == (["warm"], ["warm", "warm"])
+
+
+def _consistent_graph(tmp_path):
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    database = tmp_path / "custom" / "index.db"
+    database.parent.mkdir()
+    cache = ASTCache(str(tmp_path), str(database))
+    cache.index_project(workers=0)
+    return cache
+
+
+def test_a_slow_consistency_check_is_not_reported_as_dangling(project, monkeypatch):
+    # 根因（本仓库在负载下实测）：悬空解析核验沿用读者的 5 秒期限，两条遍历全部
+    # 调用边的查询被中断后返回 False，一致的图被报告为
+    # CALL_GRAPH_DANGLING_RESOLUTION，整份全量索引不发布。写入方用自己的期限。
+    from tree_sitter_analyzer.cache import callgraph_state
+
+    cache = _consistent_graph(project)
+    try:
+        monkeypatch.setattr(callgraph_state, "_CALL_GRAPH_MARKER_DEADLINE_SECONDS", 0.0)
+        conn = cache._get_conn()
+        callgraph_state.clear_call_graph_built_strict(conn)
+        callgraph_state.mark_call_graph_built_strict(conn)
+        built = callgraph_state.writer_marker_is_current(conn)
+    finally:
+        cache.close()
+
+    assert built is True
+
+
+def test_real_dangling_resolution_is_still_rejected(project) -> None:
+    from tree_sitter_analyzer.cache import callgraph_state
+
+    cache = _consistent_graph(project)
+    try:
+        conn = cache._get_conn()
+        conn.execute(
+            "UPDATE edges SET callee_resolved_file = 'gone.py' WHERE kind = 'calls'"
+        )
+        conn.commit()
+        with pytest.raises(sqlite3.OperationalError) as caught:
+            callgraph_state.mark_call_graph_built_strict(conn)
+    finally:
+        cache.close()
+
+    assert str(caught.value) == "CALL_GRAPH_DANGLING_RESOLUTION"
+
+
+def test_a_check_that_runs_out_of_writer_time_is_named(project, monkeypatch) -> None:
+    from tree_sitter_analyzer.cache import callgraph_state
+
+    cache = _consistent_graph(project)
+    try:
+        monkeypatch.setattr(callgraph_state, "_WRITER_CHECK_DEADLINE_SECONDS", -1.0)
+        with pytest.raises(sqlite3.OperationalError) as caught:
+            callgraph_state.mark_call_graph_built_strict(cache._get_conn())
+    finally:
+        cache.close()
+
+    assert str(caught.value) == "CALL_GRAPH_CHECK_DEADLINE"

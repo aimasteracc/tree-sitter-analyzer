@@ -51,10 +51,37 @@ def mark_call_graph_built(conn: sqlite3.Connection) -> None:
         logger.debug("could not mark call-graph-built", exc_info=True)
 
 
+#: #1684：写入方核验悬空解析的期限（秒）。读者的 5 秒期限下，两条遍历全部调用
+#: 边的 NOT EXISTS 查询在负载高的机器上（本仓库 23 万条边）会被中断，返回值与
+#: “确有悬空解析”无法区分：一致的图被报告为 ``CALL_GRAPH_DANGLING_RESOLUTION``，
+#: 整份全量索引因此不发布并被反复重建。
+_WRITER_CHECK_DEADLINE_SECONDS = 120.0
+
+
+def writer_marker_is_current(conn: sqlite3.Connection) -> bool:
+    """写入方读取标记是否当前：使用写入方期限，避免负载下的超时被当作“未建成”。
+
+    读者仍使用 5 秒期限；写入方据此决定是否重跑整条回填流水线、是否盖清单，
+    一次误判就是一次完整重建（#1684）。
+    """
+    return call_graph_marker_is_current(
+        conn, deadline=time.monotonic() + _WRITER_CHECK_DEADLINE_SECONDS
+    )
+
+
+def _require_consistent_edges(conn: sqlite3.Connection) -> None:
+    """写入方核验：确有悬空解析与核验超时分别报告。"""
+    deadline = time.monotonic() + _WRITER_CHECK_DEADLINE_SECONDS
+    if call_graph_edges_are_consistent(conn, deadline=deadline):
+        return
+    if time.monotonic() > deadline:
+        raise sqlite3.OperationalError("CALL_GRAPH_CHECK_DEADLINE")
+    raise sqlite3.OperationalError("CALL_GRAPH_DANGLING_RESOLUTION")
+
+
 def mark_call_graph_built_strict(conn: sqlite3.Connection) -> None:
     """Persist and verify the exact current pipeline marker transactionally."""
-    if not call_graph_edges_are_consistent(conn):
-        raise sqlite3.OperationalError("CALL_GRAPH_DANGLING_RESOLUTION")
+    _require_consistent_edges(conn)
     _ensure_state_schema(conn)
     savepoint = "call_graph_marker_certification"
     conn.execute(f"SAVEPOINT {savepoint}")
@@ -74,9 +101,10 @@ def mark_call_graph_built_strict(conn: sqlite3.Connection) -> None:
             "DELETE FROM ast_call_graph_state WHERE id = ?",
             (_EXPLICITLY_INCOMPLETE_ID,),
         )
-        if not call_graph_edges_are_consistent(conn):
-            raise sqlite3.OperationalError("CALL_GRAPH_DANGLING_RESOLUTION")
-        if not exact_call_graph_marker(conn):
+        _require_consistent_edges(conn)
+        if not exact_call_graph_marker(
+            conn, deadline=time.monotonic() + _WRITER_CHECK_DEADLINE_SECONDS
+        ):
             raise sqlite3.OperationalError("CALL_GRAPH_MARKER_VERIFY_FAILED")
     except Exception:
         conn.execute(f"ROLLBACK TO {savepoint}")

@@ -230,7 +230,7 @@ def _same_failure(entry: IndexSnapshotEntry, failure: StableFailure) -> bool:
 def _certified_parent(
     conn: sqlite3.Connection, root: str, scope: str, file_count: int
 ) -> bool:
-    from .callgraph_state import call_graph_marker_is_current
+    from .callgraph_state import writer_marker_is_current
 
     manifests = conn.execute(
         "SELECT canonical_root, source_scope_descriptor, file_count, "
@@ -239,7 +239,7 @@ def _certified_parent(
     return (
         len(manifests) == 1
         and tuple(manifests[0]) == (root, scope, file_count, 2)
-        and call_graph_marker_is_current(conn)
+        and writer_marker_is_current(conn)
     )
 
 

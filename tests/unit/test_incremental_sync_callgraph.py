@@ -320,7 +320,8 @@ def test_marker_certification_rechecks_consistency_after_writer_lock(
     monkeypatch.setattr(
         callgraph_state,
         "call_graph_edges_are_consistent",
-        lambda _conn: next(checks),
+        # #1684：写入方以自己的期限调用（deadline 关键字）。
+        lambda _conn, **_kwargs: next(checks),
     )
 
     with pytest.raises(
