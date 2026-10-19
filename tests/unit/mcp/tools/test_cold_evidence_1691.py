@@ -283,7 +283,9 @@ _WIDGET = (
     "        return 0\n\n"
     "    def used(self):\n"
     "        return 1\n\n\n"
-    "def run(w):\n"
+    # #1686：接收者须可证明才算确定的调用方；注解让 `w.used()` 成为 Widget.used
+    # 的调用边，使该答案照常经过未入索引文件门。
+    "def run(w: Widget):\n"
     "    return w.used()\n"
 )
 
