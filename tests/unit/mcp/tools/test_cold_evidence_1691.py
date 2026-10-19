@@ -769,3 +769,160 @@ def test_an_edited_file_is_relearned(vocab_tree: Path, opened: list[str]) -> Non
     _scan_files(vocab_tree, names, b"size")
 
     assert sorted(opened) == ["a.py", "c.py"]
+
+
+# --------------------------------------------------------------------------- #
+# 落盘层的失败路径：任何异常都只会回到照常计算
+# --------------------------------------------------------------------------- #
+
+
+def test_walk_store_rejects_malformed_payloads(tree: Path) -> None:
+    import marshal
+
+    text = walk_evidence_store.key_text((str(tree), "", "k"))
+    walk_evidence_store.save(str(tree), text, ((str(tree), (1, 2, 3, 4, 5, 6)),), ["a"])
+    assert walk_evidence_store.load(str(tree), text) == (
+        ((str(tree), (1, 2, 3, 4, 5, 6)),),
+        ("a",),
+    )
+    (stored,) = _stored_files(tree)
+    malformed = [
+        (walk_evidence_store.FORMAT, text, ((str(tree), (1, 2)),), ("a",)),
+        (walk_evidence_store.FORMAT, text, ((str(tree), (1, 2, 3, 4, 5, "6")),), ()),
+        (walk_evidence_store.FORMAT, text, (), ("a", 1)),
+        (walk_evidence_store.FORMAT, text, [], ()),
+        (walk_evidence_store.FORMAT + 1, text, (), ()),
+        (walk_evidence_store.FORMAT, text, ()),
+        ["not", "a", "tuple"],
+    ]
+    for payload in malformed:
+        stored.write_bytes(marshal.dumps(payload))
+        assert walk_evidence_store.load(str(tree), text) is None, payload
+
+
+def test_walk_store_needs_a_real_ast_cache_directory(tree: Path, tmp_path) -> None:
+    assert walk_evidence_store.store_dir(str(tmp_path / "missing"), create=True) is None
+    (tree / ".ast-cache" / walk_evidence_store.DIR_NAME).write_text("not a dir")
+
+    assert walk_evidence_store.store_dir(str(tree), create=True) is None
+    walk_evidence_store.save(str(tree), "k", (), ["a"])  # 静默放弃
+    assert walk_evidence_store.load(str(tree), "k") is None
+
+
+def test_walk_store_unwritable_target_is_silently_skipped(
+    tree: Path, monkeypatch
+) -> None:
+    def refuse(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(walk_evidence_store.os, "replace", refuse)
+
+    walk_evidence_store.save(str(tree), "k", (), ["a"])
+
+    store = tree / ".ast-cache" / walk_evidence_store.DIR_NAME
+    assert sorted(path.name for path in store.iterdir()) == []
+
+
+def test_walk_store_unencodable_paths_are_not_stored(tree: Path) -> None:
+    walk_evidence_store.save(str(tree), "k", (), [object()])  # type: ignore[list-item]
+
+    assert _stored_files(tree) == []
+
+
+@pytest.mark.parametrize("value", ["off", "0", "FALSE", " Off "])
+def test_walk_store_switch_values(monkeypatch, value: str) -> None:
+    monkeypatch.setenv(walk_evidence_store.ENV_VAR, value)
+    assert walk_evidence_store.enabled() is False
+    monkeypatch.setenv(walk_evidence_store.ENV_VAR, "on")
+    assert walk_evidence_store.enabled() is True
+
+
+def test_vocabulary_store_rejects_malformed_payloads(vocab_tree: Path) -> None:
+    import marshal
+
+    from tree_sitter_analyzer.mcp.tools import reference_vocab
+
+    _scan_files(vocab_tree, ["a.py"], b"size")
+    store = vocab_tree / ".ast-cache" / walk_evidence_store.DIR_NAME
+    (stored,) = sorted(store.glob("vocab-*.bin"))
+    _format, text, entries = marshal.loads(stored.read_bytes())
+    (path,) = entries
+    good = entries[path]
+    root = os.path.abspath(str(vocab_tree))
+    malformed = [
+        (_format, text, {path: (good[0][:4], good[1])}),
+        (_format, text, {path: (good[0], "not bytes")}),
+        (_format, text, {path: good[0]}),
+        (_format, text, {1: good}),
+        (_format, "other key", {path: good}),
+        (_format, text, [path]),
+        (_format + 1, text, {path: good}),
+    ]
+    for payload in malformed:
+        stored.write_bytes(marshal.dumps(payload))
+        assert reference_vocab._load(root) == {}, payload
+    stored.write_bytes(marshal.dumps((_format, text, {path: good, 7: good})))
+    assert reference_vocab._load(root) == {path: good}
+
+
+def test_vocabulary_store_without_ast_cache_stays_in_process(tmp_path: Path) -> None:
+    from tree_sitter_analyzer.mcp.tools import reference_vocab
+
+    (tmp_path / "a.py").write_text("x = 1\n")
+    _backdate(tmp_path / "a.py")
+
+    assert _hit_names(_scan_files(tmp_path, ["a.py"], b"size")) == []
+    assert len(reference_vocab.for_root(str(tmp_path))) == 1
+    assert not (tmp_path / ".ast-cache").exists()
+
+
+def test_vocabulary_store_write_failure_is_silent(
+    vocab_tree: Path, monkeypatch
+) -> None:
+    from tree_sitter_analyzer.mcp.tools import reference_vocab
+
+    def refuse(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(reference_vocab.os, "replace", refuse)
+
+    assert _hit_names(_scan_files(vocab_tree, ["a.py", "b.py"], b"size")) == ["a.py"]
+    store = vocab_tree / ".ast-cache" / walk_evidence_store.DIR_NAME
+    assert sorted(path.name for path in store.iterdir()) == []
+
+
+def test_vocabulary_store_trims_to_entries_used_by_this_process(
+    vocab_tree: Path, monkeypatch
+) -> None:
+    import marshal
+
+    from tree_sitter_analyzer.mcp.tools import reference_vocab
+
+    _scan_files(vocab_tree, ["a.py", "b.py", "c.py"], b"size")
+    _new_scan_process()
+    monkeypatch.setattr(reference_vocab, "MAX_TOTAL_BYTES", 0)
+    (vocab_tree / "a.py").write_text("def size():\n    return 2\n")
+    _backdate(vocab_tree / "a.py", 2 * _AN_HOUR_NS)
+
+    _scan_files(vocab_tree, ["a.py"], b"size")
+
+    store = vocab_tree / ".ast-cache" / walk_evidence_store.DIR_NAME
+    (stored,) = sorted(store.glob("vocab-*.bin"))
+    entries = marshal.loads(stored.read_bytes())[2]
+    assert sorted(os.path.basename(path) for path in entries) == ["a.py"]
+
+
+def test_vocabulary_store_keeps_the_two_newest_files(vocab_tree: Path) -> None:
+    from tree_sitter_analyzer.mcp.tools import reference_vocab
+
+    store = vocab_tree / ".ast-cache" / walk_evidence_store.DIR_NAME
+    store.mkdir()
+    for index in range(4):
+        old = store / f"vocab-old{index}.bin"
+        old.write_bytes(b"x")
+        _backdate(old, (index + 2) * _AN_HOUR_NS)
+
+    _scan_files(vocab_tree, ["a.py"], b"size")
+
+    assert len(list(store.glob("vocab-*.bin"))) == reference_vocab.KEEP
+    assert (store / "vocab-old0.bin").exists()
