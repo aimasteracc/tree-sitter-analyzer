@@ -359,7 +359,8 @@ def test_mcp_initialize_tsa_module_count_is_pinned(
     tsa = [
         m for m in mcp_initialize_modules if m.split(".")[0] == "tree_sitter_analyzer"
     ]
-    assert len(tsa) == 50, tsa
+    # #1675: +1 for `mcp._sdk_lazy_import` (which removes ~300 SDK modules).
+    assert len(tsa) == 51, tsa
 
 
 def test_cli_version_exits_zero(cli_version_result: dict[str, object]) -> None:
