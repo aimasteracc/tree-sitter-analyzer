@@ -42,6 +42,7 @@ from ..utils.error_sanitizer import (
 from ..utils.format_helper import apply_output_format_to_response
 from .base_tool import BaseMCPTool
 from .full_index_grammar import missing_grammar_next_step
+from .full_index_outcome import CERTIFICATION_DEADLINE, certification_timed_out
 
 logger = setup_logger(__name__)
 
@@ -245,6 +246,14 @@ _MANIFEST_WARNING_NEXT_STEPS: dict[str, str] = {
         "The source tree changed while indexing, so this run is not "
         "certified against a stable snapshot. Do NOT trust --callers from "
         "it. Re-index (--full-index) with the tree quiescent."
+    ),
+    "INDEX_CERTIFICATION_DEADLINE": (
+        "The index was built and published, but certifying it (the source "
+        "rescan and index fingerprint) ran past its deadline, usually on a "
+        "loaded machine. The index is usable and marked incomplete, not "
+        "certified: do not read --callers completeness as certified. Run "
+        "index action=cache mode=index to certify it; that refresh reuses this "
+        "index instead of rebuilding it."
     ),
     "SOURCE_SCOPE_UNSUPPORTED": (
         "The source-generation oracle is unsupported on this platform, so "
@@ -723,6 +732,12 @@ class CodeGraphFullIndexTool(BaseMCPTool):
             )
             if result["stable_failures_only"]:
                 result["agent_summary"]["next_step"] = missing_grammar_next_step(phases)
+            # #1684：盖戳只在其余一切都干净时才尝试；它因期限中断（负载高的机器
+            # 上源码复扫与索引指纹超时）时，索引本身完整可用，如实发布为未认证，
+            # 而不是丢弃整个版本让调用方重建。
+            result["certification_deadline_only"] = (
+                manifest_warning == CERTIFICATION_DEADLINE
+            )
 
             from ...indexing_candidate_materialization import (
                 release_index_candidate_snapshot,
@@ -1078,6 +1093,8 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                         "SOURCE_SCOPE_UNSUPPORTED"
                         if isinstance(exc, sqlite3.OperationalError)
                         and str(exc) == "SOURCE_SCOPE_UNSUPPORTED"
+                        else CERTIFICATION_DEADLINE
+                        if certification_timed_out(exc)
                         else "INDEX_MANIFEST_CERTIFICATION_FAILED"
                     )
                 else:
