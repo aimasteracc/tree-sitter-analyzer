@@ -210,3 +210,51 @@ def test_default_scope_is_the_one_shared_source() -> None:
         == make_source_scope_descriptor().effective_excludes
         == default_exclude_patterns()
     )
+
+
+def test_sync_with_activation_enabled_queues_and_flushes_like_index(
+    root, monkeypatch
+) -> None:
+    # 开启 ``TSA_INDEX_ACTIVATION`` 时同步与项目索引一样排队并刷新一个批次：
+    # 不留下 pending 行（无 Git 仓库时按既有降级记为 computed）。
+    import sqlite3
+
+    monkeypatch.setenv("TSA_INDEX_ACTIVATION", "1")
+    _sync_route(root)
+    conn = sqlite3.connect(f"file:{_database(root)}?mode=ro", uri=True)
+    try:
+        states = dict(
+            conn.execute(
+                "SELECT activation_state, COUNT(*) FROM ast_symbol_activation "
+                "GROUP BY activation_state"
+            ).fetchall()
+        )
+        files = {
+            row[0]
+            for row in conn.execute(
+                "SELECT DISTINCT file_path FROM ast_symbol_activation"
+            )
+        }
+    finally:
+        conn.close()
+
+    assert files == {"app.py", "lib.py", "user.py"}
+    assert set(states) == {"computed"}
+
+
+def test_changes_preview_lists_out_of_scope_rows_as_deleted(root, tmp_path) -> None:
+    # ``mode=changes`` 预览 ``sync`` 将做的事：旧库中的语料行会被删除。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.incremental_sync import IncrementalSync
+
+    database = tmp_path / "custom" / "index.db"
+    database.parent.mkdir()
+    cache = ASTCache(str(root), str(database))
+    try:
+        cache.index_project(workers=0, exclude_patterns=frozenset())
+        (root / "new.py").write_text("def new():\n    return 1\n", encoding="utf-8")
+        changes = IncrementalSync(cache).get_changes()
+    finally:
+        cache.close()
+
+    assert changes == {"new": ["new.py"], "deleted": [_CORPUS], "modified": []}
