@@ -359,7 +359,7 @@ def walk_count(monkeypatch) -> list[int]:
 async def test_new_process_answers_from_the_stored_walk(
     indexed_root, walk_count, monkeypatch
 ) -> None:
-    walked_answers = 0
+    gated: list[str] = []
     for name in ("Widget.unused", "Widget.used", "helper", "missing_name"):
         await _callers(indexed_root, name)
         _new_process()
@@ -370,9 +370,10 @@ async def test_new_process_answers_from_the_stored_walk(
         assert _without_timing(cold) == _without_timing(unstored), name
         if cold.get("unindexed_source_files") == []:
             # 这个答案经过了未入索引文件门：新进程只复核证据，不再遍历。
-            walked_answers += 1
+            gated.append(name)
             assert stored_walks == 0, name
-    assert walked_answers >= 2
+    # 未定义的名字止于定义门，不经过遍历。
+    assert gated == ["Widget.unused", "Widget.used", "helper"]
 
 
 @pytest.mark.asyncio
@@ -580,15 +581,14 @@ def test_vocabulary_answers_exactly_the_byte_prefilter() -> None:
         b"(",
         b"\0",
     ]
-    checked = 0
+    word_bytes = [b"a", b"b", b"_", b"$", b"1", b"\xc3", b"\xa9"]
     for _ in range(3000):
         data = b"".join(rng.choices(alphabet, k=rng.randint(0, 40)))
-        needle = b"".join(rng.choices(alphabet, k=rng.randint(1, 4)))
-        if not searchable(needle):
-            continue
-        checked += 1
+        words = set(re.findall(rb"[A-Za-z0-9_$\x80-\xff]+", data))
+        assert vocabulary(data) == b"\0".join(sorted(words))
+        needle = b"".join(rng.choices(word_bytes, k=rng.randint(1, 4)))
+        assert searchable(needle)
         assert (needle in data) == (needle in vocabulary(data)), (data, needle)
-    assert checked > 500
     assert not searchable(b"a.b") and not searchable(b"") and searchable(b"caf\xc3\xa9")
 
 
