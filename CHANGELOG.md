@@ -148,7 +148,7 @@
   call a name-only possible caller. Overrides in subclasses stay possible
   (#1648). The name-based second pass no longer binds such `self.m()` calls to a
   same-directory or unique method of that name. The extractor version goes from
-  40 to 41.
+  42 to 43.
 
 - RFC-0032 follow-ups (#1664):
   - **Lease wait is 30 s**, as the RFC specifies (was 5 s). Measured on
