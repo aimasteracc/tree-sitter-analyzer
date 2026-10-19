@@ -22,7 +22,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from . import call_graph_memo
+from . import call_graph_memo, call_graph_store
 from .cache import graph_input_rows
 from .cached_edge_resolution import CachedEdgeResolver
 from .cached_reexport_binding import PackageReexportBinder
@@ -746,10 +746,13 @@ class CachedCallGraph(CallGraph):
         project_root: str,
         cache: Any | None = None,
         fallback: bool = True,
+        persist: bool = False,
     ) -> None:
         super().__init__(project_root)
         self._cache = cache
         self._fallback = fallback
+        # #1675：为真时把边解析结果落盘，供冷进程复用（只读 / 零写入路由保持 False）。
+        self._persist = persist
 
     def build(self) -> None:
         if self._built:
@@ -794,8 +797,9 @@ class CachedCallGraph(CallGraph):
             *graph_input_rows.source_digest_parts(edge_source),
             *graph_input_rows.source_digest_parts(function_source),
             imports_raw,
-            reexport_binder.evidence(),
-            subclasses.evidence(),
+            # #1675：集合按值排序后再摘要，摘要跨进程稳定（落盘结果按它取用）。
+            call_graph_memo.stable_form(reexport_binder.evidence()),
+            call_graph_memo.stable_form(subclasses.evidence()),
         )
         if digest is not None:
             state = call_graph_memo.lookup(root, digest)
@@ -806,15 +810,41 @@ class CachedCallGraph(CallGraph):
         call_graph_memo.discard(root)
 
         try:
-            edges = graph_input_rows.materialize_edges(edge_source)
             functions = graph_input_rows.materialize_functions(function_source)
         except Exception:
             return
-        # 原始行已转换完毕：构图期间不再同时持有两份边数据。
-        del edge_source, function_source
-        self._build_from_inputs(
-            edges, functions, imports_raw, reexport_binder, subclasses
+        # #1675：冷进程先找同代码、同输入摘要下已存的边解析结果。
+        stored = (
+            call_graph_store.load(
+                root,
+                digest,
+                functions=len(functions),
+                edges=_row_count(edge_source),
+            )
+            if digest is not None
+            else None
         )
+        if (
+            stored is not None
+            and self._build_from_inputs(
+                [], functions, imports_raw, reexport_binder, subclasses, stored=stored
+            )
+            is not None
+        ):
+            del edge_source, function_source
+        else:
+            self._reset_graph_state()
+            try:
+                edges = graph_input_rows.materialize_edges(edge_source)
+            except Exception:
+                return
+            # 原始行已转换完毕：构图期间不再同时持有两份边数据。
+            del edge_source, function_source
+            records = self._build_from_inputs(
+                edges, functions, imports_raw, reexport_binder, subclasses
+            )
+            if self._built and self._persist and digest is not None and records:
+                call_graph_store.save(root, digest, self._functions, records)
         if self._built and digest is not None:
             call_graph_memo.store(root, digest, self._export_state())
 
@@ -838,9 +868,15 @@ class CachedCallGraph(CallGraph):
         imports_raw: dict[str, Any],
         reexport_binder: PackageReexportBinder,
         subclasses: SubclassIndex,
-    ) -> None:
-        if not functions and not edges:
-            return
+        stored: list[Any] | None = None,
+    ) -> list[call_graph_store.EdgeRecord] | None:
+        """构图；返回应用的边解析结果。
+
+        ``stored`` 为已存的编码结果（#1675）时不再解析 ``edges``，解码失败返回
+        None（图状态未完成，调用方须重置后照常构建）。
+        """
+        if not functions and not edges and stored is None:
+            return None
 
         rel_files: set[str] = set()
         for func in functions:
@@ -901,30 +937,71 @@ class CachedCallGraph(CallGraph):
         )
         if self._callee_resolver is None:
             self._callee_resolver = edge_resolver.callee_resolver
-        for edge in edges:
-            caller_file = edge["caller_file"]
-            caller_ref = _edge_caller_ref(self._func_by_name, edge, caller_file)
-            if caller_ref is None:
-                continue
-
-            # #1559/#1560：优先采用持久化解析，模糊的裸名匹配不再扇出成边。
-            targets = edge_resolver.resolve(edge, caller_file, caller_ref.receiver)
-            self._add_possible_edges(caller_ref, targets.possible)
-            for callee_ref in targets.certain:
-                self._callees[caller_ref].append(callee_ref)
-                self._callers[callee_ref].append(caller_ref)
-                self._call_edges.append(
-                    (caller_ref, callee_ref, edge.get("callee_line", 0))
-                )
-                self._record_edge_binding(caller_ref, callee_ref, targets.binding)
+        if stored is not None:
+            try:
+                records = call_graph_store.decode(stored, self._functions, FunctionRef)
+            except (ValueError, TypeError):
+                return None
+        else:
+            records = [
+                _resolve_edge(self._func_by_name, edge_resolver, e) for e in edges
+            ]
+        # 现场解析与已存结果走同一个应用函数，两条路径构出的图状态相同。
+        self._apply_edge_records(records)
 
         # #1657：构图内记忆只服务这一次构建；保留下来的裸名解析器不再带着它。
         edge_resolver.release_memos()
         self._built = True
+        return records
+
+    def _apply_edge_records(self, records: list[call_graph_store.EdgeRecord]) -> None:
+        """按边的读取顺序把解析结果写入调用图（#1675：现场与已存结果共用）。"""
+        for record in records:
+            if record is None:
+                continue
+            caller_ref, certain, possible, binding, line = record
+            self._add_possible_edges(
+                caller_ref, possible if isinstance(possible, list) else list(possible)
+            )
+            for callee_ref in certain:
+                self._callees[caller_ref].append(callee_ref)
+                self._callers[callee_ref].append(caller_ref)
+                self._call_edges.append((caller_ref, callee_ref, line))
+                self._record_edge_binding(caller_ref, callee_ref, binding)
+
+    def _reset_graph_state(self) -> None:
+        """丢弃未完成的构图状态（已存结果解码失败后照常重建前）。"""
+        CallGraph.__init__(self, str(self.project_root))
 
 
 #: 不随复用的图状态共享的属性：缓存句柄属于各自的图对象，项目根由构造参数给出。
-_UNSHARED_STATE = frozenset({"_cache", "_fallback", "project_root"})
+_UNSHARED_STATE = frozenset({"_cache", "_fallback", "_persist", "project_root"})
+
+
+def _row_count(source: Any) -> int:
+    rows = getattr(source, "rows", source)
+    return len(rows)
+
+
+def _resolve_edge(
+    func_by_name: dict[str, list[FunctionRef]],
+    edge_resolver: CachedEdgeResolver,
+    edge: dict[str, Any],
+) -> call_graph_store.EdgeRecord:
+    """一条边的解析结果；无法确定调用方时为 None（与修复前一样跳过）。"""
+    caller_file = edge["caller_file"]
+    caller_ref = _edge_caller_ref(func_by_name, edge, caller_file)
+    if caller_ref is None:
+        return None
+    # #1559/#1560：优先采用持久化解析，模糊的裸名匹配不再扇出成边。
+    targets = edge_resolver.resolve(edge, caller_file, caller_ref.receiver)
+    return (
+        caller_ref,
+        targets.certain,
+        targets.possible,
+        targets.binding,
+        edge.get("callee_line", 0),
+    )
 
 
 @contextmanager

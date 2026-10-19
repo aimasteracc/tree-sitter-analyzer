@@ -23,6 +23,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import marshal
 import pickle  # nosec B403 — 只序列化本进程读出的数据用于摘要，从不反序列化。
@@ -40,6 +41,41 @@ _MAX_ROOTS = 4
 _LOCK = threading.Lock()
 #: 项目根 -> (输入摘要, 构建完成的图状态)。
 _MEMO: OrderedDict[str, tuple[str, dict[str, Any]]] = OrderedDict()
+
+
+def stable_form(value: Any) -> Any:
+    """``value`` 的跨进程稳定表示（#1675），供摘要使用。
+
+    字符串哈希按进程随机化，集合的迭代顺序（因而 marshal / pickle 的字节）在
+    进程间不同；同一内容在新进程里会算出另一个摘要。这里把集合按元素的
+    marshal 字节排序，数据类展开为 (类名, 字段) 元组，其余容器保持原有顺序
+    （字典与列表的顺序来自读库顺序，本身就是输入的一部分）。结果只含内建
+    类型，摘要因此也走 marshal 快路径。无法表示的值原样返回（摘要随之退回
+    pickle，最多造成未命中）。
+    """
+    if isinstance(value, set | frozenset):
+        items = [stable_form(item) for item in value]
+        try:
+            return ("set", sorted(items, key=_order_key))
+        except ValueError:
+            return value
+    if isinstance(value, dict):
+        return ("dict", [(stable_form(k), stable_form(v)) for k, v in value.items()])
+    if isinstance(value, list | tuple):
+        return (type(value).__name__, [stable_form(item) for item in value])
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return (
+            type(value).__qualname__,
+            [
+                (field.name, stable_form(getattr(value, field.name)))
+                for field in dataclasses.fields(value)
+            ],
+        )
+    return value
+
+
+def _order_key(item: Any) -> bytes:
+    return marshal.dumps(item, _MARSHAL_VERSION)
 
 
 def input_digest(*parts: Any) -> str | None:

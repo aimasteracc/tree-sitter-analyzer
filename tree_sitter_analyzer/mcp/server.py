@@ -7,8 +7,13 @@ import sys
 from pathlib import Path as PathClass
 from typing import Any
 
+from ._sdk_lazy_import import defer_sdk_package_inits
+
 try:
-    from mcp.server import Server
+    # #1675: a stdio server needs only the low-level SDK modules; skip the
+    # ~300 modules the SDK's and httpx's package ``__init__`` files pull in.
+    defer_sdk_package_inits()
+    from mcp.server.lowlevel import Server
     from mcp.server.models import InitializationOptions
     from mcp.server.stdio import stdio_server as _stdio_server
 
@@ -84,11 +89,12 @@ def _resolve_relative_path(base_root: str, file_path: str) -> str:
 def _create_tool_registry(
     project_root: str | None,
     lifecycle_manager: Any | None = None,
+    prebuilt: dict[str, Any] | None = None,
 ) -> tuple[list[Any], dict[str, Any]]:
     """Delegates to the single-source registry in ``_tool_registry.py``."""
     from ._tool_registry import create_tool_registry
 
-    return create_tool_registry(project_root, lifecycle_manager)
+    return create_tool_registry(project_root, lifecycle_manager, prebuilt)
 
 
 class TreeSitterAnalyzerMCPServer:
@@ -110,6 +116,8 @@ class TreeSitterAnalyzerMCPServer:
         self._registry_built = False
         self._tool_instances: list[Any] | None = None
         self._tools: dict[str, Any] | None = None
+        # #1675：tools/call 只构建被调用的门面；之后的完整注册表复用这些实例。
+        self._facades: dict[str, Any] = {}
         from .subscription_lifecycle import SubscriptionLifecycleManager
 
         self.subscription_lifecycle = SubscriptionLifecycleManager(project_root)
@@ -155,10 +163,46 @@ class TreeSitterAnalyzerMCPServer:
         """
         if self._registry_built:
             return
-        self._tool_instances, self._tools = _create_tool_registry(
-            self._project_root, self.subscription_lifecycle
-        )
+        if self._facades:
+            self._tool_instances, self._tools = _create_tool_registry(
+                self._project_root, self.subscription_lifecycle, self._facades
+            )
+        else:
+            self._tool_instances, self._tools = _create_tool_registry(
+                self._project_root, self.subscription_lifecycle
+            )
         self._registry_built = True
+
+    def facade(self, name: str) -> Any | None:
+        """One facade by public name, building only that facade if needed (#1675).
+
+        A cold server's first ``tools/call`` no longer imports and constructs
+        the other seven facades. Returns ``None`` for a non-facade name.
+        """
+        from ._tool_registry import FACADE_NAMES, build_facade
+
+        if self._registry_built:
+            return (self._tools or {}).get(name)
+        if name not in FACADE_NAMES:
+            return None
+        built = self._facades.get(name)
+        if built is None:
+            built = build_facade(name, self._project_root, self.subscription_lifecycle)
+            self._facades[name] = built
+        return built
+
+    def tool_definitions(self) -> list[dict[str, Any]]:
+        """The 8 facade definitions for ``tools/list``, without building tools.
+
+        Definitions depend only on the installed package source, so they are
+        served from a cache keyed by its fingerprint (#1675); a miss builds the
+        registry exactly as before and records the result.
+        """
+        from .tool_definition_cache import cached_definitions
+
+        return cached_definitions(
+            lambda: [tool.get_tool_definition() for _, tool in self.tool_instances]
+        )
 
     def is_initialized(self) -> bool:
         """Check if the server is fully initialized."""
@@ -175,10 +219,8 @@ class TreeSitterAnalyzerMCPServer:
         from .intent_aliases import IntentAliasResolver
         from .legacy_shim import dispatch_legacy, is_legacy_name
 
-        tools = self.tools or {}
-
-        # 1. Live facade name.
-        tool = tools.get(name)
+        # 1. Live facade name (#1675: builds only this facade on a cold server).
+        tool = self.facade(name)
         if tool is not None:
             return await tool.execute(arguments)
 
@@ -192,7 +234,7 @@ class TreeSitterAnalyzerMCPServer:
             resolved = resolver.resolve(name)
         except (TypeError, ValueError):
             resolved = name
-        tool = tools.get(resolved)
+        tool = self.facade(resolved)
         if tool is not None:
             return await tool.execute(arguments)
         if is_legacy_name(resolved):
@@ -436,9 +478,13 @@ class TreeSitterAnalyzerMCPServer:
 
     def _shutdown_application_watcher(self) -> None:
         """停止本应用已物化的 watcher，不触发延迟 registry 构造。"""
-        if not self._registry_built or self._tools is None:
+        if self._registry_built and self._tools is not None:
+            index = self._tools.get("index")
+        else:
+            # #1675：只物化过单个门面时，index 门面可能已单独构建。
+            index = self.__dict__.get("_facades", {}).get("index")
+        if index is None:
             return
-        index = self._tools.get("index")
         cache = getattr(index, "action_map", {}).get("cache")
         if cache is not None:
             cache.shutdown_application_watcher()

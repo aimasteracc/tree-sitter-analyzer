@@ -289,7 +289,10 @@ class CodeGraphRelationToolMixin:
             self._graph_index_identity = identity
             cache = self._try_get_cache()
             if cache is not None:
-                self._call_graph = CachedCallGraph(self.project_root, cache=cache)
+                # #1675：nav 关系查询的图落盘边解析结果，供冷进程复用。
+                self._call_graph = CachedCallGraph(
+                    self.project_root, cache=cache, persist=True
+                )
                 self._data_source = "cache"
             else:
                 self._call_graph = CallGraph(self.project_root)
