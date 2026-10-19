@@ -78,7 +78,11 @@ def store(fingerprint: str, text: str) -> None:
         os.replace(temporary, target)
         _prune(directory)
     except OSError:
-        temporary.unlink(missing_ok=True)
+        # 清理本身也可能失败（目录不存在 / 路径中有文件）：同样静默放弃。
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def _prune(directory: Path) -> None:
