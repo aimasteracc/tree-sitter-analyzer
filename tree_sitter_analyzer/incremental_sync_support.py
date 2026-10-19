@@ -28,9 +28,19 @@ class SyncResult:
     synapse_resolved: int = 0
     manifest_certification_failed: bool = False
     details: list[dict[str, Any]] = field(default_factory=list)
+    #: 默认库的同步是否发布了新版本；``None`` 表示原地同步（无发布概念）。
+    published: bool | None = None
+    #: 未发布的原因码（如 ``INDEX_UNCHANGED``，#1671）。
+    publication_reason: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        publication: dict[str, Any] = {}
+        if self.published is not None:
+            publication["published"] = self.published
+        if self.publication_reason is not None:
+            publication["publication_reason"] = self.publication_reason
         return {
+            **publication,
             "mode_used": "incremental",
             "scanned": self.scanned,
             "new_files": self.new_files,

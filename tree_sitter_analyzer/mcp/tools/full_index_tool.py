@@ -671,6 +671,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                     and not candidate_snapshot.truncated_by_max_files
                 ),
                 source_scope=source_scope,
+                candidate_snapshot=candidate_snapshot,
             )
             manifest_certified = bool(stats.pop("_manifest_certified", False))
             manifest_warning = stats.get("manifest_warning")
@@ -1051,6 +1052,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         *,
         stamp_manifest: bool = False,
         source_scope: SourceScopeDescriptor | None = None,
+        candidate_snapshot: IndexCandidateSnapshot | None = None,
         _cache: Any | None = None,
     ) -> dict[str, Any]:
         cache: Any | None = _cache
@@ -1077,6 +1079,17 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                         if isinstance(exc, sqlite3.OperationalError)
                         and str(exc) == "SOURCE_SCOPE_UNSUPPORTED"
                         else "INDEX_MANIFEST_CERTIFICATION_FAILED"
+                    )
+                else:
+                    # #1671：本次运行盖出清单（无失败）后签发收敛刷新记录，
+                    # 其后的零变化刷新据此免复制、免发布。
+                    from ...cache.stable_failures import issue_after_stamp
+
+                    issue_after_stamp(
+                        cache.get_conn(),
+                        self.project_root or ".",
+                        candidate_snapshot,
+                        source_scope,
                     )
             stats = cache.get_stats()
             operational_unsupported = manifest_warning == "SOURCE_SCOPE_UNSUPPORTED"

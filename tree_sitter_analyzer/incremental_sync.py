@@ -93,8 +93,13 @@ class IncrementalSync:
         certify_manifest: bool,
     ) -> SyncResult:
         """Reconcile in place: a custom ``db_path`` or a private generation build."""
+        from .cache.stable_failures import clear_record
+
         result = SyncResult()
         conn = self._cache.get_conn()
+        # #1671：先撤销继承的稳定失败记录；只有收敛的运行结束时重新签发。
+        clear_record(conn)
+        conn.commit()
         indexed_rows = self._load_indexed_rows(conn)
         disk_files, present_paths, truncated, changed_files = self._scan_disk_files(
             max_files,
@@ -397,6 +402,7 @@ class IncrementalSync:
             operational_complete and candidate_snapshot is not None
         )
         expected_paths = set(disk_files)
+        stamped = False
         if (
             result.scope_complete
             and candidate_snapshot is not None
@@ -407,6 +413,7 @@ class IncrementalSync:
 
             try:
                 stamp_full_index_manifest(conn, self._cache.project_root, source_scope)
+                stamped = True
             except Exception:
                 logger.warning(
                     "incremental snapshot manifest certification failed",
@@ -429,8 +436,48 @@ class IncrementalSync:
 
                 clear_call_graph_built_strict(conn)
                 conn.commit()
-
+        # 不盖清单的调用（``index action=full`` 的分阶段运行）只能签发带失败的
+        # 记录：stamped 为假时 issue_after_run 拒绝无失败的记录。
+        self._issue_stable_failure_record(
+            conn,
+            candidate_snapshot,
+            source_scope,
+            result,
+            converged=bool(
+                backfill_complete
+                and result.backfill_errors == 0
+                and result.changed_during_run == 0
+                and not result.truncated_by_max_files
+            ),
+            stamped=stamped,
+        )
         return result
+
+    def _issue_stable_failure_record(
+        self,
+        conn: Any,
+        candidate_snapshot: IndexCandidateSnapshot | None,
+        source_scope: SourceScopeDescriptor,
+        result: SyncResult,
+        *,
+        converged: bool,
+        stamped: bool,
+    ) -> None:
+        """#1671：精确（或仅稳定失败）且调用图已收敛的同步签发零变化判定证据。"""
+        from .cache.stable_failures import current_extractor_version, issue_after_run
+        from .index_source_snapshot import canonical_source_scope_descriptor
+
+        issue_after_run(
+            conn,
+            project_root=self._cache.project_root,
+            candidate=candidate_snapshot,
+            scope=canonical_source_scope_descriptor(source_scope),
+            extractor_version=current_extractor_version(),
+            details=result.details,
+            errors=result.errors,
+            converged=converged,
+            stamped=stamped,
+        )
 
     @staticmethod
     def _load_indexed_rows(conn: Any) -> dict[str, dict[str, Any]]:
@@ -695,6 +742,9 @@ class IncrementalSync:
             detail["reason"] = index_result["reason"]
         if status == "error" and FAILURE_KIND in index_result:
             detail[FAILURE_KIND] = index_result[FAILURE_KIND]
+            if "content_hash" in index_result:
+                # #1671：稳定失败绑定被拒绝字节的摘要。
+                detail["content_hash"] = index_result["content_hash"]
         return detail
 
     def _reindex_modified(
@@ -744,6 +794,9 @@ class IncrementalSync:
             detail["reason"] = index_result["reason"]
         if status == "error" and FAILURE_KIND in index_result:
             detail[FAILURE_KIND] = index_result[FAILURE_KIND]
+            if "content_hash" in index_result:
+                # #1671：稳定失败绑定被拒绝字节的摘要。
+                detail["content_hash"] = index_result["content_hash"]
         return detail
 
     def _index_logical_file(self, info: dict[str, Any]) -> dict[str, Any]:

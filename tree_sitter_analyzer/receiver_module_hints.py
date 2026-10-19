@@ -82,7 +82,9 @@ def module_hints(root: Any) -> ModuleHints:
         stack.extend(node.children)
     scope.poisoned |= _global_names(root)
     variables: dict[str, Hint] = {}
-    for name in set(scope.declared) | set(scope.assigned):
+    # 有序遍历：结果写入 symbols_json（``module_types``），集合顺序随进程哈希种子
+    # 变化会让同一字节在两次提取中得到不同的索引行（#1671 等价门）。
+    for name in sorted(set(scope.declared) | set(scope.assigned)):
         hint = _decide_module(scope, name)
         if hint is not None and name not in imports:
             variables[name] = hint

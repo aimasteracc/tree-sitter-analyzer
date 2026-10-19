@@ -198,6 +198,8 @@ def _worker_index_file(
             "rel_path": rel_path,
             "abs_path": abs_path,
             "reason": result.error_message or "parse failed",
+            # #1671：被拒绝字节的摘要，绑定稳定失败的内容证据。
+            "content_hash": _content_hash(source_code),
         }
     symbols = _extract_symbols(result.tree, source_code, language)
     imports = _extract_imports(symbols)

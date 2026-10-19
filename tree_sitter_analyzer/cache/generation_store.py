@@ -52,6 +52,7 @@ from .source_recheck import (
 )
 from .source_recheck import permanent_rejections_only as permanent_rejections_only
 from .source_recheck import source_contents as _source_contents
+from .stable_failures import clear_record_at
 
 _PATH_ONLY_SOURCE = os.name != "posix"
 # 发布租约的等待上限（秒）；超时报 ``INDEX_WRITER_BUSY``。RFC-0032 规定 30 秒。
@@ -396,6 +397,8 @@ class GenerationStore:
                     destination.close()
             finally:
                 source.close()
+        # #1671：私有副本不继承父版本的稳定失败记录；只有收敛的运行重新签发。
+        clear_record_at(database)
         return selector
 
     def seal(self, selector: GenerationSelector) -> None:

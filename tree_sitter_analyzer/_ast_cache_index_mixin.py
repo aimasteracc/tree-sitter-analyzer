@@ -336,10 +336,17 @@ class ASTCacheIndexMixin(ASTCacheSurface):
             if not (force or resolve_only or language_filter or candidate_snapshot):
                 # #1625：无候选的增量运行改用发布侧捕获的同一快照，才能清除已从
                 # 磁盘删除的文件并重新认证；强制重建、仅解析与按语言运行不变。
+                from .cache.helpers import _project_index_activation_enabled
+
                 return mutate_published_cache(
                     self,
                     None,
                     scope=scope,
+                    # #1671：git 活跃度会刷新待处理队列，不能以源码未变判定零变化。
+                    precheck_unchanged=bool(
+                        certify_manifest
+                        and not _project_index_activation_enabled(include_activation)
+                    ),
                     snapshot_operation=lambda writable,
                     captured: writable.index_project(
                         max_files,
