@@ -18,6 +18,11 @@ _ALIAS_IMPORTS_SQL = (
     "SELECT DISTINCT file_path, local_name FROM ast_imports "
     "WHERE alias_of = ? AND local_name <> ? AND is_star = 0"
 )
+#: 原样导入本地名 ``local`` 的文件（改名后的再导出被别的模块再次导入，一跳）。
+_PLAIN_REIMPORTS_SQL = (
+    "SELECT DISTINCT file_path FROM ast_imports "
+    "WHERE local_name = ? AND (alias_of = '' OR alias_of IS NULL) AND is_star = 0"
+)
 #: 某文件中以本地名为被调方的 CALLS 边（走 ``idx_edges_callee_name``）。
 _ALIAS_EDGES_SQL = (
     "SELECT * FROM edges WHERE kind = 'calls' AND callee_name = ? AND file_path = ? "
@@ -35,8 +40,15 @@ def alias_call_rows(conn: sqlite3.Connection, callee_name: str) -> list[sqlite3.
         ).fetchall()
     except sqlite3.OperationalError:
         return []
+    pairs = {(str(file_path), str(local_name)) for file_path, local_name in imports}
+    for local_name in {local for _file, local in pairs}:
+        # 只做候选收集：是否真的指向 `callee_name` 由持久化来源逐行确认。
+        pairs.update(
+            (str(row[0]), local_name)
+            for row in conn.execute(_PLAIN_REIMPORTS_SQL, (local_name,))
+        )
     rows: list[sqlite3.Row] = []
-    for file_path, local_name in imports:
+    for file_path, local_name in sorted(pairs):
         for row in conn.execute(_ALIAS_EDGES_SQL, (local_name, file_path)):
             alias = _row_alias(row)
             if alias is not None and alias.get("name") == callee_name:

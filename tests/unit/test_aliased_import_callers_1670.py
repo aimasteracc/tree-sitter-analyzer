@@ -21,6 +21,8 @@ _CORE = (
     "def callback_target(node):\n"
     "    return node\n\n\n"
     "def direct(node):\n"
+    "    return node\n\n\n"
+    "def chained(node):\n"
     "    return node\n"
 )
 _USER = (
@@ -41,6 +43,11 @@ _API = 'from .core import reexported as public_name\n\n__all__ = ["public_name"]
 _MODS = (
     "import pkg.core as cc\n\n\ndef via_module(node):\n    return cc.extract(node)\n"
 )
+# 改名后再以原样导入：`hub` 把 `chained` 改名为 `_chained`，`hub_user` 导入 `_chained`。
+_HUB = "from .core import chained as _chained\n"
+_HUB_USER = (
+    "from .hub import _chained\n\n\ndef via_hub(node):\n    return _chained(node)\n"
+)
 
 
 @pytest.fixture
@@ -54,6 +61,8 @@ async def alias_root(tmp_path: Path) -> str:
     (pkg / "user.py").write_text(_USER, encoding="utf-8")
     (pkg / "api.py").write_text(_API, encoding="utf-8")
     (pkg / "mods.py").write_text(_MODS, encoding="utf-8")
+    (pkg / "hub.py").write_text(_HUB, encoding="utf-8")
+    (pkg / "hub_user.py").write_text(_HUB_USER, encoding="utf-8")
     indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
         {"mode": "full", "max_files": 20}
     )
@@ -138,6 +147,18 @@ async def test_graph_consumers_see_alias_callers(alias_root: str) -> None:
     callers = graph.callers_of("extract", "pkg/core.py")
 
     assert sorted(c["name"] for c in callers) == ["use", "use_twice", "via_module"]
+
+
+@pytest.mark.asyncio
+async def test_renamed_reexport_imported_under_its_alias(alias_root: str) -> None:
+    result = await _callers(alias_root, "chained")
+
+    entries = _entries(result)
+    assert {
+        name: (e["file"], e.get("import_alias")) for name, e in entries.items()
+    } == {"via_hub": ("pkg/hub_user.py", "_chained")}
+    # `hub` 的 `_chained` 被别的模块导入（再导出）：导入行仍是引用。
+    assert result["completeness"] != "complete"
 
 
 @pytest.mark.asyncio

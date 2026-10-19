@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from ._reexports import follow_reexports
+from ._reexports import follow_reexports, imported_entry
 
 if TYPE_CHECKING:
     from ._context import ResolverContext
@@ -20,15 +20,23 @@ if TYPE_CHECKING:
 def resolve_import_alias(
     base: str, caller_file: str, ctx: ResolverContext
 ) -> tuple[int, str, dict[str, Any]] | None:
-    """``base`` 是改名导入的本地名时返回 ``(符号 id, 定义文件, 来源)``。"""
-    entry = _alias_entry(ctx, caller_file, base)
-    if entry is None:
-        return None
+    """``base`` 是改名导入的本地名时返回 ``(符号 id, 定义文件, 来源)``。
+
+    原样导入的名字若在再导出链上被改过名（``hub`` 中 ``from core import f as _f``，
+    调用方 ``from hub import _f``），同样记下来源：调用点的本地名不是目标的名字。
+    """
     target = ctx.name_to_source.get(caller_file, {}).get(base)
     if not target:
         return None
-    found = follow_reexports(ctx, target, entry.alias_of)
-    if found is None:
+    entry = _alias_entry(ctx, caller_file, base)
+    if entry is not None:
+        found = follow_reexports(ctx, target, entry.alias_of)
+    else:
+        entry = imported_entry(ctx, caller_file, base)
+        if entry is None:
+            return None
+        found = follow_reexports(ctx, target, base)
+    if found is None or found[2] == base:
         return None
     symbol_id, defining_file, name = found
     provenance = {"local": base, "name": name, "line": entry.line}
