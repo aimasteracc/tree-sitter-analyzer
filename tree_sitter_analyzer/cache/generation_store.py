@@ -41,7 +41,6 @@ from .generation_selector import (
 )
 from .source_hash_budget import (
     SOURCE_HASH_BYTE_BUDGET,
-    SOURCE_HASH_MAX_SECONDS_ONE_FILE,
     SourceHashBudgetExceeded,
     source_hash_budget_seconds,
 )
@@ -121,9 +120,9 @@ def _bound_source_hashes(
 
     def bind(entry: IndexSnapshotEntry) -> tuple[os.stat_result, str, bool, int]:
         before = os.lstat(entry.abs_path)
-        deadline = min(
-            overall_deadline, time.monotonic() + SOURCE_HASH_MAX_SECONDS_ONE_FILE
-        )
+        # 并发读取时单个慢文件只占一个线程；整批期限即上界（逐文件期限在线程
+        # 交错下会随调度而变，不再使用）。
+        deadline = overall_deadline
         counters = {"input": 0, "output": 0}
         try:
             _, digest, clean = hash_source_at(
@@ -144,6 +143,7 @@ def _bound_source_hashes(
 
     results: dict[str, tuple[os.stat_result, str, bool]] = {}
     total_bytes = 0
+    exhausted: BaseException | None = None
     with ThreadPoolExecutor(max_workers=_HASH_THREADS) as pool:
         futures = [(entry, pool.submit(bind, entry)) for entry in selected]
         try:
@@ -154,13 +154,21 @@ def _bound_source_hashes(
                     raise OverflowError
                 results[entry.rel_path] = (before, digest, clean)
         except (TimeoutError, OverflowError) as exc:
+            exhausted = exc
             for _entry, pending in futures:
                 pending.cancel()
-            raise SourceHashBudgetExceeded(len(selected), len(results)) from exc
         except BaseException:
             for _entry, pending in futures:
                 pending.cancel()
             raise
+    if exhausted is not None:
+        # 线程池退出时已等待运行中的任务；如实报告整批中实际绑定成功的文件数。
+        bound = sum(
+            1
+            for _entry, future in futures
+            if future.done() and not future.cancelled() and future.exception() is None
+        )
+        raise SourceHashBudgetExceeded(len(selected), bound) from exhausted
     return results
 
 
