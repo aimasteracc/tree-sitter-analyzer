@@ -351,6 +351,7 @@ def walk_count(monkeypatch) -> list[int]:
 async def test_new_process_answers_from_the_stored_walk(
     indexed_root, walk_count, monkeypatch
 ) -> None:
+    walked_answers = 0
     for name in ("Widget.unused", "Widget.used", "helper", "missing_name"):
         await _callers(indexed_root, name)
         _new_process()
@@ -359,8 +360,11 @@ async def test_new_process_answers_from_the_stored_walk(
         stored_walks = len(walk_count)
         unstored = await _unstored_callers(indexed_root, name, monkeypatch)
         assert _without_timing(cold) == _without_timing(unstored), name
-        if cold.get("completeness_reason") is None and "unindexed_source_files" in cold:
+        if cold.get("unindexed_source_files") == []:
+            # 这个答案经过了未入索引文件门：新进程只复核证据，不再遍历。
+            walked_answers += 1
             assert stored_walks == 0, name
+    assert walked_answers >= 2
 
 
 @pytest.mark.asyncio
