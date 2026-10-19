@@ -246,3 +246,60 @@ def test_store_needs_an_existing_real_ast_cache_dir(tmp_path):
     call_graph_store.save(str(tmp_path), "digest", [], [None])
     assert not (tmp_path / ".ast-cache").exists()
     assert call_graph_store.load(str(tmp_path), "digest", functions=0, edges=1) is None
+
+
+def _fake_ref(name):
+    from tree_sitter_analyzer.call_graph import FunctionRef
+
+    return FunctionRef(file_path="a.py", name=name, start_line=1, language="python")
+
+
+def test_save_skips_values_marshal_cannot_encode(tmp_path):
+    (tmp_path / ".ast-cache").mkdir()
+    ref = _fake_ref("f")
+    call_graph_store.save(str(tmp_path), "d", [ref], [(ref, [ref], [], object(), 1)])
+    assert list((tmp_path / ".ast-cache" / call_graph_store.DIR_NAME).glob("*")) == []
+
+
+def test_save_write_failure_leaves_nothing_behind(tmp_path, monkeypatch):
+    (tmp_path / ".ast-cache").mkdir()
+    ref = _fake_ref("f")
+
+    def fail(self, data):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "write_bytes", fail)
+    call_graph_store.save(str(tmp_path), "d", [ref], [(ref, [ref], [], None, 1)])
+    assert list((tmp_path / ".ast-cache" / call_graph_store.DIR_NAME).glob("*")) == []
+
+
+def test_ast_cache_that_is_not_a_directory_is_never_used(tmp_path):
+    (tmp_path / ".ast-cache").write_text("not a dir", encoding="utf-8")
+    ref = _fake_ref("f")
+    call_graph_store.save(str(tmp_path), "d", [ref], [None])
+    assert call_graph_store.load(str(tmp_path), "d", functions=1, edges=1) is None
+
+
+def test_load_rejects_count_mismatch_and_round_trips_value_refs(tmp_path):
+    (tmp_path / ".ast-cache").mkdir()
+    known, module_ref = _fake_ref("known"), _fake_ref("<module>")
+    records = [(module_ref, [known], [known, module_ref], {"via": "x"}, 7), None]
+    call_graph_store.save(str(tmp_path), "d", [known], records)
+    assert call_graph_store.load(str(tmp_path), "d", functions=2, edges=2) is None
+    assert call_graph_store.load(str(tmp_path), "d", functions=1, edges=3) is None
+    stored = call_graph_store.load(str(tmp_path), "d", functions=1, edges=2)
+    assert stored is not None
+    decoded = call_graph_store.decode(stored, [known], type(known))
+    caller, certain, possible, binding, line = decoded[0]
+    assert (caller, certain, possible, binding, line) == (
+        module_ref,
+        [known],
+        [known, module_ref],
+        {"via": "x"},
+        7,
+    )
+    assert certain[0] is known and decoded[1] is None
+    with pytest.raises(ValueError):
+        call_graph_store.decode([(0, (-1,), (), None, 1)], [known], type(known))
+    with pytest.raises(ValueError):
+        call_graph_store.decode([(5, (), (), None, 1)], [known], type(known))

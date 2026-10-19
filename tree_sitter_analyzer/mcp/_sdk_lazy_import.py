@@ -40,17 +40,17 @@ DEFERRED_PACKAGES: tuple[str, ...] = ("mcp", "mcp.server", "httpx")
 _LOCK = threading.RLock()
 
 
-def defer_sdk_package_inits() -> bool:
+def defer_sdk_package_inits(packages: tuple[str, ...] = DEFERRED_PACKAGES) -> bool:
     """Defer the package inits; True when the deferral was installed.
 
-    Does nothing once ``mcp`` is imported: the SDK's own ``__init__`` has then
-    already imported everything this would defer.
+    Does nothing once the first package (``mcp``) is imported: the SDK's own
+    ``__init__`` has then already imported everything this would defer.
     """
     with _LOCK:
-        if "mcp" in sys.modules:
+        if not packages or packages[0] in sys.modules:
             return False
         installed = False
-        for name in DEFERRED_PACKAGES:
+        for name in packages:
             parent, _, child = name.rpartition(".")
             if name in sys.modules or (parent and parent not in sys.modules):
                 continue

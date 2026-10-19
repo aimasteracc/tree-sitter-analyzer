@@ -150,3 +150,64 @@ def test_cache_dir_defaults_under_home(monkeypatch, tmp_path):
     monkeypatch.delenv(cache.CACHE_DIR_ENV, raising=False)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     assert cache.cache_dir() == tmp_path / ".tsa" / "cache"
+
+
+def test_unserializable_definitions_are_served_but_not_cached(definition_cache):
+    built = [{"name": "x", "inputSchema": {"default": object()}}]
+    assert cache.cached_definitions(lambda: built) is built
+    assert not definition_cache.exists()
+
+
+def test_fingerprint_failure_builds_directly(definition_cache, monkeypatch):
+    def broken(*args, **kwargs):
+        raise OSError("unreadable package dir")
+
+    monkeypatch.setattr(cache, "source_fingerprint", broken)
+    built = [{"name": "x"}]
+    assert cache.cached_definitions(lambda: built) is built
+    assert not definition_cache.exists()
+
+
+def test_unwritable_cache_dir_is_ignored(tmp_path, monkeypatch):
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("file", encoding="utf-8")
+    monkeypatch.setenv(cache.CACHE_DIR_ENV, str(blocker / "sub"))
+    assert cache.cached_definitions(lambda: [{"name": "x"}]) == [{"name": "x"}]
+    assert cache.load(cache.source_fingerprint()) is None
+
+
+def test_store_prune_keeps_the_newest_call_graph_files(tmp_path):
+    from tree_sitter_analyzer import call_graph_store
+
+    directory = tmp_path / ".ast-cache" / call_graph_store.DIR_NAME
+    directory.mkdir(parents=True)
+    for index in range(call_graph_store.KEEP + 2):
+        path = directory / f"{index:040x}.bin"
+        path.write_bytes(b"x")
+        os.utime(path, ns=(index * 10**9, index * 10**9))
+    call_graph_store._prune(directory)
+    assert len(list(directory.glob("*.bin"))) == call_graph_store.KEEP
+
+
+def test_stand_in_servers_keep_the_original_list_and_dispatch_paths():
+    from tree_sitter_analyzer.mcp.server_utils.tool_registration import (
+        _facade_definitions,
+        _single_facade,
+    )
+
+    class Tool:
+        def get_tool_definition(self):
+            return {"name": "stand-in"}
+
+    class StandIn:
+        tool_instances = [("stand-in", Tool())]
+
+    assert _facade_definitions(StandIn()) == [{"name": "stand-in"}]
+    assert _single_facade(StandIn(), "nav") is None
+
+
+def test_build_facade_rejects_unknown_names():
+    from tree_sitter_analyzer.mcp._tool_registry import build_facade
+
+    with pytest.raises(ValueError, match="unknown facade"):
+        build_facade("nope", None)
