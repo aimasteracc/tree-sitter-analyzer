@@ -102,6 +102,12 @@ def discard_file_rows(
     # of SQLite transactions.  Clear them before the first mutation so the
     # ensuing pipeline cannot resurrect a deleted/replaced generation.
     _clear_symbol_resolver_context()
+    has_edges = _table_exists(conn, "edges")
+    if has_edges:
+        # 先撤销受影响的入边解析，再删除符号行：按名称匹配的分支读取本文件的
+        # 符号名，删除之后再执行就什么也匹配不到（#1673 等价门在本仓库发现：
+        # 清除 corpus 文件后，18 条 ``create`` 调用停留在错误的解析上）。
+        _reset_incoming_edge_resolutions(conn, rel_path)
     if fts5_available:
         _delete_fts_rows(conn, rel_path)
     _delete_symbol_comments(conn, rel_path)
@@ -109,11 +115,10 @@ def discard_file_rows(
     _delete_file_rows_if_table_present(conn, "ast_symbol_projection_state", rel_path)
     for table in ("ast_imports", "ast_symbol_activation"):
         _delete_file_rows_if_table_present(conn, table, rel_path)
-    if _table_exists(conn, "edges"):
+    if has_edges:
         from ..graph.edge_store import EdgeStore
 
         EdgeStore(conn, ensure_schema=False).replace_edges_for_file(rel_path, [])
-        _reset_incoming_edge_resolutions(conn, rel_path)
     cursor = conn.execute(
         "DELETE FROM ast_index WHERE file_path = ?",
         (rel_path,),

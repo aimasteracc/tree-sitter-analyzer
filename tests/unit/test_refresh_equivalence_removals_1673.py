@@ -120,3 +120,38 @@ def test_sync_scope_then_index_scope_equals_a_fresh_rebuild(root) -> None:
     _refresh(root)
 
     assert dump_differences(refreshed, _dump(root)) == {}
+
+
+def test_discarding_a_file_resets_calls_bound_by_its_names(tmp_path) -> None:
+    # 删除一个声明了 ``create`` 的文件会改变 ``create`` 的唯一性，所以调用名为
+    # ``create`` 的边（即使解析到别的文件）必须撤销并在回填中重新解析。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cache.write import discard_file_rows
+
+    (tmp_path / "user.py").write_text(
+        "def run():\n    return create()\n", encoding="utf-8"
+    )
+    (tmp_path / "a.py").write_text("def create():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("def create():\n    return 2\n", encoding="utf-8")
+    database = tmp_path / "custom" / "index.db"
+    database.parent.mkdir()
+    cache = ASTCache(str(tmp_path), str(database))
+    try:
+        cache.index_project(workers=0)
+        conn = cache._get_conn()
+        conn.execute(
+            "UPDATE edges SET callee_resolution = 'project', "
+            "callee_resolved_file = 'a.py' "
+            "WHERE kind = 'calls' AND file_path = 'user.py' AND callee_name = 'create'"
+        )
+        conn.commit()
+        discard_file_rows(conn, "b.py", cache.fts5_available)
+        conn.commit()
+        row = conn.execute(
+            "SELECT callee_resolution, callee_resolved_file FROM edges "
+            "WHERE kind = 'calls' AND file_path = 'user.py' AND callee_name = 'create'"
+        ).fetchone()
+    finally:
+        cache.close()
+
+    assert tuple(row) == ("unknown", "")
