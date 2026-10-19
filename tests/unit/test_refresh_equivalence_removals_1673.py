@@ -98,8 +98,8 @@ def test_refresh_after_a_removal_equals_a_fresh_rebuild(root, removed) -> None:
 # slow_ok：三次刷新（含同步路由）、一次全新重建并转储两份完整索引。
 @pytest.mark.slow_ok
 def test_sync_scope_then_index_scope_equals_a_fresh_rebuild(root) -> None:
-    # ``ast_cache mode=sync`` 不带默认排除模式，会把 ``tests/golden/corpus_*``
-    # 一并索引；其后的项目索引刷新按默认范围清除它们，结果必须与全新重建相同。
+    # 混合路由链：项目索引 → ``ast_cache mode=sync`` → 项目索引。两条路由共用
+    # 默认范围（#1697，``tests/golden/corpus_*`` 不入索引），结果必须与全新重建相同。
     from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
 
     corpus = root / "tests" / "golden"

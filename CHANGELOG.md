@@ -30,6 +30,25 @@
 
 ### Fixed
 
+- **`ast_cache mode=sync` builds the same index as `mode=index`** (#1697).
+  - `IncrementalSync.sync()` without `exclude_patterns` now applies the
+    default scope (`tests/golden/corpus_*` excluded), the same one
+    `index_project` uses. Before, `ast_cache mode=sync`, `knowledge_graph`
+    updates and the change-impact auto-refresh indexed the corpus files and
+    stamped a manifest with `no_default_excludes: true`, so the
+    `SYMBOL_IN_EXCLUDED_FILE` answer (#1648) never fired after a sync. An
+    explicit `exclude_patterns` set is still the effective set. The default
+    patterns have one source (`index_source_scope.default_exclude_patterns`).
+  - Rows for excluded files left by an older index are deleted by the next
+    sync (also on a custom `db_path`, where excluded files used to count as
+    present, so the run could never certify). `mode=changes` lists them as
+    `deleted`.
+  - Sync follows the project-index activation policy (`TSA_INDEX_ACTIVATION`,
+    off by default): it no longer queues `ast_symbol_activation` `pending`
+    rows for re-indexed files that the index route does not write. With the
+    variable on, both routes queue and flush one bounded batch. Indexing a
+    single file (`mode=index file_path=...`) still computes activation.
+
 - **Full index of this repository publishes on a loaded machine** (#1684).
   - Root cause of `CALL_GRAPH_DANGLING_RESOLUTION`: the dangling-resolution
     check (two `NOT EXISTS` scans over every call edge, 232k on this

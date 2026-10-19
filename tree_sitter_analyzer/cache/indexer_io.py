@@ -149,7 +149,12 @@ def parse_and_write(
         conn, rel_path, language, symbols, cache.fts5_available
     )
     cache._write_imports_for_file(conn, rel_path, language, imports)  # noqa: SLF001
-    cache._write_activation_for_file(conn, rel_path, inserted)  # noqa: SLF001
+    if getattr(cache, "_project_activation_enabled", None) is False:
+        # #1697：项目范围的同步遵循项目索引的 activation 策略（默认关闭）：
+        # 只清除旧行，不排入单文件路径的 pending 队列行。
+        _clear_activation_for_file_fn(conn, rel_path)
+    else:
+        cache._write_activation_for_file(conn, rel_path, inserted)  # noqa: SLF001
     # CALLS rows live in the unified ``edges`` table (B1.3 — no ast_call_edges).
     # Write the edges first so synapse resolution can UPDATE them in place.
     if not _write.write_graph_edges_for_file(
