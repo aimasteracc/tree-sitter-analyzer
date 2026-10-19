@@ -68,6 +68,13 @@ def drop_bound_sites(
     return kept
 
 
+def alias_provenance(local_name: Any) -> dict[str, Any]:
+    """#1670：经改名导入解析的调用方条目字段；否则 ``{}``。"""
+    if not isinstance(local_name, str) or not local_name:
+        return {}
+    return {"resolution_kind": "import_alias", "import_alias": local_name}
+
+
 def annotated_provenance(binding: Any) -> dict[str, Any]:
     """Caller-entry fields for an edge bound through an annotation; else ``{}``."""
     if not isinstance(binding, dict) or not binding:

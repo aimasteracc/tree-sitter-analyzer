@@ -16,6 +16,7 @@ from enum import Enum
 from typing import Any, cast
 
 from ..cached_annotated_binding import ANNOTATED_RECEIVER
+from .alias_edges import alias_call_rows, import_alias_of
 
 
 class EdgeKind(str, Enum):
@@ -837,11 +838,13 @@ def _direct_callers(
 ) -> list[sqlite3.Row]:
     rows: list[sqlite3.Row] = []
     fallback_rows: list[sqlite3.Row] = []
-    for row in _callers_by_name(conn, callee_name):
+    aliased = alias_call_rows(conn, callee_name)
+    alias_ids = {id(row) for row in aliased}
+    for row in [*_callers_by_name(conn, callee_name), *aliased]:
         edge = _edge_from_row(row)
         source = parse_node_id(edge.source_node_id)
         target = parse_node_id(edge.target_node_id)
-        if not _matches_callee(row, target, callee_name):
+        if id(row) not in alias_ids and not _matches_callee(row, target, callee_name):
             continue
         if callee_file:
             resolved_file = str(
@@ -1101,4 +1104,7 @@ def _call_edge_entry(
     }
     if annotated_binding_target(row, edge) is not None:
         entry["receiver_binding"] = edge.metadata.get("receiver_binding")
+    alias = import_alias_of(edge)
+    if alias is not None:
+        entry["import_alias"] = alias
     return entry

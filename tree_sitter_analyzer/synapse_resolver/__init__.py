@@ -35,6 +35,7 @@ from typing import Any
 
 from ..languages.language_family import languages_compatible
 from ..receiver_proof import constructed_class, split_receiver
+from ._aliases import resolve_import_alias
 from ._constants import (
     BUILTIN_QUALIFIED_PY,
     BUILTIN_TYPE_NAMES_PY,
@@ -58,6 +59,9 @@ class ResolvedCallee:
     #: RFC-0038: provenance of an ``annotated_receiver`` binding, persisted as
     #: ``metadata.receiver_binding``; ``None`` for every other resolution.
     binding: dict[str, Any] | None = field(default=None, compare=False)
+    #: #1670：经改名导入（``from m import f as g; g()``）解析时的来源，持久化为
+    #: ``metadata.import_alias``（``local`` / ``name`` / ``line``）；其余为 ``None``。
+    alias: dict[str, Any] | None = field(default=None, compare=False)
 
 
 def _split_qualifier(name: str) -> tuple[str, str]:
@@ -144,7 +148,13 @@ def _try_import(
     """Two cases:
     * ``bb.baz()`` after ``from . import b as bb``: alias bb -> b.py.
     * ``baz()`` after ``from .b import baz``: name baz -> b.py.
+    * ``g()`` after ``from .b import f as g``: alias g -> ``b.f`` (#1670).
     """
+    if not qualifier:
+        aliased = resolve_import_alias(base, caller_file, ctx)
+        if aliased is not None:
+            symbol_id, defining_file, provenance = aliased
+            return ResolvedCallee(symbol_id, "project", defining_file, alias=provenance)
     if ctx.callee_resolver is None:
         if qualifier:
             target = ctx.import_alias_target.get(caller_file, {}).get(qualifier)

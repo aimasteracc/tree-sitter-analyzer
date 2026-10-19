@@ -78,10 +78,14 @@ def _row_value(row: Any, key: str) -> Any:
 
 
 def _update_params(resolved: Any, row: Any) -> tuple[Any, ...]:
-    """UPDATE 参数：带绑定的解析同时把 ``receiver_binding`` 写入 metadata。"""
+    """UPDATE 参数：带绑定的解析同时把 ``receiver_binding`` 写入 metadata。
+
+    #1670：经改名导入的解析同样把 ``import_alias`` 写入 metadata。
+    """
     metadata = None  # COALESCE keeps the stored metadata
     binding = getattr(resolved, "binding", None)
-    if binding:
+    alias = getattr(resolved, "alias", None)
+    if binding or alias:
         stored = _row_value(row, "metadata")
         try:
             parsed = json.loads(stored) if stored else {}
@@ -89,7 +93,10 @@ def _update_params(resolved: Any, row: Any) -> tuple[Any, ...]:
             parsed = {}
         if not isinstance(parsed, dict):
             parsed = {}
-        parsed["receiver_binding"] = binding
+        if binding:
+            parsed["receiver_binding"] = binding
+        if alias:
+            parsed["import_alias"] = alias
         parsed["callee_resolution"] = resolved.resolution
         parsed["callee_resolved_file"] = resolved.resolved_file
         metadata = json.dumps(parsed, sort_keys=True)

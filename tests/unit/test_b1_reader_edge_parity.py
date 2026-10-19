@@ -377,6 +377,8 @@ class TestGetCallEdgesParity:
             "callee_resolved_file",
             # RFC-0038：注解绑定边的来源（其余边为 None）。
             "receiver_binding",
+            # #1670：经改名导入解析的边的目标真实名字（其余边为 None）。
+            "import_alias_name",
         }
         for row in rows:
             assert set(row.keys()) == expected_keys

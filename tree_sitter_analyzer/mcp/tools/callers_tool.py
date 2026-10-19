@@ -19,6 +19,7 @@ from ._response_builder import build_response
 from .base_tool import BaseMCPTool
 from .callers_absence import assess_completeness
 from .callers_annotated import (
+    alias_provenance,
     annotated_provenance,
     drop_bound_sites,
     graph_bound_targets,
@@ -815,6 +816,8 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 "callee_resolution": resolution,
                 "callee_resolved_file": resolved_file,
                 **provenance,
+                # #1670：经改名导入（`from m import f as g; g()`）解析的调用点。
+                **alias_provenance(edge.get("import_alias")),
             }
             if provenance:
                 annotated_entries[key] = entry

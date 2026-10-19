@@ -23,14 +23,18 @@ from typing import Any, cast
 from .helpers import _build_function_entry
 
 #: ``get_call_edges`` 的唯一 SQL（#1559/#1560：带持久化解析列；RFC-0038 / #1618：
-#: 注解绑定的边带上 ``metadata.receiver_binding``）。ASTCache 与认证快照共用。
+#: 注解绑定的边带上 ``metadata.receiver_binding``；#1670：经改名导入解析的边带上
+#: 目标的真实名字 ``import_alias_name``）。ASTCache 与认证快照共用。
 CALL_EDGE_SQL = (
     "SELECT caller_name, file_path AS caller_file, caller_line, "
     "callee_name, callee_full, callee_line, file_path, language, "
     "callee_resolution, callee_resolved_file, "
     "CASE WHEN callee_resolution = 'annotated_receiver' "
     "THEN json_extract(metadata, '$.receiver_binding') END "
-    "AS receiver_binding "
+    "AS receiver_binding, "
+    "CASE WHEN callee_resolution = 'project' AND instr(metadata, 'import_alias') > 0 "
+    "THEN json_extract(metadata, '$.import_alias.name') END "
+    "AS import_alias_name "
     "FROM edges WHERE kind = 'calls'"
 )
 #: ``get_functions`` 读取的原始列。

@@ -167,8 +167,9 @@ class TestExtractorVersionBump:
         from tree_sitter_analyzer.cache import indexer as _ast_cache_indexer
 
         # v41：接收者未被证明的调用不再按唯一方法名绑定（#1669），并保留加载器投影契约。
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 41
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 41
+        # v42：改名导入的调用解析到真实目标（#1670）。
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 42
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 42
 
 
 def test_python_star_imported_loader_fails_closed() -> None:
