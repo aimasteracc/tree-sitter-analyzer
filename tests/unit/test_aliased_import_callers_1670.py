@@ -371,6 +371,11 @@ def test_alias_resolution_falls_back_without_a_definition() -> None:
     )
 
     assert resolve_import_alias("_f", "u.py", no_target) is None
+    # 名字来自星号导入的展开（没有导入行）：不当作改名。
+    starred = ResolverContext(
+        "/repo", None, imports_by_file={}, name_to_source={"u.py": {"g": "core.py"}}
+    )
+    assert resolve_import_alias("g", "u.py", starred) is None
     assert resolve_import_alias("_f", "u.py", no_definition) is None
     kept = _reexported_or("f", "", "u.py", no_definition, None, "core.py")
     assert (kept.resolved_file, kept.callee_symbol_id) == ("core.py", None)
