@@ -339,3 +339,24 @@ def test_index_pass_skips_unknown_owners_and_survives_a_readonly_index(
     finally:
         writable.close()
     assert row == ("project", "b.py", 7)
+
+
+def test_shared_reexport_rule_keeps_file_level_resolution_without_a_definition() -> (
+    None
+):
+    # 与 #1686 / #1692 共用的再导出规则：找不到定义或同名的只是非可调用符号时不改绑。
+    from tree_sitter_analyzer.synapse_resolver import _reexported_or
+    from tree_sitter_analyzer.synapse_resolver._context import ResolverContext
+    from tree_sitter_analyzer.synapse_resolver._reexports import symbol_id
+
+    ctx = ResolverContext(
+        "/repo",
+        None,
+        name_to_source={"u.py": {"f": "facade.py"}},
+        file_symbols={"facade.py": [("f", "variable", 3)]},
+        imports_by_file={},
+    )
+
+    kept = _reexported_or("f", "", "u.py", ctx, None, "facade.py")
+    assert (kept.resolved_file, kept.callee_symbol_id) == ("facade.py", None)
+    assert symbol_id(ctx, "facade.py", "f") is None
