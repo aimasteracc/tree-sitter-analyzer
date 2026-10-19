@@ -30,6 +30,31 @@
 
 ### Fixed
 
+- **Refresh cost** (#1673). Measured on Windows on this repository (2,507
+  selected files): the publication path hashed every source file up to four
+  times per refresh (capture, publish recheck, and the manifest stamp's two
+  walks), at 35–170 ms per file open on a loaded machine. Changes:
+  - **Evidence-keyed hash reuse** (`source_hash_cache`): a path-read digest is
+    reused only while `(st_dev, st_ino, st_mode, st_size, st_mtime_ns, change
+    time, st_file_attributes)` are unchanged and the file is outside the 5 s
+    racy window, as in #1651. On Windows the change time is NTFS `ChangeTime`
+    (path `stat` reports the creation time as `st_ctime`, so a same-size
+    rewrite that restores the mtime would otherwise look unchanged). The digest
+    stays the evidence for every freshness claim (RFC-0030).
+  - Cold hashing runs on 8 threads (35 → about 6 ms per file measured).
+  - The sealed parent is copied byte for byte into the private build
+    (read-only, rollback-journal, no sidecars) instead of page by page with
+    the SQLite backup API; it falls back to backup if the parent has a
+    sidecar. Publication is unchanged (RFC-0032 selector CAS).
+  - A project-index run validates its candidate once (it ran twice), and on
+    Windows a regular, non-reparse file's real path is its directory's real
+    path plus its name (one handle per directory instead of two per file;
+    junctions still resolve).
+  - The writer's symbol-projection check uses a 120 s budget. A check that ran
+    past the reader's 5 s budget was treated as inexact and rewrote every
+    file's projection: a 1-file refresh under load re-extracted 2,504 files.
+  - The synapse import-map pass built `set(module_to_file.values())` for every
+    import entry (27k × 2.5k on this repository); it is built once.
 - **A no-op refresh with stable per-file failures no longer publishes** (#1671).
   On a project with files whose optional grammar is not installed (this
   repository: one Swift and two Lua/Swift fixtures), every
