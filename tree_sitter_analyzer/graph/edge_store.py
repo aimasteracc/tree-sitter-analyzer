@@ -285,6 +285,15 @@ class EdgeStore:
             "source_node_id >= ? AND source_node_id < ?",
             (prefix, prefix + "\U0010ffff"),
         )
+        # #1673：源为占位节点（如 Java 枚举常量体中方法的 ``class:Operation``）的
+        # 边没有所属文件（``file_path`` 为空），却是本文件抽取出来的；按目标节点
+        # 的前缀删除，否则文件删除或重写后它们永久残留（与全新重建不同）。
+        # ``+file_path`` 让规划器走 idx_edges_target_kind 的范围扫描。
+        self._conn.execute(
+            f"DELETE FROM edges WHERE {calls_clause}"  # nosec B608 — constant clause
+            "+file_path = '' AND target_node_id >= ? AND target_node_id < ?",
+            (prefix, prefix + "\U0010ffff"),
+        )
         self.upsert_edges(edges)
 
     def backfill_name_columns(self) -> None:
