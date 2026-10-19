@@ -30,6 +30,24 @@
 
 ### Fixed
 
+- **Full index of this repository publishes on a loaded machine** (#1684).
+  - Root cause of `CALL_GRAPH_DANGLING_RESOLUTION`: the dangling-resolution
+    check (two `NOT EXISTS` scans over every call edge, 232k on this
+    repository) ran under the reader's 5 s budget; interrupted, it returned
+    `False`, so a consistent graph was reported as dangling (the diagnostic
+    query on the same database found no dangling edge) and nothing was
+    published. Writers now check with a 120 s budget and report a timeout as
+    `CALL_GRAPH_CHECK_DEADLINE`; the index run, sync, the no-op check and
+    `ensure_indexed` read the marker with the same budget.
+  - A run whose only failure is a certification deadline
+    (`SOURCE_SCAN_DEADLINE`, `INDEX_FINGERPRINT_DEADLINE`) is published as
+    uncertified (`completeness: incomplete`, `verdict: WARN`,
+    `manifest_warning: INDEX_CERTIFICATION_DEADLINE`) instead of discarding a
+    ~350 MB generation; the next `index action=cache mode=index` certifies it.
+    A stamp failure that is not a deadline still publishes nothing.
+  - `ensure_indexed` backs off for 10 minutes after a warm that left the
+    call-graph marker non-current, instead of rebuilding a generation on
+    every tool call; `mark_dirty` clears the backoff.
 - **Refresh cost** (#1673). Measured on Windows on this repository (2,507
   selected files): the publication path hashed every source file up to four
   times per refresh (capture, publish recheck, and the manifest stamp's two
