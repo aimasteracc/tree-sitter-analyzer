@@ -237,3 +237,32 @@ def test_sync_compares_with_the_digests_bound_at_capture(tmp_path, monkeypatch):
     sync()
 
     assert (reads, sorted(_published_symbols(tmp_path))) == ([], ["a2", "b", "c"])
+
+
+@pytest.mark.skipif(os.name != "nt", reason="目录级复用只在 Windows 启用")
+def test_reparse_point_files_use_full_realpath(tmp_path, monkeypatch) -> None:
+    # 带重解析属性的“普通文件”（符号链接以外的重解析点）可以改变最后一级的
+    # 真实路径，必须逐文件 realpath，不得用目录拼接。
+    import stat as stat_module
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer import indexing_snapshot
+
+    target = tmp_path / "a.py"
+    target.write_text("x = 1\n", encoding="utf-8")
+    info = SimpleNamespace(
+        st_mode=stat_module.S_IFREG | 0o644,
+        st_file_attributes=stat_module.FILE_ATTRIBUTE_REPARSE_POINT,
+    )
+    calls: list[str] = []
+    real = os.path.realpath
+
+    def recording(path):
+        calls.append(str(path))
+        return real(path)
+
+    monkeypatch.setattr(indexing_snapshot.os.path, "realpath", recording)
+
+    resolved = _realpath_of_regular_file(str(target), info, {})
+
+    assert (resolved, calls) == (real(target), [str(target)])
