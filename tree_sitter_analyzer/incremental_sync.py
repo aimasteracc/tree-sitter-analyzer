@@ -298,7 +298,10 @@ class IncrementalSync:
             logger.error("Final DB commit failed after partial sync: %s", exc)
             result.errors += 1
 
-        marker_current = self._cache.call_graph_built()
+        from .cache.callgraph_state import writer_marker_is_current
+
+        # #1684：写入方期限；负载下的超时不能被当作"标记未建成"而重跑全部回填。
+        marker_current = writer_marker_is_current(conn)
         from .incremental_sync_callgraph import (
             pipeline_repair_required,
             run_call_graph_pipeline,

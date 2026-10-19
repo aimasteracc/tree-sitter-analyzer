@@ -32,8 +32,24 @@ INDEX_RUN_FAILED = "INDEX_RUN_FAILED"
 INDEX_NOT_PUBLISHED = "index_not_published"
 #: 运行期间源码变化（与清单警告同名的原因码）。
 INDEX_CANDIDATE_SNAPSHOT_CHANGED = "INDEX_CANDIDATE_SNAPSHOT_CHANGED"
+#: 认证盖戳（源码复扫 / 索引指纹）因期限中断：索引完整但未认证（#1684）。
+CERTIFICATION_DEADLINE = "INDEX_CERTIFICATION_DEADLINE"
+_DEADLINE_MARKERS = (
+    "SOURCE_SCAN_DEADLINE",
+    "INDEX_FINGERPRINT_DEADLINE",
+    "INDEX_SNAPSHOT_DEADLINE",
+)
 #: ``skipped_files`` 列出的上限；总数始终写明。
 SKIPPED_FILES_CAP = 20
+
+
+def certification_timed_out(exc: BaseException) -> bool:
+    """盖戳失败只是期限耗尽，而不是源码与索引不一致。"""
+    if isinstance(exc, TimeoutError):
+        return True
+    text = str(exc)
+    return any(marker in text for marker in _DEADLINE_MARKERS)
+
 
 _NOTHING_PUBLISHED = "Nothing was published and the active index (if any) is unchanged."
 RUN_FAILED_NEXT_STEP = (
@@ -45,6 +61,10 @@ RUN_FAILED_NEXT_STEP = (
 def published_result(result: dict[str, Any], *, stable_only: bool) -> dict[str, Any]:
     """已发布：成功；只缺可选语法时如实标注不完整并列出跳过的文件。"""
     published: dict[str, Any] = {**result, "success": True, "published": True}
+    if result.get("certification_deadline_only") is True:
+        # #1684：已发布但未认证；如实标注，下一步见清单警告（一次刷新即可认证）。
+        published["completeness"] = "incomplete"
+        published["verdict"] = "WARN"
     if stable_only and not result.get("scope_complete"):
         skipped = [
             {"file": path, "reason": reason}

@@ -165,8 +165,10 @@ class TestAuthoritativeSnapshotOracle:
         monkeypatch.setattr(
             schema,
             "stamp_full_index_manifest",
+            # #1684：只是期限耗尽的盖戳失败改为发布为未认证（见
+            # test_full_index_publish_1684）；这里保留“确实无法认证”的失败。
             lambda *_args: (_ for _ in ()).throw(
-                RuntimeError("INDEX_FINGERPRINT_DEADLINE")
+                RuntimeError("INDEX_FINGERPRINT_BUDGET")
             ),
         )
         result = await CodeGraphFullIndexTool(str(tmp_path)).execute(

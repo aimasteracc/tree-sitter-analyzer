@@ -253,9 +253,9 @@ def issue_after_stamp(
     要求调用图标记当前、源码清单与索引行一致；这里再核验候选精确与行集合。
     """
     from ..index_source_snapshot import canonical_source_scope_descriptor
-    from .callgraph_state import call_graph_marker_is_current
+    from .callgraph_state import writer_marker_is_current
 
-    if scope is None or not call_graph_marker_is_current(conn):
+    if scope is None or not writer_marker_is_current(conn):
         return False
     return issue_after_run(
         conn,

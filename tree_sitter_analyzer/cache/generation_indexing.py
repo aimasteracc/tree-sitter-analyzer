@@ -322,7 +322,10 @@ async def run_full_index(
             # #1562：只有稳定单文件失败（如缺少可选语法）时照常发布，完整性如实标为
             # incomplete；与 publication_policy 对 index_project/sync 的规则一致。
             stable_only = result.get("stable_failures_only") is True
-            if not stable_only and (
+            # #1684：其余全部干净、只有认证盖戳超时的运行发布为未认证，不丢弃整份
+            # 版本（之后一次刷新即可认证，并复用这份索引）。
+            deadline_only = result.get("certification_deadline_only") is True
+            if not (stable_only or deadline_only) and (
                 not result.get("success") or not result.get("scope_complete")
             ):
                 # #1674：未发布即失败，并给出类型化的 error / error_code / next_step。
