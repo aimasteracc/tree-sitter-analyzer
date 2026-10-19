@@ -4,6 +4,9 @@
   ``ProjectWalkCache`` 实例模拟）只在每条 ``lstat`` 证据重新复核一致时复用；
   新文件、删除文件、``.gitignore`` 改写、键（代码指纹 / 参数）变化都使其失效，
   竞争窗口内的遍历从不落盘，损坏的文件当作未命中。
+* 非调用引用扫描的词表（``reference_vocab``）：新进程只在 stat 证据重新复核一致
+  时，凭词表跳过不含名字的文件；编辑、新增、删除文件，竞争窗口内的读取，代码指纹
+  变化与损坏的落盘文件都回到照常读取。
 * 注释 / 字符串剥离换用首字符可跳过的展开循环正则：匹配位置与分类必须与原
   正则逐个相同（这里用原正则作参照，对随机与刁钻输入逐一比对）。
 """
@@ -303,10 +306,15 @@ async def indexed_root(tmp_path):
 def _new_process() -> None:
     """清空全部进程内证据记忆：之后的调用如同新进程的首个调用。"""
     from tree_sitter_analyzer.cache import query_cost
-    from tree_sitter_analyzer.mcp.tools import relation_freshness, unindexed_sources
+    from tree_sitter_analyzer.mcp.tools import (
+        reference_vocab,
+        relation_freshness,
+        unindexed_sources,
+    )
 
     evidence_file_cache.FILE_CACHE.clear()
     project_walk_cache.WALK_CACHE.clear()
+    reference_vocab.clear()
     relation_freshness._IDENTITY_MEMO.clear()
     query_cost._HOLDS_ROWS_MEMO.clear()
     unindexed_sources._CLASSIFIED_MEMO.clear()
@@ -463,7 +471,7 @@ _TRICKY = [
     "/* unterminated\n x",
     "/**/ /***/ /*a*b*/",
     "x = '''\n'''''' '''",
-    "\"\\",
+    '"\\',
     "'\\\n'",
 ]
 
@@ -535,7 +543,7 @@ def _reference_strip(text: str, language: str, bare: str | None) -> str:
 
 _SOURCE = (
     'def f():\n    """Run g.\n\n    >>> g()\n    """\n'
-    "    h = 'g'  # g\n    exec(\"g()\")\n    s = \"call o.g() now\"\n"
+    '    h = \'g\'  # g\n    exec("g()")\n    s = "call o.g() now"\n'
     "    t = 'the g word'\n    return \"pkg.mod:g\"\n"
 )
 
@@ -547,3 +555,217 @@ def test_strip_output_equals_the_reference(language: str, bare: str | None) -> N
         assert callers_absence._strip_comments_and_prose(
             text, language, bare
         ) == _reference_strip(text, language, bare)
+
+
+# --------------------------------------------------------------------------- #
+# 非调用引用扫描的词表：不含名字的文件不再打开，答案不变
+# --------------------------------------------------------------------------- #
+
+
+def test_vocabulary_answers_exactly_the_byte_prefilter() -> None:
+    from tree_sitter_analyzer.mcp.tools.reference_vocab import searchable, vocabulary
+
+    rng = random.Random(1691)
+    alphabet = [
+        b"a",
+        b"b",
+        b"_",
+        b"$",
+        b"1",
+        b" ",
+        b".",
+        b"\n",
+        b"\xc3",
+        b"\xa9",
+        b"(",
+        b"\0",
+    ]
+    checked = 0
+    for _ in range(3000):
+        data = b"".join(rng.choices(alphabet, k=rng.randint(0, 40)))
+        needle = b"".join(rng.choices(alphabet, k=rng.randint(1, 4)))
+        if not searchable(needle):
+            continue
+        checked += 1
+        assert (needle in data) == (needle in vocabulary(data)), (data, needle)
+    assert checked > 500
+    assert not searchable(b"a.b") and not searchable(b"") and searchable(b"caf\xc3\xa9")
+
+
+def _scan_files(root: Path, names: list[str], needle: bytes):
+    from tree_sitter_analyzer.mcp.tools.callers_absence import _files_containing
+
+    files = [(name, "python") for name in names]
+    return _files_containing(str(root), files, needle, time.monotonic() + 30)
+
+
+@pytest.fixture
+def vocab_tree(tmp_path: Path) -> Path:
+    root = tmp_path / "proj"
+    (root / ".ast-cache").mkdir(parents=True)
+    (root / "a.py").write_text("def size():\n    return 1\n")
+    (root / "b.py").write_text("x = other\n")
+    (root / "c.py").write_text("y = w.size  # uses size\n")
+    _backdate_tree(root)
+    return root
+
+
+@pytest.fixture
+def opened(monkeypatch) -> list[str]:
+    """记录经 ``FILE_CACHE`` 打开的文件。"""
+    calls: list[str] = []
+    original = evidence_file_cache.FILE_CACHE.read_stamped
+
+    def spy(path: str):
+        calls.append(os.path.basename(path))
+        return original(path)
+
+    monkeypatch.setattr(evidence_file_cache.FILE_CACHE, "read_stamped", spy)
+    return calls
+
+
+def _new_scan_process() -> None:
+    from tree_sitter_analyzer.mcp.tools import reference_vocab
+
+    evidence_file_cache.FILE_CACHE.clear()
+    reference_vocab.clear()
+
+
+def _hit_names(hits) -> list[str]:
+    return sorted(rel for rel, _language, _data, _stamp in hits)
+
+
+def test_a_new_process_skips_files_its_vocabulary_rules_out(
+    vocab_tree: Path, opened: list[str]
+) -> None:
+    names = ["a.py", "b.py", "c.py"]
+    first = _scan_files(vocab_tree, names, b"size")
+    assert _hit_names(first) == ["a.py", "c.py"]
+    assert sorted(opened) == names
+
+    _new_scan_process()
+    opened.clear()
+    second = _scan_files(vocab_tree, names, b"size")
+
+    assert second == first
+    assert sorted(opened) == ["a.py", "c.py"]  # b.py 不含名字，不再打开
+
+
+def test_an_edited_file_is_read_again(vocab_tree: Path, opened: list[str]) -> None:
+    names = ["a.py", "b.py", "c.py"]
+    _scan_files(vocab_tree, names, b"size")
+    # 同样大小、新的 mtime：证据不同，必须照常读取并看到新加入的名字。
+    (vocab_tree / "b.py").write_text("x = size\n")
+    _backdate(vocab_tree / "b.py", 2 * _AN_HOUR_NS)
+
+    _new_scan_process()
+    opened.clear()
+    hits = _scan_files(vocab_tree, names, b"size")
+
+    assert _hit_names(hits) == ["a.py", "b.py", "c.py"]
+    assert "b.py" in opened
+
+
+def test_a_new_file_is_read(vocab_tree: Path) -> None:
+    names = ["a.py", "b.py", "c.py"]
+    _scan_files(vocab_tree, names, b"size")
+    (vocab_tree / "d.py").write_text("z = size\n")
+    _backdate(vocab_tree / "d.py")
+
+    _new_scan_process()
+    hits = _scan_files(vocab_tree, [*names, "d.py"], b"size")
+
+    assert _hit_names(hits) == ["a.py", "c.py", "d.py"]
+
+
+def test_a_deleted_file_still_makes_the_scan_unknown(vocab_tree: Path) -> None:
+    names = ["a.py", "b.py", "c.py"]
+    _scan_files(vocab_tree, names, b"size")
+    (vocab_tree / "b.py").unlink()
+
+    _new_scan_process()
+
+    assert _scan_files(vocab_tree, names, b"size") is None
+
+
+def test_a_racy_read_is_never_recorded(vocab_tree: Path, opened: list[str]) -> None:
+    (vocab_tree / "b.py").write_text("x = other\n")  # mtime 落入竞争窗口
+    names = ["a.py", "b.py", "c.py"]
+    _scan_files(vocab_tree, names, b"size")
+
+    _new_scan_process()
+    opened.clear()
+    _scan_files(vocab_tree, names, b"size")
+
+    assert "b.py" in opened
+
+
+def test_the_vocabulary_store_is_keyed_on_the_code_fingerprint(
+    vocab_tree: Path, opened: list[str], monkeypatch
+) -> None:
+    import tree_sitter_analyzer.source_fingerprint as fingerprint
+
+    names = ["a.py", "b.py", "c.py"]
+    _scan_files(vocab_tree, names, b"size")
+    monkeypatch.setattr(fingerprint, "source_fingerprint", lambda: "other-code")
+
+    _new_scan_process()
+    opened.clear()
+    _scan_files(vocab_tree, names, b"size")
+
+    assert sorted(opened) == names
+
+
+def test_a_corrupt_vocabulary_store_is_empty(
+    vocab_tree: Path, opened: list[str]
+) -> None:
+    names = ["a.py", "b.py", "c.py"]
+    first = _scan_files(vocab_tree, names, b"size")
+    store = vocab_tree / ".ast-cache" / walk_evidence_store.DIR_NAME
+    (stored,) = sorted(store.glob("vocab-*.bin"))
+    stored.write_bytes(b"\x00not marshal")
+
+    _new_scan_process()
+    opened.clear()
+    second = _scan_files(vocab_tree, names, b"size")
+
+    assert second == first
+    assert sorted(opened) == names
+
+
+def test_a_needle_with_non_word_bytes_reads_every_file(
+    vocab_tree: Path, opened: list[str]
+) -> None:
+    names = ["a.py", "b.py", "c.py"]
+    _scan_files(vocab_tree, names, b"size")
+
+    _new_scan_process()
+    opened.clear()
+    hits = _scan_files(vocab_tree, names, b"w.size")
+
+    assert _hit_names(hits) == ["c.py"]
+    assert sorted(opened) == names
+
+
+def test_the_vocabulary_store_can_be_turned_off(vocab_tree: Path, monkeypatch) -> None:
+    monkeypatch.setenv(walk_evidence_store.ENV_VAR, "off")
+
+    _scan_files(vocab_tree, ["a.py", "b.py"], b"size")
+
+    store = vocab_tree / ".ast-cache" / walk_evidence_store.DIR_NAME
+    assert not list(store.glob("vocab-*.bin"))
+
+
+def test_an_edited_file_is_relearned(vocab_tree: Path, opened: list[str]) -> None:
+    names = ["a.py", "b.py", "c.py"]
+    _scan_files(vocab_tree, names, b"size")
+    (vocab_tree / "b.py").write_text("x = changed\n")
+    _backdate(vocab_tree / "b.py", 2 * _AN_HOUR_NS)
+    _new_scan_process()
+    _scan_files(vocab_tree, names, b"size")  # 证据不同：重读并记下新词表
+
+    _new_scan_process()
+    opened.clear()
+    _scan_files(vocab_tree, names, b"size")
+
+    assert sorted(opened) == ["a.py", "c.py"]

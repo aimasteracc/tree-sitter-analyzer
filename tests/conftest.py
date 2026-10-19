@@ -377,6 +377,12 @@ def _reset_all_singletons():
             "clear",
             lambda fn: fn(),
         ),
+        # #1691：非调用引用扫描的词表按项目根留在进程内；每个测试如同新进程。
+        (
+            "tree_sitter_analyzer.mcp.tools.reference_vocab",
+            "clear",
+            lambda fn: fn(),
+        ),
     ]
 
     for module_path, attr_name, reset_fn in _RESETS:

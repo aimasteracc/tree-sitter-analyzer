@@ -42,7 +42,7 @@ _PREFIX = "walk-"
 KEEP = 8
 
 #: 一条证据：(路径, lstat 键)。
-Evidence = tuple[tuple[str, tuple[int, ...]], ...]
+Evidence = tuple[tuple[str, tuple[int, int, int, int, int, int]], ...]
 
 
 def enabled() -> bool:
@@ -60,7 +60,8 @@ def _real_directory(path: Path) -> bool:
     )
 
 
-def _store_dir(project_root: str, create: bool) -> Path | None:
+def store_dir(project_root: str, create: bool) -> Path | None:
+    """``<项目>/.ast-cache/evidence-memo``；``.ast-cache`` 缺失或任一级是链接时为 None。"""
     base = Path(project_root) / ".ast-cache"
     if not _real_directory(base):
         return None
@@ -110,7 +111,7 @@ def load(project_root: str, text: str) -> tuple[Evidence, tuple[str, ...]] | Non
     if not enabled():
         return None
     try:
-        directory = _store_dir(project_root, create=False)
+        directory = store_dir(project_root, create=False)
         if directory is None:
             return None
         data = (directory / _file_name(text)).read_bytes()
@@ -136,6 +137,7 @@ def _valid_evidence(evidence: Any) -> bool:
         and len(item) == 2
         and isinstance(item[0], str)
         and isinstance(item[1], tuple)
+        and len(item[1]) == 6
         and all(isinstance(number, int) for number in item[1])
         for item in evidence
     )
@@ -151,7 +153,7 @@ def save(
     """原子写入一条遍历记忆；任何失败都静默放弃。"""
     if not enabled():
         return
-    directory = _store_dir(project_root, create=True)
+    directory = store_dir(project_root, create=True)
     if directory is None:
         return
     try:

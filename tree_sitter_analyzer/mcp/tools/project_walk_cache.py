@@ -68,7 +68,9 @@ def _ancestors(start_relative: str) -> list[str]:
 class ProjectWalkCache:
     """以目录 / 规则文件 ``lstat`` 证据为键的遍历结果记忆（线程安全、有界）。"""
 
-    def __init__(self, max_entries: int = MAX_ENTRIES, *, persist: bool = False) -> None:
+    def __init__(
+        self, max_entries: int = MAX_ENTRIES, *, persist: bool = False
+    ) -> None:
         self._max_entries = max_entries
         # #1691：为真时同一份条目也落盘（``walk_evidence_store``），冷进程复核后复用。
         self._persist = persist

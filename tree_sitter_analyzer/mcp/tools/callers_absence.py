@@ -30,6 +30,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 from ...discovery_budget import DISCOVERY_SECONDS_PER_ENTRY
+from . import reference_vocab
 from .absence_text_kinds import reference_text, text_language
 from .absence_text_refs import CONFIG_LANGUAGE, string_code
 from .callers_call_lines import call_edge_lines
@@ -44,6 +45,7 @@ from .callers_reference_freshness import stale_reference_files
 from .callers_target import NOT_DEFINED_REASON, not_defined_hint, resolve_target
 from .callers_target import UNCHECKED_REASON as TARGET_UNCHECKED_REASON
 from .evidence_file_cache import FILE_CACHE, StatKey
+from .reference_vocab import ReferenceVocabulary
 from .relation_freshness import SCOPED_REASON, STALE_REASON
 from .unindexed_sources import FILES_CAP as UNINDEXED_FILES_CAP
 from .unindexed_sources import UNCHECKED_REASON as UNINDEXED_UNCHECKED_REASON
@@ -469,16 +471,23 @@ def _reference_scan(
 _Read = tuple[bytes, StatKey | None]
 
 
-def _read_if_contains(path: str, needle: bytes) -> _Read | None:
+def _read_if_contains(
+    path: str, needle: bytes, vocab: ReferenceVocabulary | None = None
+) -> _Read | None:
     """读取文件；不含 ``needle`` 时字节为空串，读取失败返回 None。
 
     字节经 :data:`FILE_CACHE` 按 stat 证据复用（每次重新 stat，变即重读）；
     同一份证据随结果返回，供 #1672 与索引戳记比对。
+    #1691：``vocab`` 的 stat 证据仍成立且证明不含 ``needle`` 时不打开文件。
     """
+    if vocab is not None and vocab.lacks(path, needle):
+        return b"", None
     found = FILE_CACHE.read_stamped(path)
     if found is None:
         return None
     data, stamp = found
+    if vocab is not None:
+        vocab.learn(path, data, stamp)
     return (data if needle in data else b""), stamp
 
 
@@ -498,10 +507,11 @@ def _files_containing(
     # 改为按块提交、块内顺序读取。期限与“任一不可读即 None”的判定不变。
     size = max(1, -(-len(files) // (_READ_WORKERS * _CHUNKS_PER_WORKER)))
     chunks = [files[start : start + size] for start in range(0, len(files), size)]
+    vocab = reference_vocab.for_root(project_root)
     executor = ThreadPoolExecutor(max_workers=_READ_WORKERS)
     try:
         futures = [
-            executor.submit(_read_chunk, project_root, chunk, needle)
+            executor.submit(_read_chunk, project_root, chunk, needle, vocab)
             for chunk in chunks
         ]
         for chunk, future in zip(chunks, futures, strict=True):
@@ -520,16 +530,20 @@ def _files_containing(
                     hits.append((rel_path, language, read[0], read[1]))
     finally:
         executor.shutdown(wait=False, cancel_futures=True)
+        vocab.flush()
     return hits
 
 
 def _read_chunk(
-    project_root: str, chunk: list[tuple[str, str]], needle: bytes
+    project_root: str,
+    chunk: list[tuple[str, str]],
+    needle: bytes,
+    vocab: ReferenceVocabulary | None = None,
 ) -> list[_Read | None]:
     """顺序读取一块文件；遇到不可读文件即停止（其后的结果已不再需要）。"""
     results: list[_Read | None] = []
     for rel_path, _language in chunk:
-        data = _read_if_contains(os.path.join(project_root, rel_path), needle)
+        data = _read_if_contains(os.path.join(project_root, rel_path), needle, vocab)
         results.append(data)
         if data is None:
             break
