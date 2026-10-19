@@ -11,12 +11,12 @@ from .ast_cache import _EXT_TO_LANG, _walk_source_files
 from .cache.helpers import _project_index_activation_enabled
 from .cache.publication_policy import FAILURE_KIND
 from .incremental_sync_support import SyncResult, file_changed, get_changes
+from .index_source_scope import default_exclude_patterns
 from .index_source_snapshot import (
     SourceScopeDescriptor,
     make_source_scope_descriptor,
     validate_full_index_source_scope,
 )
-from .index_source_scope import default_exclude_patterns
 from .indexing_limits import normalize_index_max_files
 from .indexing_snapshot import (
     _PERMANENT_SOURCE_REJECTIONS,

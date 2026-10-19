@@ -103,7 +103,7 @@ def _invalidate_ladybug(cache: Any, root_fd: int | None) -> bool:
 
 # Corpus-directory patterns excluded from full-index (REQ-E-016).
 # Uses fnmatch syntax relative to the project root (forward-slash normalised).
-# #1697：与同步路由共用 `index_source_scope` 的唯一来源。
+# #1697：与同步路由共用 ``index_source_scope`` 的唯一来源。
 _DEFAULT_EXCLUDE_PATTERNS: frozenset[str] = _default_exclude_patterns()
 
 # Extensions that have a plugin but are NOT wired for full-index

@@ -82,7 +82,7 @@ def _wipe(root: Path) -> None:
     shutil.rmtree(cache)
 
 
-# 两条链各自写入改动；固定 mtime，使 `ast_index.mtime_ns` 可逐行比较。
+# 两条链各自写入改动；固定 mtime，使 ``ast_index.mtime_ns`` 可逐行比较。
 _FIXED_MTIME_NS = 1_700_000_000 * 1_000_000_000
 
 
