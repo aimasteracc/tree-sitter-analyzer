@@ -508,20 +508,24 @@ class TestSyncExcludePatterns:
             "src/util.py",
         }
 
-    def test_excluded_source_keeps_graph_incomplete(self, sync, cache):
-        # PR #1172 review 2026-07-27: selected-only equality hid exclusions.
+    def test_excluded_source_is_outside_the_certified_scope(self, sync, cache):
+        # #1697：与项目索引同一语义（``_candidate_paths_are_exact`` 只比较选中
+        # 的路径，#1253）：被排除的文件不在范围内，不使调用图不完整。
         sync.sync(exclude_patterns=frozenset({"src/helper.js"}))
 
-        assert cache.call_graph_built() is False
+        assert cache.call_graph_built() is True
+        assert cache.get_stats()["total_files"] == 2
 
-    def test_excluded_cached_file_is_not_treated_as_deleted(self, sync, cache):
-        # Incident 2026-07-26: exclusion filtering could mimic a disk deletion.
+    def test_excluded_cached_file_leaves_the_scope(self, sync, cache, project):
+        # #1697：旧范围留下的行在新范围外，按删除处理（与候选快照路径相同）；
+        # 源码本身仍在磁盘上。
         sync.sync()
 
         result = sync.sync(exclude_patterns=frozenset({"src/helper.js"}))
 
-        assert result.deleted_files == 0
-        assert cache.get_stats()["total_files"] == 3
+        assert result.deleted_files == 1
+        assert cache.get_stats()["total_files"] == 2
+        assert (project / "src" / "helper.js").exists()
 
     def test_deleted_excluded_file_is_removed_after_complete_scan(
         self, sync, cache, project
