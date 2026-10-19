@@ -67,7 +67,8 @@ from ._ast_cache_query_mixin import ASTCacheQueryMixin
 # v38: loader projection fails closed by default instead of enumerating risks.
 # v39：按语言分类驱动提取，修复成员作用域与 C++ 函数名称恢复。
 # v40：Python 调用边携带接收者类型线索（RFC-0038 receiver_hint）。
-_AST_CACHE_EXTRACTOR_VERSION = 40
+# v41：接收者未被证明的调用不再按项目唯一方法名绑定为 project（#1669）。
+_AST_CACHE_EXTRACTOR_VERSION = 41
 
 # Preserve the historical public exception identity after implementation split.
 SchemaIntegrityError.__module__ = __name__

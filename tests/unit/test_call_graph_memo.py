@@ -27,7 +27,8 @@ _SOURCES = {
         "        return 0\n\n"
         "    def used(self):\n"
         "        return 1\n\n\n"
-        "def run(w):\n"
+        # #1669：接收者须被证明（这里经注解）才是确定调用方。
+        "def run(w: Widget):\n"
         "    return w.used()\n"
     ),
     "base.py": (

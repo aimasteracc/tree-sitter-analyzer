@@ -182,6 +182,18 @@ resolved only for the method it is bound to. For every other method of that
 name it stays an unresolved inbound edge, an override in a subclass included.
 So it never makes another answer `complete`.
 
+### Receivers that are not proven (#1669)
+
+A method call `x.m()` is a certain caller of a project method `m` only when the
+receiver is proven: `self` / `cls`, an imported module or class, a class name
+(`T.m()`, `T().m()`), a local built by `x = T()`, or an annotated type
+(RFC-0038). A receiver whose type is unknown (an untyped parameter, `self.x`
+without an annotation, a chained attribute, `self.x: list`) never binds to `m`
+just because `m` is the only project method of that name. Such a call is at most
+a name-only possible caller: it is not listed in `callers`, it keeps the answer
+non-`complete` (`NAME_ONLY_INBOUND` / `UNRESOLVED_INBOUND`), and the
+over-approximating consumers (impact, test_map, pr_review, risk) still see it.
+
 ## Index write admission codes (RFC-0032)
 
 An index write can be refused before it changes anything: another write

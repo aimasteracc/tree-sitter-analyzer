@@ -66,6 +66,24 @@
   order, so the same bytes produced different index rows under different
   `PYTHONHASHSEED`s (226 files on this repository between a refresh and a
   rebuild). The names are now emitted sorted (#1671 equivalence gate).
+- `nav action=callers` no longer lists every `x.<name>()` call as a resolved
+  caller of the only project method with that name (#1669). On this repository
+  `HealthHistory.append` showed 1,079 callers, almost all `list.append`. A
+  method call now binds to a project method only when its receiver is proven:
+  `self` / `cls`, an imported module or class, a class name (`T.m()`,
+  `T().m()`), a local built by `x = T()`, or an annotated type (RFC-0038).
+  Any other receiver, including `self.x` without an annotation and the same
+  file's `self._entries.append()`, stays unresolved: it is not listed, keeps the
+  answer non-`complete`, and is still a name-only possible caller for impact,
+  test_map, pr_review and risk. A receiver proven to be a project class that
+  does not define the method itself (`x = Sub(); x.m()`) binds to the only
+  project method of that name. A bare call (`open(path)`) never binds to a
+  method: 247 bare `open()` calls had been bound to `NativeFiles.open`.
+  This applies to the index-time resolver, the
+  name-based second pass and cross-file backfill, and the in-memory call graph.
+  The extractor version goes from 40 to 41, so the next refresh re-resolves
+  files indexed by older versions.
+
 - RFC-0032 follow-ups (#1664):
   - **Lease wait is 30 s**, as the RFC specifies (was 5 s). Measured on
     Windows with this repository (2,865 files), a refresh holds the publication

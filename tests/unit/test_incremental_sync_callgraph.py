@@ -58,14 +58,20 @@ def test_pipeline_runs_all_three_stages_in_order_with_exact_counters() -> None:
 def test_incremental_method_ambiguity_invalidates_and_restores_resolution(
     tmp_path,
 ) -> None:
-    """保存引入同名方法时撤销唯一绑定，删除后重新绑定并认证调用图。"""
+    """保存引入同名类时撤销唯一绑定，删除后重新绑定并认证调用图。
+
+    #1669：接收者未知的 ``obj.special()`` 不再按唯一方法名绑定；这里用类名接收者
+    ``Target.special(obj)``，其绑定同样依赖 ``(Target, special)`` 在项目中唯一。
+    """
     target = tmp_path / "target.py"
     caller = tmp_path / "caller.py"
     duplicate = tmp_path / "duplicate.py"
     target.write_text(
         "class Target:\n    def special(self):\n        return 1\n", encoding="utf-8"
     )
-    caller.write_text("def caller(obj):\n    return obj.special()\n", encoding="utf-8")
+    caller.write_text(
+        "def caller(obj):\n    return Target.special(obj)\n", encoding="utf-8"
+    )
     cache = ASTCache(str(tmp_path))
     cache.index_project(workers=0)
     query = (
@@ -76,7 +82,8 @@ def test_incremental_method_ambiguity_invalidates_and_restores_resolution(
     try:
         before = cache.get_conn().execute(query).fetchone()
         duplicate.write_text(
-            "class Other:\n    def special(self):\n        return 2\n", encoding="utf-8"
+            "class Target:\n    def special(self):\n        return 2\n",
+            encoding="utf-8",
         )
         ambiguous_run = IncrementalSync(cache).sync(max_files=10)
         ambiguous = cache.get_conn().execute(query).fetchone()

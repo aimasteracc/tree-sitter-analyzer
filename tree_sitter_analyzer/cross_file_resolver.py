@@ -31,6 +31,7 @@ from .constants import (
     JS_TS_MODULE_EXTS_LONGEST_FIRST,
 )
 from .languages.lang_extension_map import EXT_TO_LANG
+from .receiver_proof import has_unproven_receiver
 
 logger = logging.getLogger(__name__)
 
@@ -237,7 +238,13 @@ class CrossFileResolver:
                         caller_name = cn
                         caller_line = cl
 
-            callee_candidates = self.resolve_callee(callee_name, caller_file)
+            # #1669：这里只按裸名解析，看不到接收者；接收者未被证明的 `x.m()`
+            # （含同文件里的 `self._entries.append()`）不得因同名定义而写入文件。
+            callee_candidates = (
+                []
+                if has_unproven_receiver(callee_full)
+                else self.resolve_callee(callee_name, caller_file)
+            )
             # 低置信度全局同名回退只适用于唯一的裸调用；带接收者的调用交给
             # Synapse 的类型、内建对象和唯一方法规则，避免把 str.format
             # 之类的调用误连到项目中的同名定义。
@@ -247,6 +254,8 @@ class CrossFileResolver:
                 and ("." in callee_full or len(callee_candidates) != 1)
             ):
                 callee_candidates = []
+            if "." not in callee_full:
+                callee_candidates = self._bare_reachable(callee_name, callee_candidates)
             callee_resolved = callee_candidates[0][0] if callee_candidates else ""
 
             confidence = 1.0
@@ -268,6 +277,25 @@ class CrossFileResolver:
                 )
             )
         return resolved
+
+    def _bare_reachable(
+        self, callee_name: str, candidates: list[tuple[str, float]]
+    ) -> list[tuple[str, float]]:
+        """#1669：无接收者的调用到达不了方法。
+
+        本地（1.0）与全局（≤0.5）档按名字命中的文件里须有同名的非方法定义；
+        经 import 档（0.9 / 0.7）命中的文件由导入语句给出，原样保留。
+        """
+        functions = {
+            func.file
+            for func in self._functions_by_name.get(callee_name, [])
+            if func.parent_class is None
+        }
+        return [
+            (file_path, confidence)
+            for file_path, confidence in candidates
+            if file_path in functions or 0.5 < confidence < 1.0
+        ]
 
     def _build_module_map(self) -> None:
         conn = self._cache.get_conn()

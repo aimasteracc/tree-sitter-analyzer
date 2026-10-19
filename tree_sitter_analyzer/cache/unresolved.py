@@ -25,6 +25,7 @@ from typing import Any
 
 from ..graph.edge_store import Edge, EdgeKind, EdgeStore, parse_node_id, symbol_node
 from ..languages.language_family import languages_compatible
+from ..receiver_proof import has_unproven_receiver
 from ..utils.test_detection import is_test_file
 
 logger = logging.getLogger(__name__)
@@ -322,11 +323,18 @@ def _call_refs(
         callee_full = str(edge.get("callee_full") or "").strip()
         if _is_obvious_external(language, callee_name, callee_full):
             continue
+        if has_unproven_receiver(callee_full):
+            # #1669：第二遍只按名字挑候选，看不到接收者类型；`xs.append()` 不能
+            # 因项目里只有一个（或同目录有一个）`append` 就被改写为 project。
+            continue
         caller_name = str(edge.get("caller_name") or "")
         caller_line = _line(edge.get("caller_line"))
         source = symbol_node(rel_path, caller_name, caller_line)
         ref_line = _line(edge.get("callee_line")) or caller_line
-        rows.append(_ref(source, callee_name, EdgeKind.CALLS.value, rel_path, ref_line))
+        ref = _ref(source, callee_name, EdgeKind.CALLS.value, rel_path, ref_line)
+        # #1669：无接收者的调用（`rollback()` 调用的是参数）到达不了方法。
+        ref["bare_call"] = "." not in callee_full
+        rows.append(ref)
     return rows
 
 
@@ -466,7 +474,12 @@ def _choose_candidate(
     reference_name = str(row["reference_name"])
     base = _base_name(reference_name)
     import_hints = _import_target_hints(conn, source_file, reference_name)
-    eligible = [item for item in candidates if item.get("node_id") != source_node]
+    eligible = [
+        item
+        for item in candidates
+        if item.get("node_id") != source_node
+        and not (row.get("bare_call") and item.get("kind") == "method")
+    ]
     # Language gate: a reference in a Python file must not bind to a same-named
     # symbol defined in another language. ``ast_symbol_rows`` is cross-language,
     # so a Python ``config.get(...)`` with no Python ``get`` in the tree would
@@ -676,8 +689,8 @@ def _is_obvious_external(
     (``dict``, ``list``, ``str``, …) — i.e. the extractor already rewrote the
     callee to ``dict.get`` because it saw ``result = {}`` or ``result = dict()``.
     An untyped receiver (``store``, ``cache``, a module singleton) does NOT
-    match BUILTIN_TYPE_NAMES_PY, so its method call is left to ``_choose_candidate``
-    which may bind it to a unique project symbol.
+    match BUILTIN_TYPE_NAMES_PY; #1669: ``has_unproven_receiver`` keeps it out
+    of the name-only second pass instead.
 
     Path-2 asymmetry (documented): this path has only the stored ``callee_full``
     string, not the live AST. Therefore the gate is conservative: it checks
@@ -701,9 +714,7 @@ def _is_obvious_external(
     if base in BUILTINS_PY or qualifier in STDLIB_NAMES_PY:
         return True
     # Builtin-receiver gate: fires ONLY when the receiver is a builtin type
-    # name (positively inferred by the extractor). An untyped receiver that
-    # happens to call a method with the same name as a stdlib method is NOT
-    # blocked — it must reach _choose_candidate for unique-project binding.
+    # name (positively inferred by the extractor).
     if callee_full and "." in callee_full:
         recv = callee_full.rsplit(".", 1)[0].split(".")[-1]  # last segment of receiver
         if recv in BUILTIN_TYPE_NAMES_PY:

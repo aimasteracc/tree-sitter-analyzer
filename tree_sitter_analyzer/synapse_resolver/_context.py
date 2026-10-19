@@ -74,6 +74,8 @@ class ResolverContext:
         self._method_indexes_loaded = False
         self._class_method_index: dict[tuple[str, str], tuple[str, int] | None] = {}
         self._unique_method_index: dict[str, tuple[str, int] | None] = {}
+        self._method_symbol_ids: frozenset[int] | None = None
+        self._project_class_names: frozenset[str] | None = None
         self._global_name_table = global_name_table or {}
         self._import_alias_target = import_alias_target or {}
         self._imports_by_file = imports_by_file or {}
@@ -118,6 +120,30 @@ class ResolverContext:
     def file_symbols(self) -> dict[str, list[tuple[str, str, int]]]:
         self._ensure_loaded()
         return self._file_symbols
+
+    @property
+    def method_symbol_ids(self) -> frozenset[int]:
+        """#1669：方法（类成员）的符号 id；无接收者的调用不能绑定到它们。"""
+        if self._method_symbol_ids is None:
+            self._method_symbol_ids = frozenset(
+                sym_id
+                for symbols in self.file_symbols.values()
+                for _name, kind, sym_id in symbols
+                if kind == "method"
+            )
+        return self._method_symbol_ids
+
+    @property
+    def project_class_names(self) -> frozenset[str]:
+        """#1669：项目里定义的类名（接收者为类名时的证据）。"""
+        if self._project_class_names is None:
+            self._project_class_names = frozenset(
+                name
+                for symbols in self.file_symbols.values()
+                for name, kind, _sym_id in symbols
+                if kind == "class"
+            )
+        return self._project_class_names
 
     @property
     def name_to_source(self) -> dict[str, dict[str, str]]:

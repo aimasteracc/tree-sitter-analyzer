@@ -18,8 +18,11 @@ Priority cascade implemented by ``resolve_callee``:
   3. import     – name imported via ``from M import X``, or module alias
                   qualifier (``bb.baz`` after ``from . import b as bb``).
   4. stdlib     – allowlist of stdlib modules / builtins.
-  5. single     – exactly one project-wide definition with that name.
-  6. unknown    – nothing matched.
+  5. single     – exactly one project-wide definition with that name, for a
+                  call WITHOUT a receiver only.
+  6. class      – the receiver is a known class name (``T.m`` / ``x = T(); x.m()``).
+  7. unknown    – nothing matched. A receiver call ``x.m()`` whose receiver is not
+                  proven stays here even when ``m`` is unique project-wide (#1669).
 
 Star imports get an ``ast_imports`` row with ``is_star=1`` but the
 resolver does NOT promote star-imported names to ``project`` in 3a.
@@ -31,6 +34,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..languages.language_family import languages_compatible
+from ..receiver_proof import constructed_class, split_receiver
 from ._constants import (
     BUILTIN_QUALIFIED_PY,
     BUILTIN_TYPE_NAMES_PY,
@@ -41,6 +45,7 @@ from ._constants import (
 )
 from ._context import ResolverContext, build_resolver_context, is_enabled
 from ._imports import ImportEntry, parse_imports
+from ._reexports import resolve_reexported_name
 
 
 @dataclass(frozen=True)
@@ -121,15 +126,15 @@ def _try_local(
         if sym_id is not None:
             return ResolvedCallee(sym_id, "local", caller_file)
         return None
-    match = ctx.callee_resolver.resolve_first_item(
+    # #1669：无接收者的调用到达不了方法——同文件的 `NativeFiles.open` 不是 `open()`。
+    for item, _confidence in ctx.callee_resolver.resolve_items(
         base,
         caller_file,
         include_import=False,
         include_global=False,
-    )
-    if match is not None:
-        item, _confidence = match
-        return ResolvedCallee(_item_symbol_id(item), "local", _item_file(item))
+    ):
+        if _item_symbol_id(item) not in ctx.method_symbol_ids:
+            return ResolvedCallee(_item_symbol_id(item), "local", _item_file(item))
     return None
 
 
@@ -154,8 +159,13 @@ def _try_import(
 
         target = ctx.name_to_source.get(caller_file, {}).get(base)
         if target:
-            return ResolvedCallee(
-                _lookup_symbol_id(target, base, ctx), "project", target
+            return _reexported_or(
+                base,
+                qualifier,
+                caller_file,
+                ctx,
+                _lookup_symbol_id(target, base, ctx),
+                target,
             )
         return None
 
@@ -178,8 +188,35 @@ def _try_import(
     )
     if file_match is not None:
         target, _confidence = file_match
-        return ResolvedCallee(_lookup_symbol_id(target, base, ctx), "project", target)
+        return _reexported_or(
+            base,
+            qualifier,
+            caller_file,
+            ctx,
+            _lookup_symbol_id(target, base, ctx),
+            target,
+        )
     return None
+
+
+def _reexported_or(
+    base: str,
+    qualifier: str,
+    caller_file: str,
+    ctx: ResolverContext,
+    symbol_id: int | None,
+    target: str,
+) -> ResolvedCallee:
+    """导入落在再导出文件时解析到真正的定义文件；否则保持原有的文件级解析。
+
+    ``from facade import f`` 而 ``facade`` 只是 ``from .impl import f``：边须指向
+    ``impl``，否则按定义文件查询 ``f`` 看不到这个已解析的调用，答复会错误地 complete。
+    """
+    if symbol_id is None and not qualifier:
+        reexported = resolve_reexported_name(base, caller_file, ctx)
+        if reexported is not None:
+            return ResolvedCallee(reexported[0], "project", reexported[1])
+    return ResolvedCallee(symbol_id, "project", target)
 
 
 def _try_stdlib(
@@ -375,18 +412,27 @@ def _try_single_global(
 ) -> ResolvedCallee | None:
     if qualifier:
         return None
+    # #1669：无接收者的调用到达不了方法。项目里唯一的 `open` 若是方法
+    # `NativeFiles.open`，裸调用 `open(path)` 是内建函数，不是它的调用方。
+    methods = ctx.method_symbol_ids
     if ctx.callee_resolver is not None:
-        matches = ctx.callee_resolver.resolve_items(
-            base,
-            "",
-            include_local=False,
-            include_import=False,
-        )
+        matches = [
+            match
+            for match in ctx.callee_resolver.resolve_items(
+                base,
+                "",
+                include_local=False,
+                include_import=False,
+            )
+            if _item_symbol_id(match[0]) not in methods
+        ]
         if len(matches) == 1:
             item, _confidence = matches[0]
             return ResolvedCallee(_item_symbol_id(item), "project", _item_file(item))
         return None
-    cands = ctx.global_name_table.get(base, [])
+    cands = [
+        cand for cand in ctx.global_name_table.get(base, []) if cand[1] not in methods
+    ]
     if len(cands) == 1:
         target_file, sym_id = cands[0]
         return ResolvedCallee(sym_id, "project", target_file)
@@ -401,9 +447,8 @@ def _try_class_method(
     When the qualifier is a KNOWN CLASS NAME (the extractor inferred the
     receiver's type from a ``var = ClassName(...)`` assignment and rewrote the
     callee as ``ClassName.method``), resolve ``base`` to that class's method.
-    This is what disambiguates NON-unique methods (e.g. ``execute`` defined on
-    many classes) that ``_try_unique_method`` deliberately leaves unknown — the
-    receiver type pins down which class.
+    The receiver type pins down which class; a receiver that is not a class
+    name is never bound by method name alone (#1669).
     """
     if not qualifier:
         return None
@@ -412,46 +457,26 @@ def _try_class_method(
     # module. Only resolve when the (class, method) is unique project-wide;
     # otherwise stay unknown rather than guess the wrong file.
     found = ctx.class_method_index.get((qualifier, base))
+    constructed = constructed_class(qualifier)
+    if found is None and constructed is not None:
+        # #1669：``Foo().bar()`` 的接收者由构造调用给出类型，与 ``x = Foo()`` 同理。
+        found = ctx.class_method_index.get((constructed.rsplit(".", 1)[-1], base))
     if found is not None:
         return ResolvedCallee(found[1], "project", found[0])
     return None
 
 
-def _try_unique_method(
-    base: str, qualifier: str, caller_file: str, ctx: ResolverContext
+def _try_inherited_class_method(
+    base: str, qualifier: str, ctx: ResolverContext
 ) -> ResolvedCallee | None:
-    """RFC-0002 Phase 1: receiver method call where the method name is unique.
+    """#1669：接收者已证明是项目类 ``T``（类名或 ``T(...)``），但 ``T`` 自己没有 ``m``。
 
-    For ``obj.method()`` whose receiver type we cannot infer, if ``method`` is
-    defined on exactly ONE class across the whole project, resolve to it. If it
-    is defined on multiple classes (e.g. ``execute``), return ``None`` and stay
-    ``unknown`` rather than guess. Requires a qualifier (a receiver); ``self``/
-    ``cls`` are already handled by ``_try_self_method``, and bare names by the
-    global rules above — so this only fires for true receiver method calls the
-    earlier rules left unresolved.
-
-    Builtin-receiver guard (Issue #447): when ``base`` is a well-known stdlib
-    method name (``get``, ``append``, ``items``, …) and the receiver type is
-    unknown, the caller is almost certainly using a builtin container/string
-    method, not a project-defined method. Binding it to a project symbol just
-    because it happens to be unique would produce the same-name mis-wire the
-    README claims TSA eliminates. Conservative policy: ``unknown > wrong``.
-    This guard does NOT affect ``_try_class_method`` (receiver type IS known
-    via AST inference) or ``_try_import``/``_try_local`` (explicit import).
+    ``m`` 来自基类。接收者是被证明的项目类，``m`` 在项目里只有一个方法定义时
+    绑定到它（``x = Sub(); x.m()`` 调用 ``Base.m``）。接收者未被证明的调用不走这里。
     """
-    if not qualifier or qualifier in ("self", "cls"):
-        return None
-    # Builtin-receiver gate (inverted, issue #447 adversarial P1): only block
-    # when the receiver is POSITIVELY inferred as a builtin container/type —
-    # i.e. the qualifier IS a builtin type name (``dict``, ``list``, ``str``…).
-    # The extractor rewrites ``result.get`` -> ``dict.get`` when it sees
-    # ``result = {}`` or ``result = dict()``, so qualifier carries the
-    # inferred type. An untyped receiver (``store``, ``cache``, a param name)
-    # has a qualifier that is NOT in BUILTIN_TYPE_NAMES_PY and is allowed
-    # through, restoring ``store.get -> DataStore.get`` (unique project method).
-    # Language-aware: only consult the Python table for Python callers.
-    table_lang = _table_language(ctx, caller_file)
-    if table_lang == "python" and qualifier in BUILTIN_TYPE_NAMES_PY:
+    constructed = constructed_class(qualifier)
+    receiver = constructed.rsplit(".", 1)[-1] if constructed else qualifier
+    if not receiver.isidentifier() or receiver not in ctx.project_class_names:
         return None
     found = ctx.unique_method_index.get(base)
     if found is not None:
@@ -515,10 +540,11 @@ def _resolve_callee_python(
     """
     # P2 (Codex review): split on callee_full whenever it carries a receiver,
     # not just self/cls — otherwise `pg.all_edges()` (callee_name='all_edges',
-    # callee_full='pg.all_edges') loses the `pg` qualifier and _try_unique_method
-    # never fires on the production rows it was meant to resolve.
+    # callee_full='pg.all_edges') loses the `pg` qualifier and the import /
+    # class-name rules never see the receiver on production rows.
     if callee_full and "." in callee_full:
-        qualifier, base = _split_qualifier(callee_full)
+        # #1669：``Foo(a.b).bar`` 的接收者是 ``Foo(a.b)``——括号内的点不参与拆分。
+        qualifier, base = split_receiver(callee_full)
     else:
         qualifier, base = _split_qualifier(callee_name)
 
@@ -534,7 +560,11 @@ def _resolve_callee_python(
         # (RFC-0002 criterion 2 — shadowing preserved).
         lambda: _try_single_global(base, qualifier, ctx),
         lambda: _try_class_method(base, qualifier, ctx),
-        lambda: _try_unique_method(base, qualifier, caller_file, ctx),
+        lambda: _try_inherited_class_method(base, qualifier, ctx),
+        # #1669：接收者未被证明（不是 self/cls、导入的模块或类、类名、注解或构造
+        # 得到的类型）的 ``x.m()`` 不再因 ``m`` 在项目里只有一个定义就记为
+        # ``project``——``xs.append()`` 曾因此成为 ``HealthHistory.append`` 的
+        # 1079 个“确定”调用方。它保持 ``unknown``，读取端只把同名候选记为 possible。
         # Builtin is the last NAME resort: only fires when no project binding exists.
         lambda: _try_builtin(base, qualifier, ctx),
         # RFC-0004: stdlib METHOD names (write_text, strip, items, …) — gated on
@@ -561,8 +591,8 @@ def _is_cross_language(
 ) -> bool:
     """True when a project bind crosses a language boundary.
 
-    The project-wide rules (``_try_single_global`` / ``_try_class_method`` /
-    ``_try_unique_method``) scan every file regardless of language, so a Python
+    The project-wide rules (``_try_single_global`` / ``_try_class_method``) scan
+    every file regardless of language, so a Python
     ``config.get(...)`` whose ``get`` is defined only on a JavaScript class would
     bind to that JS file — a wrong callee with a foreign-language body inlined
     into the response. Reject such binds so the cascade falls through to

@@ -620,7 +620,7 @@ def _collect_local_var_types(
     Handles two patterns:
     1. ``var = ClassName(...)`` (uppercase) — project class receiver inference.
     2. ``var = builtin_literal_or_constructor`` — builtin receiver inference,
-       enabling the inverted gate in ``_try_unique_method`` / ``_is_obvious_external``
+       enabling the builtin-receiver gate in ``_is_obvious_external``
        (issue #447 adversarial P1). Recognises ``{}``/``[]``/``()`` literals,
        comprehensions, and lowercase constructor calls ``dict()``/``list()``/…
 
