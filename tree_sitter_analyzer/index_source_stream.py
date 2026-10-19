@@ -63,7 +63,58 @@ def hash_source_at(
 
     文件已不存在时返回 ``<unsafe>``（源码变化）；其他打开或读取失败（如 Windows
     上被其他进程锁定）抛出 ``SourceUnreadable``，由调用方按文件记录（#1654）。
+
+    #1673：按路径读取（``directory_fd is None``）时，``before``（调用方刚取得的
+    ``lstat``）加元数据变更时间与上次干净读取的证据完全相同、且不在时间戳竞争
+    窗口内，则复用那次读取的摘要而不重新打开文件（``source_hash_cache``）。
+    描述符绑定的读取不经缓存。
     """
+    if directory_fd is None:
+        from . import source_hash_cache
+
+        cache = source_hash_cache.SOURCE_HASHES
+        key = source_hash_cache.evidence(name, before)
+        cached = cache.lookup(name, key)
+        if cached is not None:
+            return metadata_marker(before), cached, True
+        marker, digest, clean = _hash_source_uncached(
+            None,
+            name,
+            before,
+            deadline,
+            counters,
+            byte_budget,
+            metadata_marker,
+            same_file_metadata,
+        )
+        if clean and digest != "<unsafe>":
+            cache.store(name, key, digest)
+        else:
+            cache.forget(name)
+        return marker, digest, clean
+    return _hash_source_uncached(
+        directory_fd,
+        name,
+        before,
+        deadline,
+        counters,
+        byte_budget,
+        metadata_marker,
+        same_file_metadata,
+    )
+
+
+def _hash_source_uncached(
+    directory_fd: int | None,
+    name: str,
+    before: os.stat_result,
+    deadline: float,
+    counters: dict[str, int],
+    byte_budget: int,
+    metadata_marker: Any,
+    same_file_metadata: Any,
+) -> tuple[str, str, bool]:
+    """``hash_source_at`` 的实际读取：每次都打开文件。"""
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     try:
         fd = (

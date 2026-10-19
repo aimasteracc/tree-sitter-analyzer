@@ -387,8 +387,9 @@ def test_replace_edges_for_file_deletes_use_indexes_not_full_scan(
             for sql, params in capture.calls
             if sql.strip().upper().startswith("DELETE")
         ]
-        # Exactly three index-driven deletes replace the one OR-scan.
-        assert len(delete_calls) == 3
+        # Three index-driven deletes replace the one OR-scan; the fourth removes
+        # placeholder-sourced edges by target range (#1673), also index-driven.
+        assert len(delete_calls) == 4
 
         scan_steps = []
         for sql, params in delete_calls:

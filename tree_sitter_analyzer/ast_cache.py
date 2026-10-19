@@ -112,6 +112,8 @@ class ASTCache(
         self._generation_managed = False
         self._generation_guard: Callable[[], None] | None = None
         self._publishes_project_index = False
+        # #1673：私有构建由发布侧捕获时绑定的内容摘要（相对路径 -> 摘要）。
+        self._bound_source_digests: dict[str, str] = {}
         self._unindexed_uri: str | None = None
         self._unindexed_anchor: sqlite3.Connection | None = None
         self._unindexed_sealed = False

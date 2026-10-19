@@ -20,6 +20,7 @@ from ..incremental_sync_support import SyncResult
 from ..index_source_scope import SourceScopeDescriptor, make_source_scope_descriptor
 from ..indexing_snapshot import (
     IndexCandidateSnapshot,
+    IndexSnapshotEntry,
     build_index_candidate_snapshot,
     walk_index_candidate_entries,
 )
@@ -40,7 +41,6 @@ from .generation_selector import (
 )
 from .source_hash_budget import (
     SOURCE_HASH_BYTE_BUDGET,
-    SOURCE_HASH_MAX_SECONDS_ONE_FILE,
     SourceHashBudgetExceeded,
     source_hash_budget_seconds,
 )
@@ -78,43 +78,17 @@ def _bind_source_hashes(snapshot: IndexCandidateSnapshot) -> IndexCandidateSnaps
     """
     if not _PATH_ONLY_SOURCE:
         return snapshot
-    from ..index_source_stream import SourceUnreadable, hash_source_at
-    from ..portable_source_snapshot import _marker, _same
-
-    entries = []
-    counters = {"input": 0, "output": 0}
-    selected = sum(
-        1
+    selected = [
+        entry
         for entry in snapshot.entries
         if entry.decision == "selected" and entry.fingerprint is not None
-    )
-    overall_deadline = time.monotonic() + source_hash_budget_seconds(selected)
-    bound = 0
+    ]
+    overall_deadline = time.monotonic() + source_hash_budget_seconds(len(selected))
+    bound = _bound_source_hashes(selected, overall_deadline)
+    entries = []
     for entry in snapshot.entries:
         if entry.decision == "selected" and entry.fingerprint is not None:
-            before = os.lstat(entry.abs_path)
-            deadline = min(
-                overall_deadline,
-                time.monotonic() + SOURCE_HASH_MAX_SECONDS_ONE_FILE,
-            )
-            try:
-                _, digest, clean = hash_source_at(
-                    None,
-                    entry.abs_path,
-                    before,
-                    deadline,
-                    counters,
-                    SOURCE_HASH_BYTE_BUDGET,
-                    _marker,
-                    _same,
-                )
-            except (TimeoutError, OverflowError) as exc:
-                raise SourceHashBudgetExceeded(selected, bound) from exc
-            except SourceUnreadable as exc:
-                # #1654：被锁定等不可读文件记为标记而非摘要，其余文件照常绑定；
-                # 索引器据此按文件报告失败，标记永不等于任何已索引行的摘要。
-                digest, clean = exc.marker, True
-            bound += 1
+            before, digest, clean = bound[entry.rel_path]
             if not clean or entry.fingerprint != type(entry.fingerprint).from_stat(
                 before
             ):
@@ -124,6 +98,78 @@ def _bind_source_hashes(snapshot: IndexCandidateSnapshot) -> IndexCandidateSnaps
             )
         entries.append(entry)
     return replace(snapshot, entries=tuple(entries))
+
+
+#: 冷读取的并发线程数（#1673）：Windows 打开文件受 I/O 与实时扫描延迟支配，
+#: 本机实测顺序读取约 35 ms/文件、8 线程约 6 ms/文件；命中 ``source_hash_cache``
+#: 时根本不读文件。
+_HASH_THREADS = 8
+
+
+def _bound_source_hashes(
+    selected: list[IndexSnapshotEntry], overall_deadline: float
+) -> dict[str, tuple[os.stat_result, str, bool]]:
+    """为每个选中条目取 ``(lstat, 摘要, 干净)``；时间与字节预算对整批生效。
+
+    任一文件超出预算即抛 ``SourceHashBudgetExceeded``，不返回部分结果。
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from ..index_source_stream import SourceUnreadable, hash_source_at
+    from ..portable_source_snapshot import _marker, _same
+
+    def bind(entry: IndexSnapshotEntry) -> tuple[os.stat_result, str, bool, int]:
+        before = os.lstat(entry.abs_path)
+        # 并发读取时单个慢文件只占一个线程；整批期限即上界（逐文件期限在线程
+        # 交错下会随调度而变，不再使用）。
+        deadline = overall_deadline
+        counters = {"input": 0, "output": 0}
+        try:
+            _, digest, clean = hash_source_at(
+                None,
+                entry.abs_path,
+                before,
+                deadline,
+                counters,
+                SOURCE_HASH_BYTE_BUDGET,
+                _marker,
+                _same,
+            )
+        except SourceUnreadable as exc:
+            # #1654：被锁定等不可读文件记为标记而非摘要，其余文件照常绑定；
+            # 索引器据此按文件报告失败，标记永不等于任何已索引行的摘要。
+            digest, clean = exc.marker, True
+        return before, digest, clean, counters["input"]
+
+    results: dict[str, tuple[os.stat_result, str, bool]] = {}
+    total_bytes = 0
+    exhausted: BaseException | None = None
+    with ThreadPoolExecutor(max_workers=_HASH_THREADS) as pool:
+        futures = [(entry, pool.submit(bind, entry)) for entry in selected]
+        try:
+            for entry, future in futures:
+                before, digest, clean, read = future.result()
+                total_bytes += read
+                if total_bytes > SOURCE_HASH_BYTE_BUDGET:
+                    raise OverflowError
+                results[entry.rel_path] = (before, digest, clean)
+        except (TimeoutError, OverflowError) as exc:
+            exhausted = exc
+            for _entry, pending in futures:
+                pending.cancel()
+        except BaseException:
+            for _entry, pending in futures:
+                pending.cancel()
+            raise
+    if exhausted is not None:
+        # 线程池退出时已等待运行中的任务；如实报告整批中实际绑定成功的文件数。
+        bound = sum(
+            1
+            for _entry, future in futures
+            if future.done() and not future.cancelled() and future.exception() is None
+        )
+        raise SourceHashBudgetExceeded(len(selected), bound) from exhausted
+    return results
 
 
 def _with_unreadable_marks(
@@ -145,6 +191,38 @@ def _with_unreadable_marks(
         return snapshot
     entries = tuple(marked.get(entry.rel_path, entry) for entry in snapshot.entries)
     return replace(snapshot, entries=entries)
+
+
+_SQLITE_SIDECARS = ("-wal", "-shm", "-journal")
+_COPY_CHUNK = 8 * 1024 * 1024
+
+
+def _copy_sealed_database(source: Path, destination: Path) -> bool:
+    """把已封存的父版本按字节复制进已建好的私有库文件；不适用时返回 ``False``。
+
+    #1673：``sqlite3`` 的 backup 按页复制，本仓库 343 MB 实测 5.7–7 秒。已封存
+    版本是只读、回滚日志模式、无任何旁路文件的单个主库（``seal``），其字节即是
+    完整一致的数据库，大块顺序复制即可得到同一个库。父版本带旁路文件（不应
+    出现）时退回 backup。目标文件就地截断写入，保持 ``begin`` 记录的文件身份；
+    复制前后父版本的 stat 必须一致，否则退回 backup。
+    """
+    if any(os.path.lexists(f"{source}{suffix}") for suffix in _SQLITE_SIDECARS):
+        return False
+    before = os.stat(source)
+    with open(source, "rb") as reader, open(destination, "r+b") as writer:
+        writer.truncate(0)
+        while chunk := reader.read(_COPY_CHUNK):
+            writer.write(chunk)
+    after = os.stat(source)
+    copied = (
+        (before.st_size, before.st_mtime_ns) == (after.st_size, after.st_mtime_ns)
+        and not any(os.path.lexists(f"{source}{suffix}") for suffix in _SQLITE_SIDECARS)
+        and os.path.getsize(destination) == before.st_size
+    )
+    if not copied:
+        with open(destination, "r+b") as writer:
+            writer.truncate(0)  # 退回 backup 前恢复为空库文件
+    return copied
 
 
 @dataclass(frozen=True)
@@ -386,17 +464,17 @@ class GenerationStore:
             # 首次发布采纳遗留旧库（#1554）；发布 CAS 照常拒绝过时候选。
             adopt_legacy_database(Path(self.logical_path), database)
         else:
-            source = sqlite3.connect(
-                self.database(candidate.parent).as_uri() + "?mode=ro", uri=True
-            )
-            try:
-                destination = sqlite3.connect(database)
+            parent = self.database(candidate.parent)
+            if not _copy_sealed_database(parent, database):
+                source = sqlite3.connect(parent.as_uri() + "?mode=ro", uri=True)
                 try:
-                    source.backup(destination)
+                    destination = sqlite3.connect(database)
+                    try:
+                        source.backup(destination)
+                    finally:
+                        destination.close()
                 finally:
-                    destination.close()
-            finally:
-                source.close()
+                    source.close()
         # #1671：私有副本不继承父版本的稳定失败记录；只有收敛的运行重新签发。
         clear_record_at(database)
         return selector

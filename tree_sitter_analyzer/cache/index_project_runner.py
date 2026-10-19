@@ -230,8 +230,15 @@ def run_index_project(
                     _mark_call_graph_built(conn)
                 raise
         conn = cache._get_conn()
+        import time as _time
+
+        # #1673：写入方的核验用宽松期限。默认 5 秒期限保护交互式读者；写入方
+        # 在期限处中断会把“未核完”当作“不精确”，进而重写全部文件的投影
+        # （本仓库实测：负载下一次 1 文件刷新因此重新提取 2,504 个文件）。
         projection_repair = not symbol_projection_is_exact(
-            conn, require_fts=cache.fts5_available
+            conn,
+            require_fts=cache.fts5_available,
+            deadline=_time.monotonic() + _WRITER_PROJECTION_SECONDS,
         )
         if projection_repair and not rebuild_signaled:
             # Repair rewrites ordinary rows in committed batches just like a full
@@ -255,6 +262,8 @@ def run_index_project(
             language_filter,
             effective_exclude,
             candidate_snapshot,
+            # 本操作开头已校验同一快照（见上），不重复逐项 realpath（#1673）。
+            snapshot_validated=candidate_snapshot is not None,
         )
         cleanup_result = stats
         candidate_fingerprints = (

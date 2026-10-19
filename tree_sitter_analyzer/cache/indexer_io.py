@@ -200,6 +200,8 @@ def walk_and_partition(
     language_filter: str | None = None,
     exclude_patterns: frozenset[str] | None = None,
     candidate_snapshot: IndexCandidateSnapshot | None = None,
+    *,
+    snapshot_validated: bool = False,
 ) -> tuple[dict[str, Any], list[tuple[str, str]], int]:
     """Walk source files and partition into (stats, candidates, count).
 
@@ -207,6 +209,12 @@ def walk_and_partition(
     equals it are considered; non-matching files are skipped BEFORE any parse
     attempt, so a Python-scoped run never tries to load an optional grammar
     (e.g. Swift) and never surfaces a "grammar not installed" error.
+
+    ``snapshot_validated`` (#1673): the caller already ran
+    ``validate_index_candidate_snapshot`` on this very snapshot at the start of
+    the same operation, so the per-entry ``realpath`` / ``stat`` pass is not
+    repeated (on Windows each ``realpath`` opens a handle; 2.5k files cost 2–4 s).
+    Per-entry change detection (``changed_since_snapshot``) still runs.
     """
     max_files = normalize_index_max_files(max_files)
     candidates: list[tuple[str, str]] = []
@@ -251,9 +259,12 @@ def walk_and_partition(
         }
 
     if candidate_snapshot is not None:
-        validate_index_candidate_snapshot(
-            cache.project_root, max_files, candidate_snapshot
-        )
+        supplied = getattr(cache, "_bound_source_digests", None)
+        bound_digests: dict[str, str] = supplied if isinstance(supplied, dict) else {}
+        if not snapshot_validated:
+            validate_index_candidate_snapshot(
+                cache.project_root, max_files, candidate_snapshot
+            )
         stats["truncated_by_max_files"] = candidate_snapshot.truncated_by_max_files
         stats["snapshot_metrics"] = candidate_snapshot.metrics()
         count = len(candidate_snapshot.entries)
@@ -304,12 +315,16 @@ def walk_and_partition(
             fingerprint = cast(IndexFileFingerprint, entry.fingerprint)
             language = cast(str, entry.language)
             row = indexed_map.get(entry.rel_path)
+            # #1673：路径平台的候选快照不带摘要（只带不可读标记）；发布侧捕获时
+            # 绑定的摘要随私有构建传入，缓存行必须与它相同（RFC-0030：内容证据，
+            # 不只看 mtime 与大小）。
+            digest = bound_digests.get(entry.rel_path) or fingerprint.content_hash
             if (
                 row is not None
                 and row[0] == fingerprint.mtime_ns
                 and row[1] == fingerprint.file_size
                 and row[2] >= extractor_version
-                and (not fingerprint.content_hash or row[3] == fingerprint.content_hash)
+                and (not digest or row[3] == digest)
             ):
                 already_cached.append(
                     {
