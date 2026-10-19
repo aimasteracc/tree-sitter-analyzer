@@ -260,10 +260,18 @@ def test_second_pass_skips_own_receiver_calls_only() -> None:
             "callee_full": "obj.m",
             "callee_line": 3,
         },
+        {
+            "caller_name": "run",
+            "caller_line": 1,
+            "callee_name": "m",
+            "callee_full": "m",
+            "callee_line": 4,
+        },
     ]
     refs = _call_refs(sqlite3.connect(":memory:"), "c.py", "python", edges, set())
 
-    assert [ref["line"] for ref in refs] == [3]
+    # `self.m()` 交给 MRO（#1677），接收者未被证明的 `obj.m()` 不按名字解析（#1669）。
+    assert [ref["line"] for ref in refs] == [4]
 
 
 def test_index_pass_skips_unknown_owners_and_survives_a_readonly_index(
