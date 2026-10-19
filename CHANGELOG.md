@@ -138,6 +138,18 @@
   re-exported or public alias, or one that is also passed as a callback, keeps
   the answer non-`complete`. The extractor version goes from 41 to 42, so the
   next refresh re-resolves files indexed by older versions.
+- `nav action=callers` attributes `self.m()` / `cls.m()` to a method inherited
+  from a base class, also across files (#1677). Before, a call to a method that
+  only a base class defines (`_JavaExtractorSupport._reset_caches` from
+  `JavaElementExtractor`) was never listed. The call now resolves to the nearest
+  definition in the class's MRO (C3), as a certain caller, when every base up the
+  chain resolves to a project class or is a standard-library class that has no
+  such attribute. A base that does not resolve (a third-party class) leaves the
+  call a name-only possible caller. Overrides in subclasses stay possible
+  (#1648). The name-based second pass no longer binds such `self.m()` calls to a
+  same-directory or unique method of that name. The extractor version goes from
+  42 to 43.
+
 - RFC-0032 follow-ups (#1664):
   - **Lease wait is 30 s**, as the RFC specifies (was 5 s). Measured on
     Windows with this repository (2,865 files), a refresh holds the publication

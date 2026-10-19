@@ -36,6 +36,7 @@ from .call_graph_self_dispatch import (
     own_class_target,
 )
 from .callee_resolution import CalleeResolver
+from .class_mro import ClassKey, Hierarchy
 from .receiver_proof import receiver_type_name, split_receiver
 
 if TYPE_CHECKING:
@@ -81,12 +82,15 @@ class CachedEdgeResolver:
         reexport_binder: PackageReexportBinder | None = None,
         subclasses: SubclassIndex | None = None,
         memoize: bool = False,
+        hierarchy: Callable[[], Hierarchy] | None = None,
     ) -> None:
         self._functions_by_file = functions_by_file
         self._functions_by_name = functions_by_name
         self._file_import_map = file_import_map
         self._reexport_binder = reexport_binder
         self._subclasses = subclasses
+        # #1677：类层级（有序基类与方法表），惰性读取，只在继承调用时需要。
+        self._hierarchy = hierarchy
         self._resolver = CalleeResolver(
             functions_by_name=functions_by_name,
             functions_by_file=functions_by_file,
@@ -132,15 +136,27 @@ class CachedEdgeResolver:
             )
         if qualifier not in OWN_INSTANCE_QUALIFIERS:
             return targets
-        return self._self_dispatch(targets, base_name, qualifier, caller_class)
+        return self._self_dispatch(
+            targets, base_name, qualifier, caller_class, caller_file
+        )
 
     def _self_dispatch(
-        self, targets: EdgeTargets, base_name: str, qualifier: str, caller_class: str
+        self,
+        targets: EdgeTargets,
+        base_name: str,
+        qualifier: str,
+        caller_class: str,
+        caller_file: str = "",
     ) -> EdgeTargets:
-        """#1635：外围类自己的方法是确定目标，其余同名候选与子类覆写是可能目标。"""
+        """#1635：外围类自己的方法是确定目标，其余同名候选与子类覆写是可能目标。
+
+        #1677：外围类没有该方法时，MRO 完全已知下最近的继承定义是确定目标。
+        """
         certain, possible = list(targets.certain), list(targets.possible)
         if len(certain) != 1:
             own = own_class_target(certain + possible, qualifier, caller_class)
+            if own is None:
+                own = self._inherited_target(caller_file, caller_class, base_name)
             if own is not None:
                 possible = [ref for ref in certain + possible if ref != own]
                 certain = [own]
@@ -158,6 +174,26 @@ class CachedEdgeResolver:
                     present.add(ref)
                     possible.append(ref)
         return EdgeTargets(certain=certain, possible=possible)
+
+    def _inherited_target(
+        self, caller_file: str, caller_class: str, base_name: str
+    ) -> FunctionRef | None:
+        """#1677：外围类没有 `base_name` 时，完全已知的 MRO 中最近定义它的方法。"""
+        if self._hierarchy is None or not caller_file:
+            return None
+        hierarchy = self._hierarchy()
+        owner = ClassKey(caller_file, caller_class)
+        if base_name in hierarchy.methods.get(owner, {}):
+            return None
+        found, known = hierarchy.nearest(owner, base_name)
+        if found is None or not known:
+            return None
+        matches = [
+            ref
+            for ref in self._functions_by_name.get(base_name, [])
+            if ref.receiver == found.name and ref.file_path == found.file
+        ]
+        return matches[0] if len(matches) == 1 else None
 
     def _memoized_static_targets(
         self, edge: dict[str, Any], caller_file: str

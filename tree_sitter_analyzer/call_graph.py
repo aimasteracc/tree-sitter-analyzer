@@ -16,7 +16,7 @@ import gc
 import os
 import sqlite3
 from collections import defaultdict, deque
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from collections.abc import Set as AbstractSet
 from contextlib import contextmanager
 from pathlib import Path
@@ -30,6 +30,7 @@ from .call_graph_binding import RefIdentity, pick_caller_ref, ref_identity
 from .call_graph_possible import PossibleEdgesMixin
 from .call_graph_self_dispatch import SubclassIndex
 from .callee_resolution import CalleeResolver
+from .class_mro import Hierarchy, load_hierarchy
 from .constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
 from .constants import JS_TS_MODULE_EXTS
 from .core.parser import Parser, ParseResult
@@ -934,6 +935,8 @@ class CachedCallGraph(CallGraph):
             subclasses=subclasses,
             # #1657：函数与 import 索引此时已完整且不再变化，相同输入只解析一次。
             memoize=True,
+            # #1677：继承调用的 MRO 只读取一次，且只在需要时读取。
+            hierarchy=_lazy_hierarchy(self._cache),
         )
         if self._callee_resolver is None:
             self._callee_resolver = edge_resolver.callee_resolver
@@ -1002,6 +1005,21 @@ def _resolve_edge(
         targets.binding,
         edge.get("callee_line", 0),
     )
+
+
+def _lazy_hierarchy(cache: Any) -> Callable[[], Hierarchy]:
+    """#1677：首次需要时从索引读取类层级；读取失败为空层级（没有 MRO 证据）。"""
+    loaded: list[Hierarchy] = []
+
+    def load() -> Hierarchy:
+        if not loaded:
+            try:
+                loaded.append(load_hierarchy(cache.get_conn()))
+            except Exception:  # nosec B110 — 没有连接：没有 MRO 证据。
+                loaded.append(Hierarchy())
+        return loaded[0]
+
+    return load
 
 
 @contextmanager

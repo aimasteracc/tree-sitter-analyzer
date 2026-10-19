@@ -16,7 +16,8 @@ import pytest
 from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
 from tree_sitter_analyzer.mcp.tools.relation_freshness import REFRESH_COMMAND
 
-#: 基类方法经 ``self._reset()`` 从子类调用：接收者无法绑定，只按同名匹配。
+#: ``self._reset()`` 来自一个 MRO 未知的类（基类是第三方类）：接收者无法绑定，只按同名匹配。
+#: #1677：MRO 完全已知的继承调用会绑定到基类方法，这里因此用外部基类。
 _BASE = (
     "class Base:\n"
     "    def _reset(self):\n"
@@ -25,8 +26,8 @@ _BASE = (
     "        return Base()._reset()\n"
 )
 _CHILD = (
-    "from base import Base\n\n\n"
-    "class Child(Base):\n"
+    "from external_pkg import Mixin\n\n\n"
+    "class Child(Mixin):\n"
     "    def run(self):\n"
     "        self._reset()\n"
     "        return 2\n\n"
@@ -92,7 +93,7 @@ async def test_name_only_sites_are_capped_with_an_honest_total(tmp_path) -> None
         f"    def call_{index}(self):\n        return self._reset()\n\n"
         for index in range(25)
     )
-    child = "from base import Base\n\n\nclass Child(Base):\n" + callers
+    child = "from external_pkg import Mixin\n\n\nclass Child(Mixin):\n" + callers
     root = await _index_files(
         tmp_path, {"base.py": _BASE, "child.py": child, "other.py": _OTHER}
     )

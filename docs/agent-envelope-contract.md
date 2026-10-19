@@ -204,6 +204,15 @@ alias, an alias another module imports or calls, or an alias that is also used
 without a call (a callback, an assignment, `__all__`) keeps the import line as a
 reference; the non-call uses are listed in `non_call_reference_sites` too. With
 no caller at all, the import line always stays a reference (#1645).
+### Inherited `self.m()` calls (#1677)
+
+When the enclosing class does not define `m`, `self.m()` / `cls.m()` is a
+certain caller of the nearest definition of `m` in the class's MRO (C3), across
+files, provided every base up the chain resolves to a project class or is a
+standard-library class without such an attribute. If a base does not resolve
+(for example a third-party class), the call is only a name-only possible caller
+and keeps the answer non-`complete` (`NAME_ONLY_INBOUND`). Overrides of `m` in
+subclasses of the enclosing class remain possible targets.
 
 ## Index write admission codes (RFC-0032)
 
