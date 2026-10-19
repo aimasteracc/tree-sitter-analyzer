@@ -194,7 +194,7 @@ class TestAuthoritativeSnapshotOracle:
             databases,
         ) == (
             False,
-            "WARN",
+            "ERROR",  # #1674: not published
             1,
             "INDEX_MANIFEST_CERTIFICATION_FAILED",
             1,
@@ -284,7 +284,7 @@ class TestAuthoritativeSnapshotOracle:
             result["phases"]["incremental_sync"]["backfill_errors"],
             result["phases"]["incremental_sync"]["completeness"],
             databases,
-        ) == (False, "WARN", 1, "incomplete", [])
+        ) == (False, "ERROR", 1, "incomplete", [])
         assert (status["completeness"], status["oracle_reason"]) == (
             "unknown",
             "MISSING_INDEX",
