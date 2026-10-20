@@ -8,8 +8,10 @@ import time
 from typing import Any
 
 from .ast_cache import _EXT_TO_LANG, _walk_source_files
+from .cache.helpers import _project_index_activation_enabled
 from .cache.publication_policy import FAILURE_KIND
 from .incremental_sync_support import SyncResult, file_changed, get_changes
+from .index_source_scope import default_exclude_patterns
 from .index_source_snapshot import (
     SourceScopeDescriptor,
     make_source_scope_descriptor,
@@ -47,14 +49,16 @@ class IncrementalSync:
         """Sync the on-disk source tree with the AST cache."""
         max_files = normalize_index_max_files(max_files)
         if source_scope is None:
+            # #1697：省略排除策略即默认范围，与项目索引（``index_project``）同一
+            # 来源；显式给出的集合就是生效集合（不再叠加默认模式）。
             source_scope = make_source_scope_descriptor(
-                no_default_excludes=True,
+                no_default_excludes=exclude_patterns is not None,
                 exclude_patterns=tuple(sorted(exclude_patterns or ())),
                 certification_max_files=max_files,
             )
-        validate_full_index_source_scope(
-            source_scope, exclude_patterns or frozenset(), max_files
-        )
+        if exclude_patterns is None:
+            exclude_patterns = source_scope.effective_excludes
+        validate_full_index_source_scope(source_scope, exclude_patterns, max_files)
         if getattr(self._cache, "_generation_managed", False) or getattr(
             self, "_default_generation", False
         ):
@@ -150,6 +154,11 @@ class IncrementalSync:
             self._invalidate_deleted_files(deleted_paths, result, callback)
         previous_defer = getattr(self._cache, "_defer_single_file_backfill", False)
         self._cache._defer_single_file_backfill = True
+        # #1697：同步是项目范围的刷新，activation 与项目索引同一策略
+        # （``TSA_INDEX_ACTIVATION``，默认关闭）；单文件索引的默认不变。
+        activation_enabled = _project_index_activation_enabled(None)
+        previous_activation = getattr(self._cache, "_project_activation_enabled", None)
+        self._cache._project_activation_enabled = activation_enabled
         try:
             action_by_file = self._index_or_reindex_files(
                 disk_files,
@@ -161,6 +170,7 @@ class IncrementalSync:
             )
         finally:
             self._cache._defer_single_file_backfill = previous_defer
+            self._cache._project_activation_enabled = previous_activation
 
         # Phase B-3: Set certified_at for successfully processed files.
         # Files that were indexed (new/updated/unchanged) receive a Unix epoch
@@ -322,6 +332,11 @@ class IncrementalSync:
             backfill_complete = False
             clear_call_graph_built_strict(conn)
             # 仅撤销认证；partial_at 持久历史尚未实现，不写入随后必删的 manifest。
+        if activation_enabled:
+            # 与项目索引相同：开启时每次运行只处理一个有界批次的 pending 行。
+            from .cache.write import _flush_pending_activations
+
+            _flush_pending_activations(conn, self._cache.project_root)
         indexed_paths = {
             str(row["file_path"])
             for row in conn.execute("SELECT file_path FROM ast_index").fetchall()
@@ -578,11 +593,12 @@ class IncrementalSync:
             rel = os.path.relpath(abs_path, self._cache.project_root)
             if os.name == "nt":
                 rel = rel.replace("\\", "/")
-            present_paths.add(rel)
             if exclude_patterns and any(
                 fnmatch.fnmatch(rel, pattern) for pattern in exclude_patterns
             ):
+                # #1697：被排除的文件不在范围内；旧库留下的行按删除处理。
                 continue
+            present_paths.add(rel)
             try:
                 stat = os.stat(abs_path)
                 disk_files[rel] = {
@@ -827,15 +843,26 @@ class IncrementalSync:
     def get_changes(
         self, *, exclude_patterns: frozenset[str] | None = None
     ) -> dict[str, list[str]]:
-        """按调用方的排除策略返回变更；省略策略时保持原有全范围行为。"""
+        """按调用方的排除策略返回 ``sync`` 将做的变更；省略策略即默认范围（#1697）。
+
+        已入索引却落在范围外的文件（旧代码按全范围建的库）会被 ``sync`` 删除，
+        因此报告为 ``deleted``，而不是从预览中消失。
+        """
+        if exclude_patterns is None:
+            exclude_patterns = default_exclude_patterns()
         changes = get_changes(self._cache, self._file_changed, _walk_source_files)
+
+        def excluded(path: str) -> bool:
+            return any(fnmatch.fnmatch(path, pattern) for pattern in exclude_patterns)
+
+        conn = self._cache.get_conn()
+        out_of_scope = {
+            str(row["file_path"])
+            for row in conn.execute("SELECT file_path FROM ast_index").fetchall()
+            if excluded(str(row["file_path"]))
+        }
         return {
-            kind: [
-                path
-                for path in paths
-                if not any(
-                    fnmatch.fnmatch(path, pattern) for pattern in exclude_patterns or ()
-                )
-            ]
-            for kind, paths in changes.items()
+            "new": [path for path in changes["new"] if not excluded(path)],
+            "deleted": sorted(set(changes["deleted"]) | out_of_scope),
+            "modified": [path for path in changes["modified"] if not excluded(path)],
         }

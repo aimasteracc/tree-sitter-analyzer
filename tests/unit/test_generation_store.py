@@ -398,9 +398,11 @@ def test_path_only_candidates_bind_content_and_reject_unstable_reads(
     else:
         source.write_text("def replaced(): return 4\n", encoding="utf-8")
         second = store._snapshot()
+        # 遍历顺序取决于文件系统（ext4 按目录哈希），``note.txt`` 可能排在前面；
+        # 取唯一被选中的源码条目 ``a.py``。
         assert (
-            first.entries[0].fingerprint.content_hash
-            != second.entries[0].fingerprint.content_hash
+            first.selected_entries[0].fingerprint.content_hash
+            != second.selected_entries[0].fingerprint.content_hash
         )
 
 
