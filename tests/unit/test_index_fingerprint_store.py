@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import marshal
+import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -21,7 +22,9 @@ _OTHER_FP = "sha256:" + "b" * 64
 
 
 @pytest.fixture(autouse=True)
-def _isolated_memo():
+def _isolated_memo(tmp_path: Path, monkeypatch):
+    # conftest 默认关闭落盘层；这里每个测试用自己的缓存目录。
+    monkeypatch.setenv(store.CACHE_DIR_ENV, str(tmp_path / "fp-cache"))
     memo.clear_index_fingerprint_memo()
     yield
     memo.clear_index_fingerprint_memo()
@@ -29,12 +32,25 @@ def _isolated_memo():
 
 @pytest.fixture
 def root(tmp_path: Path) -> str:
-    (tmp_path / ".ast-cache").mkdir()
-    return str(tmp_path)
+    project = tmp_path / "proj"
+    project.mkdir()
+    return str(project)
 
 
 def _store_path(root: str) -> Path:
-    return Path(root) / ".ast-cache" / store.DIR_NAME / store.FILE_NAME
+    """该项目在测试缓存目录中的记录文件（每个项目根一个文件）。"""
+    import hashlib
+
+    directory = Path(os.environ[store.CACHE_DIR_ENV])
+    name = hashlib.blake2b(root.encode("utf-8"), digest_size=16).hexdigest()
+    return directory / f"{name}.bin"
+
+
+def test_each_project_root_has_its_own_file(root: str) -> None:
+    store.store(root, (root, "k"), _FP)
+
+    assert store._store_file(root, create=False) == _store_path(root)
+    assert _store_path(root).is_file()
 
 
 # --------------------------------------------------------------------------- #
@@ -146,19 +162,70 @@ def test_a_rewritten_value_replaces_the_old_one(root: str) -> None:
     assert len(marshal.loads(_store_path(root).read_bytes())[1]) == 1
 
 
-def test_nothing_is_stored_without_an_ast_cache_directory(tmp_path: Path) -> None:
-    store.store(str(tmp_path), (str(tmp_path), "k"), _FP)
+def test_the_project_directory_is_never_written(root: str) -> None:
+    store.store(root, (root, "k"), _FP)
 
-    assert not (tmp_path / ".ast-cache").exists()
-    assert store.lookup(str(tmp_path), (str(tmp_path), "k")) is None
+    assert sorted(p.name for p in Path(root).iterdir()) == []
+    assert _store_path(root).parent == Path(store.cache_dir() or "")
 
 
-def test_an_evidence_dir_that_is_a_file_disables_the_store(root: str) -> None:
-    (Path(root) / ".ast-cache" / store.DIR_NAME).write_text("not a dir")
+def test_a_cache_dir_that_is_a_file_disables_the_store(
+    tmp_path: Path, root: str, monkeypatch
+) -> None:
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a dir")
+    monkeypatch.setenv(store.CACHE_DIR_ENV, str(blocker))
 
     store.store(root, (root, "k"), _FP)
 
     assert store.lookup(root, (root, "k")) is None
+    assert blocker.read_text() == "not a dir"
+
+
+def test_an_unwritable_cache_parent_disables_the_store(
+    tmp_path: Path, root: str, monkeypatch
+) -> None:
+    (tmp_path / "file").write_text("x")
+    monkeypatch.setenv(store.CACHE_DIR_ENV, str(tmp_path / "file" / "below"))
+
+    store.store(root, (root, "k"), _FP)
+
+    assert store.lookup(root, (root, "k")) is None
+
+
+def test_the_cache_dir_switch_turns_the_store_off(root: str, monkeypatch) -> None:
+    monkeypatch.setenv(store.CACHE_DIR_ENV, "off")
+
+    store.store(root, (root, "k"), _FP)
+
+    assert store.cache_dir() is None
+    assert store.lookup(root, (root, "k")) is None
+
+
+def test_the_default_cache_dir_is_under_the_user_home(monkeypatch) -> None:
+    monkeypatch.delenv(store.CACHE_DIR_ENV)
+
+    assert store.cache_dir() == Path.home() / ".tsa" / "cache" / "index-fingerprint"
+
+
+def test_old_project_files_are_pruned(tmp_path: Path, monkeypatch) -> None:
+    import os
+    import time
+
+    monkeypatch.setattr(store, "MAX_FILES", 2)
+    roots = []
+    for index in range(4):
+        project = tmp_path / f"p{index}"
+        project.mkdir()
+        roots.append(str(project))
+        store.store(str(project), (str(project), "k"), _FP)
+        path = store._store_file(str(project), create=False)
+        assert path is not None
+        stamp = time.time_ns() - (10 - index) * 1_000_000_000
+        os.utime(path, ns=(stamp, stamp))
+    store.store(roots[3], (roots[3], "k2"), _FP)
+
+    assert [store.lookup(r, (r, "k")) for r in roots] == [None, None, _FP, _FP]
 
 
 def test_a_write_failure_is_silent(root: str, monkeypatch) -> None:
@@ -309,3 +376,35 @@ async def test_a_reindexed_project_is_recomputed_in_a_new_process(
 def test_runtime_versions_are_strings_for_the_key() -> None:
     environment = store.stored_key(())
     assert environment[2:] == (sys.version, sqlite3.sqlite_version)
+
+
+async def test_a_capture_with_the_store_stays_zero_write_on_the_index(
+    tmp_path, monkeypatch
+) -> None:
+    # 只读捕获不得改动 .ast-cache 的任何字节；记录只进用户缓存目录。
+    from tree_sitter_analyzer import index_snapshot
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    await _certified_project(project)
+    cache_dir = project / ".ast-cache"
+
+    def contents() -> dict[str, bytes]:
+        return {
+            str(p.relative_to(cache_dir)): p.read_bytes()
+            for p in sorted(cache_dir.rglob("*"))
+            if p.is_file()
+        }
+
+    before = contents()
+    snapshot = index_snapshot.read_existing_snapshot(str(project))
+
+    assert snapshot.completeness == "complete"
+    assert contents() == before
+    assert (
+        store.lookup(
+            os.path.realpath(str(project)), (os.path.realpath(str(project)), "x")
+        )
+        is None
+    )
+    assert len(list((tmp_path / "fp-cache").glob("*.bin"))) == 1
