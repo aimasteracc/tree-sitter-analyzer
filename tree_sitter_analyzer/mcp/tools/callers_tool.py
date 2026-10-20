@@ -15,6 +15,7 @@ from typing import Any
 from ...module_scope_caller import module_caller_entry
 from ...receiver_proof import has_unproven_receiver
 from ...utils import setup_logger
+from . import certification_timeouts
 from ._response_builder import build_response
 from .base_tool import BaseMCPTool
 from .callers_absence import assess_completeness
@@ -317,16 +318,28 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         if is_index_rebuilding(self.project_root):
             return await self._execute_bound(arguments, None, None)
         if self.project_root and not _certification_ruled_out(self.project_root):
-            from ...index_snapshot import certified_index_read
+            # #1710：同一索引与源码状态下捕获已在期限内完成不了时，直接走与捕获
+            # 超时相同的未认证回退，不再每次白付约 10 s。
+            if not certification_timeouts.should_skip(self.project_root):
+                from ...index_snapshot import (
+                    _certified_index_read_reason,
+                    certified_index_read,
+                )
 
-            try:
-                with certified_index_read(self.project_root) as owner:
-                    if owner is not None:
-                        return await self._execute_bound(
-                            arguments, owner.query_cache(), owner.read_source
+                try:
+                    with certified_index_read(self.project_root) as owner:
+                        certification_timeouts.record(
+                            self.project_root,
+                            None
+                            if owner is not None
+                            else _certified_index_read_reason(),
                         )
-            except (OSError, ValueError, RuntimeError, sqlite3.DatabaseError):
-                pass
+                        if owner is not None:
+                            return await self._execute_bound(
+                                arguments, owner.query_cache(), owner.read_source
+                            )
+                except (OSError, ValueError, RuntimeError, sqlite3.DatabaseError):
+                    pass
         return await self._execute_bound(arguments, None, None)
 
     async def _execute_bound(

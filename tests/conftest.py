@@ -68,6 +68,8 @@ def pytest_configure(config):
     # #1700: the index fingerprint store also lives under the user's home; tests
     # opt in with their own directory.
     os.environ.setdefault("TSA_INDEX_FINGERPRINT_CACHE_DIR", "off")
+    # #1710: likewise for the remembered certification timeouts.
+    os.environ.setdefault("TSA_CERTIFICATION_TIMEOUT_DIR", "off")
     if not hasattr(config, "workerinput"):
         _cleanup_pytest_git_repos()
     # #1638: a test stuck past the hard deadline dumps every thread stack and
@@ -377,6 +379,18 @@ def _reset_all_singletons():
         # 规则（monkeypatch），因此每个测试都从空记忆开始。
         (
             "tree_sitter_analyzer.call_graph_memo",
+            "clear",
+            lambda fn: fn(),
+        ),
+        # #1710：调用图标记复核按库文件 stat 证据记忆。
+        (
+            "tree_sitter_analyzer.cache.call_graph_built_memo",
+            "clear",
+            lambda fn: fn(),
+        ),
+        # #1710：认证捕获超时的记忆按项目根留在进程内。
+        (
+            "tree_sitter_analyzer.mcp.tools.certification_timeouts",
             "clear",
             lambda fn: fn(),
         ),

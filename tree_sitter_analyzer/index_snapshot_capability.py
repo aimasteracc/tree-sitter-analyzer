@@ -7,13 +7,13 @@ import hashlib
 import os
 import sqlite3
 import stat
-import tempfile
 import time
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack, contextmanager
 from typing import Any, BinaryIO
 
 from .cache.callgraph_state import exact_call_graph_marker as _exact_marker
+from .index_stage_dirs import private_stage_dir
 
 
 def require_memory_temp_store(conn: sqlite3.Connection) -> None:
@@ -383,10 +383,8 @@ def _copy_pinned_wal_files(
         temp_parent = safe_external_temp_parent(root)
     except SourceOracleError as exc:
         raise ValueError("INDEX_TEMP_OUTSIDE_PROJECT_REQUIRED") from exc
-    with tempfile.TemporaryDirectory(
-        prefix="tsa-wal-index-", dir=temp_parent
-    ) as private:
-        private = os.path.realpath(private)
+    # #1717：带 PID 的暂存目录；创建前回收崩溃残留，清理失败以类型化原因报告。
+    with private_stage_dir(temp_parent) as private:
         try:
             inside_project = os.path.commonpath((root, private)) == root
         except ValueError:
