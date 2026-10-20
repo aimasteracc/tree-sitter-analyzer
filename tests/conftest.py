@@ -65,6 +65,9 @@ def pytest_configure(config):
     # #1675: the tools/list definition cache writes under the user's home; the
     # suite builds definitions live unless a test opts in with its own dir.
     os.environ.setdefault("TSA_TOOL_DEFINITION_CACHE_DIR", "off")
+    # #1700: the index fingerprint store also lives under the user's home; tests
+    # opt in with their own directory.
+    os.environ.setdefault("TSA_INDEX_FINGERPRINT_CACHE_DIR", "off")
     if not hasattr(config, "workerinput"):
         _cleanup_pytest_git_repos()
     # #1638: a test stuck past the hard deadline dumps every thread stack and
