@@ -40,6 +40,16 @@ def resolve_inherited_self_calls(conn: sqlite3.Connection) -> int:
     except sqlite3.OperationalError as exc:
         logger.debug("inherited self-call select failed: %s", exc)
         return 0
+    from .backfill_scope import current
+
+    scope = current(conn)
+    if scope is not None:
+        # #1696：只处理依赖范围内的边。
+        pending = [
+            row
+            for row in pending
+            if scope.covers(str(row[1]), str(row[4] or ""), int(row[0]))
+        ]
     if not pending:
         return 0
     hierarchy = load_hierarchy(conn)

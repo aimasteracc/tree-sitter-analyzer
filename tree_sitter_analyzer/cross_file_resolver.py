@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -153,6 +154,7 @@ class CrossFileResolver:
         self._imports_by_file: dict[str, list[ImportEntry]] = {}
         self._name_to_source: dict[str, dict[str, str]] = {}
         self._callee_resolver: CalleeResolver | None = None
+        self._module_files: tuple[int, frozenset[str]] | None = None
         self._built = False
 
     def build(self) -> None:
@@ -215,12 +217,19 @@ class CrossFileResolver:
             return best.name, best.line
         return "", 0
 
-    def resolve_call_edges(self) -> list[ResolvedEdge]:
-        """Re-resolve all call edges with improved cross-file resolution."""
+    def resolve_call_edges(
+        self, edge_filter: Callable[[dict[str, Any]], bool] | None = None
+    ) -> list[ResolvedEdge]:
+        """Re-resolve all call edges with improved cross-file resolution.
+
+        #1696：``edge_filter`` 给出时只处理它接受的边（按依赖界定的回填范围）。
+        """
         self.build()
         raw_edges = self._cache.get_call_edges()
         resolved: list[ResolvedEdge] = []
         for edge in raw_edges:
+            if edge_filter is not None and not edge_filter(edge):
+                continue
             caller_file = edge["caller_file"]
             caller_name = edge["caller_name"]
             caller_line = edge["caller_line"]
@@ -509,12 +518,23 @@ class CrossFileResolver:
         if is_relative and source_file:
             source_dir = str(Path(source_file).parent)
             candidate = source_dir + "/" + module_path.lstrip("./").replace(".", "/")
+            # #1696：值集合只构建一次；原先每次探测都线性扫描全部模块（O(文件数)）。
+            indexed_files = self._indexed_files()
             for ext in _relative_probe_exts(source_file):
                 check = candidate + ext
                 if check in self._module_to_file:
                     return self._module_to_file[check]
-                for _key, val in self._module_to_file.items():
-                    if val == check:
-                        return val
+                if check in indexed_files:
+                    return check
 
         return ""
+
+    def _indexed_files(self) -> frozenset[str]:
+        cached = self._module_files
+        if cached is None or cached[0] != len(self._module_to_file):
+            cached = (
+                len(self._module_to_file),
+                frozenset(self._module_to_file.values()),
+            )
+            self._module_files = cached
+        return cached[1]

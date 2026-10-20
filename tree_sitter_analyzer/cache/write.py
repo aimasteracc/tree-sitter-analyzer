@@ -18,6 +18,7 @@ from ..index_symbol_projection import (
 from ..index_symbol_projection import (
     upsert_symbol_projection_state,
 )
+from .backfill_scope import record_file_write
 from .symbol_comments import delete_file_symbol_comments as _delete_symbol_comments
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,31 @@ INCOMING_RESOLUTION_ROWS_SQL = (
 )
 
 
+#: 解析写入 metadata 的键（Synapse ``_update_params``）；新提取的边没有它们。
+_RESOLUTION_METADATA_KEYS = ("callee_symbol_id", "receiver_binding", "import_alias")
+
+
+def reset_call_edge_rows(conn: sqlite3.Connection, rows: list[Any]) -> None:
+    """把调用边恢复为新提取时的未解析形态（列与 metadata 都与全新重建相同）。
+
+    #1696：解析写入的 ``receiver_binding`` / ``import_alias`` 也一并移除，否则重新
+    解析为未知或别的目标时，旧来源会留在 metadata 里，与全新重建不同。
+    """
+    for row in rows:
+        metadata = json.loads(row["metadata"] or "{}")
+        metadata.update({"callee_resolution": "unknown", "callee_resolved_file": ""})
+        # 与新提取的未解析边同形（无此键）：增量删除后的索引须与全新重建逐字节
+        # 相同（#1671 等价门）；读者以缺键与 null 同义。
+        for key in _RESOLUTION_METADATA_KEYS:
+            metadata.pop(key, None)
+        conn.execute(
+            "UPDATE edges SET callee_resolution = 'unknown', "
+            "callee_resolved_file = '', callee_symbol_id = NULL, metadata = ? "
+            "WHERE id = ?",
+            (json.dumps(metadata, ensure_ascii=False, sort_keys=True), row["id"]),
+        )
+
+
 def _reset_incoming_edge_resolutions(
     conn: sqlite3.Connection,
     rel_path: str,
@@ -72,23 +98,25 @@ def _reset_incoming_edge_resolutions(
     每次查询 252 ms，UNION 为 0.55 ms，结果集逐行一致）。
     """
     rows = conn.execute(INCOMING_RESOLUTION_ROWS_SQL, (rel_path, rel_path)).fetchall()
-    for row in rows:
-        metadata = json.loads(row["metadata"] or "{}")
-        metadata.update({"callee_resolution": "unknown", "callee_resolved_file": ""})
-        # 与新提取的未解析边同形（无此键）：增量删除后的索引须与全新重建逐字节
-        # 相同（#1671 等价门）；读者以缺键与 null 同义。
-        metadata.pop("callee_symbol_id", None)
-        conn.execute(
-            "UPDATE edges SET callee_resolution = 'unknown', "
-            "callee_resolved_file = '', callee_symbol_id = NULL, metadata = ? "
-            "WHERE id = ?",
-            (json.dumps(metadata, ensure_ascii=False, sort_keys=True), row["id"]),
-        )
     target_prefix = f"{rel_path}:"
+    target_range = (target_prefix, target_prefix + "\U0010ffff")
+    # #1696：继承这些类的文件须在本轮回填中重新解析基类，删除前记下它们；被重置的
+    # 边在重置前记下原解析，范围回填据解析面差异决定恢复还是重新解析。
+    extends_edges = [
+        (str(row[0]), str(row[1]), str(row[2]))
+        for row in conn.execute(
+            "SELECT file_path, source_node_id, target_node_id FROM edges "
+            "WHERE kind IN ('extends', 'implements') "
+            "AND target_node_id >= ? AND target_node_id < ?",
+            target_range,
+        )
+    ]
+    record_file_write(conn, rel_path, [row["id"] for row in rows], extends_edges)
+    reset_call_edge_rows(conn, rows)
     conn.execute(
         "DELETE FROM edges WHERE kind IN ('extends', 'implements') "
         "AND target_node_id >= ? AND target_node_id < ?",
-        (target_prefix, target_prefix + "\U0010ffff"),
+        target_range,
     )
 
 

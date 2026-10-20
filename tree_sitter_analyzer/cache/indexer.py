@@ -476,7 +476,28 @@ def post_index_backfill(
     *,
     root_fd: int | None = None,
 ) -> None:
-    """Run backfills, recording suppressed failures for certification gates."""
+    """Run backfills, recording suppressed failures for certification gates.
+
+    #1696：能界定依赖时只重新解析受影响的边，否则全量；决定写入 ``stats``。
+    """
+    from . import backfill_scope
+
+    conn = cache._get_conn()
+    changed = None
+    if not stats.get("changed_during_run"):
+        changed = int(stats.get("indexed", 0) or 0) + int(stats.get("pruned", 0) or 0)
+    decision = backfill_scope.decide(cache, conn, changed)
+    stats["backfill_scope"] = decision.to_dict()
+    with backfill_scope.active(conn, decision.scope):
+        _post_index_backfill(cache, stats, root_fd=root_fd)
+
+
+def _post_index_backfill(
+    cache: Any,
+    stats: dict[str, Any],
+    *,
+    root_fd: int | None = None,
+) -> None:
     stats.setdefault("backfill_errors", 0)
     try:
         _record_backfill_result(

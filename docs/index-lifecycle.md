@@ -90,6 +90,31 @@ are skipped with a `changed_during_run` reason and produce a `WARN` verdict;
 files created afterward wait for the next operation. Snapshot and phase
 reconciliation counters are returned in `candidate_snapshot`.
 
+An incremental refresh re-resolves only the call edges whose resolution inputs
+changed (#1696). The scope is:
+- the changed files' own edges;
+- edges bound into the changed files;
+- edges named after a definition, signature, base class, return annotation,
+  module singleton or import binding that changed;
+- the call edges of files that depend on those names, through imports,
+  aliases, star imports, module aliases, subclasses and typed exports.
+
+A body-only edit therefore re-resolves only the changed file and the edges
+bound into it. The decision is reported as `backfill_scope`, both in the sync
+result and in the `stats` returned by `index_project`:
+- `mode` is `scoped` or `full`;
+- `reason` says why;
+- the remaining fields count the scope's files, names and edges.
+
+The refresh falls back to the full backfill when it cannot bound the scope:
+- the previous backfill did not converge (`COLLECTOR_NOT_ARMED`);
+- a write was not recorded (`CHANGED_FILE_NOT_RECORDED`);
+- the changed set is unknown (`CHANGED_FILES_UNKNOWN`);
+- computing the scope failed (`SCOPE_COMPUTATION_FAILED`);
+- the scope exceeds half of all call edges (`SCOPE_TOO_LARGE`).
+
+Either way the result is the same index as a fresh full build.
+
 CLI equivalent:
 ```bash
 # Guaranteed full rebuild (recommended after pull/rebase):
