@@ -68,6 +68,21 @@
   Transient errors (read or write failures without the stable marker) still
   retry with backoff. The watcher's own writes under `.ast-cache` never
   re-triggered it (dot directories are not polled).
+- **A project index that uses the worker pool no longer hangs an MCP stdio
+  server on Windows** (#1724). When a refresh in the server had at least 64
+  files to re-extract (or `TSA_INDEX_WORKERS` was set), every spawn-pool
+  worker blocked while its interpreter started. Each one inherited the
+  server's stdin pipe, which the JSON-RPC reader thread always has a pending
+  read on. Querying that pipe (`lseek` → `NtQueryInformationFile`) waits for
+  the pending read to finish, and the client is waiting for the reply, so the
+  `tools/call` never returned. This affects servers started through the
+  `tree-sitter-analyzer-mcp` entry point as well as `python -P -c`.
+  - Workers are now created with a `NUL` stdin, and with the parent's stderr
+    as their stdout so a stray print cannot corrupt the protocol.
+  - The parent waits for the first result for at most 180 s and for each later
+    chunk for at most 600 s (`TSA_INDEX_POOL_TIMEOUT` overrides both). On a
+    stall it terminates the pool and fails with `INDEX_WORKER_POOL_STALLED`
+    instead of hanging.
 - **A scoped refresh sees a function-level `global` rebinding** (#1721).
   `def install(v): global _f; _f = v` in a module that re-exports `_f` decides
   whether `owner._f()` resolves to the re-export's target (#1705), but it

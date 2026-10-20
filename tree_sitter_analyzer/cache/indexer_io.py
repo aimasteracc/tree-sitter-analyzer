@@ -554,5 +554,10 @@ def index_parallel(
         )
         for path, language in candidates
     ]
-    with ctx.Pool(processes=workers, initializer=_init_worker_parser) as pool:
-        return list(pool.imap_unordered(_worker_index_file, args_iter, chunksize=8))
+    # #1724：工作进程不继承 MCP 的 stdin 管道（否则在解释器初始化时死锁）；
+    # 结果等待有上限，停滞时终止进程池并抛出类型化错误，而不是永远挂起。
+    from .worker_pool import run_pool
+
+    return run_pool(
+        ctx, workers, _init_worker_parser, _worker_index_file, args_iter, chunksize=8
+    )
