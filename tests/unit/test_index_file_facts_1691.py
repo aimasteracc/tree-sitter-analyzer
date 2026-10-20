@@ -341,3 +341,61 @@ def test_a_rewrite_with_the_mtime_restored_is_a_miss(database: Path) -> None:
     assert (after.st_size, after.st_mtime_ns) == (info.st_size, info.st_mtime_ns)
 
     assert facts.lookup(facts.evidence(str(database)), "f") is None
+
+
+def test_an_unstatable_database_has_no_evidence(database: Path, monkeypatch) -> None:
+    def refuse(*_args, **_kwargs):
+        raise PermissionError
+
+    monkeypatch.setattr(facts.os, "stat", refuse)
+
+    assert facts.evidence(str(database)) is None
+
+
+def test_an_unknown_change_time_has_no_evidence(database: Path, monkeypatch) -> None:
+    import tree_sitter_analyzer.file_change_time as change
+
+    monkeypatch.setattr(change, "change_time_ns", lambda _path, _info: None)
+
+    assert facts.evidence(str(database)) is None
+
+
+def test_old_database_records_are_pruned(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(facts, "MAX_FILES", 2)
+    for index in range(4):
+        path = tmp_path / f"db{index}.db"
+        path.write_bytes(b"x")
+        stamp = facts.evidence(str(path))
+        facts.record(stamp, "f", index)
+        (record,) = [
+            p
+            for p in (tmp_path / "facts").glob("*.json")
+            if p.stat().st_mtime_ns
+            == max(q.stat().st_mtime_ns for q in (tmp_path / "facts").glob("*.json"))
+        ]
+        old = time.time_ns() - (10 - index) * 1_000_000_000
+        os.utime(record, ns=(old, old))
+
+    assert len(list((tmp_path / "facts").glob("*.json"))) == 2
+
+
+def test_a_record_after_the_store_is_turned_off_is_ignored(
+    database: Path, monkeypatch
+) -> None:
+    stamp = facts.evidence(str(database))
+    monkeypatch.setenv(facts.DIR_ENV, "off")
+
+    facts.record(stamp, "f", 1)
+
+    assert facts.lookup(stamp, "f") is None
+
+
+def test_the_graph_takes_no_evidence_from_a_cache_without_a_connection() -> None:
+    from tree_sitter_analyzer.call_graph import _index_file_stamp
+
+    class Broken:
+        def get_conn(self):
+            raise RuntimeError("closed")
+
+    assert _index_file_stamp(object()) is None
+    assert _index_file_stamp(Broken()) is None
