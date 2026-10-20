@@ -221,13 +221,68 @@ def resolve_class(
 def find_method(
     cls: tuple[str, str], method: str, ctx: ResolverContext
 ) -> tuple[str, int, str] | None:
-    """``(file, symbol id, owner class)`` of ``method`` on ``cls`` or its bases."""
+    """``(file, symbol id, owner class)`` of ``method`` on ``cls`` or its bases.
+
+    #1699：多个基类分支都定义了 ``method`` 时，按 C3 线性化取最近的定义
+    （``Sub(Mixin, Base)`` 中 ``Mixin.fmt`` 遮蔽 ``Base.fmt``）；线性化不一致才放弃。
+    """
     found = _method_candidates(cls, method, ctx, 0, set())
     distinct = {(file, sym_id): owner for file, sym_id, owner in found}
-    if len(distinct) != 1:
+    if len(distinct) == 1:
+        (file, sym_id), owner = next(iter(distinct.items()))
+        return file, sym_id, owner
+    if not distinct:
         return None
-    (file, sym_id), owner = next(iter(distinct.items()))
-    return file, sym_id, owner
+    order = linearize(cls, ctx)
+    if order is None:
+        return None
+    for file_path, class_name in order:
+        own = ctx.file_class_methods.get(file_path, {}).get(class_name, {})
+        if method in own:
+            return file_path, own[method], class_name
+    return None
+
+
+def linearize(
+    cls: tuple[str, str], ctx: ResolverContext, stack: tuple[tuple[str, str], ...] = ()
+) -> list[tuple[str, str]] | None:
+    """``cls`` 的 C3 线性化（只含能解析到的项目类）；不一致或过深时为 ``None``。"""
+    if cls in stack or len(stack) > _MAX_BASE_DEPTH:
+        return None
+    sequences: list[list[tuple[str, str]]] = []
+    direct: list[tuple[str, str]] = []
+    file_path, class_name = cls
+    for parent in annotation_index(ctx).classes.get(file_path, {}).get(class_name, []):
+        if parent in _TRIVIAL_BASES:
+            continue
+        base = resolve_class(parent.split("[", 1)[0], file_path, ctx)
+        if base is None:
+            continue
+        order = linearize(base, ctx, (*stack, cls))
+        if order is None:
+            return None
+        sequences.append(order)
+        direct.append(base)
+    merged = _c3_merge([*sequences, direct])
+    return None if merged is None else [cls, *merged]
+
+
+def _c3_merge(
+    sequences: list[list[tuple[str, str]]],
+) -> list[tuple[str, str]] | None:
+    pending = [list(seq) for seq in sequences if seq]
+    result: list[tuple[str, str]] = []
+    while pending:
+        for seq in pending:
+            head = seq[0]
+            if not any(head in other[1:] for other in pending):
+                break
+        else:
+            return None
+        result.append(head)
+        pending = [[c for c in seq if c != head] for seq in pending]
+        pending = [seq for seq in pending if seq]
+    return result
 
 
 def _method_candidates(

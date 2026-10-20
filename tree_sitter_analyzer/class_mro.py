@@ -70,6 +70,18 @@ class Hierarchy:
                 return klass, known
         return None, known
 
+    def after(self, owner: ClassKey, name: str) -> tuple[ClassKey | None, bool]:
+        """#1699：``super().name()``——``owner`` 之后的 MRO 中第一个定义 ``name`` 的类。"""
+        order, known = self._linearize(owner, name, ())
+        for klass in order[1:]:
+            if name in self.methods.get(klass, {}):
+                return klass, known
+        return None, known
+
+    def classes_named(self, name: str) -> list[ClassKey]:
+        """项目中名为 ``name`` 的类（同名类可能不止一个）。"""
+        return [key for key in self.parents if key.name == name]
+
     def _linearize(
         self, klass: ClassKey, name: str, stack: tuple[ClassKey, ...]
     ) -> tuple[list[ClassKey], bool]:
