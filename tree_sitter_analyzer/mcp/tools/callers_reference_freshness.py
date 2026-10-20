@@ -43,6 +43,9 @@ def stale_reference_files(
         rows = _scoped_rows(cache.get_conn(), files)
     except (sqlite3.Error, AttributeError, OSError):
         return None
+    from ...cache import stat_evidence
+
+    evidence = stat_evidence.load(project_root)
     stale = [
         rel_path
         for rel_path, mtime_ns, size, content_hash in rows
@@ -50,14 +53,22 @@ def stale_reference_files(
             os.path.join(project_root, rel_path),
             stamps.get(rel_path),
             (mtime_ns, size, content_hash),
+            evidence=evidence,
+            rel_path=rel_path,
         )
     ]
     return sorted(stale)
 
 
 def _differs(
-    abs_path: str, stamp: StatKey | None, indexed: tuple[int, int, str]
+    abs_path: str,
+    stamp: StatKey | None,
+    indexed: tuple[int, int, str],
+    *,
+    evidence: Mapping[str, tuple[int, int, str]] | None = None,
+    rel_path: str = "",
 ) -> bool:
+    from ...cache import stat_evidence
     from ...incremental_sync_support import file_content_hash
 
     mtime_ns, size, content_hash = indexed
@@ -65,6 +76,11 @@ def _differs(
         if stamp[0] != size:
             return True
         if stamp[1] == mtime_ns:
+            return False
+        # #1707：只有 mtime 变化、已在刷新时核对过内容的文件，由 stat 证据作证。
+        if evidence and stat_evidence.vouches(
+            evidence, rel_path, (stamp[1], stamp[0]), content_hash
+        ):
             return False
     try:
         return file_content_hash(abs_path) != content_hash

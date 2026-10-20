@@ -8,9 +8,11 @@
 
 * 候选完整（无发现错误、无截断、计数对账、无不可读标记）；
 * 父版本 schema 为当前版本，每一行的提取器版本不低于当前版本、已逐文件认证；
-* 每个选中文件都有一行，**内容摘要**、``mtime_ns``、``file_size`` 与捕获时完全
-  相同（摘要来自本次读取的字节，RFC-0030：绝不只看路径或元数据），父版本
-  没有多余的行（无需清除已删除文件）；
+* 每个选中文件都有一行，**内容摘要**与 ``file_size`` 与捕获时完全相同（摘要来自
+  本次读取的字节，RFC-0030：绝不只看路径或元数据），父版本没有多余的行（无需
+  清除已删除文件）。只有 ``mtime_ns`` 不同的行（#1707：``touch``、同内容的
+  ``git checkout``）内容未变：不重新提取、不发布，新戳记写入
+  ``stat_evidence``（见该模块）；
 * 父版本带收敛刷新记录（``stable_failures``）：它是一次收敛的完整刷新运行的
   直接结果，记录绑定的根目录、范围、提取器与流水线版本均未变化；并且
 * 记录无失败时，父版本已认证：清单与本次范围、根目录、文件数一致，调用图标记
@@ -50,6 +52,8 @@ class UnchangedEvidence:
     cached: int
     failures: tuple[StableFailure, ...]
     certified: bool
+    #: #1707：内容摘要与大小相同、只有 mtime 不同的文件 -> 磁盘戳记与摘要。
+    restamped: tuple[tuple[str, tuple[int, int, str]], ...] = ()
 
     def index_result(self, snapshot: IndexCandidateSnapshot) -> dict[str, Any]:
         """``index_project`` 形状的结果：与真实零变化运行报告的计数一致。"""
@@ -60,8 +64,15 @@ class UnchangedEvidence:
             for failure in self.failures
         ]
         failed = {failure.file for failure in self.failures}
+        restamped = {path for path, _stamp in self.restamped}
         files.extend(
-            {"file": entry.rel_path, "status": "cached", "reason": "unchanged"}
+            {
+                "file": entry.rel_path,
+                "status": "cached",
+                "reason": (
+                    "content unchanged" if entry.rel_path in restamped else "unchanged"
+                ),
+            }
             for entry in snapshot.selected_entries
             if entry.rel_path not in failed
         )
@@ -85,6 +96,7 @@ class UnchangedEvidence:
             "published": False,
             "publication_reason": UNCHANGED_REASON,
             "unchanged_evidence": "content_hash",
+            "stat_refreshed": len(self.restamped),
         }
         if self.failures:
             # 与真实运行一致：稳定失败使本次运行不完整，清单不认证。
@@ -291,6 +303,7 @@ def _evidence(
     if rows is None:
         return None
     missing: list[tuple[IndexSnapshotEntry, str]] = []
+    restamped: list[tuple[str, tuple[int, int, str]]] = []
     cached = 0
     for entry in snapshot.selected_entries:
         fingerprint = entry.fingerprint
@@ -301,8 +314,15 @@ def _evidence(
         if row is None:
             missing.append((entry, digest))
             continue
-        if row != (digest, fingerprint.mtime_ns, fingerprint.file_size):
+        # 内容证据是本次读取的当前字节的摘要；大小不同（如只换行符不同，归一化摘要
+        # 相同）照常发布，读者以大小不同判定为变更。
+        if (row[0], row[2]) != (digest, fingerprint.file_size):
             return None
+        if row[1] != fingerprint.mtime_ns:
+            # #1707：只有 mtime 不同，内容未变；新戳记写入 stat 证据，不发布。
+            restamped.append(
+                (entry.rel_path, (fingerprint.mtime_ns, fingerprint.file_size, digest))
+            )
         cached += 1
     if rows:
         return None  # 父版本有已不在范围内的行：真实运行会清除它们。
@@ -317,11 +337,11 @@ def _evidence(
     if not missing:
         if record.failures or not _certified_parent(conn, root, scope, cached):
             return None
-        return UnchangedEvidence(cached, (), True)
+        return UnchangedEvidence(cached, (), True, tuple(restamped))
     failures = _recorded_failures_hold(conn, record, missing)
     if failures is None:
         return None
-    return UnchangedEvidence(cached, failures, False)
+    return UnchangedEvidence(cached, failures, False, tuple(restamped))
 
 
 def unchanged_before_build(store: Any, candidate: Any) -> UnchangedEvidence | None:

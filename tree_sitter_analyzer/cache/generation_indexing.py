@@ -17,6 +17,7 @@ from ..incremental_sync_support import SyncResult
 from ..index_source_scope import SourceScopeDescriptor, make_source_scope_descriptor
 from ..indexing_candidate_materialization import release_index_candidate_snapshot
 from ..indexing_snapshot import IndexCandidateSnapshot
+from . import stat_evidence
 from .admission import CandidateUnbound, admission_failure_of, admission_fields
 from .generation_noop import (
     NOT_PUBLISHABLE_REASON,
@@ -45,6 +46,8 @@ from .source_hash_budget import (
 from .source_recheck import SourceChanged, source_changed_failure
 
 _T = TypeVar("_T")
+#: ``walk_and_partition`` 为内容未变、只有 mtime 不同的文件写的明细原因（#1707）。
+_RESTAMPED_REASON = "content unchanged"
 _PUBLISH_STATE_UNKNOWN_NEXT_STEP = (
     "The publish step failed after the new index may have become active "
     "(see `published`). Run index action=status to confirm which generation "
@@ -93,6 +96,33 @@ def _unchanged(
             store.database(candidate.parent), store.database(selector)
         )
     )
+
+
+def _restamped(candidate: Any, result: Any) -> dict[str, tuple[int, int, str]]:
+    """未发布的运行里刷新过戳记的文件 -> (捕获时的 mtime_ns, 大小, 摘要)。"""
+    if not isinstance(result, Mapping):
+        return {}
+    paths = {
+        str(detail.get("file"))
+        for detail in result.get("files") or ()
+        if isinstance(detail, Mapping) and detail.get("reason") == _RESTAMPED_REASON
+    }
+    if not paths:
+        return {}
+    digests = bound_digests(candidate)
+    stamps: dict[str, tuple[int, int, str]] = {}
+    for entry in candidate.snapshot.selected_entries:
+        fingerprint = entry.fingerprint
+        if entry.rel_path not in paths or fingerprint is None:
+            continue
+        digest = digests.get(entry.rel_path) or fingerprint.content_hash
+        if digest:
+            stamps[entry.rel_path] = (
+                fingerprint.mtime_ns,
+                fingerprint.file_size,
+                digest,
+            )
+    return stamps
 
 
 def _require_bound_candidate(snapshot: IndexCandidateSnapshot | None) -> None:
@@ -164,6 +194,8 @@ def mutate_published_cache(
                 # #1671：内容摘要证明零变化时不复制父版本、不建库、不发布。
                 evidence = unchanged_before_build(store, candidate)
                 if evidence is not None:
+                    # #1707：只有 mtime 变化的文件，新戳记写入 stat 证据。
+                    stat_evidence.record(cache.project_root, dict(evidence.restamped))
                     return cast(_T, evidence.index_result(candidate.snapshot))
             selector = store.begin(candidate)
             with store.abandoning(selector):  # #1595：未发布即回收
@@ -183,12 +215,19 @@ def mutate_published_cache(
                     store, candidate, selector, index_run_unchanged(result)
                 ):
                     # #1631：零变化的增量项目索引不发布，私有副本随 abandoning 回收。
+                    # #1707：私有副本里刷新过的戳记随之丢弃，改记入 stat 证据。
+                    stat_evidence.record(
+                        cache.project_root, _restamped(candidate, result)
+                    )
                     return cast(_T, unpublished_result(cast(Mapping[str, Any], result)))
                 report = report_publication or snapshot_operation is not None
                 if publishable_result(result) or _first_publication(candidate):
                     store.seal(selector)
                     store.publish(PreparedGeneration(candidate, selector, SyncResult()))
                     cache._adopt_published_generation()
+                    if snapshot_operation is not None:
+                        # #1707：项目索引已把漂移的戳记写进新版本的行。
+                        stat_evidence.clear(cache.project_root)
                     if report and isinstance(result, Mapping):
                         result = cast(_T, {**result, "published": True})
                 elif report and isinstance(result, Mapping):
@@ -231,6 +270,8 @@ def run_incremental_sync(
             # #1671：内容摘要证明零变化时不复制父版本、不建库、不发布。
             evidence = unchanged_before_build(store, candidate)
             if evidence is not None:
+                # #1707：只有 mtime 变化的文件，新戳记写入 stat 证据。
+                stat_evidence.record(cache.project_root, dict(evidence.restamped))
                 unchanged: SyncResult = evidence.sync_result()
                 callback = arguments.get("callback")
                 if callback:
@@ -262,6 +303,8 @@ def run_incremental_sync(
                     )
                 )
                 cache._adopt_published_generation()
+                # #1707：同步已把漂移的戳记写进新版本的行。
+                stat_evidence.clear(cache.project_root)
                 _report_sync_publication(result, True, None)
             else:
                 _report_sync_publication(result, False, NOT_PUBLISHABLE_REASON)

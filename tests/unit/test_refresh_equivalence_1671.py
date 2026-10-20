@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import shutil
 import stat
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -91,7 +92,7 @@ def _published_dump(root):
 
     location = resolve_index_location(root)
     assert location.published is True
-    return canonical_dump(location.path)
+    return canonical_dump(location.path, project_root=root)
 
 
 def _wipe_index(root):
@@ -126,17 +127,36 @@ def _change(root, scenario):
             "from pkg.core import helper\n\n\ndef more():\n    return helper()\n",
         )
         os.remove(os.path.join(root, "pkg/api.py"))
+    elif scenario == "touch":
+        # #1707：按原字节重写（mtime 设到竞争窗口之外）：零变化，不发布，
+        # 新戳记记在 stat 证据里（转储按读者的规则合并）。
+        for name in ("pkg/core.py", "app.py"):
+            path = os.path.join(root, name)
+            with open(path, "rb") as stream:
+                data = stream.read()
+            with open(path, "wb") as stream:
+                stream.write(data)
+            past = time.time_ns() - 3_600_000_000_000
+            os.utime(path, ns=(past, past))
 
 
 # slow_ok：每个用例做四次真实刷新（含一次全新重建）并转储两份完整索引。
 @pytest.mark.slow_ok
 @pytest.mark.parametrize("route", ["index_project", "sync"])
-@pytest.mark.parametrize("scenario", ["noop", "edit", "add_delete"])
+@pytest.mark.parametrize(
+    "scenario", ["noop", "edit", "add_delete", "touch", "touch_edit"]
+)
 def test_refreshed_index_equals_a_fresh_rebuild(root, route, scenario) -> None:
     refresh = _index_project if route == "index_project" else _sync
     refresh(root)
     refresh(root)  # 第二次：父版本带稳定失败记录，零变化判定可用
-    _change(root, scenario)
+    if scenario == "touch_edit":
+        # 先只改 mtime（零变化刷新），再真正编辑另一个文件：发布的新版本带新戳记。
+        _change(root, "touch")
+        refresh(root)
+        _change(root, "edit")
+    else:
+        _change(root, scenario)
     refresh(root)
     refreshed = _published_dump(root)
 

@@ -8,6 +8,7 @@ dogfood 第 8 轮：本仓库含缺少可选语法的文件（swift、lua），�
 “稳定”的精确定义：同一文件、同一内容摘要、同一失败原因，与活动版本记录的
 稳定失败逐项相同。文件字节变化、失败原因变化、失败消失、增删文件、仅元数据
 变化都不是零变化，照常发布（RFC-0030：证据基于内容摘要，绝不只看路径）。
+#1707：只有 mtime 变化、字节相同的文件内容未变，不发布（见 test_mtime_only_noop_1707）。
 """
 
 from __future__ import annotations
@@ -221,19 +222,17 @@ def test_resolved_failure_publishes_the_file(root, route, failure) -> None:
 
 
 @pytest.mark.parametrize("route", sorted(_ROUTES))
-@pytest.mark.parametrize("change", ["edit", "add", "delete", "touch"])
+@pytest.mark.parametrize("change", ["edit", "add", "delete"])
 def test_source_changes_beside_a_stable_failure_publish(root, route, change) -> None:
+    # 只改 mtime（字节相同）不是内容变化，不发布：见 test_mtime_only_noop_1707。
     refresh = _established(root, route)
     active = _active(root)
     if change == "edit":
         _write(root, "a.py", _A_EDITED)
     elif change == "add":
         _write(root, "c.py", "def gamma():\n    return 5\n")
-    elif change == "delete":
-        os.remove(os.path.join(root, "b.py"))
     else:
-        # 只改 mtime：内容摘要相同，但索引记录的元数据必须与磁盘一致。
-        _write(root, "a.py", _A)
+        os.remove(os.path.join(root, "b.py"))
 
     published = refresh(root)
 

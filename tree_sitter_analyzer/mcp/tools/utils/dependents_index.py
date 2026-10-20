@@ -37,6 +37,11 @@ read. The residual hole is a mtime-preserving same-size replacement
 residual for the answer-cache stamp. The RFC-0025 watch loop closes it; this
 module does not attempt to.
 
+#1707: a refresh that finds only a changed mtime (same bytes) no longer
+publishes; it records the live stamp in ``cache.stat_evidence``, bound to the
+row's content hash. A row also vouches when that record matches the live
+``(mtime_ns, file_size)`` — exactly the row a stamp-only publish would hold.
+
 Certification
 -------------
 The ``call-graph-built`` marker is honoured as a **label, not a gate**. It
@@ -188,9 +193,14 @@ def _fresh_rows(
     is bounded by the number of rows *absent* from the enumeration, which is
     zero on a tree the enumeration covers.
     """
+    from tree_sitter_analyzer.cache import stat_evidence
+
+    # #1707：只有 mtime 变化、已在刷新时核对过内容的文件由 stat 证据作证（等同于
+    # 一份只刷新了戳记的新版本的行），其余戳记不符的文件照常读取。
+    evidence = stat_evidence.load(str(root))
     fresh: set[str] = set()
-    for file_path, mtime_ns, file_size in conn.execute(
-        "SELECT file_path, mtime_ns, file_size FROM ast_index"
+    for file_path, mtime_ns, file_size, content_hash in conn.execute(
+        "SELECT file_path, mtime_ns, file_size, content_hash FROM ast_index"
     ):
         rel = str(file_path).replace("\\", "/")
         live = inventory.get(rel)
@@ -202,7 +212,9 @@ def _fresh_rows(
                 # Enumeration gap, not a deletion: force it into the delta.
                 inventory[rel] = (-1, -1)
             continue
-        if live == (int(mtime_ns or 0), int(file_size or 0)):
+        if live == (int(mtime_ns or 0), int(file_size or 0)) or (
+            stat_evidence.vouches(evidence, rel, live, str(content_hash or ""))
+        ):
             fresh.add(rel)
     return fresh
 
