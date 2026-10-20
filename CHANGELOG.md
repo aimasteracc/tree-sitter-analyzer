@@ -59,6 +59,15 @@
 
 ### Fixed
 
+- **One source edit now causes one watcher sync** (#1730). When the project
+  has a stable per-file failure, such as an optional grammar that is not
+  installed (#1554 / #1671), every sync reports `errors > 0`. The file watcher
+  treated that as transient and retried with backoff (1, 2, 4… s, then every
+  60 s, indefinitely). In #1708's gate, one edit caused about 6 syncs, which
+  competed with queries for CPU. Stable failures now schedule no retry.
+  Transient errors (read or write failures without the stable marker) still
+  retry with backoff. The watcher's own writes under `.ast-cache` never
+  re-triggered it (dot directories are not polled).
 - **A scoped refresh sees a function-level `global` rebinding** (#1721).
   `def install(v): global _f; _f = v` in a module that re-exports `_f` decides
   whether `owner._f()` resolves to the re-export's target (#1705), but it
