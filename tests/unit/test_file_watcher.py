@@ -453,14 +453,17 @@ def test_watchdog_atomic_save_refreshes_index(watcher, cache, project):
         .fetchall()
     )
     assert [row[0] for row in rows] == ["saved"]
-    from tree_sitter_analyzer.index_snapshot_schema import index_fingerprint
+    import time
+
+    from tree_sitter_analyzer.index_certification_tree import certification_root
 
     conn = cache.get_conn()
     manifest = conn.execute(
         "SELECT file_count, index_fingerprint FROM ast_index_snapshot_manifest"
     ).fetchall()
     assert [tuple(row) for row in manifest] == [
-        (2, index_fingerprint(conn, str(project)))
+        # RFC-0039：manifest v3 记录认证根。
+        (2, certification_root(conn, str(project), deadline=time.monotonic() + 60))
     ]
 
 

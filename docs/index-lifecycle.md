@@ -119,6 +119,17 @@ The refresh falls back to the full backfill when it cannot bound the scope:
 
 Either way the result is the same index as a fresh full build.
 
+The certification manifest commits to the exact query-visible rows (RFC-0039).
+Manifest version 3 records a `merkle:` root:
+- each `(table, file_path)` group of rows is hashed into a leaf;
+- the root is folded over the sorted leaves.
+
+The leaves are stored in the control table `ast_certification_leaves`, outside
+the root. The FTS5 search index is certified through the per-file projection
+digest instead of being hashed into the root.
+
+Readers always recompute the root from the rows they read, and accept version
+2 (flat fingerprint) manifests as before.
 CLI equivalent:
 ```bash
 # Guaranteed full rebuild (recommended after pull/rebase):

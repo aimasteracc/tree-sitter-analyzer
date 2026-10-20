@@ -33,6 +33,8 @@ _CONTROL_TABLES = (
     "ast_call_graph_state",
     "ast_resolve_state",
     "sqlite_sequence",
+    # RFC-0039：认证树的叶（派生自内容，零变化时与父版本相同）。
+    "ast_certification_leaves",
 )
 _MANIFEST = _CONTROL_TABLES[0]
 #: 这些计数非零即表示本次运行写入了内容。

@@ -248,9 +248,13 @@ def _certified_parent(
         "SELECT canonical_root, source_scope_descriptor, file_count, "
         "manifest_version FROM ast_index_snapshot_manifest"
     ).fetchall()
+    from ..index_snapshot_schema import MANIFEST_VERSIONS
+
     return (
         len(manifests) == 1
-        and tuple(manifests[0]) == (root, scope, file_count, 2)
+        and tuple(manifests[0])[:3] == (root, scope, file_count)
+        # RFC-0039：v2 扁平指纹与 v3 认证根都是有效的认证父版本。
+        and manifests[0][3] in MANIFEST_VERSIONS
         and writer_marker_is_current(conn)
     )
 

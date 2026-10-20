@@ -811,7 +811,8 @@ class TestAuthoritativeSnapshotOracle:
         assert result["completeness"] == "complete"
         assert result["snapshot_id"].startswith("idxsnap_")
         assert result["source_fingerprint"].startswith("sha256:")
-        assert result["index_fingerprint"].startswith("sha256:")
+        # RFC-0039：manifest v3 的索引承诺是认证根。
+        assert result["index_fingerprint"].startswith("merkle:")
         assert result["action_version"] == "index.status/v1"
         assert result["access_state"] == "available"
         assert result["access_reason"] is None
@@ -999,7 +1000,7 @@ class TestAuthoritativeSnapshotOracle:
             elif change == "manifest_mismatch":
                 conn.execute(
                     "UPDATE ast_index_snapshot_manifest SET index_fingerprint=?",
-                    ("sha256:" + "0" * 64,),
+                    ("merkle:" + "0" * 64,),  # RFC-0039：与 v3 格式相同、值不符
                 )
             else:
                 (tmp_path / "sample.py").write_text(
@@ -1286,6 +1287,8 @@ def test_capture_phases_share_one_absolute_deadline(tmp_path, monkeypatch):
     monkeypatch.setattr(owner, "_clock", lambda: now[0])
     monkeypatch.setattr(owner, "validate_snapshot_schema", validate)
     monkeypatch.setattr(owner, "index_fingerprint", fingerprint)
+    # RFC-0039：manifest v3 的读者重算认证根，同一个接缝。
+    monkeypatch.setattr(owner, "certification_root", fingerprint)
     monkeypatch.setattr(
         owner,
         "recorded_source_rows",

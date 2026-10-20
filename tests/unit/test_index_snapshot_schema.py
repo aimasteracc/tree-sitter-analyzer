@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
+import time
 
 import pytest
 
@@ -324,7 +325,12 @@ def test_manifest_stamp_blocks_concurrent_sqlite_epoch_mutation(tmp_path, monkey
     manifest = conn.execute(
         "SELECT index_fingerprint FROM ast_index_snapshot_manifest"
     ).fetchone()[0]
-    assert manifest == schema.index_fingerprint(conn, os.path.realpath(str(tmp_path)))
+    # RFC-0039：manifest v3 记录认证根。
+    from tree_sitter_analyzer.index_certification_tree import certification_root
+
+    assert manifest == certification_root(
+        conn, os.path.realpath(str(tmp_path)), deadline=time.monotonic() + 60
+    )
     conn.close()
 
 

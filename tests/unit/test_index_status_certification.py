@@ -169,7 +169,7 @@ class TestAuthoritativeSnapshotOracle:
             cache.close()
 
         assert (result["errors"], result.get("manifest_warning")) == (0, None)
-        assert tuple(row) == (1, 2)
+        assert tuple(row) == (1, 3)  # RFC-0039：manifest v3
 
     def test_manifest_stamp_portable_path_reaches_call_graph_gate(
         self, tmp_path, monkeypatch
