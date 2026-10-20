@@ -12,9 +12,12 @@
   记忆从不让答案变成“已认证”。真正完成的捕获照常给出认证答案，并清除记忆。
 * **键**：代码指纹、项目根、``relation_freshness.index_identity``（generation、
   ``ast_index`` 行数与最新 ``indexed_at``、``edges`` 最大 rowid；按库文件 stat 记忆），
-  以及源码的 stat 证据摘要：每个已索引文件的 ``(size, mtime_ns)``（不存在记为缺失）
-  与其所在目录（含项目根）的 ``mtime_ns``——编辑、删除、新增文件都会改变它。
-  任一不同即视为未命中，重新尝试捕获。路径或 generation id 从不单独作数。
+  以及已索引文件所在每个目录（含项目根）的 ``lstat`` 证据——新增、删除、改名文件
+  都会改变目录 mtime。任一不同即视为未命中，重新尝试捕获。路径或 generation id
+  从不单独作数。
+* 只改内容、不刷新索引的编辑不进键：源码与索引戳记不一致时认证本就不可能完成
+  （``SOURCE_INDEX_MISMATCH``），刷新会改变索引身份；把内容改回原样的情形由定期
+  重试覆盖。逐文件 stat 每次约 0.3 s，会吃掉本修复要省下的大部分时间。
 * **定期重试**：即使状态不变，距记录超过 :data:`RETRY_SECONDS` 也重新尝试一次
   （机器负载下降后可恢复认证）。
 * 只记录期限类失败（:data:`TIMEOUT_REASONS`）；其他失败原样照旧。
@@ -59,6 +62,7 @@ def clear() -> None:
     """丢弃进程内记忆（测试用：如同新进程）。"""
     with _LOCK:
         _MEMO.clear()
+        _DIRECTORIES.clear()
 
 
 def store_dir() -> Path | None:
@@ -74,7 +78,7 @@ def store_dir() -> Path | None:
 
 
 def evidence_key(project_root: str) -> str | None:
-    """当前“索引 + 源码”状态的键；读不到索引时为 None（不记忆、不跳过）。"""
+    """当前“索引 + 源码目录”状态的键；读不到索引时为 None（不记忆、不跳过）。"""
     from ...source_fingerprint import source_fingerprint
     from .relation_freshness import index_identity
 
@@ -82,15 +86,46 @@ def evidence_key(project_root: str) -> str | None:
     identity = index_identity(root)
     if "unreadable" in identity or "absent" in identity or "unresolvable" in identity:
         return None
-    files = _indexed_files(root)
-    if files is None:
+    directories = _directories(root, identity)
+    if directories is None:
         return None
     hasher = hashlib.blake2b(digest_size=20)
     hasher.update(f"{FORMAT}\x1f{source_fingerprint()}\x1f{root}\x1f".encode())
     hasher.update(repr(identity).encode("utf-8", "surrogatepass"))
-    for part in _source_stamps(root, files):
-        hasher.update(part.encode("utf-8", "surrogatepass") + b"\n")
+    for relative in directories:
+        path = os.path.join(root, relative) if relative else root
+        hasher.update(
+            f"{relative}\x1f{_stamp(path)}\n".encode("utf-8", "surrogatepass")
+        )
     return hasher.hexdigest()
+
+
+#: 索引身份 -> 已索引文件所在目录（含项目根）的有序列表；同一身份的文件集不变。
+_DIRECTORIES: dict[tuple[str, tuple[Any, ...]], tuple[str, ...]] = {}
+_DIRECTORIES_MAX = 8
+
+
+def _directories(root: str, identity: tuple[Any, ...]) -> tuple[str, ...] | None:
+    memo_key = (root, identity)
+    with _LOCK:
+        cached = _DIRECTORIES.get(memo_key)
+    if cached is not None:
+        return cached
+    files = _indexed_files(root)
+    if files is None:
+        return None
+    found = {""}
+    for relative in files:
+        parent = relative.rpartition("/")[0]
+        while parent not in found:
+            found.add(parent)
+            parent = parent.rpartition("/")[0]
+    directories = tuple(sorted(found))
+    with _LOCK:
+        if len(_DIRECTORIES) >= _DIRECTORIES_MAX:
+            _DIRECTORIES.pop(next(iter(_DIRECTORIES)))
+        _DIRECTORIES[memo_key] = directories
+    return directories
 
 
 def _indexed_files(root: str) -> list[str] | None:
@@ -108,39 +143,20 @@ def _indexed_files(root: str) -> list[str] | None:
         return None
     try:
         conn.execute("PRAGMA query_only=ON")
-        return sorted(
-            str(row[0]) for row in conn.execute("SELECT file_path FROM ast_index")
-        )
+        return [str(row[0]) for row in conn.execute("SELECT file_path FROM ast_index")]
     except sqlite3.Error:
         return None
     finally:
         conn.close()
 
 
-def _source_stamps(root: str, files: list[str]) -> list[str]:
-    """每个已索引文件与其所在目录（含项目根）的 stat 证据，有序。"""
-    parts: list[str] = []
-    directories = {""}
-    for relative in files:
-        parts.append(f"f\x1f{relative}\x1f{_stamp(os.path.join(root, relative))}")
-        parent = relative.rpartition("/")[0]
-        while parent not in directories:
-            directories.add(parent)
-            parent = parent.rpartition("/")[0]
-    for relative in sorted(directories):
-        path = os.path.join(root, relative) if relative else root
-        parts.append(f"d\x1f{relative}\x1f{_stamp(path, directory=True)}")
-    return parts
-
-
-def _stamp(path: str, *, directory: bool = False) -> str:
+def _stamp(path: str) -> str:
+    """目录的 ``lstat`` 证据（mtime、ctime、inode、device）；不存在记为缺失。"""
     try:
-        info = os.stat(path)
+        info = os.lstat(path)
     except OSError:
         return "missing"
-    if directory:
-        return str(info.st_mtime_ns)
-    return f"{info.st_size}:{info.st_mtime_ns}"
+    return f"{info.st_mtime_ns}:{info.st_ctime_ns}:{info.st_ino}:{info.st_dev}"
 
 
 def should_skip(project_root: str) -> bool:
