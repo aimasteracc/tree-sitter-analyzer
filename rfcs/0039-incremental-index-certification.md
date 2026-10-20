@@ -3,7 +3,7 @@
 - **Status**: accepted — accepted by the owner on 2026-10-20 with the recommended defaults (see "Owner decisions"); implementation tracked in #1718
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-10-20
-- **Last updated**: 2026-10-20 (accepted)
+- **Last updated**: 2026-10-21 (step 3 amended, owner-approved)
 - **Tracking issue**: #1718 (follow-up of #1696 / PR #1714; related #1710)
 - **Feasibility evidence**: [`evidence/0039-feasibility/`](evidence/0039-feasibility/README.md)
 - **Affected source paths** (if accepted):
@@ -12,7 +12,8 @@
   - `tree_sitter_analyzer/index_fingerprint_memo.py`, `tree_sitter_analyzer/index_fingerprint_store.py` (#1561 / #1700)
   - `tree_sitter_analyzer/incremental_sync.py` (`certified_at` stamping; arming)
   - `tree_sitter_analyzer/cache/indexer.py`, `tree_sitter_analyzer/cache/index_project_runner.py` (arming on the `index_project` route)
-  - `tree_sitter_analyzer/cache/writer_state.py` (RFC-0032 slice 5 revision binding)
+  - `tree_sitter_analyzer/_ast_cache_database_mixin.py` (initialization baseline for the armed-connection invariant)
+  - `tree_sitter_analyzer/cache/certification_tracking.py` (dirty tracking, stale flag, incremental fold)
   - new `tree_sitter_analyzer/cache/certification_tree.py`
   - `tests/unit/test_index_fingerprint*.py`, new `tests/unit/test_certification_tree_1718.py`
 
@@ -26,6 +27,10 @@
     - on-demand verify deferred until needed;
     - reader-memo seeding only after a full or verified stamp.
   - Implementation starts with step 0, as its own bug-fix PR, followed by RED-first slices per the test plan. Every slice carries the always-verify gate (in every stamp in the test suite the incremental root equals a full recompute, and a mismatch fails closed) and the repository check over 8 edit kinds.
+- **2026-10-21, the armed-connection invariant uses `PRAGMA data_version` and persistent stale-flag triggers instead of the RFC-0032 writer revision** (step 3, amended).
+  - The writer revision only advances when the RFC-0032 fence is armed, which is on custom `db_path` in-place routes.
+  - On the default generation route a refresh writes a private copy whose revision does not move, so a revision delta proves nothing there.
+  - The always-verify gate also found two cases a revision check would not have caught: a refresh whose stamp failed but whose rows were published, and a single-file write between refreshes.
 
 ## Summary
 
@@ -149,13 +154,19 @@ When a refresh arms its writer connection (the same point as `backfill_scope.beg
 
 TEMP objects live only on that connection and never enter the index file.
 
-**The armed-connection invariant.** The incremental root is valid only if every write to a rooted table went through the armed connection. The writer proves this with the RFC-0032 slice 5 revision:
-- record `ast_writer_state.revision` at arming;
-- count the commits on the armed connection (each advances `revision` by compare-and-set);
-- at stamp time, require `revision_now − revision_at_arm == commits_observed`.
+**The armed-connection invariant** (amended 2026-10-21, see "Owner decisions"). The incremental root is valid only if two things hold: the rows at arming are exactly the rows the parent certified, and every later write to a rooted table went through the armed connection. The writer proves this with three checks:
+- **No writes before arming on this connection.** Schema initialization records `total_changes`. Arming requires the same count and that no migration ran (`WRITES_BEFORE_ARMING`, `MIGRATED`).
+- **No writes since the last stamp, from anyone.**
+  - Every stamp ensures persistent `AFTER INSERT / UPDATE / DELETE` triggers on every rooted table, and sets `ast_cache_metadata.certification_stale` to `0`.
+  - The first later write, from any connection, code path, process or TSA version, sets it to `1`.
+  - Arming requires `0` and every trigger present (`WRITTEN_SINCE_STAMP`, `NO_STALE_TRACKING`).
+  - The flag lives in `ast_cache_metadata`, which every index has, so a trigger body can never make a write fail.
+- **No other committer during the refresh.** `PRAGMA data_version` on the armed connection is unchanged between arming and stamping (`OTHER_CONNECTION_COMMITTED`).
+
+The RFC-0032 writer revision is not used. It only advances on fenced (custom-path) connections, so on the default generation route it cannot show that nothing else wrote.
 
 Any of the following makes the writer fold a **full** recompute instead, and record why (`certification: {mode: "full", reason}`, mirroring `backfill_scope`):
-- a mismatch;
+- any check above fails;
 - a table whose schema SQL or columns changed;
 - a missing or untrusted leaf store;
 - a route that is not armed. The `index_project` workers, custom `db_path` in-place writers and `invalidate` are not armed until each is shown to be.
@@ -187,7 +198,7 @@ The incremental root claims equality with a full recompute. Four mechanisms chec
 
 | Failure | Effect without a verifier | Caught by |
 |---|---|---|
-| A write on another connection, or raw SQL | a stale leaf, so the root is wrong | the revision check (step 3) falls back to full; readers (step 5.2) |
+| A write on another connection, or raw SQL | a stale leaf, so the root is wrong | `data_version` or the stale flag (step 3) falls back to full; readers (step 5.2) |
 | A new write path that is not armed | a stale leaf | the same, plus the always-verify suite (5.1) |
 | A trigger missed on a newly added table | that table's leaves are stale | the schema/inventory change forces a full recompute of that table; 5.1 |
 | A corrupted or tampered leaf store | a wrong fold | the fold-to-parent-root check (step 1); readers |
@@ -208,7 +219,7 @@ The incremental root claims equality with a full recompute. Four mechanisms chec
   - RFC-0030's rule that paths, generation ids and mtimes are never evidence on their own still holds. The root is content-derived, and the reader still recomputes it.
 - **RFC-0032 (generation ownership, slice 3 seal, slice 5 revision).**
   - The leaf store lives inside the generation and is copied with it, so it is copy-on-write, sealed read-only at publish (slice 3), and never mutated after publication.
-  - The slice 5 revision is the evidence for the armed-connection invariant.
+  - The slice 5 revision is not used for the invariant (amended 2026-10-21): it does not advance on the default generation route. `PRAGMA data_version` and the stale flag are used instead.
   - Publication CAS is unchanged.
   - Custom `db_path` in-place routes are not sealed, are not armed in the first phase, and always certify in full.
 - **#1561 / #1634 / #1700 (PR #1701) memos.**
@@ -235,7 +246,7 @@ The incremental root claims equality with a full recompute. Four mechanisms chec
 
 ## Drawbacks
 
-- The writer's guarantee becomes conditional: "full, unless the tracked set provably covers every write". It relies on the revision count and TEMP triggers, which is more machinery than "hash everything".
+- The writer's guarantee becomes conditional: "full, unless the tracked set provably covers every write". It relies on `data_version`, the stale-flag triggers and TEMP triggers, which is more machinery than "hash everything".
 - Excluding FTS from the root (step 2) narrows the commitment. FTS is then certified through the projection check rather than byte-for-byte.
 - A leaf store of about 15k rows per generation, around 1 MB, is added to each generation.
 - `index_fingerprint` values change format, so any external consumer that stored them sees new strings once. In this repository only opaque equality is used.
@@ -248,7 +259,7 @@ The incremental root claims equality with a full recompute. Four mechanisms chec
 |---|---|
 | Cost per 1-file refresh | 0.9–2.2 s with FTS, 0.04–1.0 s without (evidence B) |
 | Verifier | full root at read time, scheduled, and on every stamp in tests |
-| Risk | untracked writes, caught by the revision check and readers |
+| Risk | untracked writes, caught by `data_version`, the stale flag and readers |
 
 ### B. Physical digest of the sealed generation file
 
@@ -281,7 +292,7 @@ It is equivalent to A at this scale; the fold over about 15k leaves is 0.02–0.
 **Option A** with the following:
 - step 0;
 - FTS bound through the projection digest (step 2, recommended variant);
-- the revision-bound armed-connection invariant;
+- the armed-connection invariant (`data_version` plus the stale flag);
 - always-verify in tests and reader full recompute as the verifier.
 
 Scheduled verify (step 5.4) defaults to every 20 stamps. Reader-memo seeding (5.3) comes in the second phase.
@@ -293,7 +304,7 @@ Scheduled verify (step 5.4) defaults to every 20 stamps. Reader-memo seeding (5.
   - The incremental fold equals a full fold for: a modified file, an added file, a deleted file, NULL `file_path`, an ungrouped table, a schema change, and an empty table.
 - **Integration.** Under `TSA_CERTIFICATION_VERIFY=full`, the whole suite passes, which proves equality on every refresh the suite performs.
 - **Negative.**
-  - A write on a second connection makes the revision check fall back to full (RED first).
+  - A write on a second connection, during the refresh or since the last stamp, makes the stamp fall back to full (RED first).
   - A tampered leaf makes the fold check rebuild.
   - A tampered row makes the reader verify fail and report "not certified".
 - **Dogfood.** On this repository, 1-file edits of each kind: body only, signature, add or remove a method, base class, import alias, return annotation, add file, delete file. For each, the incremental root equals the full root, and hashing time is at most 2 s.
@@ -302,7 +313,7 @@ Scheduled verify (step 5.4) defaults to every 20 stamps. Reader-memo seeding (5.
 
 - [ ] Step 0: `certified_at` stamped only for new, updated or NULL files (separate PR)
 - [ ] Manifest v3 with a `merkle:` root; readers accept v2 and v3; v2-only readers fail closed
-- [ ] Revision-bound armed-connection invariant, falling back to full with `certification.reason`
+- [ ] Armed-connection invariant (`data_version` plus the stale flag), falling back to full with `certification.reason`
 - [ ] Always-verify in the test suite; a mismatch fails closed
 - [ ] Dogfood: equality on every edit kind; 1-file stamp hashing ≤ 2 s on this repository
 - [ ] CLI↔MCP parity for `certification` and the optional verify action
