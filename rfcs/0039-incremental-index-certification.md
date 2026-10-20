@@ -1,9 +1,9 @@
 # RFC-0039: Incremental index certification
 
-- **Status**: draft (#1718)
+- **Status**: accepted — accepted by the owner on 2026-10-20 with the recommended defaults (see "Owner decisions"); implementation tracked in #1718
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-10-20
-- **Last updated**: 2026-10-20
+- **Last updated**: 2026-10-20 (accepted)
 - **Tracking issue**: #1718 (follow-up of #1696 / PR #1714; related #1710)
 - **Feasibility evidence**: [`evidence/0039-feasibility/`](evidence/0039-feasibility/README.md)
 - **Affected source paths** (if accepted):
@@ -15,6 +15,17 @@
   - `tree_sitter_analyzer/cache/writer_state.py` (RFC-0032 slice 5 revision binding)
   - new `tree_sitter_analyzer/cache/certification_tree.py`
   - `tests/unit/test_index_fingerprint*.py`, new `tests/unit/test_certification_tree_1718.py`
+
+## Owner decisions
+
+- **2026-10-20, accepted with the recommended defaults.**
+  - Option A: a per-file two-level Merkle root (`(table, file_path)` leaves, root over sorted leaves).
+  - FTS5 (the virtual table and its shadow tables) is bound through the existing per-file projection digest (`ast_symbol_projection_state` plus `symbol_projection_is_exact`), not hashed into the root (step 2, recommended variant). This resolves Open question 1.
+  - The remaining open questions (2–4) take the defaults proposed in this RFC:
+    - scheduled verify every 20 stamps or 24 h;
+    - on-demand verify deferred until needed;
+    - reader-memo seeding only after a full or verified stamp.
+  - Implementation starts with step 0, as its own bug-fix PR, followed by RED-first slices per the test plan. Every slice carries the always-verify gate (in every stamp in the test suite the incremental root equals a full recompute, and a mismatch fails closed) and the repository check over 8 edit kinds.
 
 ## Summary
 
@@ -204,7 +215,7 @@ The incremental root claims equality with a full recompute. Four mechanisms chec
   - Keys stay content-addressed by database bytes. The value becomes a `merkle:` root for v3 manifests.
   - The stored-key environment already includes the code fingerprint, so existing entries miss after an upgrade and are recomputed.
   - Step 5.3 adds a writer-side seed.
-- **#1710 (certified reads cost about 10 s).**
+- **#1710 (certified reads cost about 10 s; partly addressed by #1713, merged 2026-10-20, which stops paying a discarded capture on every call).**
   - This RFC removes the writer's full hash, and the optional seeding removes the cold reader's index hash.
   - The source re-hash that #1710 also measures is out of scope.
 
