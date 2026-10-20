@@ -214,6 +214,13 @@ standard-library class without such an attribute. If a base does not resolve
 and keeps the answer non-`complete` (`NAME_ONLY_INBOUND`). Overrides of `m` in
 subclasses of the enclosing class remain possible targets.
 
+#1699: the same nearest-in-MRO rule applies to `super().m()` (the first `m` after
+the enclosing class), to module-level singletons, constructor-typed locals and
+fixtures, and annotated parameters and returns whose class inherits `m`. When
+several base branches define `m`, the C3 order decides. A nested function that
+reads a closure variable bound by `x = T(...)` in the enclosing function gets
+that type unless it rebinds the name.
+
 ## Index write admission codes (RFC-0032)
 
 An index write can be refused before it changes anything: another write

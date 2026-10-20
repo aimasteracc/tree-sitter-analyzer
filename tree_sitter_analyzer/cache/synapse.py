@@ -26,31 +26,59 @@ def _resolve_indexed_callee(
     annotated = _resolve_annotated(row, ctx)
     if annotated is not None:
         return annotated
-    if ctx.file_languages.get(caller_file) == "python" and row["callee_full"] in (
-        f"self.{name}",
-        f"cls.{name}",
-    ):
-        callers = conn.execute(
-            "SELECT id FROM ast_symbol_rows WHERE file_path=? AND name=? AND line=? "
-            "AND kind IN ('function','method') LIMIT 2",
-            (caller_file, row["caller_name"], row["caller_line"]),
-        ).fetchall()
-        if len(callers) == 1:
-            owners = [
-                methods
-                for methods in ctx.file_class_methods.get(caller_file, {}).values()
-                if methods.get(row["caller_name"]) == callers[0][0]
-            ]
-            if len(owners) == 1:
-                from ..synapse_resolver import ResolvedCallee
+    is_python = ctx.file_languages.get(caller_file) == "python"
+    if is_python and row["callee_full"] in (f"self.{name}", f"cls.{name}"):
+        owner = _owner_class(conn, row, ctx)
+        if owner is not None:
+            from ..synapse_resolver import ResolvedCallee
 
-                target = owners[0].get(name)
-                return (
-                    ResolvedCallee(target, "local", caller_file)
-                    if target is not None
-                    else ResolvedCallee(None, "unknown", "")
-                )
+            target = ctx.file_class_methods.get(caller_file, {})[owner].get(name)
+            return (
+                ResolvedCallee(target, "local", caller_file)
+                if target is not None
+                else ResolvedCallee(None, "unknown", "")
+            )
+    if is_python and row["callee_full"] == f"super().{name}":
+        inherited = _resolve_super(conn, row, ctx)
+        if inherited is not None:
+            return inherited
     return resolve(name, caller_file, ctx, row["callee_full"], row["caller_name"])
+
+
+def _owner_class(conn: sqlite3.Connection, row: Any, ctx: Any) -> str | None:
+    """调用方方法所属的类名（按持久化定义行确认）；无法唯一确定时为 None。"""
+    caller_file = row["caller_file"]
+    callers = conn.execute(
+        "SELECT id FROM ast_symbol_rows WHERE file_path=? AND name=? AND line=? "
+        "AND kind IN ('function','method') LIMIT 2",
+        (caller_file, row["caller_name"], row["caller_line"]),
+    ).fetchall()
+    if len(callers) != 1:
+        return None
+    owners = [
+        class_name
+        for class_name, methods in ctx.file_class_methods.get(caller_file, {}).items()
+        if methods.get(row["caller_name"]) == callers[0][0]
+    ]
+    return owners[0] if len(owners) == 1 else None
+
+
+def _resolve_super(conn: sqlite3.Connection, row: Any, ctx: Any) -> Any:
+    """#1699：``super().m()`` 解析到外围类 C3 MRO 中、外围类之后最近的 ``m``。"""
+    owner = _owner_class(conn, row, ctx)
+    if owner is None:
+        return None
+    from ..synapse_resolver import ResolvedCallee
+    from ..synapse_resolver._annotated import linearize
+
+    order = linearize((row["caller_file"], owner), ctx)
+    if order is None:
+        return None
+    for file_path, class_name in order[1:]:
+        target = ctx.file_class_methods.get(file_path, {}).get(class_name, {})
+        if row["callee_name"] in target:
+            return ResolvedCallee(target[row["callee_name"]], "project", file_path)
+    return None
 
 
 def _resolve_annotated(row: Any, ctx: Any) -> Any:

@@ -134,8 +134,10 @@ An external or unresolvable module stops resolution. There is no project-wide
 "unique class name" fallback.
 
 **Method lookup** looks in the class, then its project bases,
-depth-first, left to right, up to 6 levels. A method found in more than one
-distinct base branch is ambiguous, and the call is not attributed. If the
+depth-first, left to right, up to 6 levels. #1699: when more than one distinct
+base branch defines the method, the nearest definition in the C3 linearization
+of the project bases wins, as at runtime. An inconsistent linearization is not
+attributed. If the
 type or the method cannot be found, the call falls through to the existing
 cascade unchanged.
 

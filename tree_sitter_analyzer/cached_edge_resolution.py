@@ -130,10 +130,14 @@ class CachedEdgeResolver:
             return targets
         if qualifier in _SUPER_QUALIFIERS:
             # ``super().m()`` 从不调用外围类自己的 ``m``。
-            return EdgeTargets(
-                certain=[r for r in targets.certain if r.receiver != caller_class],
-                possible=[r for r in targets.possible if r.receiver != caller_class],
-            )
+            certain = [r for r in targets.certain if r.receiver != caller_class]
+            possible = [r for r in targets.possible if r.receiver != caller_class]
+            nearest = self._super_target(caller_file, caller_class, base_name)
+            if nearest is not None:
+                # #1699：MRO 完全已知时，外围类之后最近的定义是确定目标。
+                rest = [r for r in [*certain, *possible] if r != nearest]
+                return EdgeTargets(certain=[nearest], possible=rest)
+            return EdgeTargets(certain=certain, possible=possible)
         if qualifier not in OWN_INSTANCE_QUALIFIERS:
             return targets
         return self._self_dispatch(
@@ -288,7 +292,50 @@ class CachedEdgeResolver:
         narrowed = _narrow_by_receiver(candidates, qualifier)
         if len(narrowed) == 1:
             return EdgeTargets(certain=narrowed)
+        inherited = self._class_receiver_target(narrowed, base_name, qualifier)
+        if inherited is not None:
+            return EdgeTargets(
+                certain=[inherited], possible=[r for r in narrowed if r != inherited]
+            )
         return EdgeTargets(possible=narrowed)
+
+    def _class_receiver_target(
+        self, candidates: list[FunctionRef], base_name: str, qualifier: str
+    ) -> FunctionRef | None:
+        """#1699：接收者是项目类 ``T``（``T.m`` / ``T(...).m``）时，按 ``T`` 的 MRO 取最近定义。"""
+        if self._hierarchy is None or not qualifier:
+            return None
+        hierarchy = self._hierarchy()
+        classes = hierarchy.classes_named(_receiver_name(qualifier))
+        if len(classes) != 1:
+            return None
+        found, known = hierarchy.nearest(classes[0], base_name)
+        if found is None or not known:
+            return None
+        matches = [
+            ref
+            for ref in candidates
+            if ref.receiver == found.name and ref.file_path == found.file
+        ]
+        return matches[0] if len(matches) == 1 else None
+
+    def _super_target(
+        self, caller_file: str, caller_class: str, base_name: str
+    ) -> FunctionRef | None:
+        """#1699：``super().m()`` 绑定到外围类 MRO 中、外围类之后最近的 ``m``。"""
+        if self._hierarchy is None or not caller_file:
+            return None
+        found, known = self._hierarchy().after(
+            ClassKey(caller_file, caller_class), base_name
+        )
+        if found is None or not known:
+            return None
+        matches = [
+            ref
+            for ref in self._functions_by_name.get(base_name, [])
+            if ref.receiver == found.name and ref.file_path == found.file
+        ]
+        return matches[0] if len(matches) == 1 else None
 
     def _reexported_targets(
         self, base_name: str, qualifier: str, resolved_file: str

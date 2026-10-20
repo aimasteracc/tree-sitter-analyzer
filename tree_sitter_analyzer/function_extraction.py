@@ -661,6 +661,39 @@ def _collect_local_var_types(
     return types
 
 
+def _bound_names(func_node: Any, source: str) -> set[str]:
+    """#1699：函数（含其内层）中会重新绑定的名字：参数、赋值 / 增量赋值目标、
+    for / with / except 目标、``nonlocal`` / ``global`` 声明。只会更保守。"""
+    names = set(_func_param_names(func_node, source))
+    target_fields = {
+        "assignment": "left",
+        "augmented_assignment": "left",
+        "for_statement": "left",
+        "for_in_clause": "left",
+    }
+
+    def _identifiers(n: Any) -> None:
+        if n.type == "identifier":
+            names.add(_node_text(n, source))
+        for c in n.children:
+            _identifiers(c)
+
+    def _walk(n: Any) -> None:
+        field = target_fields.get(n.type)
+        if field is not None:
+            for target in filter(None, [n.child_by_field_name(field)]):
+                _identifiers(target)
+        elif n.type in ("as_pattern_target", "nonlocal_statement", "global_statement"):
+            _identifiers(n)
+        elif n.type in ("lambda_parameters", "parameters"):
+            _identifiers(n)
+        for c in n.children:
+            _walk(c)
+
+    _walk(func_node)
+    return names
+
+
 def _func_param_names(func_node: Any, source: str) -> list[str]:
     """Parameter identifier names of a Python function def."""
     params = func_node.child_by_field_name("parameters")
@@ -786,6 +819,15 @@ def _extract_recursive(
                 }
             )
             func_types = _collect_local_var_types(node, source, language)
+            if local_types and language == "python":
+                # #1699：嵌套函数读取外层函数的局部变量（闭包）。外层的
+                # ``x = T(...)`` 对没有在嵌套函数里重新绑定（参数、赋值、循环 / with
+                # 目标、nonlocal / global）的名字同样成立。
+                rebound = _bound_names(node, source)
+                func_types = {
+                    **{k: v for k, v in local_types.items() if k not in rebound},
+                    **func_types,
+                }
             # pytest-fixture typing: a parameter named after a fixture function
             # that returns a class gets that class's type. line 0 = valid for the
             # whole function body (a parameter is bound on entry).

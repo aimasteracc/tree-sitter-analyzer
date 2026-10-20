@@ -477,7 +477,7 @@ def _try_class_method(
 
 
 def _try_inherited_class_method(
-    base: str, qualifier: str, ctx: ResolverContext
+    base: str, qualifier: str, caller_file: str, ctx: ResolverContext
 ) -> ResolvedCallee | None:
     """#1669：接收者已证明是项目类 ``T``（类名或 ``T(...)``），但 ``T`` 自己没有 ``m``。
 
@@ -487,6 +487,16 @@ def _try_inherited_class_method(
     constructed = constructed_class(qualifier)
     receiver = constructed.rsplit(".", 1)[-1] if constructed else qualifier
     if not receiver.isidentifier() or receiver not in ctx.project_class_names:
+        return None
+    # #1699：先按调用方文件的导入上下文解析出这个类，在它的 C3 MRO 里找最近的定义；
+    # 类解析不出时才退回“项目里唯一的方法名”。
+    from ._annotated import find_method, resolve_class
+
+    cls = resolve_class(receiver, caller_file, ctx)
+    if cls is not None:
+        bound = find_method(cls, base, ctx)
+        if bound is not None:
+            return ResolvedCallee(bound[1], "project", bound[0])
         return None
     found = ctx.unique_method_index.get(base)
     if found is not None:
@@ -570,7 +580,7 @@ def _resolve_callee_python(
         # (RFC-0002 criterion 2 — shadowing preserved).
         lambda: _try_single_global(base, qualifier, ctx),
         lambda: _try_class_method(base, qualifier, ctx),
-        lambda: _try_inherited_class_method(base, qualifier, ctx),
+        lambda: _try_inherited_class_method(base, qualifier, caller_file, ctx),
         # #1669：接收者未被证明（不是 self/cls、导入的模块或类、类名、注解或构造
         # 得到的类型）的 ``x.m()`` 不再因 ``m`` 在项目里只有一个定义就记为
         # ``project``——``xs.append()`` 曾因此成为 ``HealthHistory.append`` 的

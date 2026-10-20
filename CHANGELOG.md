@@ -48,6 +48,20 @@
     rows for re-indexed files that the index route does not write. With the
     variable on, both routes queue and flush one bounded batch. Indexing a
     single file (`mode=index file_path=...`) still computes activation.
+- `nav action=callers` attributes calls to inherited methods through more
+  receiver shapes (#1699):
+  - module-level singletons, constructor-typed locals and fixtures, parameter and
+    return annotations: when several base branches define the method, the nearest
+    definition in the C3 MRO wins (`Sub(Mixin, Base)` → `Mixin.fmt`). Before,
+    such calls were dropped as ambiguous, or for a proven class receiver bound
+    only when the method name was unique in the project;
+  - `super().m()` resolves to the nearest `m` after the enclosing class in its
+    MRO;
+  - a nested function that reads a closure variable bound by `x = T(...)` in the
+    enclosing function gets that type, unless it rebinds the name (parameter,
+    assignment, loop/with target, `nonlocal`/`global`).
+
+  The extractor version goes from 43 to 44.
 
 - **Full index of this repository publishes on a loaded machine** (#1684).
   - Root cause of `CALL_GRAPH_DANGLING_RESOLUTION`: the dangling-resolution
