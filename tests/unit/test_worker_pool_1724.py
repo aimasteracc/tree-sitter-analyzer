@@ -18,6 +18,7 @@ import sys
 import threading
 import time
 from multiprocessing import get_context
+from typing import IO, cast
 
 import pytest
 
@@ -25,9 +26,9 @@ from tree_sitter_analyzer.cache import worker_pool
 
 
 def _rpc(process: subprocess.Popen, message: dict) -> None:
-    assert process.stdin is not None
-    process.stdin.write((json.dumps(message) + "\n").encode("utf-8"))
-    process.stdin.flush()
+    stdin = cast(IO[bytes], process.stdin)
+    stdin.write((json.dumps(message) + "\n").encode("utf-8"))
+    stdin.flush()
 
 
 @pytest.mark.slow_ok
@@ -66,8 +67,7 @@ def test_mcp_stdio_server_index_with_a_worker_pool_returns(tmp_path) -> None:
     replies: list[dict] = []
 
     def read() -> None:
-        assert process.stdout is not None
-        for line in process.stdout:
+        for line in cast(IO[bytes], process.stdout):
             try:
                 replies.append(json.loads(line))
             except json.JSONDecodeError:
