@@ -331,7 +331,7 @@ def test_real_change_beside_a_touch_publishes_and_reextracts_only_it(
     result = refresh(root)
 
     # broken.py 是稳定失败（没有行），每次建库都重新解析；b.py 只刷新戳记。
-    assert (result["published"], result["indexed"], extractions) == (
+    assert (result["published"], result["indexed"], sorted(extractions)) == (
         True,
         1,
         ["a.py", "broken.py"],
