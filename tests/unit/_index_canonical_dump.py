@@ -72,13 +72,53 @@ def _sorted(rows: list[tuple[Any, ...]]) -> list[tuple[Any, ...]]:
     return sorted(rows, key=repr)
 
 
-def canonical_dump(database: Path | str) -> dict[str, list[tuple[Any, ...]]]:
-    """返回 ``{表名: 有序行}``；只读打开，不修改数据库。"""
+def canonical_dump(
+    database: Path | str, *, project_root: str | None = None
+) -> dict[str, list[tuple[Any, ...]]]:
+    """返回 ``{表名: 有序行}``；只读打开，不修改数据库。
+
+    给出 ``project_root`` 时，``ast_index`` 的 ``(mtime_ns, file_size)`` 取合并
+    ``cache.stat_evidence`` 之后的值（#1707：只有 mtime 变化的零变化刷新不发布，
+    新戳记记在 stat 证据里；读者按同一规则合并，见 ``stat_evidence.effective_stamp``）。
+    """
     conn = sqlite3.connect(Path(database).as_uri() + "?mode=ro", uri=True)
     try:
-        return _dump(conn)
+        dump = _dump(conn)
+        if project_root is not None and "ast_index" in dump:
+            columns = [
+                c
+                for c in _columns(conn, "ast_index")
+                if c not in EXCLUDED_COLUMNS["ast_index"]
+            ]
+            dump["ast_index"] = _sorted(
+                [_effective(project_root, columns, row) for row in dump["ast_index"]]
+            )
+        return dump
     finally:
         conn.close()
+
+
+def _effective(
+    project_root: str, columns: list[str], row: tuple[Any, ...]
+) -> tuple[Any, ...]:
+    import os
+
+    from tree_sitter_analyzer.cache import stat_evidence
+
+    values = dict(zip(columns, row[: len(columns)], strict=True))
+    try:
+        info = os.stat(os.path.join(project_root, str(values["file_path"])))
+        live: tuple[int, int] | None = (info.st_mtime_ns, info.st_size)
+    except OSError:
+        live = None
+    mtime_ns, size = stat_evidence.effective_stamp(
+        stat_evidence.load(project_root),
+        str(values["file_path"]),
+        (values["mtime_ns"], values["file_size"], str(values["content_hash"])),
+        live,
+    )
+    values["mtime_ns"], values["file_size"] = mtime_ns, size
+    return (*(values[c] for c in columns), *row[len(columns) :])
 
 
 def _dump(conn: sqlite3.Connection) -> dict[str, list[tuple[Any, ...]]]:

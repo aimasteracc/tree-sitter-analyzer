@@ -30,6 +30,37 @@
 
 ### Fixed
 
+- **A refresh where only mtimes changed is a no-op** (#1707). Rewriting a file
+  with its own bytes (`touch`, `git checkout` / `git stash pop` of the same
+  content, an editor "save" without a change, tools that swap files and put them
+  back) re-extracted the file, ran the global call-graph backfill and published
+  a new generation of about 350 MB: 38–65 s on this repository.
+  - The no-op check compares content. A file whose current bytes hash to the
+    indexed row's content hash, with the same size, is unchanged even when its
+    mtime moved: `index action=cache mode=index` (and the sync route) returns
+    `published: false`, `INDEX_UNCHANGED`, `indexed: 0`, and the new
+    `stat_refreshed` count. Nothing is copied, built or published. The hash is
+    always of the bytes read in this refresh (RFC-0030). A size change (for
+    example line endings only) still publishes.
+  - The new stamp goes to `.ast-cache/evidence-memo/stat-stamps.bin`, bound to
+    the row's content hash. Stamps whose mtime is within 5 s of the refresh
+    (the racy window) are not recorded; the next refresh records them. Readers
+    that compare row stamps with the disk (`relation_freshness`, the
+    reference-scan freshness, `edit action=safe` dependents, the lineage
+    staleness check) accept a recorded stamp, so a touched file is neither
+    stale nor re-read. `TSA_EVIDENCE_STORE=off` disables the record; readers
+    then compare content hashes.
+  - The next publishing refresh writes the new stamps into the rows without
+    re-extracting those files, and drops the record.
+  - The lineage staleness check (`is_ast_index_stale`) no longer reports a
+    touched file as stale: when the mtime is newer it compares the size and
+    content hash.
+  - Measured on this repository in a long-lived MCP server (2,557 selected
+    files, 3 stable grammar failures, loaded machine), before → after:
+    1-file touch 43.8–51.8 s published → 2.7 s unchanged; 16-file touch
+    53.4–65.3 s published → 2.8 s unchanged; a touch after an edit/restore
+    cycle 38.1–45.6 s published → 2.8 s unchanged. The generation stays the
+    same and the disk stays flat.
 - **`ast_cache mode=sync` builds the same index as `mode=index`** (#1697).
   - `IncrementalSync.sync()` without `exclude_patterns` now applies the
     default scope (`tests/golden/corpus_*` excluded), the same one

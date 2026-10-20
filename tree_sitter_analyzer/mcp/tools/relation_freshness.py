@@ -252,11 +252,14 @@ def _changed_files(
     大小不同即为变更；大小相同且 mtime 相同视为未变；仅 mtime 不同时比较
     内容摘要，与增量同步 ``file_changed`` 使用同一归一化摘要，避免 touch 误报。
     """
+    from ...cache import stat_evidence
     from ...incremental_sync_support import file_content_hash
 
     ordered = sorted(rows)
     paths = [os.path.join(project_root, row[0]) for row in ordered]
     stamps = _prefetch_stamps(paths)
+    # #1707：只有 mtime 变化、已在刷新时核对过内容的文件，由 stat 证据作证。
+    evidence = stat_evidence.load(project_root)
     changed: list[str] = []
     for index, (rel_path, mtime_ns, size, content_hash) in enumerate(ordered):
         if deadline is not None and time.monotonic() > deadline:
@@ -265,7 +268,9 @@ def _changed_files(
         disk = stamps[index] if stamps is not None else _stamp(abs_path)
         if disk is None or disk[1] != size:
             changed.append(rel_path)
-        elif disk[0] != mtime_ns:
+        elif disk[0] != mtime_ns and not stat_evidence.vouches(
+            evidence, rel_path, disk, (size, content_hash)
+        ):
             try:
                 if file_content_hash(abs_path) != content_hash:
                     changed.append(rel_path)

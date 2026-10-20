@@ -17,6 +17,7 @@ from ..incremental_sync_support import SyncResult
 from ..index_source_scope import SourceScopeDescriptor, make_source_scope_descriptor
 from ..indexing_candidate_materialization import release_index_candidate_snapshot
 from ..indexing_snapshot import IndexCandidateSnapshot
+from . import stat_evidence
 from .admission import CandidateUnbound, admission_failure_of, admission_fields
 from .generation_noop import (
     NOT_PUBLISHABLE_REASON,
@@ -45,6 +46,7 @@ from .source_hash_budget import (
 from .source_recheck import SourceChanged, source_changed_failure
 
 _T = TypeVar("_T")
+
 _PUBLISH_STATE_UNKNOWN_NEXT_STEP = (
     "The publish step failed after the new index may have become active "
     "(see `published`). Run index action=status to confirm which generation "
@@ -144,6 +146,9 @@ def mutate_published_cache(
     _require_bound_candidate(candidate_snapshot)
     store = project_store(cache.project_root, scope or make_source_scope_descriptor())
     with cache._index_lock:
+        # #1707：竞争窗口以捕获开始（读取字节之前）为准；调用方给出的候选可能更早读取，
+        # 不据此记录 stat 证据。
+        captured_at = stat_evidence.now_ns() if candidate_snapshot is None else None
         candidate = store.capture(
             (lambda: candidate_snapshot) if candidate_snapshot is not None else None
         )
@@ -164,6 +169,13 @@ def mutate_published_cache(
                 # #1671：内容摘要证明零变化时不复制父版本、不建库、不发布。
                 evidence = unchanged_before_build(store, candidate)
                 if evidence is not None:
+                    # #1707：只有 mtime 变化的文件，新戳记写入 stat 证据。
+                    if captured_at is not None:
+                        stat_evidence.record(
+                            cache.project_root,
+                            dict(evidence.restamped),
+                            captured_at_ns=captured_at,
+                        )
                     return cast(_T, evidence.index_result(candidate.snapshot))
             selector = store.begin(candidate)
             with store.abandoning(selector):  # #1595：未发布即回收
@@ -189,6 +201,9 @@ def mutate_published_cache(
                     store.seal(selector)
                     store.publish(PreparedGeneration(candidate, selector, SyncResult()))
                     cache._adopt_published_generation()
+                    if snapshot_operation is not None:
+                        # #1707：项目索引已把漂移的戳记写进新版本的行。
+                        stat_evidence.clear(cache.project_root)
                     if report and isinstance(result, Mapping):
                         result = cast(_T, {**result, "published": True})
                 elif report and isinstance(result, Mapping):
@@ -221,6 +236,7 @@ def run_incremental_sync(
     supplied = arguments.get("candidate_snapshot")
     _require_bound_candidate(supplied)
     store = project_store(cache.project_root, scope)
+    captured_at = stat_evidence.now_ns() if supplied is None else None
     candidate = store.capture((lambda: supplied) if supplied is not None else None)
     try:
         if supplied is not None and supplied.publication_parent != candidate.parent:
@@ -231,6 +247,13 @@ def run_incremental_sync(
             # #1671：内容摘要证明零变化时不复制父版本、不建库、不发布。
             evidence = unchanged_before_build(store, candidate)
             if evidence is not None:
+                # #1707：只有 mtime 变化的文件，新戳记写入 stat 证据。
+                if captured_at is not None:
+                    stat_evidence.record(
+                        cache.project_root,
+                        dict(evidence.restamped),
+                        captured_at_ns=captured_at,
+                    )
                 unchanged: SyncResult = evidence.sync_result()
                 callback = arguments.get("callback")
                 if callback:
@@ -262,6 +285,8 @@ def run_incremental_sync(
                     )
                 )
                 cache._adopt_published_generation()
+                # #1707：同步已把漂移的戳记写进新版本的行。
+                stat_evidence.clear(cache.project_root)
                 _report_sync_publication(result, True, None)
             else:
                 _report_sync_publication(result, False, NOT_PUBLISHABLE_REASON)

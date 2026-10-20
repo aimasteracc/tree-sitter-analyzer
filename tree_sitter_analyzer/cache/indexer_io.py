@@ -264,6 +264,7 @@ def walk_and_partition(
         }
 
     if candidate_snapshot is not None:
+        restamped = 0
         supplied = getattr(cache, "_bound_source_digests", None)
         bound_digests: dict[str, str] = supplied if isinstance(supplied, dict) else {}
         if not snapshot_validated:
@@ -339,8 +340,27 @@ def walk_and_partition(
                     }
                 )
                 continue
+            if _content_unchanged(row, fingerprint, digest, extractor_version):
+                # #1707：只有 mtime 不同、当前字节的摘要与行相同：只刷新戳记，不重新
+                # 提取（重新提取会让回填与发布都以为内容变了）。
+                conn.execute(
+                    "UPDATE ast_index SET mtime_ns = ? WHERE file_path = ?",
+                    (fingerprint.mtime_ns, entry.rel_path),
+                )
+                restamped += 1
+                already_cached.append(
+                    {
+                        "file": entry.rel_path,
+                        "status": "cached",
+                        "reason": "content unchanged",
+                    }
+                )
+                continue
             candidates.append((entry.abs_path, language))
 
+        if restamped:
+            conn.commit()
+            stats["stat_refreshed"] = restamped
         stats["cached"] += len(already_cached)
         stats["files"].extend(already_cached)
         stats["processed"] = len(candidates) + len(already_cached)
@@ -393,6 +413,28 @@ def walk_and_partition(
     stats["files"].extend(already_cached)
     stats["processed"] = len(candidates) + len(already_cached)
     return stats, candidates, count
+
+
+def _content_unchanged(
+    row: tuple[Any, ...] | None,
+    fingerprint: IndexFileFingerprint,
+    digest: str | None,
+    extractor_version: int,
+) -> bool:
+    """行与本次捕获的当前字节摘要、大小都相同，只有 mtime 不同（#1707）。
+
+    摘要必须来自本次读取（捕获绑定的摘要或快照摘要，RFC-0030）；没有摘要时
+    不能证明内容未变，照常重新提取。大小不同（归一化摘要相同的换行符变化）
+    也照常重新提取，读者以大小不同判定为变更。
+    """
+    return bool(
+        row is not None
+        and digest
+        and len(row) >= 4
+        and row[3] == digest
+        and row[1] == fingerprint.file_size
+        and row[2] >= extractor_version
+    )
 
 
 def _clear_full_rebuild_rows(cache: Any, conn: sqlite3.Connection) -> None:
