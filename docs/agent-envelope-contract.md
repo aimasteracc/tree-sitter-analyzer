@@ -129,7 +129,7 @@ still hold for the unchanged files (#1672).
 | Code | Meaning | What to do |
 |---|---|---|
 | `UNRESOLVED_INBOUND_UNCHECKED` | The unresolved-edge count or the declaring-file guard could not be read. | Retry; rebuild the index if it persists. |
-| `UNRESOLVED_INBOUND` | Inbound edges name the target but did not resolve to its definition (`unresolved_inbound`). | Read those call sites; qualify the name to narrow. |
+| `UNRESOLVED_INBOUND` | Inbound edges name the target but did not resolve to its definition (`unresolved_inbound`). | Read `unresolved_inbound_sites`; qualify the name to narrow. |
 | `UNRESOLVED_IN_DECLARING_FILE` | A file that declares the target holds unresolved calls that could reach it (computed dispatch or same name; see `unresolved_sites`). | Read `unresolved_sites`. |
 | `NAME_ONLY_INBOUND` | Inbound edges match by name only and cannot be bound to this target (`name_only_inbound` callers; `name_only_sites`). | Read `name_only_sites` (`next_step` names them); a site calls the target only if its receiver is an instance of the target's class; qualify the name. |
 | `UNATTRIBUTED_CALL_SITES` | Module-level call sites are counted, not listed (`unattributed_call_sites`). | Read them directly. |
@@ -155,6 +155,7 @@ capped at 20, the exact total beside it, and a `*_truncated` flag.
 
 | Code | Count | Sites (`file`, `line`, …) | Total / truncated |
 |---|---|---|---|
+| `UNRESOLVED_INBOUND` (#1706) | `unresolved_inbound` | `unresolved_inbound_sites` (+ `caller`, `callee`) | `unresolved_inbound_sites_total` / `unresolved_inbound_sites_truncated` |
 | `UNRESOLVED_IN_DECLARING_FILE` | `unresolved_in_declaring_files` | `unresolved_sites` (+ `mechanism`, `callee`) | `unresolved_sites_total` / `unresolved_sites_truncated` |
 | `NAME_ONLY_INBOUND` | `name_only_inbound` (callers) | `name_only_sites` (+ `caller`) | `name_only_sites_total` / `name_only_sites_truncated` |
 | `NON_CALL_REFERENCES` | `non_call_references` | `non_call_reference_sites` (capped at 5) | `non_call_references` |
@@ -163,6 +164,30 @@ capped at 20, the exact total beside it, and a `*_truncated` flag.
 `name_only_sites[].line` is the call line from the call-graph edge; when no edge
 line is readable it falls back to the caller's definition line. `next_step`
 names the first three sites inline and says how many more there are.
+
+`unresolved_inbound` is the length of `unresolved_inbound_sites` before the cap,
+so the count and the sites describe the same edges. `caller` is `<module>` for a
+module-level site; `callee` is the call's source text (`api.open`).
+
+**Ranking (#1706).** `name_only_sites` and `unresolved_inbound_sites` are ranked
+before the cap, by how close the site is to the target:
+
+1. the declaring file;
+2. files that import the target's class (or function) name or its module;
+3. every other file.
+
+Within a tier, production files come before test files, then path and line. A
+same-named call reaches `Class.method` only if its receiver is a `Class`
+instance, and the declaring file and its importers are where such instances are
+built; a file that never names the class gets one only through a parameter.
+
+**`next_step` names the primary reason's evidence (#1706)**, whether or not
+callers were listed: the unresolved sites first, then the name-only sites; the
+non-call reference sites, with what to check at each (a callback, a rebinding,
+or a re-export under another name); the declaring-file sites; the module-level
+count. A gate reason without a site list (decorator, unindexed files) restates
+its hint for a listed set of callers. The generic "Review callers above…" is
+given only for a `complete` answer.
 
 A reference-scan hit in a file whose size, mtime and normalised content digest
 no longer match its `ast_index` row is most likely a call added since the last

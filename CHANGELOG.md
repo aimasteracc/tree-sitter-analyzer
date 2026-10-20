@@ -111,6 +111,18 @@
   string (`monkeypatch.setattr(mod, "_f", ...)`), which could equally be a
   `getattr(mod, "_f")()` call; 2 round-9 targets that were `complete` only
   because that mention was never read now stay `incomplete` and name it.
+- **`nav action=callers` evidence leads to the missing callers** (#1706).
+  - `UNRESOLVED_INBOUND` answers carry `unresolved_inbound_sites`
+    (`file`, `line`, `caller`, `callee`), capped at 20, with
+    `unresolved_inbound_sites_total` / `_truncated`. The count is derived from
+    the same list. `next_step` names these sites before the name-only sites.
+  - `name_only_sites` (and the unresolved sites) are ranked before the cap:
+    the declaring file, then files that import the target's class or module,
+    then the rest; production before tests within a tier. In round 9, all 20
+    listed sites of `NativeFiles.open` were `benchmarks/…`.
+  - Every non-`complete` answer gets a `next_step` that names its primary
+    reason's evidence, also when callers were listed. `NON_CALL_REFERENCES`
+    with callers used to get the generic "Review callers above…".
 - **`ast_cache mode=sync` builds the same index as `mode=index`** (#1697).
   - `IncrementalSync.sync()` without `exclude_patterns` now applies the
     default scope (`tests/golden/corpus_*` excluded), the same one

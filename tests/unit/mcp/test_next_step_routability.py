@@ -120,10 +120,11 @@ def test_the_harvest_is_not_vacuous() -> None:
     #1635：未发布刷新的 next_step 新增 2 个字符串常量，计数 171 → 173。
     #1672：callers 把同名入边的调用点并入 next_step（``f"{step} {next_step}"``），
     多出 1 个分隔常量，计数 173 → 174。
+    #1706：已列出调用方时主因证据并入 next_step，多出 1 个分隔常量，计数 174 → 175。
     """
     harvest = _next_step_strings()
-    assert len(harvest) == 174, (
-        f"expected 174 next_step string constants, harvested {len(harvest)}; "
+    assert len(harvest) == 175, (
+        f"expected 175 next_step string constants, harvested {len(harvest)}; "
         "update this constant if the phrasing changed, otherwise the AST walk is "
         "no longer matching how next_step is assigned"
     )
