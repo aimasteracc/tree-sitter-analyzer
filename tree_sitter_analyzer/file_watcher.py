@@ -382,7 +382,7 @@ class FileWatcherDaemon:
             if (
                 candidate.discovery_error
                 or candidate.frozen_error
-                or result.errors
+                or _transient_errors(result)
                 or result.backfill_errors
                 or result.manifest_certification_failed
                 or any(
@@ -425,6 +425,21 @@ class FileWatcherDaemon:
                 retry=True, base_delay=failure.contract.retry_after_ms / 1000
             )
         return dict(payload)
+
+
+def _transient_errors(result: Any) -> bool:
+    """#1730：同步结果里有值得重试的错误；只有稳定的单文件失败时不重试。
+
+    稳定失败（缺少可选语法、同一字节解析失败，#1554 / #1671）的重试只会得到同一
+    失败：把它当作临时错误会让一次编辑引发 1、2、4……秒的退避重试，之后每 60 秒
+    一次同步，永不停止。读写失败等临时错误（不带稳定标记）照旧重试。
+    """
+    from .cache.publication_policy import stable_failures_only
+
+    errors = int(getattr(result, "errors", 0) or 0)
+    if not errors:
+        return False
+    return not stable_failures_only(getattr(result, "details", ()) or (), errors)
 
 
 class _WatchdogHandler:
