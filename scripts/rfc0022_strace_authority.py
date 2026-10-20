@@ -45,7 +45,7 @@ from rfc0022_strace_runtime import (  # noqa: E402
 )
 from rfc0022_strace_snapshot import snapshot_root  # noqa: E402
 
-POLICY_SHA256 = "8c272dab34801b0a977a7d1d0b22368ef066a0c3dad0c31a69a1b395ef3a220a"  # pragma: allowlist secret
+POLICY_SHA256 = "92820ecb89d6f84350c6f824a7fbd1789fe51011b391cd2b6ec3d6249cb3e489"  # pragma: allowlist secret
 POLICY_KEYS = {
     "always_violation_syscalls",
     "async_syscalls",

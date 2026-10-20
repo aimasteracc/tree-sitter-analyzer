@@ -233,6 +233,41 @@ def _open_targets(call: TraceCall, cwd: Path) -> tuple[str, str | None]:
     return requested, result
 
 
+def _apply_mremap(
+    call: TraceCall, args: list[str], state: ProcessState, policy: dict[str, Any]
+) -> None:
+    """#1731: a moved or resized mapping keeps the source mapping's provenance.
+
+    ``mremap`` writes nothing itself (glibc ``realloc`` issues it for large
+    anonymous blocks); what matters is that later ``mprotect`` / ``msync`` /
+    writeback advice on the *new* range is judged like the original mapping.
+    The source range must be covered by exactly one kind of mapping (same
+    shared flag and target) and have a non-zero length; anything else is not
+    attributable and fails closed.
+    """
+    if len(args) < 4:
+        raise AuthorityError("mremap arguments are incomplete")
+    try:
+        old_address = int(args[0], 0)
+        old_length = page_length(int(args[1], 0), policy)
+        new_length = page_length(int(args[2], 0), policy)
+    except ValueError as exc:
+        raise AuthorityError("mremap range is not exact") from exc
+    if old_length == 0:
+        raise AuthorityError("mremap of a zero-length source is not attributable")
+    records = state.covering(call.pid, old_address, old_length)
+    kinds = {(shared, target) for _start, _length, shared, target in records}
+    if len(kinds) != 1:
+        raise AuthorityError("mremap source spans mappings of different provenance")
+    ((shared, target),) = kinds
+    result_address = re.match(r"0x([0-9a-fA-F]+)$", call.result)
+    if not (_result_succeeded(call.result) and result_address):
+        return
+    if "MREMAP_DONTUNMAP" not in args[3]:
+        state.unmap(call.pid, old_address, old_length)
+    state.map(call.pid, int(result_address.group(1), 16), new_length, shared, target)
+
+
 def classify_calls(
     calls: list[TraceCall],
     policy: dict[str, Any],
@@ -451,6 +486,9 @@ def classify_calls(
                             f"{args[2]}|{args[3]}",
                         )
                     )
+            continue
+        if call.syscall == "mremap":
+            _apply_mremap(call, args, state, policy)
             continue
         writeback_advice = {"MADV_DONTNEED", "MADV_PAGEOUT", "MADV_REMOVE"}
         if call.syscall == "madvise" and len(args) < 3:
