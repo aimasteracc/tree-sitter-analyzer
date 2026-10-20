@@ -9,7 +9,7 @@
 
 * 键为库文件、``-wal``、``-journal`` 的 ``(size, mtime_ns, ctime_ns, ino, dev)``；
   每次取用都重新 ``stat``，任一不同即重算。任何提交都会改变库或 WAL 的大小或 mtime。
-* 计算前后各取一次证据，二者不同（计算期间有写入）则不记忆。
+* 结果记在计算**之前**取得的证据下：计算期间的写入会改变证据，之后的取用只会不匹配。
 * 时间戳竞争：任一文件 mtime 距当前不足 :data:`RACY_WINDOW_NS` 时不记忆。
 * 只记忆库路径可解析的 ``ASTCache``；内存库、认证快照副本不经此处。
 """
@@ -72,7 +72,7 @@ def memoized(database: str | None, compute: Callable[[], bool]) -> bool:
         if cached is not None and cached[0] == before:
             return cached[1]
     result = compute()
-    if before is not None and database_stamps(path) == before:
+    if before is not None:
         with _LOCK:
             if len(_MEMO) >= MAX_ENTRIES and path not in _MEMO:
                 _MEMO.pop(next(iter(_MEMO)))

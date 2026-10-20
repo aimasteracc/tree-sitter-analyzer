@@ -85,7 +85,7 @@ def test_a_racy_database_is_never_memoized(database: Path) -> None:
     assert len(calls) == 2
 
 
-def test_a_change_during_the_computation_is_not_memoized(database: Path) -> None:
+def test_a_change_during_the_computation_is_not_reused(database: Path) -> None:
     calls: list[int] = []
 
     def compute() -> bool:
