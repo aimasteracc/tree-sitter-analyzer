@@ -69,6 +69,13 @@ def run_index_project(
 
     # #1671：任何写运行都先撤销继承的稳定失败记录；只有收敛的运行结束时重新签发。
     record_conn = cache._get_conn()
+    from . import backfill_scope
+
+    # #1696：武装回填范围记录（强制重建与仅解析运行全量回填）。
+    if force or resolve_only:
+        backfill_scope.disarm(record_conn)
+    else:
+        backfill_scope.begin(record_conn)
     clear_record(record_conn)
     record_conn.commit()
     if resolve_only:

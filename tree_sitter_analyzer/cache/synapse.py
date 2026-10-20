@@ -218,6 +218,18 @@ def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int]
     except sqlite3.OperationalError as exc:
         logger.debug("synapse backfill select failed: %s", exc)
         return None
+    from .backfill_scope import current
+
+    scope = current(conn)
+    if scope is not None:
+        # #1696：只重新解析依赖范围内的未解析边；范围外的边输入未变，结果不变。
+        rows = [
+            row
+            for row in rows
+            if scope.covers(
+                str(row["caller_file"]), str(row["callee_name"] or ""), None
+            )
+        ]
     if not rows:
         return empty_stats
     try:

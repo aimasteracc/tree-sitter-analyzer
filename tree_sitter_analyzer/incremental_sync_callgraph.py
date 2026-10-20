@@ -40,7 +40,34 @@ def _record_pipeline_warning(result: Any, stage_name: str, reason: str) -> None:
 
 
 def run_call_graph_pipeline(cache: Any, result: Any = None) -> tuple[bool, int]:
-    """Run all three backfills and publish every suppressed stage failure."""
+    """Run all three backfills and publish every suppressed stage failure.
+
+    #1696：能界定依赖时只重新解析受影响的边（``cache.backfill_scope``），否则全量。
+    """
+    from .cache import backfill_scope
+
+    conn = cache.get_conn()
+    decision = backfill_scope.decide(cache, conn, _changed_count(result))
+    if result is not None:
+        result.backfill_scope = decision.to_dict()
+    with backfill_scope.active(conn, decision.scope):
+        return _run_stages(cache, result)
+
+
+def _changed_count(result: Any) -> int | None:
+    """本轮改动的文件数；不知道或运行中源码又变了时为 None（全量）。"""
+    if result is None or getattr(result, "changed_during_run", None):
+        return None
+    total = 0
+    for name in ("new_files", "updated_files", "deleted_files"):
+        count: object = getattr(result, name, None)
+        if type(count) is not int:
+            return None
+        total += count
+    return total
+
+
+def _run_stages(cache: Any, result: Any) -> tuple[bool, int]:
     clear_call_graph_built_strict(cache.get_conn())
     complete = True
     synapse_resolved = 0

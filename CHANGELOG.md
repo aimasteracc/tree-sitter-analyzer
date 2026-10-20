@@ -28,6 +28,35 @@
   39 to 40, so the next refresh re-extracts files indexed by older versions;
   until then, those files resolve as before.
 
+### Changed
+
+- **A 1-file refresh re-resolves only the call edges whose inputs changed**
+  (#1696). Before, every refresh ran all three call-graph backfills over every
+  call edge in the project. The refresh now compares the changed file's
+  resolution surface before and after the edit: definitions, signatures,
+  bases, return annotations, module singletons and import bindings, ignoring
+  positions. It then re-resolves:
+  - the file's own edges;
+  - edges bound into the file;
+  - edges named after a name whose surface changed;
+  - the call edges of files that depend on such a name, through imports,
+    aliases, star imports, module aliases, subclasses and typed exports.
+
+  Other edges that the write path had reset by name get their previous
+  resolution back. When the scope cannot be bounded, the refresh runs the
+  full backfill and records why. The decision is reported as `backfill_scope`
+  in the sync result and in the `index_project` stats.
+
+  On this repository (192k call edges), seven 1-file edits ran in sequence:
+  body only, signature, added method, base-class change, import alias, alias
+  use and return annotation. Afterwards, the canonical dump equaled a fresh
+  full build. Each scope covered 0.2–1.9% of the edges. The three backfill
+  stages fell from about 38 s to 5–12 s, and the whole refresh went from
+  71–74 s to 34–64 s. Most of what remains is certification:
+  `index_fingerprint` takes 13–19 s, plus source capture and publication.
+  `CrossFileResolver` also no longer scans every module for each relative
+  import.
+
 ### Fixed
 
 - **A refresh where only mtimes changed is a no-op** (#1707). Rewriting a file

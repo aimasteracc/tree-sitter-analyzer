@@ -100,6 +100,13 @@ def resolve_unresolved_refs(conn: sqlite3.Connection) -> dict[str, int] | None:
         logger.debug("unresolved second-pass index select failed: %s", exc)
         return None
 
+    from .backfill_scope import current, scope_pass_files
+
+    scope = current(conn)
+    if scope is not None:
+        # #1696：只处理依赖范围内的文件（含调用名受影响的边所在文件）。
+        wanted = scope_pass_files(conn, scope)
+        index_rows = [row for row in index_rows if str(row["file_path"]) in wanted]
     total = resolved = unchanged = errors = 0
     store = EdgeStore(conn, ensure_schema=False)
     # Per-run candidate cache keyed by ``(name, kind)``. The candidate set for a

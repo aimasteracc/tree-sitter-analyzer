@@ -414,10 +414,21 @@ def get_cross_file_stats(conn: sqlite3.Connection) -> dict[str, Any]:
 def backfill_cross_file_edges(cache: Any, conn: sqlite3.Connection) -> dict[str, Any]:
     """Resolve cross-file call edges and persist callee_resolved_file."""
     from ..cross_file_resolver import CrossFileResolver
+    from .backfill_scope import current
 
     resolver = CrossFileResolver(cache)
     resolver.build()
-    resolved_edges = resolver.resolve_call_edges()
+    scope = current(conn)
+    if scope is None:
+        resolved_edges = resolver.resolve_call_edges()
+    else:
+        resolved_edges = resolver.resolve_call_edges(
+            edge_filter=lambda edge: scope.covers(
+                str(edge.get("caller_file") or ""),
+                str(edge.get("callee_name") or ""),
+                None,
+            )
+        )
     total = len(resolved_edges)
     resolved = unchanged = errors = 0
     try:

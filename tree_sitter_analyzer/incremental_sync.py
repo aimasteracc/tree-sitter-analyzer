@@ -101,6 +101,10 @@ class IncrementalSync:
 
         result = SyncResult()
         conn = self._cache.get_conn()
+        # #1696：武装回填范围记录；本轮写入的文件、符号名与被重置的边由此界定回填。
+        from .cache import backfill_scope
+
+        backfill_scope.begin(conn)
         # #1671：先撤销继承的稳定失败记录；只有收敛的运行结束时重新签发。
         clear_record(conn)
         conn.commit()
