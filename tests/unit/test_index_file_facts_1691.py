@@ -325,3 +325,19 @@ async def test_call_graph_built_is_reused_by_a_new_process(
             cache.close()
 
     assert calls == [1]
+
+
+def test_a_rewrite_with_the_mtime_restored_is_a_miss(database: Path) -> None:
+    # 大小、mtime、inode 都不变，只有变更时间（ctime / NTFS ChangeTime）前进。
+    stamp = facts.evidence(str(database))
+    facts.record(stamp, "f", 1)
+    info = os.stat(database)
+    data = database.read_bytes()
+    time.sleep(0.05)
+    with open(database, "r+b") as handle:
+        handle.write(data[:1])
+    os.utime(database, ns=(info.st_atime_ns, info.st_mtime_ns))
+    after = os.stat(database)
+    assert (after.st_size, after.st_mtime_ns) == (info.st_size, info.st_mtime_ns)
+
+    assert facts.lookup(facts.evidence(str(database)), "f") is None
