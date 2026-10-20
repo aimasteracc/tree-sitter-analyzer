@@ -252,12 +252,13 @@ class TestPrivateWalFiles:
                 pytest.fail("不能退回项目内临时目录")
 
     def test_misdirected_temp_allocator_is_rejected(self, tmp_path, pair, monkeypatch):
-        import tree_sitter_analyzer.index_snapshot_capability as owner
+        # #1717：私有副本由 index_stage_dirs 分配；分配到项目内必须被拒绝。
+        import tree_sitter_analyzer.index_stage_dirs as stage
 
-        allocate = owner.tempfile.TemporaryDirectory
+        allocate = stage.tempfile.mkdtemp
         monkeypatch.setattr(
-            owner.tempfile,
-            "TemporaryDirectory",
+            stage.tempfile,
+            "mkdtemp",
             lambda **kwargs: allocate(prefix=kwargs["prefix"], dir=tmp_path),
         )
         with pytest.raises(ValueError, match="^INDEX_TEMP_OUTSIDE_PROJECT_REQUIRED$"):
