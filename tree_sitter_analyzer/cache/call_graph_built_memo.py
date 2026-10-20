@@ -46,6 +46,8 @@ def database_stamps(database: str) -> tuple[Any, ...] | None:
         try:
             info = os.stat(database + suffix)
         except FileNotFoundError:
+            if not suffix:
+                return None  # 主库不存在：没有可复核的证据
             stamps.append(None)
             continue
         except OSError:
