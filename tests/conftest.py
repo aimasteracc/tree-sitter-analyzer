@@ -382,6 +382,12 @@ def _reset_all_singletons():
             "clear",
             lambda fn: fn(),
         ),
+        # #1710：调用图标记复核按库文件 stat 证据记忆。
+        (
+            "tree_sitter_analyzer.cache.call_graph_built_memo",
+            "clear",
+            lambda fn: fn(),
+        ),
         # #1710：认证捕获超时的记忆按项目根留在进程内。
         (
             "tree_sitter_analyzer.mcp.tools.certification_timeouts",

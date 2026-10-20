@@ -289,8 +289,20 @@ class ASTCacheGraphMixin(ASTCacheSurface):
         return [(str(row[0]), int(row[1] or 0)) for row in rows if row[0]]
 
     def call_graph_built(self) -> bool:
-        """Return whether a completed call-graph build is recorded."""
-        return _call_graph_built(self._get_conn())
+        """Return whether a completed call-graph build is recorded.
+
+        #1710: the check scans every call edge; its result is reused while the
+        stat evidence of the database file the connection reads is unchanged.
+        """
+        from .cache import call_graph_built_memo
+
+        conn = self._get_conn()
+        try:
+            row = conn.execute("PRAGMA database_list").fetchone()
+        except sqlite3.Error:
+            row = None
+        database = str(row[2]) if row is not None and len(row) > 2 and row[2] else None
+        return call_graph_built_memo.memoized(database, lambda: _call_graph_built(conn))
 
     def get_cross_file_resolver(self) -> Any:
         """Return the lazily built import-aware resolver."""
