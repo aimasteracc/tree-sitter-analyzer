@@ -108,7 +108,7 @@ def test_extractor_version_is_bumped_for_receiver_shapes() -> None:
     assert (
         ast_cache._AST_CACHE_EXTRACTOR_VERSION,
         indexer._AST_CACHE_EXTRACTOR_VERSION,
-    ) == (45, 45)
+    ) == (46, 46)
 
 
 def _shape_context():

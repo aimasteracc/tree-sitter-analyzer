@@ -313,6 +313,10 @@ def _surface(row: Any) -> _Surface:
             class_names.add(name)
     for name, hint in (payload.get("module_types") or {}).items():
         items[str(name)].add("module_type:" + _canonical(hint))
+    # #1721：函数内 `global` / 模块级 `del` 重新绑定的名字。增删它们会改变经模块属性
+    # 的解析（#1705），名字进入差异后，以它为被调名的边与导入方都会重新解析。
+    for name in payload.get("module_rebinds") or []:
+        items[str(name)].add("module_rebind")
     from ..synapse_resolver._imports import parse_imports
 
     unparsed: list[str] = []
