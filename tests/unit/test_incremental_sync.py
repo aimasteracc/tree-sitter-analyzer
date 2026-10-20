@@ -2418,6 +2418,11 @@ def test_failed_file_write_rolls_back_its_certification_only(tmp_path):
             "CREATE TRIGGER deny_bad_edges BEFORE INSERT ON edges WHEN NEW.file_path='bad.py' BEGIN SELECT RAISE(ABORT, 'edge write denied'); END"
         )
         conn.commit()
+        # #1718：未变的邻居保留原认证时间（只有新增/更新/NULL 文件盖本轮时间）。
+        good_certified = conn.execute(
+            "SELECT certified_at FROM ast_index WHERE file_path='good.py'"
+        ).fetchone()[0]
+        assert good_certified is not None
         bad.write_text("def replacement_bad(): return good()\n", encoding="utf-8")
         with patch("time.time", return_value=2000):
             result = IncrementalSync(cache).sync(
@@ -2436,7 +2441,7 @@ def test_failed_file_write_rolls_back_its_certification_only(tmp_path):
         assert [
             tuple(r)
             for r in conn.execute("SELECT file_path, certified_at FROM ast_index")
-        ] == [("good.py", 2000)]
+        ] == [("good.py", good_certified)]
         for table in ("ast_symbol_rows", "ast_symbol_projection_state", "edges"):
             assert (
                 conn.execute(
@@ -2459,6 +2464,13 @@ def test_late_source_mutation_resets_certification_through_sync(tmp_path):
         cache.index_file(str(good))
         cache.index_file(str(bad))
         bad.write_text("def updated(): return 22\n", encoding="utf-8")
+        # #1718：未变的邻居保留原认证时间。
+        good_certified = (
+            cache.get_conn()
+            .execute("SELECT certified_at FROM ast_index WHERE file_path='good.py'")
+            .fetchone()[0]
+        )
+        assert good_certified is not None
 
         def mutate(detail):
             if detail["file"] == "bad.py" and detail["status"] == "indexed":
@@ -2480,7 +2492,7 @@ def test_late_source_mutation_resets_certification_through_sync(tmp_path):
         assert [
             tuple(r)
             for r in conn.execute("SELECT file_path, certified_at FROM ast_index")
-        ] == [("good.py", 2000)]
+        ] == [("good.py", good_certified)]
         assert (
             conn.execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest").fetchone()[
                 0
@@ -2547,7 +2559,7 @@ def test_failed_file_certification_reset_denial_rolls_back(tmp_path, truncated):
         assert [
             tuple(r)
             for r in conn.execute("SELECT file_path, certified_at FROM ast_index")
-        ] == [("a_good.py", 1000 if truncated else 2000)]
+        ] == [("a_good.py", 1000)]  # #1718：未变文件保留原认证时间
         # 完整扫描的 reset 位于提交之后；只回滚当前事务，不撤销已提交的正常邻居。
         assert cache.call_graph_built() is False
     finally:

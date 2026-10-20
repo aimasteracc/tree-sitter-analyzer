@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -134,3 +135,29 @@ def get_changes(
         if changed_fn(disk_files[rel], indexed_rows[rel], rel):
             changes["modified"].append(rel)
     return changes
+
+
+#: 本轮成功处理、应带认证时间的动作。
+_CERTIFIED_ACTIONS = ("new", "updated", "unchanged")
+
+
+def stamp_certified_at(
+    conn: Any, action_by_file: Mapping[str, str], epoch: int
+) -> None:
+    """为本轮成功处理的文件盖认证时间（Phase B-3，#1718 / RFC-0039 step 0）。
+
+    新增与更新的文件盖上 ``epoch``；未变文件只在尚未认证（NULL）时补盖，已有的
+    值保持不变。读者只检查 ``certified_at`` 是否为 NULL，时间值本身没有读者；
+    给未变文件重写时间会让每次 1 文件刷新改写全部 ``ast_index`` 行。仍是单条
+    语句（与原先相同的写入形态），写入失败向上抛出，由调用方走既有的失败闭合路径。
+    """
+    paths = [p for p, a in action_by_file.items() if a in _CERTIFIED_ACTIONS]
+    if not paths:
+        return
+    changed = [p for p in paths if action_by_file[p] != "unchanged"]
+    conn.execute(
+        "UPDATE ast_index SET certified_at = ? "  # nosec B608 — 只拼接占位符
+        f"WHERE file_path IN ({','.join('?' * len(paths))}) "
+        "AND (certified_at IS NULL OR file_path IN (SELECT value FROM json_each(?)))",
+        [epoch, *paths, json.dumps(changed, ensure_ascii=False)],
+    )
