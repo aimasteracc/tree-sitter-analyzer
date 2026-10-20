@@ -457,16 +457,35 @@ def _reference_scan(
     sites: list[dict[str, Any]] = []
     foreign: list[dict[str, Any]] = []
     stamps: dict[str, StatKey | None] = {}
-    for rel_path, language, data, stamp in hits:
+    texts = [
+        (
+            rel_path,
+            language,
+            _strip_comments_and_prose(data.decode("utf-8", "replace"), language, bare),
+        )
+        for rel_path, language, data, _stamp in hits
+    ]
+    # #1709：别名在其余文件里的出现（再导出的使用）须与本文件的导入行一并核对。
+    python_texts = {
+        rel_path: text
+        for rel_path, language, text in texts
+        if language in _PY_LANGUAGES
+    }
+    for (rel_path, language, text), (_path, _language, _data, stamp) in zip(
+        texts, hits, strict=True
+    ):
         stamps[rel_path] = stamp
-        decoded = data.decode("utf-8", "replace")
-        text = _strip_comments_and_prose(decoded, language, bare)
         alias_lines: list[int] = []
         if language in _PY_LANGUAGES:
             # #1670：别名的每次使用都已核对时，改名导入行也只是绑定。
-            # #1705：别的文件经本文件模块属性的未解析别名调用，有无调用方都点名。
             check = alias_reference_check(
-                cache, rel_path, text, bare, declaration_files, _reference_lines
+                cache,
+                rel_path,
+                text,
+                bare,
+                declaration_files,
+                _reference_lines,
+                python_texts,
             )
             foreign.extend(check.foreign)
             if mask_imports:
@@ -483,7 +502,7 @@ def _reference_scan(
 def _with_foreign(
     sites: list[dict[str, Any]], foreign: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    """把经模块属性的别名调用点并入引用位置（同一位置只列一次，按文件与行排序）。"""
+    """并入别的文件里按别名点名的位置（同一位置只列一次，按文件与行排序）。"""
     if not foreign:
         return sites
     merged = {(site["file"], site["line"]): site for site in foreign}

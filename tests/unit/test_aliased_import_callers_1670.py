@@ -303,8 +303,9 @@ def test_alias_rows_need_persisted_provenance_for_the_target() -> None:
 
 def test_alias_reference_check_is_conservative_on_failures() -> None:
     from tree_sitter_analyzer.mcp.tools.callers_alias_refs import (
+        _binds_own,
         _bound_alias_call_lines,
-        _reexported,
+        _reexport_sites,
     )
     from tree_sitter_analyzer.mcp.tools.callers_import_bindings import alias_bindings
 
@@ -321,7 +322,9 @@ def test_alias_reference_check_is_conservative_on_failures() -> None:
 
     conn, _store = _alias_store()
     assert _bound_alias_call_lines(_Broken(), "u.py", "_f", "f", {"core.py"}) is None
-    assert _reexported(_Broken(), "u.py", "_f") is True
+    # 读不到再导出证据即不跳过导入行（#1709 起返回 None）。
+    assert _reexport_sites(_Broken(), "u.py", "_f", "f") is None
+    assert _binds_own(_Broken(), "u.py", "_f") is None
     # 解析到别的文件、或来源指向别的名字的别名调用不算核对过的使用。
     assert _bound_alias_call_lines(_Cache(conn), "u.py", "_f", "f", {"x.py"}) == (
         frozenset()
