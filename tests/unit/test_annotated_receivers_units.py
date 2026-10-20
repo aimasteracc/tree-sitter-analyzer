@@ -144,8 +144,8 @@ def test_resolve_class_follows_alias_reexport_and_module_attribute() -> None:
 def test_find_method_walks_bases_and_rejects_diamond_ambiguity() -> None:
     ctx = _context()
     assert find_method(("base.py", "Solo"), "go", ctx) == ("base.py", 12, "Left")
-    # Two distinct `go` from two base branches: ambiguous, not attributed.
-    assert find_method(("base.py", "Child"), "go", ctx) is None
+    # #1699：两个基类分支都定义 `go` 时按 C3 MRO 取最近的定义（Python 的分派规则）。
+    assert find_method(("base.py", "Child"), "go", ctx) == ("base.py", 12, "Left")
     assert find_method(("store.py", "Store"), "absent", ctx) is None
 
 
