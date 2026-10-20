@@ -204,6 +204,22 @@ class ASTCacheGraphMixin(ASTCacheSurface):
         except sqlite3.OperationalError:
             return None
 
+    def unresolved_caller_sites(
+        self,
+        callee_name: str,
+        callee_file: str | None = None,
+        bound_targets: Collection[tuple[str, int]] | None = None,
+    ) -> list[dict[str, Any]] | None:
+        """#1706: the sites behind :meth:`count_unresolved_callers`; ``None`` if unreadable."""
+        try:
+            from .graph.edge_store import EdgeStore
+
+            return EdgeStore(
+                self._get_conn(), ensure_schema=False
+            ).unresolved_caller_sites(callee_name, callee_file, bound_targets)
+        except sqlite3.OperationalError:
+            return None
+
     def count_unresolved_calls_in_file(self, file_path: str) -> int | None:
         """Count unresolved CALLS edges originating in ``file_path``.
 

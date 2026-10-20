@@ -210,6 +210,17 @@ class CertifiedSnapshotCache:
             self._store().count_unresolved_callers(name, file, bound_targets),
         )
 
+    def unresolved_caller_sites(
+        self,
+        name: str,
+        file: str | None = None,
+        bound_targets: Collection[tuple[str, int]] | None = None,
+    ) -> list[dict[str, object]] | None:
+        return cast(
+            list[dict[str, object]] | None,
+            self._store().unresolved_caller_sites(name, file, bound_targets),
+        )
+
     def symbol_definitions(self, name: str) -> list[tuple[str, int]]:
         rows = self.get_conn().execute(
             "SELECT file_path, line FROM ast_symbol_rows WHERE name=? "

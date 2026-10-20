@@ -613,11 +613,39 @@ async def test_every_non_complete_answer_names_a_closed_reason(
 
     offences = {}
     for name in sorted(names):
-        offence = _reason_offence(await _callers(root, name))
+        result = await _callers(root, name)
+        offence = _reason_offence(result) or _evidence_offence(result)
         if offence is not None:
             offences[name] = offence
 
     assert offences == {}
+
+
+#: #1706：主因 -> 承载其证据位置的字段（``next_step`` 须点名其中第一个位置）。
+_SITE_EVIDENCE = {
+    "UNRESOLVED_INBOUND": "unresolved_inbound_sites",
+    "UNRESOLVED_IN_DECLARING_FILE": "unresolved_sites",
+    "NAME_ONLY_INBOUND": "name_only_sites",
+    "NON_CALL_REFERENCES": "non_call_reference_sites",
+}
+
+
+def _evidence_offence(result: dict) -> str | None:
+    """#1706 契约：非 complete 的答案带主因的证据，且 next_step 点名它（有无调用方都一样）。"""
+    if result["completeness"] == "complete":
+        return None
+    reason = result["completeness_reason"]
+    step = result.get("next_step") or ""
+    if not step or step.startswith("Review callers above"):
+        return f"{reason}: generic or missing next_step"
+    field = _SITE_EVIDENCE.get(reason)
+    if field is None:
+        return None
+    sites = result.get(field) or []
+    if not sites:
+        return f"{reason}: {field} is empty"
+    first = f"{sites[0]['file']}:{sites[0]['line']}"
+    return None if first in step else f"{reason}: next_step does not name {first}"
 
 
 @pytest.mark.parametrize(

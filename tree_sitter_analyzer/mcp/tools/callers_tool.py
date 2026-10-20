@@ -29,7 +29,14 @@ from .callers_annotated import (
 from .callers_call_lines import call_edge_lines
 from .callers_dispatch import narrow_to_target
 from .callers_name_only import name_only_fields, name_only_sites, name_only_step
+from .callers_reason_steps import (
+    read_unresolved_inbound,
+    reason_step,
+    unresolved_inbound_fields,
+    unresolved_sites_clause,
+)
 from .callers_reasons import EdgeEvidence, edge_completeness, final_reasons
+from .callers_site_rank import rank_sites
 from .codegraph_relation_tool import (
     _STALE_CACHE_WARNING,
     CodeGraphRelationToolMixin,
@@ -477,15 +484,12 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # #1559：限定名 `Class.method` 的未解析入边按裸方法名计数——
         # `target.publish` 这类接收者未知的调用可能指向任何同名方法。
         count_name = func_name.rpartition(".")[2] if is_qualified else func_name
-        unresolved_inbound = (
-            cache.count_unresolved_callers(
-                count_name,
-                file_path,
-                **({"bound_targets": bound_targets} if bound_targets else {}),
-            )
-            if cache is not None
-            else None
+        # #1706：计数由调用点得出，答复同时点名它们（按接近程度排序后截断）。
+        unresolved_inbound, unresolved_list = read_unresolved_inbound(
+            cache, count_name, file_path, bound_targets
         )
+        if unresolved_list:
+            unresolved_list = rank_sites(cache, unresolved_list, func_name, file_path)
         # RFC-0028 §1.2 scope guard.  A computed dispatch site is recorded under
         # its source text (`HANDLERS[name]`, `getattr(self, name)`), so it names
         # no symbol and the per-symbol count above cannot see it.  An unresolved
@@ -520,6 +524,8 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             if possible_callers and cache is not None
             else None,
         )
+        # #1706：截断前先把声明文件与导入了目标的文件排在前面。
+        name_only_list = rank_sites(cache, name_only_list, func_name, file_path)
 
         # #1632：调用边层的降级（#638 模块级调用点、空证据基等）同时给出原因码。
         completeness, edge_reasons = edge_completeness(
@@ -566,6 +572,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             completeness_reasons=reasons,
             **absence.fields,
             unresolved_inbound=unresolved_inbound,
+            **unresolved_inbound_fields(unresolved_list),
             unresolved_in_declaring_files=unresolved_in_declaring_files,
             **name_only_fields(name_only_inbound, name_only_list),
             callers=callers,
@@ -606,6 +613,20 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             # #1672：已列出调用方时同样点名同名入边，而不是通用的“Review callers”。
             name_step = name_only_step(func_name, name_only_list)
             next_step = f"{name_step} {next_step}" if next_step else name_step
+        if completeness != "complete" and result.get("verdict") != "NOT_FOUND":
+            # #1706：已列出调用方时同样点名主因的证据，而不是通用的“Review callers”。
+            evidence_step = reason_step(
+                reasons[0] if reasons else None,
+                func_name,
+                result,
+                unresolved_sites=unresolved_list,
+                declaring_sites=declaring_sites,
+                absence_hint=absence.hint,
+            )
+            if evidence_step:
+                next_step = (
+                    f"{evidence_step} {next_step}" if next_step else evidence_step
+                )
         if truncated:
             trunc_note = (
                 f"showing {len(callers)} of {total_callers} callers — raise limit, "
@@ -641,6 +662,8 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                         "unresolved, so it may still be called. Read those call "
                         "sites directly rather than treating this as absence."
                     )
+                    # #1706：点名这些未解析的入边，而不只是给出数目。
+                    index_hint += unresolved_sites_clause(unresolved_list)
                     if name_only_list:
                         # #1672：同一调用点常常既未解析又按同名匹配——点名它们。
                         index_hint += " " + name_only_step(func_name, name_only_list)

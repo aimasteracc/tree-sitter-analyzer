@@ -472,11 +472,42 @@ class EdgeStore:
         ``_RESOLVED_CALLEE_RESOLUTIONS`` for why an unrecognised value counts as
         unresolved.
         """
-        count = 0
+        return len(
+            self.unresolved_caller_sites(callee_name, callee_file, bound_targets)
+        )
+
+    def unresolved_caller_sites(
+        self,
+        callee_name: str,
+        callee_file: str | None = None,
+        bound_targets: Collection[tuple[str, int]] | None = None,
+    ) -> list[dict[str, Any]]:
+        """The edges :meth:`count_unresolved_callers` counts, as call sites.
+
+        #1706: a bare count told the agent that inbound edges were unresolved but
+        not where they are. Each site is ``{file, line, caller, callee}``; ``line``
+        is the call line, ``caller`` is ``<module>`` for a module-level site, and
+        ``callee`` is the call's source text. The count is derived from this list,
+        so the number a response reports and the sites it names describe the same
+        edges.
+        """
+        sites: list[dict[str, Any]] = []
         for row in _direct_callers(self._conn, callee_name, callee_file):
-            if not _resolution_is_resolved(row) and not _bound_to(row, bound_targets):
-                count += 1
-        return count
+            if _resolution_is_resolved(row) or _bound_to(row, bound_targets):
+                continue
+            edge = _edge_from_row(row)
+            source = parse_node_id(edge.source_node_id)
+            callee_full = _row_col(row, "callee_full", "callee_full", edge)
+            caller = _row_col(row, "caller_name", "caller_name", edge)
+            sites.append(
+                {
+                    "file": str(source.file_path or "").replace("\\", "/"),
+                    "line": int(edge.line or 0),
+                    "caller": str(caller or "") or "<module>",
+                    "callee": str(callee_full or callee_name),
+                }
+            )
+        return sites
 
     def count_unresolved_calls_in_file(self, file_path: str) -> int:
         """Count unresolved CALLS edges originating in ``file_path``.
