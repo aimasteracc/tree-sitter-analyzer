@@ -213,7 +213,9 @@ def _fresh_rows(
                 inventory[rel] = (-1, -1)
             continue
         if live == (int(mtime_ns or 0), int(file_size or 0)) or (
-            stat_evidence.vouches(evidence, rel, live, str(content_hash or ""))
+            stat_evidence.vouches(
+                evidence, rel, live, (int(file_size or 0), str(content_hash or ""))
+            )
         ):
             fresh.add(rel)
     return fresh

@@ -247,7 +247,7 @@ def _content_differs(
 
     size, content_hash = indexed
     live = (int(current.st_mtime_ns), int(current.st_size))
-    if stat_evidence.vouches(stamps, rel_path, live, content_hash):
+    if stat_evidence.vouches(stamps, rel_path, live, (size, content_hash)):
         return False
     if int(current.st_size) != int(size):
         return True

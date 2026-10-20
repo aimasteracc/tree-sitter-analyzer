@@ -259,6 +259,8 @@ class TestInheritanceLineage:
         # Use a deterministic future timestamp to avoid timing races.
         future_ns = int(time.time() * 1e9) + 10_000_000_000  # 10 seconds ahead
         future_s = future_ns / 1e9
+        # #1707: staleness is content-based (an mtime-only touch is not an edit).
+        sub_path.write_text(sub_path.read_text() + "# edited\n")
         os.utime(str(sub_path), (future_s, future_s))
 
         # The tool must re-build the dep graph (source mtime changed) so
@@ -361,9 +363,10 @@ class TestInheritanceLineage:
         os.utime(str(tmp_path / "main_wrapper.py"), (past_s, past_s))
         ASTCache(str(tmp_path)).index_project(max_files=50)
 
-        # Now bump Main.kt mtime to the future — simulates an edit without re-index.
+        # Now edit Main.kt without re-index (#1707: content-based, not mtime-only).
         future_ns = int(time.time() * 1e9) + 10_000_000_000
         future_s = future_ns / 1e9
+        kt_path.write_text("class Main {\n    fun run() {}\n    fun stop() {}\n}\n")
         os.utime(str(kt_path), (future_s, future_s))
 
         tool._dep_graph = None
@@ -405,6 +408,8 @@ class TestInheritanceLineage:
 
         future_ns = int(time.time() * 1e9) + 10_000_000_000
         future_s = future_ns / 1e9
+        # #1707: staleness is content-based (an mtime-only touch is not an edit).
+        kt_path.write_text("class Main {\n    fun run() {}\n    fun stop() {}\n}\n")
         os.utime(str(kt_path), (future_s, future_s))
 
         second = asyncio.run(

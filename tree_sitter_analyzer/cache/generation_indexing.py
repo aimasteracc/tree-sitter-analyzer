@@ -46,8 +46,7 @@ from .source_hash_budget import (
 from .source_recheck import SourceChanged, source_changed_failure
 
 _T = TypeVar("_T")
-#: ``walk_and_partition`` 为内容未变、只有 mtime 不同的文件写的明细原因（#1707）。
-_RESTAMPED_REASON = "content unchanged"
+
 _PUBLISH_STATE_UNKNOWN_NEXT_STEP = (
     "The publish step failed after the new index may have become active "
     "(see `published`). Run index action=status to confirm which generation "
@@ -96,33 +95,6 @@ def _unchanged(
             store.database(candidate.parent), store.database(selector)
         )
     )
-
-
-def _restamped(candidate: Any, result: Any) -> dict[str, tuple[int, int, str]]:
-    """未发布的运行里刷新过戳记的文件 -> (捕获时的 mtime_ns, 大小, 摘要)。"""
-    if not isinstance(result, Mapping):
-        return {}
-    paths = {
-        str(detail.get("file"))
-        for detail in result.get("files") or ()
-        if isinstance(detail, Mapping) and detail.get("reason") == _RESTAMPED_REASON
-    }
-    if not paths:
-        return {}
-    digests = bound_digests(candidate)
-    stamps: dict[str, tuple[int, int, str]] = {}
-    for entry in candidate.snapshot.selected_entries:
-        fingerprint = entry.fingerprint
-        if entry.rel_path not in paths or fingerprint is None:
-            continue
-        digest = digests.get(entry.rel_path) or fingerprint.content_hash
-        if digest:
-            stamps[entry.rel_path] = (
-                fingerprint.mtime_ns,
-                fingerprint.file_size,
-                digest,
-            )
-    return stamps
 
 
 def _require_bound_candidate(snapshot: IndexCandidateSnapshot | None) -> None:
@@ -174,6 +146,9 @@ def mutate_published_cache(
     _require_bound_candidate(candidate_snapshot)
     store = project_store(cache.project_root, scope or make_source_scope_descriptor())
     with cache._index_lock:
+        # #1707：竞争窗口以捕获开始（读取字节之前）为准；调用方给出的候选可能更早读取，
+        # 不据此记录 stat 证据。
+        captured_at = stat_evidence.now_ns() if candidate_snapshot is None else None
         candidate = store.capture(
             (lambda: candidate_snapshot) if candidate_snapshot is not None else None
         )
@@ -195,7 +170,12 @@ def mutate_published_cache(
                 evidence = unchanged_before_build(store, candidate)
                 if evidence is not None:
                     # #1707：只有 mtime 变化的文件，新戳记写入 stat 证据。
-                    stat_evidence.record(cache.project_root, dict(evidence.restamped))
+                    if captured_at is not None:
+                        stat_evidence.record(
+                            cache.project_root,
+                            dict(evidence.restamped),
+                            captured_at_ns=captured_at,
+                        )
                     return cast(_T, evidence.index_result(candidate.snapshot))
             selector = store.begin(candidate)
             with store.abandoning(selector):  # #1595：未发布即回收
@@ -215,10 +195,6 @@ def mutate_published_cache(
                     store, candidate, selector, index_run_unchanged(result)
                 ):
                     # #1631：零变化的增量项目索引不发布，私有副本随 abandoning 回收。
-                    # #1707：私有副本里刷新过的戳记随之丢弃，改记入 stat 证据。
-                    stat_evidence.record(
-                        cache.project_root, _restamped(candidate, result)
-                    )
                     return cast(_T, unpublished_result(cast(Mapping[str, Any], result)))
                 report = report_publication or snapshot_operation is not None
                 if publishable_result(result) or _first_publication(candidate):
@@ -260,6 +236,7 @@ def run_incremental_sync(
     supplied = arguments.get("candidate_snapshot")
     _require_bound_candidate(supplied)
     store = project_store(cache.project_root, scope)
+    captured_at = stat_evidence.now_ns() if supplied is None else None
     candidate = store.capture((lambda: supplied) if supplied is not None else None)
     try:
         if supplied is not None and supplied.publication_parent != candidate.parent:
@@ -271,7 +248,12 @@ def run_incremental_sync(
             evidence = unchanged_before_build(store, candidate)
             if evidence is not None:
                 # #1707：只有 mtime 变化的文件，新戳记写入 stat 证据。
-                stat_evidence.record(cache.project_root, dict(evidence.restamped))
+                if captured_at is not None:
+                    stat_evidence.record(
+                        cache.project_root,
+                        dict(evidence.restamped),
+                        captured_at_ns=captured_at,
+                    )
                 unchanged: SyncResult = evidence.sync_result()
                 callback = arguments.get("callback")
                 if callback:

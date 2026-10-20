@@ -62,8 +62,8 @@ def enabled() -> bool:
     return os.environ.get(ENV_VAR, "").strip().lower() not in {"off", "0", "false"}
 
 
-def _now_ns() -> int:
-    """竞争窗口判定使用的墙钟（测试可替换）。"""
+def now_ns() -> int:
+    """竞争窗口判定使用的墙钟；调用方在捕获（读取字节）之前取得并传给 :func:`record`。"""
     return time.time_ns()
 
 
@@ -94,20 +94,27 @@ def _root_text(project_root: str) -> str:
     return os.path.normcase(os.path.realpath(project_root))
 
 
-def is_racy(mtime_ns: int, now_ns: int | None = None) -> bool:
+def is_racy(mtime_ns: int, reference_ns: int | None = None) -> bool:
     """戳记处于时间戳竞争窗口内（或在未来），不能作为“未变”的证据记录。"""
-    now = _now_ns() if now_ns is None else now_ns
+    now = now_ns() if reference_ns is None else reference_ns
     return now - int(mtime_ns) < RACY_WINDOW_NS
 
 
-def record(project_root: str, stamps: Mapping[str, Stamp]) -> int:
+def record(
+    project_root: str,
+    stamps: Mapping[str, Stamp],
+    *,
+    captured_at_ns: int | None = None,
+) -> int:
     """以 ``stamps``（本次刷新核对过的漂移文件）替换记录；返回写入的条数。
 
-    竞争窗口内的文件被跳过。没有可写条目时删除旧记录。
+    ``captured_at_ns`` 为读取这些字节**之前**的时刻（捕获开始）：mtime 距它不足竞争窗口
+    的文件被跳过——字节可能是在同一时间戳刻度内读到的。缺省为当前时刻。
+    没有可写条目时删除旧记录。
     """
     if not enabled():
         return 0
-    now = _now_ns()
+    now = now_ns() if captured_at_ns is None else captured_at_ns
     kept = {
         str(path): (int(entry[0]), int(entry[1]), str(entry[2]))
         for path, entry in stamps.items()
@@ -124,7 +131,9 @@ def record(project_root: str, stamps: Mapping[str, Stamp]) -> int:
     except ValueError:
         return 0
     target = directory / FILE_NAME
-    temporary = target.with_name(f"{target.name}.{os.getpid()}.tmp")
+    temporary = target.with_name(
+        f"{target.name}.{os.getpid()}.{threading.get_ident()}.tmp"
+    )
     try:
         temporary.write_bytes(data)
         os.replace(temporary, target)
@@ -215,11 +224,20 @@ def vouches(
     stamps: Mapping[str, Stamp],
     rel_path: str,
     live: tuple[int, int],
-    row_hash: str,
+    row: tuple[int, str],
 ) -> bool:
-    """记录证明：磁盘戳记 ``live`` = ``(mtime_ns, size)`` 下该文件的内容即该行。"""
+    """记录证明：磁盘戳记 ``live`` = ``(mtime_ns, size)`` 下该文件的内容即该行。
+
+    ``row`` 为该行的 ``(file_size, content_hash)``：记录只替换 mtime，大小与摘要都
+    必须与行相同（大小不同即内容变更，绝不由记录作证）。
+    """
     entry = stamps.get(rel_path.replace("\\", "/"))
-    return entry is not None and entry == (int(live[0]), int(live[1]), str(row_hash))
+    row_size, row_hash = int(row[0]), str(row[1])
+    return (
+        entry is not None
+        and entry == (int(live[0]), int(live[1]), row_hash)
+        and entry[1] == row_size
+    )
 
 
 def effective_stamp(
@@ -229,6 +247,6 @@ def effective_stamp(
     live: tuple[int, int] | None,
 ) -> tuple[int, int]:
     """行在合并记录后的 ``(mtime_ns, file_size)``：记录为当前文件作证时取磁盘戳记。"""
-    if live is not None and vouches(stamps, rel_path, live, row[2]):
+    if live is not None and vouches(stamps, rel_path, live, (row[1], row[2])):
         return (int(live[0]), int(live[1]))
     return (int(row[0]), int(row[1]))

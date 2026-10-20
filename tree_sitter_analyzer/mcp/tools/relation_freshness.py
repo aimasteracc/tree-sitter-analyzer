@@ -269,7 +269,7 @@ def _changed_files(
         if disk is None or disk[1] != size:
             changed.append(rel_path)
         elif disk[0] != mtime_ns and not stat_evidence.vouches(
-            evidence, rel_path, disk, content_hash
+            evidence, rel_path, disk, (size, content_hash)
         ):
             try:
                 if file_content_hash(abs_path) != content_hash:

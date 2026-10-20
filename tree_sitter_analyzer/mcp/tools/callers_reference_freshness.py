@@ -79,7 +79,7 @@ def _differs(
             return False
         # #1707：只有 mtime 变化、已在刷新时核对过内容的文件，由 stat 证据作证。
         if evidence and stat_evidence.vouches(
-            evidence, rel_path, (stamp[1], stamp[0]), content_hash
+            evidence, rel_path, (stamp[1], stamp[0]), (size, content_hash)
         ):
             return False
     try:

@@ -83,6 +83,16 @@ def extractions(monkeypatch):
         return original(args)
 
     monkeypatch.setattr(extraction, "_worker_index_file", counted)
+    # 同步路由逐文件经 ``ASTCache.index_file`` 解析写行。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    original_index_file = ASTCache.index_file
+
+    def counted_index_file(self, file_path, *args, **kwargs):
+        seen.append(os.path.basename(str(file_path)))
+        return original_index_file(self, file_path, *args, **kwargs)
+
+    monkeypatch.setattr(ASTCache, "index_file", counted_index_file)
     return seen
 
 
@@ -377,3 +387,26 @@ def test_extractor_version_bump_reextracts_touched_files(root, monkeypatch) -> N
     result = refresh(root)
 
     assert (result["published"], result["indexed"]) == (True, 2 + len(_MANY))
+
+
+def test_staleness_check_uses_the_recorded_stamp_after_a_noop_refresh(
+    root, monkeypatch
+) -> None:
+    # 零变化刷新记录了新戳记之后，检查不再读文件即知未过期。
+    from tree_sitter_analyzer import incremental_sync_support
+    from tree_sitter_analyzer.cache.fingerprint import is_ast_index_stale
+
+    os.remove(os.path.join(root, "broken.py"))
+    path = os.path.join(root, "b.py")
+    older = time.time_ns() - 2 * _PAST_NS
+    os.utime(path, ns=(older, older))  # 行戳记比之后的 touch 更旧
+    refresh = _established(root, "index_project")
+    _rewrite_same_bytes(root, "b.py")  # mtime = 1 小时前：比行新，且出了竞争窗口
+    assert refresh(root) == _UNCHANGED
+
+    def no_read(_path):
+        raise AssertionError("the recorded stamp vouches; b.py must not be read")
+
+    monkeypatch.setattr(incremental_sync_support, "file_content_hash", no_read)
+    assert os.stat(path).st_mtime_ns > _rows(root)["b.py"][0]
+    assert is_ast_index_stale(root) is False

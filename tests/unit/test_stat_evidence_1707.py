@@ -28,12 +28,36 @@ def test_record_round_trips_and_vouches_only_for_the_exact_key(project) -> None:
     assert stat_evidence.record(project, {"a.py": (_PAST, 10, _HASH)}) == 1
     stamps = stat_evidence.load(project)
 
-    assert stat_evidence.vouches(stamps, "a.py", (_PAST, 10), _HASH) is True
-    # 每个键都必须相同：mtime、大小、行的摘要、路径。
-    assert stat_evidence.vouches(stamps, "a.py", (_PAST + 1, 10), _HASH) is False
-    assert stat_evidence.vouches(stamps, "a.py", (_PAST, 11), _HASH) is False
-    assert stat_evidence.vouches(stamps, "a.py", (_PAST, 10), "b" * 64) is False
-    assert stat_evidence.vouches(stamps, "b.py", (_PAST, 10), _HASH) is False
+    assert stat_evidence.vouches(stamps, "a.py", (_PAST, 10), (10, _HASH)) is True
+    assert stat_evidence.vouches(stamps, "a\\b.py", (_PAST, 10), (10, _HASH)) is False
+    # 每个键都必须相同：mtime、磁盘大小、行的大小、行的摘要、路径。
+    assert stat_evidence.vouches(stamps, "a.py", (_PAST + 1, 10), (10, _HASH)) is False
+    assert stat_evidence.vouches(stamps, "a.py", (_PAST, 11), (10, _HASH)) is False
+    assert stat_evidence.vouches(stamps, "a.py", (_PAST, 10), (11, _HASH)) is False
+    assert stat_evidence.vouches(stamps, "a.py", (_PAST, 10), (10, "b" * 64)) is False
+    assert stat_evidence.vouches(stamps, "b.py", (_PAST, 10), (10, _HASH)) is False
+
+
+def test_racy_window_is_measured_from_the_capture(project) -> None:
+    # 字节在捕获时读取：mtime 距捕获开始不足竞争窗口即不记录，即使记录时已过了 5 s。
+    captured = time.time_ns() - 60 * 1_000_000_000
+    written = stat_evidence.record(
+        project,
+        {
+            "racy_at_capture.py": (captured - 1_000_000_000, 10, _HASH),
+            "old.py": (captured - 10_000_000_000, 10, _HASH),
+        },
+        captured_at_ns=captured,
+    )
+
+    assert (written, sorted(stat_evidence.load(project))) == (1, ["old.py"])
+
+
+def test_backslash_paths_are_looked_up_in_posix_form(project) -> None:
+    stat_evidence.record(project, {"pkg/a.py": (_PAST, 10, _HASH)})
+    stamps = stat_evidence.load(project)
+
+    assert stat_evidence.vouches(stamps, "pkg\\a.py", (_PAST, 10), (10, _HASH)) is True
 
 
 def test_racy_and_future_stamps_are_not_recorded(project) -> None:
@@ -118,6 +142,25 @@ def test_malformed_entries_are_no_record(project) -> None:
         )
 
     assert stat_evidence.load(project) == {}
+
+
+def test_load_memo_hits_and_sees_a_replaced_record(project, monkeypatch) -> None:
+    path = os.path.join(project, ".ast-cache", "evidence-memo", "stat-stamps.bin")
+    stat_evidence.record(project, {"a.py": (_PAST, 10, _HASH)})
+    os.utime(path, ns=(_PAST, _PAST))  # 记录文件出了竞争窗口：可以记忆
+    assert sorted(stat_evidence.load(project)) == ["a.py"]
+    reads: list[int] = []
+    original = stat_evidence._read
+
+    def counted(*args):
+        reads.append(1)
+        return original(*args)
+
+    monkeypatch.setattr(stat_evidence, "_read", counted)
+    assert sorted(stat_evidence.load(project)) == ["a.py"]
+    assert reads == []  # 记忆命中
+    stat_evidence.record(project, {"b.py": (_PAST, 10, _HASH)})
+    assert sorted(stat_evidence.load(project)) == ["b.py"]  # 替换后重新读取
 
 
 def test_effective_stamp_takes_the_live_stamp_only_when_vouched(project) -> None:
