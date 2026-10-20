@@ -10,7 +10,12 @@ from typing import Any
 from .ast_cache import _EXT_TO_LANG, _walk_source_files
 from .cache.helpers import _project_index_activation_enabled
 from .cache.publication_policy import FAILURE_KIND
-from .incremental_sync_support import SyncResult, file_changed, get_changes
+from .incremental_sync_support import (
+    SyncResult,
+    file_changed,
+    get_changes,
+    stamp_certified_at,
+)
 from .index_source_scope import default_exclude_patterns
 from .index_source_snapshot import (
     SourceScopeDescriptor,
@@ -177,21 +182,12 @@ class IncrementalSync:
             self._cache._project_activation_enabled = previous_activation
 
         # Phase B-3: Set certified_at for successfully processed files.
-        # Files that were indexed (new/updated/unchanged) receive a Unix epoch
-        # timestamp.  Error files retain NULL (or get it reset in the clear paths
-        # below).  This enables per-file partial certification tracking.
-        _certified_at_epoch = int(time.time())
-        _certified_paths = [
-            p for p, a in action_by_file.items() if a in ("new", "updated", "unchanged")
-        ]
-        if _certified_paths:
-            _placeholders = ",".join("?" * len(_certified_paths))
+        # New/updated files receive this run's Unix epoch; unchanged files keep
+        # their value unless it is still NULL (#1718, RFC-0039 step 0). Error
+        # files retain NULL (or get it reset in the clear paths below).
+        if action_by_file:
             try:
-                conn.execute(
-                    f"UPDATE ast_index SET certified_at = ?"
-                    f" WHERE file_path IN ({_placeholders})",
-                    [_certified_at_epoch, *_certified_paths],
-                )
+                stamp_certified_at(conn, action_by_file, int(time.time()))
             except Exception:
                 # PR #1350：认证写入失败必须进入既有失败闭合路径，不能仍发布 complete。
                 result.errors += 1

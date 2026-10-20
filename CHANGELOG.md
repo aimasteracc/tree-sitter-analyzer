@@ -90,6 +90,15 @@
     that call and competes with it for the CPU. `TSA_GRAPH_WARM=always` also
     enables the build for explicit refreshes, and `TSA_GRAPH_WARM=off` disables
     it everywhere.
+- **A refresh no longer rewrites `certified_at` on every unchanged file**
+  (#1718, RFC-0039 step 0). `IncrementalSync` stamped
+  `ast_index.certified_at = now()` on new, updated *and unchanged* files, so a
+  1-file refresh rewrote every `ast_index` row (2,565 on this repository).
+  New and updated files are still stamped. Unchanged files keep their value
+  unless it is still NULL, and error files are reset as before. Readers only
+  test `certified_at IS [NOT] NULL`, so no answer changes. This is the
+  prerequisite for incremental certification: a 1-file refresh now changes
+  only the rows of the files it touches.
 - **A refresh where only mtimes changed is a no-op** (#1707). Rewriting a file
   with its own bytes (`touch`, `git checkout` / `git stash pop` of the same
   content, an editor "save" without a change, tools that swap files and put them
