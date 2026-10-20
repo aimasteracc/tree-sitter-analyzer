@@ -60,8 +60,8 @@ def evidence(database: str | None) -> tuple[Any, ...] | None:
     """库文件当前的证据；文件不是磁盘库、不可读或处于竞争窗口时为 None。"""
     from ..file_change_time import change_time_ns
 
-    if not database or database == ":memory:":
-        return None
+    if not database or database == ":memory:" or store_dir() is None:
+        return None  # 落盘层关闭时不取证据（省去每次构图的 stat 与句柄）
     path = os.path.abspath(database)
     stamps: list[Any] = []
     now = time.time_ns()
