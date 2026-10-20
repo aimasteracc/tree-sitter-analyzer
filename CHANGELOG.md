@@ -99,6 +99,18 @@
   the module rebinds, or that the calling file assigns or names in a string,
   is not resolved; the site is listed in `non_call_reference_sites` under the
   alias. The extractor version goes from 44 to 45.
+- **`nav action=callers`: an alias bound on its own elsewhere is not a
+  re-export** (#1709). The import line `from m import f as _f` stops blocking
+  `complete` when every use of `_f` is a call bound to `f` and `_f` is not
+  re-exported. Another file binding the same name to something else
+  (`from .other import g as _f`), or renaming `f` itself, used to count as a
+  re-export, so such targets stayed `incomplete` (3 of 33 alias-only targets in
+  round 9). A real re-export (another file imports `_f`, calls `owner._f()`,
+  or mentions it) still keeps the import line, and its sites are now listed in
+  `non_call_reference_sites`. A mention elsewhere includes the alias named as a
+  string (`monkeypatch.setattr(mod, "_f", ...)`), which could equally be a
+  `getattr(mod, "_f")()` call; 2 round-9 targets that were `complete` only
+  because that mention was never read now stay `incomplete` and name it.
 - **`ast_cache mode=sync` builds the same index as `mode=index`** (#1697).
   - `IncrementalSync.sync()` without `exclude_patterns` now applies the
     default scope (`tests/golden/corpus_*` excluded), the same one

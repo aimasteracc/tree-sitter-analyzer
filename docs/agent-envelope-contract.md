@@ -200,10 +200,10 @@ of `m.f`. Its entry carries `resolution_kind: "import_alias"` and `import_alias`
 (the local name used at the call, here `_f`). The import line of such an alias
 is not counted as a non-call reference of `f` only when the answer already has
 callers and every use of the alias in that file is a call bound to `f`. A public
-alias, an alias another module imports or calls, or an alias that is also used
-without a call (a callback, an assignment, `__all__`) keeps the import line as a
-reference; the non-call uses are listed in `non_call_reference_sites` too. With
-no caller at all, the import line always stays a reference (#1645).
+alias, a re-exported alias, or an alias that is also used without a call (a
+callback, an assignment, `__all__`) keeps the import line as a reference; the
+non-call uses are listed in `non_call_reference_sites` too. With no caller at
+all, the import line always stays a reference (#1645).
 
 **Through a module attribute (#1705).** `import pkg.hub as owner; owner._f()`
 (or `import pkg.hub; pkg.hub._f()`, or `from pkg import hub`) where `hub` binds
@@ -219,6 +219,15 @@ possible caller, when the attribute is rebound in `hub` (assignment, `global`,
 listed in `non_call_reference_sites` under the alias (`alias: "_f"`), not just
 the import line. Because the alias is used from another module, it is a
 re-export: the import line in `hub` stays a reference.
+
+The alias is **re-exported** (#1709) when another file imports that name
+(`from .hub import _f`), calls it through a module object (`owner._f()`), or
+mentions it in any other way in a file the reference scan read. The re-export
+sites are listed in `non_call_reference_sites` with `alias: "_f"`. Another file
+that binds the same name **on its own**, by renaming something
+(`from .other import g as _f`, or its own `from .core import f as _f`) or by
+defining `_f`, is not a re-export: its uses are checked against its own import
+line.
 ### Inherited `self.m()` calls (#1677)
 
 When the enclosing class does not define `m`, `self.m()` / `cls.m()` is a
