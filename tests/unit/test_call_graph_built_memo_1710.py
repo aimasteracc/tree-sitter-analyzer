@@ -155,3 +155,29 @@ async def test_ast_cache_call_graph_built_follows_index_writes(tmp_path: Path) -
         assert cache.call_graph_built() is False
     finally:
         cache.close()
+
+
+def test_an_unstatable_database_always_computes(database: Path, monkeypatch) -> None:
+    compute, calls = _counting([True])
+
+    def refuse(*_args, **_kwargs):
+        raise PermissionError
+
+    monkeypatch.setattr(memo.os, "stat", refuse)
+    memo.memoized(str(database), compute)
+    memo.memoized(str(database), compute)
+
+    assert len(calls) == 2
+
+
+def test_the_memo_is_bounded(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(memo, "MAX_ENTRIES", 2)
+    paths = []
+    for index in range(3):
+        path = tmp_path / f"db{index}"
+        path.write_bytes(b"x")
+        _backdate(path)
+        paths.append(str(path))
+        memo.memoized(str(path), lambda: True)
+
+    assert sorted(memo._MEMO) == sorted(os.path.abspath(p) for p in paths[1:])

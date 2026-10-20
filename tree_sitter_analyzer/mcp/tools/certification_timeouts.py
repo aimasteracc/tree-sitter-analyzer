@@ -51,6 +51,8 @@ STORE_ENV = "TSA_EVIDENCE_STORE"
 _LOCK = threading.Lock()
 #: 进程内记忆：项目根 -> (键, 记录时刻 time.time())。
 _MEMO: dict[str, tuple[str, float]] = {}
+#: 进程内“没有超时记录”的标记（从不等于任何证据键）。
+_CLEARED = ""
 
 
 def _now() -> float:
@@ -191,8 +193,10 @@ def record(project_root: str, reason: str | None) -> None:
         _save(root, entry)
         return
     with _LOCK:
-        removed = _MEMO.pop(root, None)
-    if removed is not None or _file_exists(root):
+        # 进程内记下“已清除”（空键从不匹配），落盘记录即使删不掉也不会被重新读入。
+        removed = _MEMO.get(root)
+        _MEMO[root] = (_CLEARED, _now())
+    if (removed is not None and removed[0] != _CLEARED) or _file_exists(root):
         _remove(root)
 
 

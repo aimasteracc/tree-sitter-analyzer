@@ -183,3 +183,60 @@ def test_a_capture_that_cannot_clean_up_reports_the_typed_reason(
 
     assert second.reason != stage.CLEANUP_FAILED
     assert list(temp.iterdir()) == []
+
+
+# --------------------------------------------------------------------------- #
+# 边界与失败路径
+# --------------------------------------------------------------------------- #
+
+
+def test_sweeping_a_missing_parent_is_a_no_op(tmp_path: Path) -> None:
+    assert stage.sweep_stale(str(tmp_path / "absent")) == []
+
+
+def test_a_prefixed_file_is_not_a_stage_dir(parent: Path) -> None:
+    stray = parent / f"{stage.PREFIX}{_dead_pid()}-file"
+    stray.write_text("x")
+
+    assert stage.sweep_stale(str(parent)) == []
+    assert stray.exists()
+
+
+def test_pid_liveness_edges(monkeypatch) -> None:
+    assert stage.pid_alive(0) is False
+    assert stage.pid_alive(os.getpid()) is True
+    if sys.platform == "win32":
+        assert stage.pid_alive(_dead_pid()) is False
+        return
+
+    def denied(_pid, _signal):
+        raise PermissionError
+
+    monkeypatch.setattr(stage.os, "kill", denied)
+    assert stage.pid_alive(12345) is True
+
+    def other(_pid, _signal):
+        raise OSError("unknown")
+
+    monkeypatch.setattr(stage.os, "kill", other)
+    assert stage.pid_alive(12345) is True
+
+
+def test_removing_a_vanished_dir_succeeds(tmp_path: Path) -> None:
+    assert stage._remove(str(tmp_path / "gone")) is True
+
+
+def test_a_failed_capture_with_a_blocked_cleanup_keeps_its_own_error(
+    parent: Path, monkeypatch
+) -> None:
+    def blocked(path, *args, **kwargs):
+        raise PermissionError(13, "in use", path)
+
+    monkeypatch.setattr(stage.shutil, "rmtree", blocked)
+    monkeypatch.setattr(stage, "_REMOVE_PAUSE_SECONDS", 0.0)
+
+    with pytest.raises(ValueError, match="CONCURRENT_WRITER"):
+        with stage.private_stage_dir(str(parent)) as private:
+            raise ValueError("CONCURRENT_WRITER")
+
+    assert os.path.realpath(private) in stage._LEFTOVERS

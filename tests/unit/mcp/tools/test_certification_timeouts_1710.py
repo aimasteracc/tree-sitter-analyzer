@@ -295,3 +295,83 @@ async def test_a_capture_that_completes_still_certifies(project, monkeypatch) ->
 
     assert entered == [str(project), str(project)]
     assert timeouts.should_skip(str(project)) is False
+
+
+# --------------------------------------------------------------------------- #
+# 落盘层与证据的失败路径
+# --------------------------------------------------------------------------- #
+
+
+def test_store_dir_switches(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv(timeouts.STORE_ENV, "off")
+    assert timeouts.store_dir() is None
+    monkeypatch.delenv(timeouts.STORE_ENV)
+    monkeypatch.delenv(timeouts.DIR_ENV)
+    assert (
+        timeouts.store_dir()
+        == Path.home() / ".tsa" / "cache" / "certification-timeouts"
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_index_is_never_recorded(project, monkeypatch) -> None:
+    from tree_sitter_analyzer.mcp.tools import relation_freshness
+
+    monkeypatch.setattr(
+        relation_freshness, "index_identity", lambda _root: ("db", "g", "unreadable")
+    )
+    timeouts.record(str(project), _DEADLINE)
+
+    assert timeouts.evidence_key(str(project)) is None
+    assert timeouts.should_skip(str(project)) is False
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_file_list_is_never_recorded(project, monkeypatch) -> None:
+    monkeypatch.setattr(timeouts, "_indexed_files", lambda _root: None)
+
+    assert timeouts.evidence_key(str(project)) is None
+
+
+@pytest.mark.asyncio
+async def test_a_store_write_failure_keeps_the_in_process_record(
+    project, monkeypatch
+) -> None:
+    def refuse(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(timeouts.os, "replace", refuse)
+    timeouts.record(str(project), _DEADLINE)
+
+    assert timeouts.should_skip(str(project)) is True
+    _new_process()
+    assert timeouts.should_skip(str(project)) is False
+
+
+@pytest.mark.asyncio
+async def test_a_completed_capture_in_a_new_process_removes_the_stored_record(
+    project, tmp_path
+) -> None:
+    timeouts.record(str(project), _DEADLINE)
+    _new_process()
+
+    timeouts.record(str(project), None)
+
+    assert list((tmp_path / "timeouts").glob("*.json")) == []
+
+
+@pytest.mark.asyncio
+async def test_a_record_that_cannot_be_removed_is_ignored(project, monkeypatch) -> None:
+    timeouts.record(str(project), _DEADLINE)
+
+    def refuse(self, *args, **kwargs):
+        raise OSError("locked")
+
+    monkeypatch.setattr(timeouts.Path, "unlink", refuse)
+    timeouts.record(str(project), None)  # 不抛出
+
+    assert timeouts.should_skip(str(project)) is False
+
+
+def test_the_file_list_of_a_missing_index_is_none(tmp_path: Path) -> None:
+    assert timeouts._indexed_files(str(tmp_path)) is None
