@@ -76,14 +76,14 @@ def isolated_std_handles() -> Iterator[None]:
     and the parent's stderr as stdout (see the module docstring). This is a
     no-op elsewhere: POSIX ``spawn`` does not query an inherited pipe that way.
     """
-    if sys.platform == "win32":
+    if sys.platform == "win32":  # pragma: no cover - Windows only (tested there)
         with _windows_isolated_std_handles():
             yield
     else:
         yield
 
 
-if sys.platform == "win32":
+if sys.platform == "win32":  # pragma: no cover - Windows only (tested there)
 
     @contextmanager
     def _windows_isolated_std_handles() -> Iterator[None]:
