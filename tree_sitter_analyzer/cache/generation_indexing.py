@@ -128,6 +128,40 @@ def mutate_published_cache(
     report_publication: bool = False,
     precheck_unchanged: bool = False,
 ) -> _T:
+    """见 :func:`_mutate_published_cache`；发布后（写锁已释放）预构图（#1708）。"""
+    from .. import call_graph_warm
+
+    published: list[bool] = []
+    result = _mutate_published_cache(
+        cache,
+        operation,
+        scope=scope,
+        candidate_snapshot=candidate_snapshot,
+        expected_path=expected_path,
+        snapshot_operation=snapshot_operation,
+        report_publication=report_publication,
+        precheck_unchanged=precheck_unchanged,
+        published=published,
+    )
+    if published:
+        warm = call_graph_warm.after_publish(cache.project_root)
+        if warm is not None and isinstance(result, Mapping) and "published" in result:
+            result = cast(_T, {**result, "call_graph_warm": warm})
+    return result
+
+
+def _mutate_published_cache(
+    cache: Any,
+    operation: Callable[[ASTCache], _T] | None,
+    *,
+    scope: SourceScopeDescriptor | None,
+    candidate_snapshot: IndexCandidateSnapshot | None,
+    expected_path: Path | None,
+    snapshot_operation: Callable[[ASTCache, IndexCandidateSnapshot], _T] | None,
+    report_publication: bool,
+    precheck_unchanged: bool,
+    published: list[bool],
+) -> _T:
     """默认库的显式单文件、重建和失效操作只写私有副本，首次发布前亦然（#1554）。
 
     给出 ``snapshot_operation`` 时以它代替 ``operation``，并额外传入本次捕获的
@@ -204,6 +238,7 @@ def mutate_published_cache(
                     if snapshot_operation is not None:
                         # #1707：项目索引已把漂移的戳记写进新版本的行。
                         stat_evidence.clear(cache.project_root)
+                    published.append(True)
                     if report and isinstance(result, Mapping):
                         result = cast(_T, {**result, "published": True})
                 elif report and isinstance(result, Mapping):
@@ -238,6 +273,7 @@ def run_incremental_sync(
     store = project_store(cache.project_root, scope)
     captured_at = stat_evidence.now_ns() if supplied is None else None
     candidate = store.capture((lambda: supplied) if supplied is not None else None)
+    synced = False
     try:
         if supplied is not None and supplied.publication_parent != candidate.parent:
             raise Superseded("INDEX_GENERATION_SUPERSEDED")
@@ -288,13 +324,18 @@ def run_incremental_sync(
                 # #1707：同步已把漂移的戳记写进新版本的行。
                 stat_evidence.clear(cache.project_root)
                 _report_sync_publication(result, True, None)
+                synced = True
             else:
                 _report_sync_publication(result, False, NOT_PUBLISHABLE_REASON)
-        return result
-
     finally:
         if supplied is None:
             release_index_candidate_snapshot(candidate.snapshot)
+    if synced:
+        from .. import call_graph_warm
+
+        # #1708：发布之后为新版本构图，长驻进程的第一次调用不再逐边解析。
+        call_graph_warm.after_publish(cache.project_root)
+    return result
 
 
 async def run_full_index(
@@ -372,6 +413,12 @@ async def run_full_index(
         # #1674：已发布即成功；只缺可选语法时完整性如实为 incomplete（未认证，
         # scope_complete 仍为 False），跳过的文件列在 skipped_files。
         result = published_result(result, stable_only=stable_only)
+        from .. import call_graph_warm
+
+        # #1708：发布之后为新版本构图（长驻进程）。
+        warm = call_graph_warm.after_publish(root)
+        if warm is not None:
+            result["call_graph_warm"] = warm
         result["generation_id"] = selector.generation_id
         result["elapsed_seconds"] = round(time.monotonic() - started_at, 3)
         return result

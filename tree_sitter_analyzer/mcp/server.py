@@ -470,6 +470,13 @@ class TreeSitterAnalyzerMCPServer:
             except Exception as e:
                 shutdown_error = e
                 _log_safely(_log_err, "MCP watcher shutdown failed: %s", e)
+            try:
+                # #1708：不再调度新的后台预构图，并在限定时间内等待在途构建。
+                from ..call_graph_warm import shutdown as shutdown_graph_warm
+
+                shutdown_graph_warm()
+            except Exception as e:  # 预构图收尾失败不阻断停止
+                _log_safely(_log_err, "call-graph warm shutdown failed: %s", e)
             _log_safely(_log_inf, _MSG_SHUTTING_DOWN)
         if primary_error is not None:
             raise primary_error
@@ -522,6 +529,10 @@ async def main() -> None:
             logger.info, "MCP server starting with project root: %s", project_root
         )
 
+        # #1708：长驻服务器在发布刷新后立即为新版本构图（一次性进程不启用）。
+        from ..call_graph_warm import enable as enable_graph_warm
+
+        enable_graph_warm()
         server = TreeSitterAnalyzerMCPServer(project_root)
         await server.run()
 

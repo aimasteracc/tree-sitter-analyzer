@@ -68,6 +68,28 @@
   `symbols_json.module_rebinds`; they are part of the resolution surface, so
   adding or removing one re-resolves the edges named after it and the files
   that import it. The extractor version goes from 45 to 46.
+- **Long-lived MCP server: after a watcher-driven refresh publishes, the first
+  `nav callers` no longer re-resolves every call edge** (#1708). A publish changes
+  the call-graph inputs, so the in-memory graph (#1663) and the persisted edge
+  resolutions (#1683) both missed. The first call then resolved about 190k edges:
+  10–19 s of an 11–20 s first call on this repository under load.
+  - When the file watcher's sync publishes, the server builds the new
+    generation's call graph on a background thread, with the same code `nav`
+    uses. The result goes into the in-memory reuse and the persisted store.
+  - A `nav` call that arrives during the build waits for it instead of starting
+    a second one. A call on another index database does not wait.
+  - After the build, `nav` adopts the result without re-reading the rows,
+    provided the database identity (file stat, `ast_index` row count, newest
+    `indexed_at`, newest edge rowid) is unchanged. This is the rule
+    `index_bound_graph` already uses to keep a built graph (#1564).
+  - On server stop, no new build is scheduled and an in-flight build gets 5 s.
+    A failed build is only logged.
+  - Explicit `index action=cache` / `full` refreshes from a client behave as
+    before, with no background build. A background build cannot shorten an
+    explicit refresh followed immediately by a call: it does the same work as
+    that call and competes with it for the CPU. `TSA_GRAPH_WARM=always` also
+    enables the build for explicit refreshes, and `TSA_GRAPH_WARM=off` disables
+    it everywhere.
 - **A refresh where only mtimes changed is a no-op** (#1707). Rewriting a file
   with its own bytes (`touch`, `git checkout` / `git stash pop` of the same
   content, an editor "save" without a change, tools that swap files and put them

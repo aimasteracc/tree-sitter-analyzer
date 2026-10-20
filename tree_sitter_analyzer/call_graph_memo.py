@@ -141,6 +141,33 @@ def store(root: str, digest: str, state: dict[str, Any]) -> None:
             _MEMO.popitem(last=False)
 
 
+#: #1708：正在构建的图：(项目根, 输入摘要) -> 构建完成时置位的事件。
+_INFLIGHT: dict[tuple[str, str], threading.Event] = {}
+
+
+def claim(root: str, digest: str) -> threading.Event | None:
+    """为 ``(root, digest)`` 认领一次构建。
+
+    返回 ``None`` 表示由调用方构建（完成或放弃时必须调用 :func:`release`）；
+    返回事件表示同一输入的构建已在进行（例如发布后的后台预构图），调用方应等待
+    该事件，再按同一摘要 :func:`lookup`。摘要不同（另一个版本的输入）互不等待。
+    """
+    with _LOCK:
+        event = _INFLIGHT.get((root, digest))
+        if event is not None:
+            return event
+        _INFLIGHT[(root, digest)] = threading.Event()
+        return None
+
+
+def release(root: str, digest: str) -> None:
+    """结束 :func:`claim` 认领的构建（成功与否），唤醒等待者。"""
+    with _LOCK:
+        event = _INFLIGHT.pop((root, digest), None)
+    if event is not None:
+        event.set()
+
+
 def discard(root: str) -> None:
     """丢弃 ``root`` 的记忆（输入已变、即将重建时调用）。"""
     with _LOCK:

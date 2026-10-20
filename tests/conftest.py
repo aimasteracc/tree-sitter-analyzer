@@ -400,6 +400,12 @@ def _reset_all_singletons():
             "clear",
             lambda fn: fn(),
         ),
+        # #1708：调用 MCP 服务器 main() 的测试会启用发布后预构图；每个测试从关闭开始。
+        (
+            "tree_sitter_analyzer.call_graph_warm",
+            "disable",
+            lambda fn: fn(),
+        ),
     ]
 
     for module_path, attr_name, reset_fn in _RESETS:

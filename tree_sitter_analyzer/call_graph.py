@@ -776,6 +776,8 @@ class CachedCallGraph(CallGraph):
         self.close()
 
     def _build_from_cache(self) -> None:
+        if self._cache is not None and self._adopt_published_warm():
+            return
         try:
             if self._cache is None:
                 return
@@ -802,11 +804,70 @@ class CachedCallGraph(CallGraph):
             call_graph_memo.stable_form(reexport_binder.evidence()),
             call_graph_memo.stable_form(subclasses.evidence()),
         )
+        self._input_digest = digest
+        owned = False
         if digest is not None:
             state = call_graph_memo.lookup(root, digest)
             if state is not None:
                 self._adopt_state(state)
                 return
+            # #1708：同一输入的构建已在进行（发布后的后台预构图）时等它完成并复用，
+            # 不并行构建第二份；输入不同（另一个版本）的构建互不等待。
+            pending = call_graph_memo.claim(root, digest)
+            if pending is not None:
+                pending.wait(_INFLIGHT_WAIT_SECONDS)
+                state = call_graph_memo.lookup(root, digest)
+                if state is not None:
+                    self._adopt_state(state)
+                    return
+                pending = call_graph_memo.claim(root, digest)
+            owned = pending is None
+        # 原始行交给构图后由它释放（构图期间不在本帧多持有一份）。
+        sources = [edge_source, function_source]
+        del edge_source, function_source
+        try:
+            self._build_after_miss(
+                root,
+                digest,
+                sources,
+                imports_raw,
+                reexport_binder,
+                subclasses,
+            )
+        finally:
+            if owned and digest is not None:
+                call_graph_memo.release(root, digest)
+
+    def _adopt_published_warm(self) -> bool:
+        """#1708：采用发布后后台预构图的结果（同一索引库、身份未变时），不再读行。
+
+        同一库的预构图在途时先等它结束；身份与 ``index_bound_graph`` 保留内存图的
+        规则相同（#1564）。不满足任一条件即返回 False，照常读行并按输入摘要判定。
+        """
+        from . import call_graph_warm
+
+        root = str(self.project_root)
+        digest = call_graph_warm.adopt(root, getattr(self._cache, "db_path", None))
+        if digest is None:
+            return False
+        state = call_graph_memo.lookup(root, digest)
+        if state is None:
+            return False
+        self._adopt_state(state)
+        return True
+
+    def _build_after_miss(
+        self,
+        root: str,
+        digest: str | None,
+        sources: list[Any],
+        imports_raw: Any,
+        reexport_binder: PackageReexportBinder,
+        subclasses: SubclassIndex,
+    ) -> None:
+        """内存记忆未命中后的构图：落盘结果重放或现场解析（#1675）。"""
+        edge_source, function_source = sources
+        sources.clear()
         # 输入已变：先释放本根的旧状态，构图期间内存里不同时保留两张图。
         call_graph_memo.discard(root)
 
@@ -977,6 +1038,8 @@ class CachedCallGraph(CallGraph):
         CallGraph.__init__(self, str(self.project_root))
 
 
+#: #1708：等待同一输入的在途构建（发布后的后台预构图）的上限；超时后自行构建。
+_INFLIGHT_WAIT_SECONDS = 600.0
 #: 不随复用的图状态共享的属性：缓存句柄属于各自的图对象，项目根由构造参数给出。
 _UNSHARED_STATE = frozenset({"_cache", "_fallback", "_persist", "project_root"})
 
