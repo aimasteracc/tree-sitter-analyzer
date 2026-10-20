@@ -71,7 +71,8 @@ from ._ast_cache_query_mixin import ASTCacheQueryMixin
 # v42：改名导入的调用解析到真实目标，并在 metadata 中记录 import_alias（#1670）。
 # v43：继承方法的 self.m() 调用按 MRO 解析到最近的定义（#1677）。
 # v44：继承方法经单例 / 构造 / 注解 / super() 接收者按 C3 MRO 解析，闭包继承外层构造类型（#1699）。
-_AST_CACHE_EXTRACTOR_VERSION = 44
+# v45：经模块属性调用的再导出名（`owner._f()`）解析到真实定义（#1705）。
+_AST_CACHE_EXTRACTOR_VERSION = 45
 
 # Preserve the historical public exception identity after implementation split.
 SchemaIntegrityError.__module__ = __name__

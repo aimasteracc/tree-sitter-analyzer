@@ -177,7 +177,7 @@ def test_extractor_version_is_bumped_for_alias_resolution() -> None:
     assert (
         ast_cache._AST_CACHE_EXTRACTOR_VERSION,
         indexer._AST_CACHE_EXTRACTOR_VERSION,
-    ) == (44, 44)
+    ) == (45, 45)
 
 
 def test_import_binding_masks_only_accounted_aliases() -> None:

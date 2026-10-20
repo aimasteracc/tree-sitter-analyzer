@@ -21,6 +21,7 @@ import re
 import sqlite3
 from collections.abc import Callable, Collection
 from collections.abc import Set as AbstractSet
+from dataclasses import dataclass
 from typing import Any
 
 from .callers_import_bindings import alias_bindings
@@ -36,10 +37,28 @@ _REEXPORT_IMPORT_SQL = (
     "SELECT 1 FROM ast_imports WHERE file_path <> ? "
     "AND (local_name = ? OR alias_of = ?) LIMIT 1"
 )
+#: 别的文件以别名为被调名、解析只停在本文件（文件已知、符号未知）的调用边。
+_MODULE_ATTRIBUTE_SQL = (
+    "SELECT file_path, line, callee_full, metadata FROM edges "
+    "WHERE kind = 'calls' AND callee_name = ? AND file_path <> ? "
+    "AND callee_resolved_file = ? ORDER BY file_path, line"
+)
 _REEXPORT_CALL_SQL = (
     "SELECT 1 FROM edges WHERE kind = 'calls' AND callee_name = ? "
     "AND file_path <> ? LIMIT 1"
 )
+
+
+@dataclass(frozen=True)
+class AliasCheck:
+    """``alias_reference_check`` 的结果。"""
+
+    #: 导入行可跳过的别名。
+    masked: frozenset[str]
+    #: 本文件中需按别名点名的出现行。
+    lines: list[int]
+    #: #1705：别的文件经本文件的模块属性调用别名、却未解析到目标的位置。
+    foreign: list[dict[str, Any]]
 
 
 def alias_reference_check(
@@ -49,11 +68,13 @@ def alias_reference_check(
     bare: str,
     declaration_files: Collection[str],
     reference_lines: ReferenceLines,
-) -> tuple[frozenset[str], list[int]]:
-    """返回 ``(可跳过导入行的别名, 需按别名点名的出现行)``；读取失败时都不跳过。"""
+) -> AliasCheck:
+    """别名的导入行能否跳过、哪些别名出现须点名；读取失败时都不跳过。"""
     masked: set[str] = set()
     extra: list[int] = []
+    foreign: list[dict[str, Any]] = []
     for alias, start, end in alias_bindings(text, bare):
+        foreign.extend(_module_attribute_sites(cache, rel_path, alias, bare))
         call_lines = _bound_alias_call_lines(
             cache, rel_path, alias, bare, declaration_files
         )
@@ -70,7 +91,30 @@ def alias_reference_check(
             and not _reexported(cache, rel_path, alias)
         ):
             masked.add(alias)
-    return frozenset(masked), extra
+    return AliasCheck(frozenset(masked), extra, foreign)
+
+
+def _module_attribute_sites(
+    cache: Any, rel_path: str, alias: str, bare: str
+) -> list[dict[str, Any]]:
+    """#1705：``owner.alias()`` 只解析到本文件（属性被重新绑定、模块别名不唯一等）的位置。
+
+    这些调用可能经本文件的改名导入到达 ``bare``，却不在调用方列表里；以别名点名，
+    而不是只给出导入行。读取失败返回空（导入行本身仍是引用，答复不会是 complete）。
+    """
+    try:
+        rows = (
+            cache.get_conn()
+            .execute(_MODULE_ATTRIBUTE_SQL, (alias, rel_path, rel_path))
+            .fetchall()
+        )
+    except (sqlite3.Error, AttributeError):
+        return []
+    return [
+        {"file": str(file_path), "line": int(line or 0), "alias": alias}
+        for file_path, line, callee_full, metadata in rows
+        if "." in str(callee_full or "") and _alias_name(metadata) != bare
+    ]
 
 
 def _blank_statement(text: str, start: int, end: int) -> str:
@@ -125,4 +169,4 @@ def _reexported(cache: Any, rel_path: str, alias: str) -> bool:
     return imported is not None or called is not None
 
 
-__all__ = ["alias_reference_check"]
+__all__ = ["AliasCheck", "alias_reference_check"]

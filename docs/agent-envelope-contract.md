@@ -204,6 +204,21 @@ alias, an alias another module imports or calls, or an alias that is also used
 without a call (a callback, an assignment, `__all__`) keeps the import line as a
 reference; the non-call uses are listed in `non_call_reference_sites` too. With
 no caller at all, the import line always stays a reference (#1645).
+
+**Through a module attribute (#1705).** `import pkg.hub as owner; owner._f()`
+(or `import pkg.hub; pkg.hub._f()`, or `from pkg import hub`) where `hub` binds
+`_f` by `from .core import f as _f` is a caller of `core.f`, with
+`resolution_kind: "import_alias"` and `import_alias: "_f"`. A plain re-export
+(`hub` does `from .core import f`; `owner.f()`) resolves to `core.f` too. Both
+follow re-exports for up to 4 hops. When one file binds the same module alias
+to several modules (function-local imports), the import inside the calling
+function picks the module. The call is **not** resolved, and stays only a
+possible caller, when the attribute is rebound in `hub` (assignment, `global`,
+`del`), or when the calling file assigns it or names it in a string
+(`owner._f = fake`, `monkeypatch.setattr(owner, "_f", ...)`). Such a site is
+listed in `non_call_reference_sites` under the alias (`alias: "_f"`), not just
+the import line. Because the alias is used from another module, it is a
+re-export: the import line in `hub` stays a reference.
 ### Inherited `self.m()` calls (#1677)
 
 When the enclosing class does not define `m`, `self.m()` / `cls.m()` is a

@@ -27,6 +27,10 @@ def _resolve_indexed_callee(
     if annotated is not None:
         return annotated
     is_python = ctx.file_languages.get(caller_file) == "python"
+    if is_python:
+        attribute = _resolve_module_attribute(row, ctx)
+        if attribute is not None:
+            return attribute
     if is_python and row["callee_full"] in (f"self.{name}", f"cls.{name}"):
         owner = _owner_class(conn, row, ctx)
         if owner is not None:
@@ -79,6 +83,27 @@ def _resolve_super(conn: sqlite3.Connection, row: Any, ctx: Any) -> Any:
         if row["callee_name"] in target:
             return ResolvedCallee(target[row["callee_name"]], "project", file_path)
     return None
+
+
+def _resolve_module_attribute(row: Any, ctx: Any) -> Any:
+    """#1705：`owner._f()` 经模块 `owner` 的再导出绑定解析到真实定义。"""
+    callee_full = str(_row_value(row, "callee_full") or "")
+    if "." not in callee_full:
+        return None
+    from ..synapse_resolver import ResolvedCallee
+    from ..synapse_resolver._module_attrs import resolve_module_attribute
+
+    found = resolve_module_attribute(
+        callee_full,
+        row["caller_file"],
+        int(_row_value(row, "caller_line") or 0),
+        int(_row_value(row, "line") or 0),
+        ctx,
+    )
+    if found is None:
+        return None
+    symbol, defining_file, alias = found
+    return ResolvedCallee(symbol, "project", defining_file, alias=alias)
 
 
 def _resolve_annotated(row: Any, ctx: Any) -> Any:
@@ -168,7 +193,7 @@ def resolve_call_edges_for_file(
         return
     try:
         rows = conn.execute(
-            "SELECT id, caller_name, caller_line, file_path AS caller_file, callee_name, "
+            "SELECT id, line, caller_name, caller_line, file_path AS caller_file, callee_name, "
             "callee_full, metadata FROM edges WHERE kind = 'calls' AND file_path = ?",
             (rel_path,),
         ).fetchall()
@@ -208,7 +233,7 @@ def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int]
         # project, no resolved_file by design) — re-selecting them on every
         # backfill is the unknown-> rescan loop B3 is meant to break.
         rows = conn.execute(
-            "SELECT id, caller_name, caller_line, file_path AS caller_file, callee_name, "
+            "SELECT id, line, caller_name, caller_line, file_path AS caller_file, callee_name, "
             "callee_full, metadata FROM edges "
             "WHERE kind = 'calls' AND ("
             "callee_resolution = 'unknown' "

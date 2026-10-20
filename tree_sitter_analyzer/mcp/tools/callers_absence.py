@@ -455,24 +455,40 @@ def _reference_scan(
     pattern = re.compile(r"(?<![\w$])" + re.escape(bare) + r"(?![\w$])")
     declaration_files = {file for file, _line, _language in declarations}
     sites: list[dict[str, Any]] = []
+    foreign: list[dict[str, Any]] = []
     stamps: dict[str, StatKey | None] = {}
     for rel_path, language, data, stamp in hits:
         stamps[rel_path] = stamp
         decoded = data.decode("utf-8", "replace")
         text = _strip_comments_and_prose(decoded, language, bare)
         alias_lines: list[int] = []
-        if mask_imports and language in _PY_LANGUAGES:
+        if language in _PY_LANGUAGES:
             # #1670：别名的每次使用都已核对时，改名导入行也只是绑定。
-            masked, alias_lines = alias_reference_check(
+            # #1705：别的文件经本文件模块属性的未解析别名调用，有无调用方都点名。
+            check = alias_reference_check(
                 cache, rel_path, text, bare, declaration_files, _reference_lines
             )
-            text = mask_import_bindings(text, bare, masked)
+            foreign.extend(check.foreign)
+            if mask_imports:
+                alias_lines = check.lines
+                text = mask_import_bindings(text, bare, check.masked)
         covered = edge_lines.get(rel_path, frozenset())
         lines = sorted({*_reference_lines(text, pattern, covered), *alias_lines})
         for line in lines:
             if (rel_path, line) not in declared_lines:
                 sites.append({"file": rel_path, "line": line})
-    return sites, stamps
+    return _with_foreign(sites, foreign), stamps
+
+
+def _with_foreign(
+    sites: list[dict[str, Any]], foreign: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """把经模块属性的别名调用点并入引用位置（同一位置只列一次，按文件与行排序）。"""
+    if not foreign:
+        return sites
+    merged = {(site["file"], site["line"]): site for site in foreign}
+    merged.update({(site["file"], site["line"]): site for site in sites})
+    return [merged[key] for key in sorted(merged)]
 
 
 #: 一次读取的结果：字节（不含 needle 时为空串）及读取时的 stat 证据。

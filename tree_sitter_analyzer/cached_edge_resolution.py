@@ -232,8 +232,9 @@ class CachedEdgeResolver:
             if annotated is not None:
                 return annotated
         alias_name = edge.get("import_alias_name")
-        if resolution in _PROJECT_RESOLUTIONS and alias_name and not qualifier:
+        if resolution in _PROJECT_RESOLUTIONS and alias_name:
             # #1670：`g()` 经 `from m import f as g` 解析，按目标的真实名字 `f` 绑定。
+            # #1705：`owner.g()` 经模块 `owner` 的改名再导出解析，同样按 `f` 绑定。
             base_name = str(alias_name)
         if resolution in _PROJECT_RESOLUTIONS:
             resolved_file = str(edge.get("callee_resolved_file") or "")
