@@ -63,13 +63,16 @@ def build_scala_resolver_context(
     return ScalaResolverContext(
         file_symbols=scala_file_symbols,
         global_name_table={
-            name: list(entries) for name, entries in global_name_table.items()
+            name: list(entries)
+            for name, entries in global_name_table.items()
         },
         name_to_source=name_to_source,
     )
 
 
-def _lookup_in_file(ctx: ScalaResolverContext, file_path: str, name: str) -> int | None:
+def _lookup_in_file(
+    ctx: ScalaResolverContext, file_path: str, name: str
+) -> int | None:
     """Return symbol_id if name is defined in file_path, else None."""
     for sym_name, kind, sym_id in ctx.file_symbols.get(file_path, []):
         if sym_name == name and kind in ("function", "method", "class"):

@@ -236,11 +236,15 @@ def find_method(
     order = linearize(cls, ctx)
     if order is None:
         return None
-    for file_path, class_name in order:
-        own = ctx.file_class_methods.get(file_path, {}).get(class_name, {})
-        if method in own:
-            return file_path, own[method], class_name
-    return None
+    return next(
+        (
+            (file_path, own[method], class_name)
+            for file_path, class_name in order
+            for own in [ctx.file_class_methods.get(file_path, {}).get(class_name, {})]
+            if method in own
+        ),
+        None,
+    )
 
 
 def linearize(

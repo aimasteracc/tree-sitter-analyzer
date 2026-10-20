@@ -681,8 +681,7 @@ def _bound_names(func_node: Any, source: str) -> set[str]:
     def _walk(n: Any) -> None:
         field = target_fields.get(n.type)
         if field is not None:
-            target = n.child_by_field_name(field)
-            if target is not None:
+            for target in filter(None, [n.child_by_field_name(field)]):
                 _identifiers(target)
         elif n.type in ("as_pattern_target", "nonlocal_statement", "global_statement"):
             _identifiers(n)
