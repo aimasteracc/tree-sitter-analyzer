@@ -278,4 +278,10 @@ def _extract_call_edges(
         variables = module_hints(tree.root_node).variables
         if variables:
             symbols["module_types"] = variables
+        # #1721：函数内 `global` 与模块级 `del` 重新绑定的名字（范围回填的解析面）。
+        from ..module_rebinds import module_rebinds
+
+        rebinds = module_rebinds(tree.root_node)
+        if rebinds:
+            symbols["module_rebinds"] = rebinds
     return extract_call_edges(tree, source_code, language)

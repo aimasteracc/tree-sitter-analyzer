@@ -59,6 +59,15 @@
 
 ### Fixed
 
+- **A scoped refresh sees a function-level `global` rebinding** (#1721).
+  `def install(v): global _f; _f = v` in a module that re-exports `_f` decides
+  whether `owner._f()` resolves to the re-export's target (#1705), but it
+  creates no symbol, so the scoped backfill (#1696) kept the old resolution in
+  other files and the refreshed index differed from a fresh build. The
+  extractor now records `global` names and module-level `del` names in
+  `symbols_json.module_rebinds`; they are part of the resolution surface, so
+  adding or removing one re-resolves the edges named after it and the files
+  that import it. The extractor version goes from 45 to 46.
 - **A refresh where only mtimes changed is a no-op** (#1707). Rewriting a file
   with its own bytes (`touch`, `git checkout` / `git stash pop` of the same
   content, an editor "save" without a change, tools that swap files and put them
