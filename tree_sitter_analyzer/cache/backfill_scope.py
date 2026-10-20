@@ -151,14 +151,15 @@ def disarm(conn: sqlite3.Connection) -> None:
             conn.execute(f"DROP TRIGGER IF EXISTS temp.{trigger}")  # nosec B608
         for table, _columns in _TABLES:
             conn.execute(f"DROP TABLE IF EXISTS temp.{table}")  # nosec B608
-    except sqlite3.Error:
+    except Exception:  # nosec B110 — 撤销失败只影响本轮记录，回填按全量处理。
         logger.debug("backfill scope collector could not be disarmed", exc_info=True)
 
 
 def _armed(conn: sqlite3.Connection) -> bool:
     try:
         row = conn.execute(f"SELECT 1 FROM temp.{_ARMED} LIMIT 1").fetchone()  # nosec B608
-    except sqlite3.Error:
+    except Exception:  # nosec B110 — 不是可用的 SQLite 连接：未武装，全量回填。
+        logger.debug("backfill scope collector unavailable", exc_info=True)
         return False
     return row is not None
 

@@ -453,7 +453,10 @@ def test_index_one_file_incremental_size_independent_of_file_count(
     # removed=0（+89 字节，仍与文件总数无关），重新钉为 1278。
     # #1631：发布结果如实报告 "published": true（+19 字节，仍与文件总数无关），
     # 重新钉为 1297。
-    assert large_bytes == 1297
+    # #1696：回复说明回填范围（"backfill": "scoped"，+22 字节，与文件总数无关；
+    # 完整统计留在索引器内部），重新钉为 1319。
+    assert large["backfill"] == "scoped"
+    assert large_bytes == 1319
     assert [(d["file"], d["status"]) for d in large["files"]] == [
         ("m0000.py", "indexed")
     ]
