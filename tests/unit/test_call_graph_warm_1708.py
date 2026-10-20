@@ -548,3 +548,80 @@ def test_file_watcher_sync_warms_the_published_generation(project, resolutions) 
     # 监视器驱动的发布已在后台构图：第一次调用直接采用，不再逐边解析。
     assert (call_graph_warm.last_outcome(project)["warmed"], resolutions) == (True, [])
     assert any(edge[0][1] == "extra" for edge in _snapshot(graph)["call_edges"])
+
+
+def test_publish_during_an_in_flight_build_queues_one_rebuild(
+    project, monkeypatch
+) -> None:
+    call_graph_warm.enable()
+    _refresh(project)
+    _edit(project)
+    gate, started, per_thread = _blocking_warm(monkeypatch)
+    try:
+        _refresh(project, settle=False)
+        assert started.wait(30) is True
+        # 在途构建期间又一次发布：不并行启动第二个线程，结束后再为活动版本构图。
+        with call_graph_warm.watcher_refresh():
+            again = call_graph_warm.after_publish(project)
+        assert (again["scheduled"], again["queued"]) == (True, True)
+    finally:
+        gate.set()
+    assert call_graph_warm.wait(timeout=60) is True
+    resolutions_per_build = per_thread["tsa-call-graph-warm"]
+    assert call_graph_warm.last_outcome(project)["warmed"] is True
+    # 第二次构建按摘要命中第一次的结果（输入未变），没有再逐边解析。
+    assert per_thread["tsa-call-graph-warm"] == resolutions_per_build
+
+
+def test_database_identity_refuses_unsealed_or_missing_databases(tmp_path) -> None:
+    import sqlite3
+
+    database = tmp_path / "index.db"
+    conn = sqlite3.connect(database)
+    conn.execute("CREATE TABLE ast_index (file_path TEXT, indexed_at TEXT)")
+    conn.execute("CREATE TABLE edges (id INTEGER PRIMARY KEY)")
+    conn.commit()
+    conn.close()
+
+    identity = call_graph_warm.database_identity(str(database))
+    assert identity is not None and identity[4:] == ((0, ""), (0,))
+    # 有 WAL 旁路文件（未封存、可能有未检查点的页）、不存在或不是库：不复用。
+    (tmp_path / "index.db-wal").write_bytes(b"")
+    assert call_graph_warm.database_identity(str(database)) is None
+    assert call_graph_warm.database_identity(str(tmp_path / "missing.db")) is None
+    assert call_graph_warm.database_identity(None) is None
+
+
+def test_adoption_falls_back_when_the_memo_was_released(project, resolutions) -> None:
+    call_graph_warm.enable()
+    _refresh(project)
+    _edit(project)
+    _refresh(project)
+    call_graph_memo.clear()  # 记忆已释放（例如别的项目根挤出）：照常构图或重放
+    resolutions.clear()
+
+    graph = _graph(project)
+
+    assert _snapshot(graph) == _fresh_snapshot(project)
+
+
+def test_waiter_builds_itself_when_the_owner_stores_nothing(
+    project, resolutions
+) -> None:
+    # 认领者结束却没有留下结果（构建失败）：等待者唤醒后自行构建，结果正确。
+    _refresh(project, watcher=False)
+    first = _graph(project, persist=False)
+    digest = first._input_digest
+    root = str(first.project_root)
+    call_graph_memo.clear()
+    assert call_graph_memo.claim(root, digest) is None
+    releaser = threading.Timer(0.5, call_graph_memo.release, args=(root, digest))
+    releaser.start()
+    resolutions.clear()
+    try:
+        graph = _graph(project, persist=False)
+    finally:
+        releaser.join()
+
+    assert bool(resolutions) is True
+    assert _snapshot(graph) == _snapshot(first)
