@@ -130,7 +130,16 @@ digest instead of being hashed into the root.
 
 Readers always recompute the root from the rows they read, and accept version
 2 (flat fingerprint) manifests as before.
-CLI equivalent:
+
+A refresh re-hashes only the groups it wrote and folds them from the parent's
+stored leaves, provided it can show that nothing else wrote to the index (see
+the CHANGELOG entry for #1718). Otherwise it recomputes in full and reports why
+in `certification.reason`.
+
+Every 20th incremental stamp, and any stamp more than 24 h after the last full
+one, recomputes in full and compares the two roots. With
+`TSA_CERTIFICATION_VERIFY=full`, every stamp does. A mismatch fails closed: no
+manifest is written.CLI equivalent:
 ```bash
 # Guaranteed full rebuild (recommended after pull/rebase):
 uv run python -m tree_sitter_analyzer --full-index --full-index-mode full

@@ -63,6 +63,8 @@ _CONTROL_TABLES = frozenset(
         "ast_writer_state",
         # RFC-0039：认证树的叶是派生数据，不进入认证根（读者总是独立重算）。
         "ast_certification_leaves",
+        # RFC-0039 slice 2：距上次完整重算的增量盖章次数与时间（校验计划）。
+        "ast_certification_state",
     }
 )
 _REQUIRED_COLUMNS = {
@@ -310,11 +312,14 @@ def stamp_full_index_manifest(
 def stamp_commitment(
     conn: sqlite3.Connection, root: str, *, deadline: float
 ) -> tuple[str, Any]:
-    """盖章用的认证根与认证树（RFC-0039）；测试可替换这个接缝。"""
-    from .index_certification_tree import fold_root, full_tree
+    """盖章用的认证根与认证树（RFC-0039）；测试可替换这个接缝。
 
-    tree = full_tree(conn, deadline=deadline)
-    return fold_root(root, tree, deadline), tree
+    slice 2：刷新已武装时只重算本连接写过的组，否则完整重算（见
+    ``cache.certification_tracking``）。
+    """
+    from .cache.certification_tracking import commitment
+
+    return commitment(conn, root, deadline=deadline)
 
 
 def validate_snapshot_schema(

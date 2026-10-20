@@ -102,13 +102,20 @@ def project_removed_files(
     base = {
         key: value
         for key, value in result.items()
-        if key not in ("pruned", "snapshot_metrics", "backfill_scope")
+        if key not in ("pruned", "snapshot_metrics", "backfill_scope", "certification")
     }
     # #1696：回填范围的完整统计留在索引器内部；回复只说明范围回填还是全量及原因。
     scope = result.get("backfill_scope")
     if isinstance(scope, dict):
         mode = str(scope.get("mode") or "")
         base["backfill"] = mode if mode == "scoped" else f"{mode}:{scope.get('reason')}"
+    # RFC-0039：认证根是增量折叠还是完整重算（及原因），同样只给紧凑形式。
+    certification = result.get("certification")
+    if isinstance(certification, dict):
+        mode = str(certification.get("mode") or "")
+        base["certification"] = (
+            mode if mode == "incremental" else f"{mode}:{certification.get('reason')}"
+        )
     paths = result.get("removed_files")
     if not isinstance(paths, list):
         step = next_step if force else FORCE_REFRESH_STEP

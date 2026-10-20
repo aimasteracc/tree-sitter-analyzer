@@ -237,6 +237,7 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
             (17, _apply_migration_v17),
             (18, _apply_migration_v18),
         ]
+        versions_before = _schema_versions(conn)
         self._fts5_available = _schema_init_db(
             conn,
             self._fts5_available,
@@ -244,6 +245,12 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
             migrations,
         )
         self._verify_schema_integrity(conn)
+        from .cache import certification_tracking
+
+        # RFC-0039 slice 2：记下初始化完成时的写入计数；执行过迁移则本连接不做增量认证。
+        certification_tracking.note_initialized(
+            conn, migrated=_schema_versions(conn) != versions_before
+        )
         fence = getattr(self, "_writer_fence", None)
         if fence is not None:
             # 迁移提交不推进修订号；此后每次写入提交都经 CAS（RFC-0032 slice 5）。
@@ -309,3 +316,14 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
                     os.close(cache_dir_fd)
                 finally:
                     self._cache_dir_fd = None
+
+
+def _schema_versions(conn: Any) -> frozenset[int] | None:
+    """已记录的 schema 版本；表还不存在时为 None。"""
+    try:
+        return frozenset(
+            int(row[0])
+            for row in conn.execute("SELECT version FROM ast_schema_version")
+        )
+    except Exception:  # nosec B110 — 新库：表尚未创建。
+        return None
