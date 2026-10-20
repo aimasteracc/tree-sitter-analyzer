@@ -57,6 +57,7 @@ class ResolverContext:
         file_languages: dict[str, str] | None = None,
         java_context: Any | None = None,
         lang_contexts: dict[str, Any] | None = None,
+        module_to_file: dict[str, str] | None = None,
     ) -> None:
         self.project_root = project_root
         self.cache = cache
@@ -85,6 +86,11 @@ class ResolverContext:
         self._external_methods = external_methods or {}
         self._builtin_methods = builtin_methods or {}
         self._callee_resolver = callee_resolver
+        #: #1705：模块点分名 -> 文件（解析 `import a.b as m` 的 `m`）。
+        self._module_to_file = module_to_file or {}
+        #: #1705：本次解析读取过的源码（相对路径 -> 文本；不可读为 None）。
+        self.text_memo: dict[str, str | None] = {}
+        self._indexed_module_files: set[str] | None = None
         self._loaded = any(
             value is not None
             for value in (
@@ -99,6 +105,7 @@ class ResolverContext:
                 callee_resolver,
                 file_languages,
                 java_context,
+                module_to_file,
             )
         )
 
@@ -234,6 +241,18 @@ class ResolverContext:
         self._ensure_loaded()
         return self._callee_resolver
 
+    @property
+    def module_to_file(self) -> dict[str, str]:
+        self._ensure_loaded()
+        return self._module_to_file
+
+    @property
+    def indexed_module_files(self) -> set[str]:
+        """`module_to_file` 的文件集合（只建一次，#1673 同理）。"""
+        if self._indexed_module_files is None:
+            self._indexed_module_files = set(self.module_to_file.values())
+        return self._indexed_module_files
+
     def _ensure_loaded(self) -> None:
         if self._loaded:
             return
@@ -256,6 +275,7 @@ class ResolverContext:
         self._callee_resolver = built.callee_resolver
         self._file_languages = built._file_languages  # noqa: SLF001
         self._lang_contexts = built._lang_contexts  # noqa: SLF001
+        self._module_to_file = built._module_to_file  # noqa: SLF001
         self._loaded = True
 
 
@@ -675,6 +695,7 @@ def _build_resolver_context_uncached(cache: ASTCache) -> ResolverContext:
         callee_resolver=callee_resolver,
         file_languages=file_languages,
         lang_contexts=lang_contexts,
+        module_to_file=module_to_file,
     )
 
 

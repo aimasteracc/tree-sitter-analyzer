@@ -90,6 +90,15 @@
     53.4–65.3 s published → 2.8 s unchanged; a touch after an edit/restore
     cycle 38.1–45.6 s published → 2.8 s unchanged. The generation stays the
     same and the disk stays flat.
+- **`nav action=callers` finds calls through a module attribute to a re-exported
+  alias** (#1705). `import pkg.hub as owner; owner._f()`, where `hub` does
+  `from .core import f as _f`, resolves to `core.f` (`resolution_kind:
+  "import_alias"`), following re-exports for up to 4 hops; a plain re-export
+  (`owner.f()`) resolves the same way. Round 9 missed 4 of 70 alias-only
+  callers this way (`owner._reject_sidecars(fd)` in tests). An attribute that
+  the module rebinds, or that the calling file assigns or names in a string,
+  is not resolved; the site is listed in `non_call_reference_sites` under the
+  alias. The extractor version goes from 44 to 45.
 - **`ast_cache mode=sync` builds the same index as `mode=index`** (#1697).
   - `IncrementalSync.sync()` without `exclude_patterns` now applies the
     default scope (`tests/golden/corpus_*` excluded), the same one
