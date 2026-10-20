@@ -363,13 +363,17 @@ class FileWatcherDaemon:
                 language_fn=_language_from_ext,
                 writer_revision=writer_revision,
             )
+            from .call_graph_warm import watcher_refresh
+
             try:
-                result = self._sync.sync(
-                    max_files=scope.certification_max_files,
-                    exclude_patterns=scope.effective_excludes,
-                    candidate_snapshot=candidate,
-                    source_scope=scope,
-                )
+                # #1708：监视器驱动的刷新发布后在后台为新版本构图（显式刷新不构图）。
+                with watcher_refresh():
+                    result = self._sync.sync(
+                        max_files=scope.certification_max_files,
+                        exclude_patterns=scope.effective_excludes,
+                        candidate_snapshot=candidate,
+                        source_scope=scope,
+                    )
             finally:
                 release_index_candidate_snapshot(candidate)
             with self._stats_lock:
