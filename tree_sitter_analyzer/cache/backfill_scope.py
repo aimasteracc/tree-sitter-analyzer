@@ -108,6 +108,8 @@ class ScopeDecision:
     scope: BackfillScope | None
     reason: str
     stats: dict[str, Any] = field(default_factory=dict)
+    #: #1723：本轮写入（重新提取或删除）的文件；内存调用图按它增量更新。
+    changed: frozenset[str] = frozenset()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -289,7 +291,9 @@ def decide(
     if total >= _MIN_EDGES_FOR_FRACTION and in_scope > total * _MAX_SCOPE_FRACTION:
         return ScopeDecision(None, "SCOPE_TOO_LARGE", stats)
     sized = BackfillScope(scope.files, scope.names, scope.edge_ids, in_scope)
-    return ScopeDecision(sized, "DEPENDENCIES_BOUNDED", stats)
+    return ScopeDecision(
+        sized, "DEPENDENCIES_BOUNDED", stats, changed=frozenset(changed)
+    )
 
 
 def _column(conn: sqlite3.Connection, table: str, column: str) -> list[Any]:

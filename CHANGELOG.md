@@ -44,6 +44,31 @@
   from 3.1–4.3 s to 2.2–3.6 s. A 1-file refresh still takes about 28 s,
   because the call-graph step (9–17 s) is unchanged. That step is tracked in
   #1749.
+- **Long-lived MCP server: after a scoped refresh, the in-memory call graph is
+  updated incrementally** (#1723). When a refresh's backfill was scoped
+  (#1696), the server updates the previous generation's graph with the same
+  scope instead of re-resolving about 190k edges: it re-reads the changed
+  files' definitions, re-resolves only the edges whose caller file or callee
+  name is in the scope or whose result points into a changed file, reuses
+  every other edge's result, and replays all results in rowid order, so the
+  graph equals a fresh build on the new generation field by field. A change of
+  subclass or base-class evidence also re-resolves the edges of the affected
+  classes; a change of package re-exports, or of the set of files that define
+  functions, falls back to a full build.
+  - This now also runs after explicit `index action=cache` refreshes, not only
+    watcher-driven ones (#1708), because the work is proportional to the edit.
+    A `nav` call that arrives meanwhile waits until the update is ready, not
+    for the whole background job.
+  - After the update is ready, the background job computes the graph's input
+    digest and persists the edge resolutions, so certified-snapshot calls and
+    new processes reuse the result as well.
+  - The previous graph must have been built from the generation the refresh
+    started from (generation id); otherwise, and whenever the backfill fell
+    back to full, the graph is built in full as before. The outcome is
+    reported in `call_graph_warm.last_outcome()` (`incremental.applied`,
+    `reason`, edge counts and phase times).
+  - `FunctionRef` caches its hash, and the edge-result replay avoids per-edge
+    attribute lookups; full builds get faster too.
 - **A 1-file refresh re-resolves only the call edges whose inputs changed**
   (#1696). Before, every refresh ran all three call-graph backfills over every
   call edge in the project. The refresh now compares the changed file's
