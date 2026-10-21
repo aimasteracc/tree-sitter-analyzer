@@ -269,7 +269,7 @@ def _incremental(
         else call_graph_incremental.update(graph, previous, plan)
     )
     outcome["incremental"] = {"applied": reason is None, "reason": reason}
-    if reason is not None or before is None:
+    if reason is not None or before is None:  # before 为 None 时 reason 已非空
         return False
     outcome["incremental"].update(graph._incremental_stats)
     memo_key = call_graph_incremental.memo_key(before)
@@ -359,11 +359,10 @@ def adopt(project_root: str, database: str | None) -> str | None:
         building = _building.get(key) == target
         thread = _threads.get(key) if building else None
         event = _settled.get(key) if building else None
-    if thread is not None and thread is not threading.current_thread():
-        if event is not None:
-            event.wait(_ADOPT_WAIT_SECONDS)
-        else:
-            thread.join(_ADOPT_WAIT_SECONDS)
+    waiting = thread is not None and thread is not threading.current_thread()
+    if event is not None and waiting:
+        # 在途构建登记时总带着事件；增量结果就绪即置位（不等之后的摘要与落盘）。
+        event.wait(_ADOPT_WAIT_SECONDS)
     with _lock:
         ready = _ready.get(key)
     if ready is None or ready[0][0] != target:

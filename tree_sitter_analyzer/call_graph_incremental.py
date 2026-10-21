@@ -407,8 +407,9 @@ def _update(
     clock.mark("affected_and_rows")
     new_rows = fresh.to_dicts()
     computed = [_resolve_edge(graph._func_by_name, resolver, edge) for edge in new_rows]
-    merged = _merge(aligned, old_records, kept, fresh.ids, computed, new_rows)
     clock.mark("resolve")
+    merged = _merge(aligned, old_records, kept, fresh.ids, computed, new_rows)
+    clock.mark("merge")
     records = merged.records
     graph._apply_edge_records(records)
     clock.mark("apply")

@@ -150,7 +150,8 @@ def store(root: str, digest: str, state: dict[str, Any]) -> None:
         _EXTRA_KEYS.pop(root, None)
         _MEMO.move_to_end(root)
         while len(_MEMO) > _MAX_ROOTS:
-            _MEMO.popitem(last=False)
+            evicted, _entry = _MEMO.popitem(last=False)
+            _EXTRA_KEYS.pop(evicted, None)
 
 
 #: #1708：正在构建的图：(项目根, 输入摘要) -> 构建完成时置位的事件。
