@@ -72,6 +72,10 @@ def pytest_configure(config):
     os.environ.setdefault("TSA_CERTIFICATION_TIMEOUT_DIR", "off")
     # #1691: likewise for the persisted index-file facts.
     os.environ.setdefault("TSA_INDEX_FACTS_DIR", "off")
+    # RFC-0039 slice 2: every stamp in the suite also recomputes the full
+    # certification root; an incremental root that differs fails closed and is
+    # reported by the ``_certification_tree_verified`` fixture below.
+    os.environ.setdefault("TSA_CERTIFICATION_VERIFY", "full")
     if not hasattr(config, "workerinput"):
         _cleanup_pytest_git_repos()
     # #1638: a test stuck past the hard deadline dumps every thread stack and
@@ -664,3 +668,15 @@ def pytest_runtest_call(item):
 
     # New-style wrappers must return the wrapped hook's result.
     return result
+
+@pytest.fixture(autouse=True)
+def _certification_tree_verified():
+    """RFC-0039 gate: no stamp in this test produced an incremental root that
+    differs from a full recompute (such a stamp already failed closed)."""
+    from tree_sitter_analyzer.cache import certification_tracking
+
+    certification_tracking.clear_mismatches()
+    yield
+    mismatches = certification_tracking.mismatches()
+    certification_tracking.clear_mismatches()
+    assert mismatches == [], f"CERTIFICATION_TREE_MISMATCH: {mismatches}"

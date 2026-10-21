@@ -435,11 +435,18 @@ def _update_authoritative_manifest(
         }
         == selected_paths
     )
+    from . import certification_tracking
+
+    if not (exact_paths and _call_graph_marker_is_built(conn)):
+        # 不盖章：撤销本轮的增量认证武装（TEMP 触发器不留到之后的写入）。
+        certification_tracking.disarm(conn)
     if exact_paths and _call_graph_marker_is_built(conn):
         from ..index_snapshot_schema import stamp_full_index_manifest
 
         try:
             stamp_full_index_manifest(conn, cache.project_root, source_scope)
+            # RFC-0039：这次盖章是增量还是完整重算，以及原因。
+            stats["certification"] = certification_tracking.last_decision(conn)
             return True
         except Exception:
             # The stamper rolls back its transaction, preserving the prior

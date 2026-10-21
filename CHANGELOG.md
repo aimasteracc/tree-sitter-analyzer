@@ -57,6 +57,37 @@
   `CrossFileResolver` also no longer scans every module for each relative
   import.
 
+- **A 1-file refresh certifies incrementally** (#1718, RFC-0039 slice 2).
+  The stamp now re-hashes only the `(table, file_path)` groups this refresh
+  wrote, then folds them into the root from the parent's stored leaves. The
+  written groups are recorded by TEMP triggers on the writer connection.
+
+  The incremental path is taken only when all of the following can be shown;
+  otherwise the stamp recomputes in full and records why:
+  - nothing wrote on the connection between schema initialization and
+    arming, and no migration ran;
+  - no other connection or process committed during the refresh
+    (`PRAGMA data_version`);
+  - nothing wrote to the index since the last stamp. Persistent triggers on
+    every rooted table set `ast_certification_state.stale` on the first write
+    after a stamp, whatever the connection, code path or TSA version;
+  - the rooted tables and their schemas are unchanged;
+  - the parent manifest is v3, and its leaves fold back to its root.
+
+  A full recompute also runs every 20th incremental stamp, or when the last
+  one is more than 24 h old. With `TSA_CERTIFICATION_VERIFY=full`, which the
+  test suite sets, every stamp is also recomputed in full. A mismatch fails
+  closed (`CERTIFICATION_TREE_MISMATCH`, no manifest is written), and the
+  suite fails any test that produced one.
+
+  The decision is reported as `certification` in the sync result and in the
+  `index_project` stats. The MCP index reply carries it as `"incremental"` or
+  `"full:<REASON>"`.
+
+  On this repository, across eight 1-file edit kinds, the root the stamp
+  recorded equaled a full recompute every time. The commitment took
+  0.10–1.10 s against 12–16 s for a full recompute, and the whole refresh
+  took 21–40 s.
 - **The certified index manifest records a per-file Merkle root** (#1718,
   RFC-0039 slice 1). Writers stamp `manifest_version` 3, whose
   `index_fingerprint` is a `merkle:` root:

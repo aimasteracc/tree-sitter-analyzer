@@ -35,11 +35,14 @@ class SyncResult:
     publication_reason: str | None = None
     #: #1696：本轮回填是按依赖界定的范围还是全量，以及原因与规模。
     backfill_scope: dict[str, Any] | None = None
+    certification: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         publication: dict[str, Any] = {}
         if self.backfill_scope is not None:
             publication["backfill_scope"] = self.backfill_scope
+        if self.certification is not None:
+            publication["certification"] = self.certification
         if self.published is not None:
             publication["published"] = self.published
         if self.publication_reason is not None:

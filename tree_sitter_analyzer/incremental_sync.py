@@ -107,8 +107,10 @@ class IncrementalSync:
         result = SyncResult()
         conn = self._cache.get_conn()
         # #1696：武装回填范围记录；本轮写入的文件、符号名与被重置的边由此界定回填。
-        from .cache import backfill_scope
+        from .cache import backfill_scope, certification_tracking
 
+        # RFC-0039 slice 2：在本连接写入任何行之前武装增量认证（记录脏组）。
+        certification_tracking.arm(conn)
         backfill_scope.begin(conn)
         # #1671：先撤销继承的稳定失败记录；只有收敛的运行结束时重新签发。
         clear_record(conn)
@@ -421,6 +423,8 @@ class IncrementalSync:
         )
         expected_paths = set(disk_files)
         stamped = False
+        from .cache import certification_tracking
+
         if (
             result.scope_complete
             and candidate_snapshot is not None
@@ -432,6 +436,8 @@ class IncrementalSync:
             try:
                 stamp_full_index_manifest(conn, self._cache.project_root, source_scope)
                 stamped = True
+                # RFC-0039：这次盖章是增量还是完整重算，以及原因。
+                result.certification = certification_tracking.last_decision(conn)
             except Exception:
                 logger.warning(
                     "incremental snapshot manifest certification failed",
@@ -454,6 +460,9 @@ class IncrementalSync:
 
                 clear_call_graph_built_strict(conn)
                 conn.commit()
+        if not stamped:
+            # 不盖章：撤销本轮的增量认证武装（TEMP 触发器不留到之后的写入）。
+            certification_tracking.disarm(conn)
         # 不盖清单的调用（``index action=full`` 的分阶段运行）只能签发带失败的
         # 记录：stamped 为假时 issue_after_run 拒绝无失败的记录。
         self._issue_stable_failure_record(
