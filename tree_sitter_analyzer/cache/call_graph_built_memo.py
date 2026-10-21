@@ -27,6 +27,8 @@ RACY_WINDOW_NS = 5_000_000_000
 #: 记忆条目上限（每个库文件一条）。
 MAX_ENTRIES = 16
 _SIDECARS = ("", "-wal", "-journal")
+#: ``index_file_facts`` 中的事实名。
+_FACT = "call_graph_built"
 
 _LOCK = threading.Lock()
 _MEMO: dict[str, tuple[tuple[Any, ...], bool]] = {}
@@ -71,7 +73,16 @@ def memoized(database: str | None, compute: Callable[[], bool]) -> bool:
             cached = _MEMO.get(path)
         if cached is not None and cached[0] == before:
             return cached[1]
-    result = compute()
+    # #1691：新进程先查跨进程的库文件事实（同样按库文件 stat 证据，含变更时间）。
+    from . import index_file_facts
+
+    facts_stamp = index_file_facts.evidence(path)
+    stored = index_file_facts.lookup(facts_stamp, _FACT)
+    if isinstance(stored, bool):
+        result = stored
+    else:
+        result = compute()
+        index_file_facts.record(facts_stamp, _FACT, result)
     if before is not None:
         with _LOCK:
             if len(_MEMO) >= MAX_ENTRIES and path not in _MEMO:

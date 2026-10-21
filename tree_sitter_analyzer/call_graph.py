@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from . import call_graph_memo, call_graph_store
-from .cache import graph_input_rows
+from .cache import graph_input_rows, index_file_facts
 from .cached_edge_resolution import CachedEdgeResolver
 from .cached_reexport_binding import PackageReexportBinder
 from .call_graph_binding import RefIdentity, pick_caller_ref, ref_identity
@@ -781,7 +781,15 @@ class CachedCallGraph(CallGraph):
         try:
             if self._cache is None:
                 return
-            edge_source = graph_input_rows.read_edge_source(self._cache)
+            # #1691：库文件 stat 证据未变时，上次算出的构图输入摘要与边数仍成立，
+            # 不必为算摘要而读出全部调用边（落盘的边解析结果按摘要取用）。
+            facts_stamp = _index_file_stamp(self._cache)
+            known_input = _known_graph_input(facts_stamp)
+            edge_source = (
+                None
+                if known_input is not None
+                else graph_input_rows.read_edge_source(self._cache)
+            )
             function_source = graph_input_rows.read_function_source(self._cache)
             imports_raw = self._cache.get_imports()
         except sqlite3.Error:
@@ -796,14 +804,23 @@ class CachedCallGraph(CallGraph):
         reexport_binder = PackageReexportBinder(self._cache)
         subclasses = SubclassIndex(self._cache)
         root = str(self.project_root)
-        digest = call_graph_memo.input_digest(
-            *graph_input_rows.source_digest_parts(edge_source),
-            *graph_input_rows.source_digest_parts(function_source),
-            imports_raw,
-            # #1675：集合按值排序后再摘要，摘要跨进程稳定（落盘结果按它取用）。
-            call_graph_memo.stable_form(reexport_binder.evidence()),
-            call_graph_memo.stable_form(subclasses.evidence()),
-        )
+        digest: str | None
+        if known_input is not None:
+            digest, edge_count = known_input
+        else:
+            digest = call_graph_memo.input_digest(
+                *graph_input_rows.source_digest_parts(edge_source),
+                *graph_input_rows.source_digest_parts(function_source),
+                imports_raw,
+                # #1675：集合按值排序后再摘要，摘要跨进程稳定（落盘结果按它取用）。
+                call_graph_memo.stable_form(reexport_binder.evidence()),
+                call_graph_memo.stable_form(subclasses.evidence()),
+            )
+            edge_count = _row_count(edge_source)
+            if digest is not None:
+                index_file_facts.record(
+                    facts_stamp, _GRAPH_INPUT_FACT, [digest, edge_count]
+                )
         self._input_digest = digest
         owned = False
         if digest is not None:
@@ -829,6 +846,7 @@ class CachedCallGraph(CallGraph):
             self._build_after_miss(
                 root,
                 digest,
+                edge_count,
                 sources,
                 imports_raw,
                 reexport_binder,
@@ -860,6 +878,7 @@ class CachedCallGraph(CallGraph):
         self,
         root: str,
         digest: str | None,
+        edge_count: int,
         sources: list[Any],
         imports_raw: Any,
         reexport_binder: PackageReexportBinder,
@@ -881,7 +900,7 @@ class CachedCallGraph(CallGraph):
                 root,
                 digest,
                 functions=len(functions),
-                edges=_row_count(edge_source),
+                edges=edge_count,
             )
             if digest is not None
             else None
@@ -897,6 +916,9 @@ class CachedCallGraph(CallGraph):
         else:
             self._reset_graph_state()
             try:
+                if edge_source is None:
+                    # 摘要已知但没有可用的落盘结果：照常读边并现场解析。
+                    edge_source = graph_input_rows.read_edge_source(self._cache)
                 edges = graph_input_rows.materialize_edges(edge_source)
             except Exception:
                 return
@@ -1042,6 +1064,37 @@ class CachedCallGraph(CallGraph):
 _INFLIGHT_WAIT_SECONDS = 600.0
 #: 不随复用的图状态共享的属性：缓存句柄属于各自的图对象，项目根由构造参数给出。
 _UNSHARED_STATE = frozenset({"_cache", "_fallback", "_persist", "project_root"})
+
+
+#: ``index_file_facts`` 中构图输入事实的名字：``[#1663 输入摘要, 调用边行数]``。
+_GRAPH_INPUT_FACT = "call_graph_input"
+
+
+def _index_file_stamp(cache: Any) -> tuple[Any, ...] | None:
+    """缓存所读库文件的 stat 证据；缓存没有磁盘库连接（测试替身、内存快照）时为 None。"""
+    getter = getattr(cache, "get_conn", None)
+    if not callable(getter):
+        return None
+    try:
+        return index_file_facts.evidence(index_file_facts.database_of(getter()))
+    except Exception:  # noqa: BLE001 — 取不到证据只是不复用
+        return None
+
+
+def _known_graph_input(stamp: tuple[Any, ...] | None) -> tuple[str, int] | None:
+    """库文件证据未变时记下的 ``(输入摘要, 边数)``；没有或格式不符为 None。"""
+    value = index_file_facts.lookup(stamp, _GRAPH_INPUT_FACT)
+    if (
+        isinstance(value, list)
+        and len(value) == 2
+        and isinstance(value[0], str)
+        and value[0]
+        and isinstance(value[1], int)
+        and not isinstance(value[1], bool)
+        and value[1] >= 0
+    ):
+        return value[0], value[1]
+    return None
 
 
 def _row_count(source: Any) -> int:
