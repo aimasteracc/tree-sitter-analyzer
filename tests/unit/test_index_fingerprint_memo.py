@@ -31,13 +31,15 @@ def _count_fingerprints(monkeypatch) -> list[str]:
     from tree_sitter_analyzer import index_snapshot
 
     calls: list[str] = []
-    original = index_snapshot.index_fingerprint
+    # RFC-0039：manifest v3 的读者重算认证根，v2 的读者重算扁平指纹；两者都计数。
+    for name in ("index_fingerprint", "certification_root"):
+        original = getattr(index_snapshot, name)
 
-    def counting(connection, root, **kwargs):
-        calls.append(root)
-        return original(connection, root, **kwargs)
+        def counting(connection, root, _original=original, **kwargs):
+            calls.append(root)
+            return _original(connection, root, **kwargs)
 
-    monkeypatch.setattr(index_snapshot, "index_fingerprint", counting)
+        monkeypatch.setattr(index_snapshot, name, counting)
     return calls
 
 
@@ -106,7 +108,8 @@ async def test_fingerprint_slower_than_capture_deadline_is_computed_once(
     from tree_sitter_analyzer import index_snapshot
 
     await _certified_project(tmp_path)
-    calls = _slower_than_capture(monkeypatch, "index_fingerprint")
+    # RFC-0039：manifest v3 的读者重算的是认证根。
+    calls = _slower_than_capture(monkeypatch, "certification_root")
 
     index_snapshot.read_existing_snapshot(str(tmp_path))
     second = index_snapshot.read_existing_snapshot(str(tmp_path))

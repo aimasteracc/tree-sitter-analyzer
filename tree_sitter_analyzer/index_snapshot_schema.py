@@ -61,6 +61,8 @@ _CONTROL_TABLES = frozenset(
         "sqlite_sequence",
         # RFC-0032 slice 5：写入修订号随每次提交推进，是写入权威而非索引内容。
         "ast_writer_state",
+        # RFC-0039：认证树的叶是派生数据，不进入认证根（读者总是独立重算）。
+        "ast_certification_leaves",
     }
 )
 _REQUIRED_COLUMNS = {
@@ -181,6 +183,10 @@ _SCHEMA_VALIDATION_COLUMN_BUDGET = 4096
 
 
 _MANIFEST_FINGERPRINT = re.compile(r"sha256:[0-9a-f]{64}\Z")
+#: RFC-0039：manifest v3 的认证根。
+_MANIFEST_CERTIFICATION_ROOT = re.compile(r"merkle:[0-9a-f]{64}\Z")
+#: 读者接受的 manifest 版本：v2 记录扁平 ``index_fingerprint``，v3 记录认证根。
+MANIFEST_VERSIONS = (2, 3)
 _MANIFEST_TEXT_BYTE_BUDGET = 1024 * 1024
 
 
@@ -200,7 +206,7 @@ def validate_manifest_scalars(manifest: sqlite3.Row) -> None:
         or not isinstance(source, str)
         or _MANIFEST_FINGERPRINT.fullmatch(source) is None
         or not isinstance(index, str)
-        or _MANIFEST_FINGERPRINT.fullmatch(index) is None
+        or not _index_commitment_matches_version(index, version)
         or not isinstance(count, int)
         or isinstance(count, bool)
         or not 0 <= count <= 2_000_000
@@ -210,9 +216,26 @@ def validate_manifest_scalars(manifest: sqlite3.Row) -> None:
         or not descriptor.isascii()
         or not isinstance(version, int)
         or isinstance(version, bool)
-        or version != 2
+        or version not in MANIFEST_VERSIONS
     ):
         raise ValueError("INDEX_MANIFEST_INVALID")
+
+
+def _index_commitment_matches_version(index: str, version: object) -> bool:
+    """v2 的值是 ``sha256:`` 扁平指纹，v3 的值是 ``merkle:`` 认证根（RFC-0039）。"""
+    pattern = _MANIFEST_CERTIFICATION_ROOT if version == 3 else _MANIFEST_FINGERPRINT
+    return pattern.fullmatch(index) is not None
+
+
+def index_commitment(
+    conn: sqlite3.Connection, root: str, version: int, *, deadline: float
+) -> str:
+    """按 manifest 版本完整重算索引承诺：v3 为认证根，否则为扁平 ``index_fingerprint``。"""
+    if version == 3:
+        from .index_certification_tree import certification_root
+
+        return certification_root(conn, root, deadline=deadline)
+    return index_fingerprint(conn, root, deadline=deadline)
 
 
 def apply_snapshot_migration(conn: sqlite3.Connection, record_fn: Any) -> None:
@@ -241,7 +264,11 @@ def stamp_full_index_manifest(
         scope_json = canonical_source_scope_descriptor(scope)
         stamp_deadline = time.monotonic() + _fingerprint_deadline_seconds()
         source = source_fingerprint(conn, root)
-        index = index_fingerprint(conn, root, deadline=stamp_deadline)
+        # RFC-0039：manifest v3 记录按文件分组的 Merkle 认证根，叶存入控制表，
+        # 供之后的刷新只重算被改动的组。
+        from .index_certification_tree import MANIFEST_VERSION, store_leaves
+
+        index, tree = stamp_commitment(conn, root, deadline=stamp_deadline)
         recorded = recorded_source_rows(conn)
         if os.name == "posix" and os.path.exists("/dev/fd"):
             current = capture_current_source_snapshot(
@@ -261,13 +288,14 @@ def stamp_full_index_manifest(
                 f"rows_current={len(current.rows) if current.rows else 0}:"
                 f"rows_recorded={len(recorded)}"
             )
+        store_leaves(conn, tree)
         conn.execute("DELETE FROM ast_index_snapshot_manifest")
         conn.execute(
             "INSERT INTO ast_index_snapshot_manifest "
             "(singleton, canonical_root, source_fingerprint, index_fingerprint, "
             "file_count, source_scope_descriptor, manifest_version) "
-            "VALUES (1, ?, ?, ?, ?, ?, 2)",
-            (root, source, index, len(recorded), scope_json),
+            "VALUES (1, ?, ?, ?, ?, ?, ?)",
+            (root, source, index, len(recorded), scope_json, MANIFEST_VERSION),
         )
         conn.commit()
     except BaseException:
@@ -277,6 +305,16 @@ def stamp_full_index_manifest(
         if transaction_started and conn.in_transaction:
             conn.rollback()
         raise
+
+
+def stamp_commitment(
+    conn: sqlite3.Connection, root: str, *, deadline: float
+) -> tuple[str, Any]:
+    """盖章用的认证根与认证树（RFC-0039）；测试可替换这个接缝。"""
+    from .index_certification_tree import fold_root, full_tree
+
+    tree = full_tree(conn, deadline=deadline)
+    return fold_root(root, tree, deadline), tree
 
 
 def validate_snapshot_schema(

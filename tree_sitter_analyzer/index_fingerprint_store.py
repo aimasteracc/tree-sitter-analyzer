@@ -47,8 +47,8 @@ MAX_ENTRIES = 32
 MAX_FILES = 64
 _MARSHAL_VERSION = 4
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
-#: 指纹为 ``sha256:`` 加 64 位十六进制摘要；投影判定为 "0" / "1"。其他值不落盘。
-_VALUE = re.compile(r"sha256:[0-9a-f]{64}|[01]")
+#: 指纹为 ``sha256:`` 加 64 位十六进制摘要，RFC-0039 认证根为 ``merkle:`` 加 64 位；投影判定为 "0" / "1"。其他值不落盘。
+_VALUE = re.compile(r"sha256:[0-9a-f]{64}|merkle:[0-9a-f]{64}|[01]")
 _LOCK = threading.Lock()
 
 

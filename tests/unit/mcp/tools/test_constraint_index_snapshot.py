@@ -288,7 +288,7 @@ def _certification_dependencies(
     )
     monkeypatch.setattr(owner, "_capture_constraint_sources", lambda *_a: current)
     monkeypatch.setattr(owner, "recorded_source_rows", lambda *_a, **_k: current.rows)
-    monkeypatch.setattr(owner, "index_fingerprint", lambda *_a, **_k: "index")
+    monkeypatch.setattr(owner, "index_commitment", lambda *_a, **_k: "index")
     monkeypatch.setattr(owner, "exact_call_graph_marker", lambda *_a, **_k: True)
     monkeypatch.setattr(owner, "sqlite_compile_supports_fts5", lambda _conn: True)
     monkeypatch.setattr(owner, "has_ordinary_symbol_projection", lambda *_a: True)

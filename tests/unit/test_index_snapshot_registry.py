@@ -391,7 +391,9 @@ class TestAuthoritativeSnapshotTransitions:
 
         assert before["completeness"] == "complete"
         assert after["completeness"] == "partial"
-        assert after["index_fingerprint"] != before["index_fingerprint"]
+        # RFC-0039（owner decision 2026-10-20）：FTS5 不进入认证根，由逐文件投影摘要与
+        # 投影精确性核验绑定——认证根不变，完整性降为 partial。
+        assert after["index_fingerprint"] == before["index_fingerprint"]
 
     @pytest.mark.asyncio
     async def test_empty_successful_full_index_can_be_complete(self, tmp_path):

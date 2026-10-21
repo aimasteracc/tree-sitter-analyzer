@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any, cast
 from urllib.parse import quote
 
+from .index_certification_tree import certification_root
 from .index_fingerprint_memo import (
     memo_compute_deadline,
     memoized_index_fingerprint,
@@ -50,6 +51,7 @@ from .index_snapshot_registry import (
     IndexSnapshotRegistry,
 )
 from .index_snapshot_schema import (
+    MANIFEST_VERSIONS,
     _fingerprint_deadline_seconds,
     index_fingerprint,
     validate_snapshot_schema,
@@ -91,6 +93,8 @@ _TTL_SECONDS = 35.0
 # (import direction: index_snapshot.py → index_snapshot_registry.py avoids circular import)
 _SNAPSHOT_OVERHEAD_BYTES = _WAL_CONNECTION_OVERHEAD_BYTES
 _CAPTURE_DEADLINE_SECONDS = 10.0
+#: RFC-0039：认证根与 v2 扁平指纹分开入备忘录（同一内容键加这个尾标记）。
+CERTIFICATION_ROOT_MEMO_TAG = "certification-root-v1"
 # #1561：search.symbol / nav.pulse / nav.resolve 的整次认证调用（捕获 + 读取 +
 # 读后复核）共用的绝对期限。每次认证都重新哈希全部已索引源码；在 2,412 文件的
 # 本仓库（Windows、高负载）实测冷捕获 47.5-51.2 秒（其中索引指纹 18.9-28.0 秒）、
@@ -143,16 +147,33 @@ def _capture_sources_with_deadline(
         return capture_current_source_snapshot(root, source_scope)
 
 
+def _manifest_version(manifest: sqlite3.Row | None) -> int:
+    """读者按哪个版本重算承诺；没有 manifest 时用写者当前的格式（v3 认证根）。"""
+    return int(manifest["manifest_version"]) if manifest is not None else 3
+
+
 def _index_fingerprint_with_deadline(
     connection: sqlite3.Connection,
     root: str,
     deadline: float,
     memo_key: tuple[str, ...] | None = None,
+    version: int = 2,
 ) -> str:
     """Keep pre-deadline two-argument test seams source-compatible.
 
     #1561：给出「项目根 + 私有副本字节摘要」键时，同一内容只计算一次指纹。
+    RFC-0039：manifest v3 时重算认证根；它与 v2 指纹分开入备忘录（键尾加版本标记）。
     """
+    if version == 3:
+        root_key = (*memo_key, CERTIFICATION_ROOT_MEMO_TAG) if memo_key else None
+
+        def compute_root() -> str:
+            budget = memo_compute_deadline(
+                root_key, deadline, _clock(), _fingerprint_deadline_seconds()
+            )
+            return certification_root(connection, root, deadline=budget)
+
+        return memoized_index_fingerprint(root_key, compute_root)
 
     def compute() -> str:
         # #1634：入表的指纹按整段预算算完，避免每次捕获都在期限处重算。
@@ -325,11 +346,13 @@ def _capture_wal_snapshot(
                 raise ValueError("CONCURRENT_WRITER")
             _require_capture_budget(deadline)
             memo_key = (root, *content_key) if content_key else None
-            index = _index_fingerprint_with_deadline(staged, root, deadline, memo_key)
-            recorded = recorded_source_rows(staged, deadline=deadline)
             manifest = _read_bounded_manifest(staged, deadline)
             if manifest is not None:
                 _validate_manifest_scalars(manifest)
+            index = _index_fingerprint_with_deadline(
+                staged, root, deadline, memo_key, _manifest_version(manifest)
+            )
+            recorded = recorded_source_rows(staged, deadline=deadline)
             current = None
             source_scope = None
             scope_reason: str | None = None
@@ -359,7 +382,7 @@ def _capture_wal_snapshot(
                 and manifest["source_fingerprint"] == current.fingerprint
                 and manifest["index_fingerprint"] == index
                 and manifest["file_count"] == count
-                and manifest["manifest_version"] == 2
+                and manifest["manifest_version"] in MANIFEST_VERSIONS
             )
             call_graph_complete = _exact_call_graph_marker(staged, deadline=deadline)
             complete = exact_sources and exact_manifest and call_graph_complete
@@ -530,15 +553,15 @@ def _capture_existing_snapshot(
                     db_fd, initial.st_size, lambda: _require_capture_budget(deadline)
                 ),
             )
+            manifest = _read_bounded_manifest(connection, deadline)
+            if manifest is not None:
+                _validate_manifest_scalars(manifest)
             index = _index_fingerprint_with_deadline(
-                connection, root, deadline, memo_key
+                connection, root, deadline, memo_key, _manifest_version(manifest)
             )
             _require_capture_budget(deadline)
             recorded = recorded_source_rows(connection, deadline=deadline)
             _require_capture_budget(deadline)
-            manifest = _read_bounded_manifest(connection, deadline)
-            if manifest is not None:
-                _validate_manifest_scalars(manifest)
             current = None
             source_scope = None
             scope_reason = None
@@ -569,7 +592,7 @@ def _capture_existing_snapshot(
                 and manifest["source_fingerprint"] == current.fingerprint
                 and manifest["index_fingerprint"] == index
                 and manifest["file_count"] == count
-                and manifest["manifest_version"] == 2
+                and manifest["manifest_version"] in MANIFEST_VERSIONS
             )
             _require_capture_budget(deadline)
             call_graph_complete = _exact_call_graph_marker(

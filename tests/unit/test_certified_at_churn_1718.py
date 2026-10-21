@@ -121,3 +121,8 @@ def test_one_file_refresh_rewrites_only_that_files_certified_at(
         "b.py": 1_000_000_000,
         "c.py": 1_000_000_000,
     }
+
+
+def test_an_empty_project_refresh_stamps_nothing(tmp_path) -> None:
+    result = _sync(tmp_path)
+    assert (result.new_files, result.updated_files, result.errors) == (0, 0, 0)

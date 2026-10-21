@@ -16,6 +16,7 @@
 
 版本 / 写入身份
   * ``ast_writer_state``（缓存 UUID 与写入修订号，RFC-0032）
+  * ``ast_certification_leaves``（RFC-0039 认证树的叶：由含时间戳的行派生）
   * ``sqlite_sequence``（AUTOINCREMENT 计数器）
 
 代理键（不丢弃，而是映射为自然键后比较）
@@ -42,7 +43,9 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-EXCLUDED_TABLES = frozenset({"ast_writer_state", "sqlite_sequence"})
+EXCLUDED_TABLES = frozenset(
+    {"ast_writer_state", "sqlite_sequence", "ast_certification_leaves"}
+)
 EXCLUDED_COLUMNS = {
     "ast_index": {"indexed_at", "certified_at"},
     "ast_symbol_activation": {"computed_at"},

@@ -690,6 +690,14 @@ def test_read_existing_forces_memory_temp_store_before_fingerprint(
         return real_fingerprint(connection, root)
 
     monkeypatch.setattr(owner, "index_fingerprint", fingerprint_with_temp_store_check)
+    # RFC-0039：manifest v3 的读者重算认证根，同样须在内存临时存储上运行。
+    real_root = owner.certification_root
+
+    def root_with_temp_store_check(connection, root, **kwargs):
+        observed.append(connection.execute("PRAGMA temp_store").fetchone()[0])
+        return real_root(connection, root, **kwargs)
+
+    monkeypatch.setattr(owner, "certification_root", root_with_temp_store_check)
     try:
         snapshot = owner.read_existing_snapshot(str(tmp_path))
         with owner.acquire_index_snapshot(

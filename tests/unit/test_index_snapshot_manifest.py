@@ -8,6 +8,7 @@ import sqlite3
 import pytest
 
 from tests.unit._ast_cache_helpers import legacy_cache
+from tree_sitter_analyzer.index_certification_tree import CertificationTree
 
 requires_posix_snapshot = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
 requires_posix_fd = requires_posix_snapshot
@@ -436,8 +437,11 @@ def test_manifest_writer_uses_portable_source_certifier(
     conn.execute("INSERT INTO ast_index VALUES ('sample.py', 'hash', 'python')")
     monkeypatch.setattr(schema, "os", PortableOS())
     monkeypatch.setattr(schema, "strict_call_graph_marker", lambda _conn: True)
+    # RFC-0039：盖章的承诺接缝（认证根与认证树）。
     monkeypatch.setattr(
-        schema, "index_fingerprint", lambda *_args, **_kwargs: "sha256:" + "a" * 64
+        schema,
+        "stamp_commitment",
+        lambda *_args, **_kwargs: ("merkle:" + "a" * 64, CertificationTree(())),
     )
     monkeypatch.setattr(
         schema, "source_fingerprint", lambda *_args: "sha256:" + "b" * 64
@@ -480,7 +484,7 @@ def test_manifest_writer_uses_portable_source_certifier(
         "SELECT canonical_root, file_count, manifest_version "
         "FROM ast_index_snapshot_manifest"
     ).fetchone()
-    assert tuple(row) == (schema.os.path.realpath(str(tmp_path)), 1, 2)
+    assert tuple(row) == (schema.os.path.realpath(str(tmp_path)), 1, 3)
     assert len(observed) == 1
     conn.close()
 
@@ -512,9 +516,9 @@ def test_manifest_writer_shares_one_stamp_deadline(tmp_path, monkeypatch) -> Non
     monkeypatch.setattr(schema, "strict_call_graph_marker", lambda _conn: True)
     monkeypatch.setattr(
         schema,
-        "index_fingerprint",
+        "stamp_commitment",
         lambda _conn, _root, *, deadline: (
-            deadlines.append(deadline) or "sha256:" + "a" * 64
+            deadlines.append(deadline) or ("merkle:" + "a" * 64, CertificationTree(()))
         ),
     )
     monkeypatch.setattr(

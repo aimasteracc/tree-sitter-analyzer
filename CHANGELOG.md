@@ -57,6 +57,26 @@
   `CrossFileResolver` also no longer scans every module for each relative
   import.
 
+- **The certified index manifest records a per-file Merkle root** (#1718,
+  RFC-0039 slice 1). Writers stamp `manifest_version` 3, whose
+  `index_fingerprint` is a `merkle:` root:
+  - one leaf per `(table, file_path)` group, using the same row encoding and
+    order as the flat fingerprint;
+  - a root over the sorted leaves.
+
+  The leaves are kept in a new control table, `ast_certification_leaves`,
+  outside the root. Slice 2 will use them to re-hash only the files a refresh
+  touched.
+
+  The FTS5 search index is not hashed into the root. It is certified through
+  the per-file projection digest and the projection-exact check that readers
+  already run (owner decision, 2026-10-20).
+
+  Readers recompute the root for v3 manifests and the flat fingerprint for v2
+  manifests, so existing certified indexes stay certified. Older readers treat
+  a v3 manifest as not certified, so they fail closed. A full build costs the
+  same as before (6–8 s against 9–15 s for the flat fingerprint on this
+  repository).
 ### Fixed
 
 - **One source edit now causes one watcher sync** (#1730). When the project

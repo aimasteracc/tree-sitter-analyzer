@@ -316,7 +316,7 @@ async def test_a_new_process_reuses_the_stored_fingerprint_and_verdict(
     from tree_sitter_analyzer import index_snapshot
 
     await _certified_project(tmp_path)
-    fingerprints = _counting(monkeypatch, "index_fingerprint")
+    fingerprints = _counting(monkeypatch, "certification_root")  # RFC-0039：v3 认证根
     projections = _counting(monkeypatch, "symbol_projection_is_exact")
     warm_first = index_snapshot.read_existing_snapshot(str(tmp_path))
     warm = index_snapshot.read_existing_snapshot(str(tmp_path))
@@ -336,7 +336,7 @@ async def test_changed_index_bytes_are_recomputed_in_a_new_process(
     from tree_sitter_analyzer.ast_cache import ASTCache
 
     await _certified_project(tmp_path)
-    fingerprints = _counting(monkeypatch, "index_fingerprint")
+    fingerprints = _counting(monkeypatch, "certification_root")  # RFC-0039：v3 认证根
     index_snapshot.read_existing_snapshot(str(tmp_path))
     cache = ASTCache(str(tmp_path))
     try:
@@ -364,7 +364,7 @@ async def test_a_reindexed_project_is_recomputed_in_a_new_process(
     first = index_snapshot.read_existing_snapshot(str(tmp_path))
     (tmp_path / "leaf.py").write_text("def leaf():\n    return 2\n", encoding="utf-8")
     await _certified_project(tmp_path)
-    fingerprints = _counting(monkeypatch, "index_fingerprint")
+    fingerprints = _counting(monkeypatch, "certification_root")  # RFC-0039：v3 认证根
 
     second = index_snapshot.read_existing_snapshot(str(tmp_path))
 
