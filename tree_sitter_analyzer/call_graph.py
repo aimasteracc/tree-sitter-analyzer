@@ -15,6 +15,7 @@ Key classes:
 import gc
 import os
 import sqlite3
+import time
 from collections import defaultdict, deque
 from collections.abc import Collection, Iterable, Iterator
 from collections.abc import Set as AbstractSet
@@ -1225,9 +1226,12 @@ class _LazyHierarchy:
         self._base = base
         self._files = files
         self.value: Hierarchy | None = None
+        #: #1723：读取层级花费的秒数（增量统计用）。
+        self.seconds = 0.0
 
     def __call__(self) -> Hierarchy:
         if self.value is None:
+            started = time.perf_counter()
             try:
                 conn = self._cache.get_conn()
                 self.value = (
@@ -1237,6 +1241,7 @@ class _LazyHierarchy:
                 )
             except Exception:  # nosec B110 — 没有连接：没有 MRO 证据。
                 self.value = Hierarchy()
+            self.seconds = time.perf_counter() - started
         return self.value
 
 

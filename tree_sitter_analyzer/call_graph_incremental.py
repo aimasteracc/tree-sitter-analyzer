@@ -434,6 +434,7 @@ def _update(
         "recomputed_edges": len(computed),
         "reused_edges": len(kept),
         "changed_files": len(plan.changed),
+        "hierarchy_seconds": round(getattr(graph._hierarchy_loader, "seconds", 0.0), 3),
         "phase_seconds": clock.phases,
     }
     return None
@@ -631,6 +632,9 @@ def finalize(graph: CachedCallGraph, state: dict[str, Any]) -> bool:
     if digest is None or list(getattr(edge_source, "ids", ())) != memo["alignment"].ids:
         return False
     root = str(graph.project_root)
+    if memo.get("hierarchy") is None and graph._hierarchy_loader is not None:
+        # 本轮没用到层级：在后台读好，下一轮增量只重读范围内的文件。
+        memo["hierarchy"] = graph._hierarchy_loader()
     state["_input_digest"] = digest
     if not call_graph_memo.add_key(root, state, digest):
         return False
