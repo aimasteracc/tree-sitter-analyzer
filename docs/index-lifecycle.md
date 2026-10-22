@@ -100,6 +100,10 @@ changed (#1696). The scope is:
   statement in any function, or a module-level `del` (#1721). Such a rebinding
   creates no symbol, but it decides whether `owner._f()` resolves through the
   module's re-export (#1705);
+- for JavaScript, the importers of a file whose export shape changed: the
+  default export object's members and spreads, or its named exports
+  (#1741). `utils.findKey()` resolves through that shape without naming a
+  symbol of the importer;
 - the call edges of files that depend on those names, through imports,
   aliases, star imports, module aliases, subclasses and typed exports.
 

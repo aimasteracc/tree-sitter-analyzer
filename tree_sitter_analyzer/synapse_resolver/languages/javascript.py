@@ -30,6 +30,10 @@ from typing import Any
 from tree_sitter_analyzer.languages.language_family import languages_compatible
 
 from .._javascript_constants import JS_BUILTIN_CALLS
+from .._javascript_object_exports import (
+    ObjectExportResolver,
+    build_object_export_resolver,
+)
 from .._registry import register_language
 
 #: Same-scope receivers handled by the ``local`` tier, each by a DISTINCT path
@@ -65,6 +69,7 @@ class JavaScriptResolverContext:
         "global_name_table",
         "file_languages",
         "shadowed_globals",
+        "object_exports",
     )
 
     def __init__(
@@ -75,7 +80,10 @@ class JavaScriptResolverContext:
         global_name_table: dict[str, list[tuple[str, int]]],
         file_languages: dict[str, str],
         shadowed_globals: frozenset[str],
+        object_exports: ObjectExportResolver | None = None,
     ) -> None:
+        #: #1741：``utils.findKey()`` 经默认导出对象 / 命名空间导入绑定；None 不启用。
+        self.object_exports = object_exports
         self.file_symbols = file_symbols
         self.file_class_methods = file_class_methods
         self.global_name_table = global_name_table
@@ -126,6 +134,7 @@ def build_javascript_context(
     file_class_methods: Any,  # lazy thunk -> class->method map
     conn: Any = None,
     js_shadowed_globals: Any = None,  # test-injection override
+    project_root: str | None = None,
     **_ignored: Any,
 ) -> JavaScriptResolverContext | None:
     """Build the JS context, or ``None`` when no ``.js``/``.jsx`` file is indexed.
@@ -149,6 +158,15 @@ def build_javascript_context(
         global_name_table=global_name_table,
         file_languages=file_languages,
         shadowed_globals=shadowed,
+        object_exports=build_object_export_resolver(
+            project_root=project_root,
+            imports_by_file=imports_by_file,
+            file_languages=file_languages,
+            file_symbols=file_symbols,
+            conn=conn,
+        )
+        if project_root
+        else None,
     )
 
 
@@ -278,6 +296,15 @@ def resolve_javascript_callee(
         head = receiver.split(".", 1)[0]
         if full in JS_BUILTIN_CALLS and not _js_project_owns(ctx, head):
             return None, "builtin", ""
+
+    # 2b. #1741 — ``obj.m()`` through a default / namespace import of a project
+    #     module whose default export object (or named export) carries ``m``.
+    #     Proven or nothing: any shape the helper cannot verify stays ``unknown``.
+    if receiver and receiver != "this" and ctx.object_exports is not None:
+        bound = ctx.object_exports.resolve(receiver, simple, caller_file)
+        if bound is not None:
+            sym_id, target_file = bound
+            return sym_id, "project", target_file
 
     # 3. project — exactly one JS-family project-wide definition of a BARE name,
     #    AND that definition must be a bare-callable kind (a top-level

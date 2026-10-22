@@ -284,4 +284,11 @@ def _extract_call_edges(
         rebinds = module_rebinds(tree.root_node)
         if rebinds:
             symbols["module_rebinds"] = rebinds
+    if language in ("javascript", "jsx") and source_code:
+        # #1741：默认导出对象 / 具名导出决定 `utils.findKey()` 的解析（范围回填的解析面）。
+        from ..synapse_resolver._javascript_object_exports import export_shape
+
+        shape = export_shape(source_code)
+        if shape is not None:
+            symbols["js_exports"] = shape
     return extract_call_edges(tree, source_code, language)
