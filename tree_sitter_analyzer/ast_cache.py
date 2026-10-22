@@ -74,7 +74,8 @@ from ._ast_cache_query_mixin import ASTCacheQueryMixin
 # v45：经模块属性调用的再导出名（`owner._f()`）解析到真实定义（#1705）。
 # v46：symbols_json 记录 `global` / 模块级 `del` 重新绑定的名字，进入范围回填的解析面（#1721）。
 # v47：JS 经默认导出对象 / 命名空间导入的 `obj.m()` 解析到定义，symbols_json 记录 JS 导出形状（#1741）。
-_AST_CACHE_EXTRACTOR_VERSION = 47
+# v48：lambda / 非方法函数参数 `self` 的调用写作 `(self).m`，不按方法接收者解析（#1739）。
+_AST_CACHE_EXTRACTOR_VERSION = 48
 
 # Preserve the historical public exception identity after implementation split.
 SchemaIntegrityError.__module__ = __name__

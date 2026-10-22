@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, cast
 
+from .python_own_receiver import mark_unbound_own_receiver
 from .receiver_hints import (
     Hint,
     call_receiver_hint,
@@ -855,6 +856,9 @@ def _extract_recursive(
     if node_type in _CALL_NODE_TYPES.get(language, set()):
         call_info = extract_call(node, source, language)
         if call_info:
+            if language == "python":
+                # #1739：lambda / 非方法函数参数里的 `self` 不是方法接收者。
+                mark_unbound_own_receiver(node, call_info)
             recv = call_info.get("receiver")
             if local_types and recv in local_types:
                 cls, bind_line = local_types[recv]

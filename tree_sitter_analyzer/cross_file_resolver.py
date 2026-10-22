@@ -32,7 +32,7 @@ from .constants import (
     JS_TS_MODULE_EXTS_LONGEST_FIRST,
 )
 from .languages.lang_extension_map import EXT_TO_LANG
-from .receiver_proof import has_unproven_receiver
+from .receiver_proof import has_unproven_receiver, is_own_instance_call
 
 logger = logging.getLogger(__name__)
 
@@ -249,9 +249,14 @@ class CrossFileResolver:
 
             # #1669：这里只按裸名解析，看不到接收者；接收者未被证明的 `x.m()`
             # （含同文件里的 `self._entries.append()`）不得因同名定义而写入文件。
+            # #1739：`self.m()` 只能经外围类的 MRO 确定，同名定义不是证据。
             callee_candidates = (
                 []
                 if has_unproven_receiver(callee_full)
+                or (
+                    is_own_instance_call(callee_full)
+                    and caller_file.endswith((".py", ".pyi"))
+                )
                 else self.resolve_callee(callee_name, caller_file)
             )
             # 低置信度全局同名回退只适用于唯一的裸调用；带接收者的调用交给
