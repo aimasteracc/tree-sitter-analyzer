@@ -140,13 +140,26 @@ class ObjectExportResolver:
             return None
         if len(values) == 1:
             return self._local_value(file_path, values[0], hops)
-        # 不在字面量里：只能来自展开的另一个默认导入，且只能有一个来源。
+        # 不在字面量里：只能来自展开的另一个默认导入或命名空间导入，且只能有一个来源。
         found: list[tuple[int, str]] = []
         for spread in spreads:
             source = self._default_import_target(file_path, spread)
-            if source is None:
-                return None  # 展开了无法追踪的对象：可能就含 ``name``。
-            hit = self._default_member(source, name, hops + 1)
+            if source is not None:
+                hit = self._default_member(source, name, hops + 1)
+            else:
+                namespace = self._namespace_import_target(file_path, spread)
+                if namespace is None:
+                    return None  # 展开了无法追踪的对象：可能就含 ``name``。
+                exports = self._named_export_map(namespace)
+                if exports is None:
+                    return None  # ``export *`` 或读不到：成员集合未知。
+                hit = (
+                    self._named_export(namespace, name, hops + 1)
+                    if name in exports
+                    else None
+                )
+                if name in exports and hit is None:
+                    return None  # 来源确有该名字但无法定位定义：不猜。
             if hit is not None:
                 found.append(hit)
         return found[0] if len(found) == 1 else None
@@ -169,21 +182,29 @@ class ObjectExportResolver:
     def _named_export(
         self, file_path: str, name: str, hops: int
     ) -> tuple[int, str] | None:
+        exports = self._named_export_map(file_path)
+        local = exports.get(name) if exports is not None else None
+        if local is None:
+            return None
+        return self._local_value(file_path, local, hops)
+
+    def _named_export_map(self, file_path: str) -> dict[str, str] | None:
+        """具名导出 ``导出名 -> 本地名``；含 ``export *`` 或读不到源码时为 None。"""
         text = self._source(file_path)
         if text is None:
             return None
-        word = re.escape(name)
-        direct = re.search(
-            rf"(?m)^[ \t]*export[ \t]+(?:async[ \t]+)?(?:function\*?|const|let|var)[ \t]+{word}\b",
-            text,
-        )
-        listed = any(
-            name in [p.split(" as ")[-1].strip() for p in block.split(",")]
-            for block in re.findall(r"(?m)^[ \t]*export[ \t]*\{([^}]*)\}", text)
-        )
-        if not direct and not listed:
-            return None
-        return self._local_value(file_path, name, hops)
+        return _named_exports(_strip_comments(text))
+
+    def _namespace_import_target(self, file_path: str, local: str) -> str | None:
+        for e in self._imports.get(file_path, []):
+            if e.local_name == local and e.is_relative and e.is_star:
+                return (
+                    resolve_typescript_specifier(
+                        e.module_path, file_path, self._indexed
+                    )
+                    or None
+                )
+        return None
 
     def _default_import_target(self, file_path: str, local: str) -> str | None:
         for e in self._imports.get(file_path, []):
@@ -276,6 +297,26 @@ def _function_id(
         if n == name and kind == "function"
     ]
     return ids[0] if len(ids) == 1 else None
+
+
+def _named_exports(text: str) -> dict[str, str] | None:
+    """``导出名 -> 本地名``；``export * from`` 让集合不可知，返回 None。"""
+    if re.search(r"(?m)^[ \t]*export[ \t]*\*", text):
+        return None
+    out: dict[str, str] = {}
+    for name in re.findall(
+        rf"(?m)^[ \t]*export[ \t]+(?:async[ \t]+)?(?:function\*?|const|let|var|class)[ \t]+({_IDENT})",
+        text,
+    ):
+        out[name] = name
+    for block in re.findall(r"(?m)^[ \t]*export[ \t]*\{([^}]*)\}", text):
+        for part in block.split(","):
+            item = part.strip()
+            if not item:
+                continue
+            local, _, exported = item.partition(" as ")
+            out[(exported or local).strip()] = local.strip()
+    return out
 
 
 def _strip_comments(text: str) -> str:

@@ -268,3 +268,53 @@ def test_parenthesised_non_literals_keep_the_guard(text: str) -> None:
     from tree_sitter_analyzer.mcp.tools.callers_dispatch import is_function_literal
 
     assert is_function_literal(text) is False
+
+
+_COMMON = (
+    "const hasBrowserEnv = typeof window !== 'undefined';\n"
+    "const _navigator = null;\n"
+    "\n"
+    "export { hasBrowserEnv, _navigator as navigator };\n"
+)
+
+
+@pytest.mark.asyncio
+async def test_spread_of_a_namespace_import_beside_a_default_import(tmp_path) -> None:
+    # axios lib/platform/index.js: ``export default { ...utils, ...platform }`` where
+    # ``utils`` is ``import * as utils``. The namespace spread provably carries only its
+    # static named exports, so ``generateString`` comes from ``...platform``.
+    files = dict(_AXIOS_SHAPE)
+    files["lib/platform/common/utils.js"] = _COMMON
+    files["lib/platform/index.js"] = (
+        "import platform from './node/index.js';\n"
+        "import * as utils from './common/utils.js';\n"
+        "\n"
+        "export default {\n  ...utils,\n  ...platform,\n};\n"
+    )
+    root = await _index(tmp_path, files)
+
+    result = await _callers(root, "generateString", "lib/platform/node/index.js")
+
+    assert _names(result) == {("lib/core/headers.js", "boundary")}
+
+
+@pytest.mark.asyncio
+async def test_namespace_spread_with_export_star_is_not_bound(tmp_path) -> None:
+    files = dict(_AXIOS_SHAPE)
+    files["lib/platform/common/utils.js"] = "export * from './more.js';\n"
+    files["lib/platform/common/more.js"] = (
+        "export function generateString() {\n  return 1;\n}\n"
+    )
+    files["lib/platform/index.js"] = (
+        "import platform from './node/index.js';\n"
+        "import * as utils from './common/utils.js';\n"
+        "\n"
+        "export default {\n  ...utils,\n  ...platform,\n};\n"
+    )
+    root = await _index(tmp_path, files)
+
+    result = await _callers(root, "generateString", "lib/platform/node/index.js")
+
+    # ``export *`` makes the spread's members unknowable: either source may win.
+    assert ("lib/core/headers.js", "boundary") not in _names(result)
+    assert result["completeness"] != "complete"
