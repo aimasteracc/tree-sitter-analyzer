@@ -381,3 +381,15 @@ def test_a_changed_module_map_declines_the_patch() -> None:
         star_target=lambda *_args: "",
     )
     assert declined is None
+
+
+def test_an_unreadable_scoped_edge_read_falls_back_to_the_full_read() -> None:
+    """#1749：范围内读边失败时返回 None，交叉文件阶段改为读取全部调用边（旧行为）。"""
+    import sqlite3
+
+    from tree_sitter_analyzer.cache.backfill_scope import BackfillScope
+    from tree_sitter_analyzer.cache.query import _scoped_call_edges
+
+    conn = sqlite3.connect(":memory:")  # 没有 edges 表
+    scope = BackfillScope(frozenset({"a.py"}), frozenset({"f"}), frozenset())
+    assert _scoped_call_edges(conn, scope) is None
