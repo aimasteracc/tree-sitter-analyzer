@@ -218,7 +218,8 @@
   `self` / `cls` counts as the receiver only as the first parameter of a method
   defined in a class body. A lambda, module-level or nested-function parameter
   with that name is an ordinary unproven receiver: the call is stored as
-  x
+  `(self).m`, and the name-based backfill no longer binds `self.m()`. The
+  extractor version goes from 47 to 48.
 
 - **One source edit now causes one watcher sync** (#1730). When the project
   has a stable per-file failure, such as an optional grammar that is not

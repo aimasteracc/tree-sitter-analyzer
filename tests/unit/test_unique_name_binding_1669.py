@@ -178,7 +178,7 @@ def test_extractor_version_is_bumped_for_unique_name_binding() -> None:
     assert (
         ast_cache._AST_CACHE_EXTRACTOR_VERSION,
         indexer._AST_CACHE_EXTRACTOR_VERSION,
-    ) == (47, 47)
+    ) == (48, 48)
 
 
 @pytest.mark.parametrize(
