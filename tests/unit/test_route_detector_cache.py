@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -82,27 +81,15 @@ class TestRouteCachePersistence:
 
         assert key(cached) == key(cached_via_db) == key(no_cache)
 
-    @pytest.mark.performance
-    @pytest.mark.quarantine
-    @pytest.mark.slow
-    def test_warm_pass_is_meaningfully_faster_than_cold(self, tmp_path: Path):
-        """PERF-1 regression guard: the cache must produce a >=3x speedup on
-        second invocation. (Real-world numbers on the analyzer's own repo
-        are ~130x; a tighter ratio here would just measure jitter on a
-        60-file synthetic project — but if someone removes the cache or
-        breaks the fast path, the ratio collapses to ~1x and we catch it.)
+    def test_warm_pass_rescans_no_file_and_returns_identical_routes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """PERF-1 regression guard（#1751：断言缓存行为本身，不再比较毫秒级耗时比）。
 
-        Skipped under heavily-loaded CI where wall-clock measurements are
-        unreliable — set TSA_SKIP_PERF=1 to opt out.
-        Marked quarantine — timing is sensitive to xdist CPU contention,
-        so reruns must not hide a regression.
+        暖运行（缓存已填充、文件未变）不得重新扫描或解析任何文件——每个文件的
+        扫描与解析都经过 ``detect_file``——且结果与不用缓存的冷运行逐项相同。
+        缓存被关闭或快速路径失效时，暖运行会对每个文件调用 ``detect_file``。
         """
-        import os as _os
-
-        if _os.environ.get("TSA_SKIP_PERF"):
-            pytest.skip("TSA_SKIP_PERF set")
-
-        # Generate a project of 60 Flask files (each with 3 routes).
         project = tmp_path / "perf_project"
         project.mkdir()
         for i in range(60):
@@ -114,39 +101,39 @@ class TestRouteCachePersistence:
                     for j in range(3)
                 )
             )
+        scanned: list[str] = []
+        original = RouteDetector.detect_file
 
-        # Prime the cache so subsequent warm runs are real cache hits.
+        def counting(self, file_path: str):
+            scanned.append(file_path)
+            return original(self, file_path)
+
+        monkeypatch.setattr(RouteDetector, "detect_file", counting)
+
+        def key(routes: list) -> list:
+            return sorted(
+                (
+                    r.file_path,
+                    r.line_number,
+                    r.http_method,
+                    r.url_pattern,
+                    r.handler_name,
+                )
+                for r in routes
+            )
+
+        cold = RouteDetector(str(project), cache_enabled=False).detect_all()
+        assert (len(scanned), len(cold)) == (60, 60 * 3)
+
         primed = RouteDetector(str(project)).detect_all()
-        assert len(primed) == 60 * 3
+        assert len(scanned) == 120  # 填充缓存：每个文件扫描一次
+        scanned.clear()
 
-        from tree_sitter_analyzer.core.parser import Parser as _Parser
-
-        def trial() -> tuple[float, float]:
-            # Clear Parser._cache so the "cold" path actually pays the parse
-            # cost. Otherwise PERF-2's class-level parser cache makes both
-            # cold and warm fast, and the ratio collapses.
-            _Parser.cache_clear()
-            d_cold = RouteDetector(str(project), cache_enabled=False)
-            t0 = time.perf_counter()
-            d_cold.detect_all()
-            cold = time.perf_counter() - t0
-
-            d_warm = RouteDetector(str(project), cache_enabled=True)
-            t1 = time.perf_counter()
-            d_warm.detect_all()
-            warm = time.perf_counter() - t1
-            return cold, warm
-
-        results = sorted(trial() for _ in range(3))
-        cold_med, warm_med = results[1]
-        speedup = cold_med / max(warm_med, 1e-6)
-        assert (
-            speedup >= 3
-        ), (  # ratchet: nondeterministic wall-clock timing, quarantined
-            f"Expected >=3x speedup, got {speedup:.1f}x "
-            f"(cold={cold_med * 1000:.1f}ms warm={warm_med * 1000:.1f}ms). "
-            "PERF-1 contract regressed — cache may be disabled or fast path broken."
-        )
+        warm_detector = RouteDetector(str(project))
+        warm = warm_detector.detect_all()
+        assert scanned == []
+        assert warm_detector.cache_stats()["hits"] == 60
+        assert key(warm) == key(primed) == key(cold)
 
     def test_route_cache_creates_db_file(self, flask_project: Path, tmp_path: Path):
         db = tmp_path / "subdir" / "routes.db"
