@@ -231,8 +231,7 @@ class CallGraph(PossibleEdgesMixin):
                 self._functions.append(ref)
                 self._func_by_name[defn["name"]].append(ref)
                 self._func_by_file[rel_path].append(ref)
-                qname = ref.qualified_name()
-                self._func_by_qualified[qname] = ref
+                _register_qualified(self._func_by_qualified, ref)
                 # Key by name AND start line: same-named methods in different
                 # classes (two ``execute`` defs) must keep BOTH spans for
                 # _find_enclosing_func, or calls inside the earlier one get
@@ -1035,7 +1034,7 @@ class CachedCallGraph(CallGraph):
             self._functions.append(ref)
             self._func_by_name[ref.name].append(ref)
             self._func_by_file[ref.file_path].append(ref)
-            self._func_by_qualified[ref.qualified_name()] = ref
+            _register_qualified(self._func_by_qualified, ref)
 
     def _make_edge_resolver(
         self,
@@ -1187,6 +1186,29 @@ def _known_graph_input(stamp: tuple[Any, ...] | None) -> tuple[str, int] | None:
 def _row_count(source: Any) -> int:
     rows = getattr(source, "rows", source)
     return len(rows)
+
+
+def _register_qualified(index: dict[str, FunctionRef], ref: FunctionRef) -> None:
+    """登记 ``file:name``；后登记者覆盖先登记者，嵌套在先登记者之内的除外。
+
+    #1763：``export const cors = () => { return function cors() {} }`` 中，
+    ``file:cors`` 指的是模块级的外层定义，而不是只在其内部可见的同名内层函数。
+    """
+    qname = ref.qualified_name()
+    existing = index.get(qname)
+    if existing is not None and _encloses(existing, ref):
+        return
+    index[qname] = ref
+
+
+def _encloses(outer: FunctionRef, inner: FunctionRef) -> bool:
+    outer_end = outer.end_line or outer.start_line
+    inner_end = inner.end_line or inner.start_line
+    return (
+        outer.start_line <= inner.start_line
+        and inner_end <= outer_end
+        and (outer.start_line, outer_end) != (inner.start_line, inner_end)
+    )
 
 
 def _resolve_edge(

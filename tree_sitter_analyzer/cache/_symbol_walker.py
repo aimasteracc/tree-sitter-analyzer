@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..jsts_function_names import function_value_name
 from . import node_taxonomy as _taxonomy
 from . import unhandled_nodes as _unhandled_nodes
 from ._symbol_declarations import (
@@ -839,6 +840,9 @@ class _SymbolWalker:
             return _node_text(name_node, self.source)
         if node.type == "function_definition" and self.language in ("c", "cpp"):
             return _c_function_def_name(node, self.source)
+        if self.language in ("javascript", "typescript"):
+            # #1763：`const f = (...) => {}` 以常量名索引为函数。
+            return function_value_name(node)
         return None
 
     def _append_function(self, node: Any, name: str) -> None:
