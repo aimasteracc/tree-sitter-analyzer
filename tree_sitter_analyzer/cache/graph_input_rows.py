@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 from .helpers import _build_function_entry
@@ -43,12 +43,20 @@ FUNCTION_ROWS_SQL = "SELECT file_path, symbols_json, language FROM ast_index"
 _FUNCTION_KINDS = ("function", "method")
 
 
+#: #1723：带边 rowid 的同一查询；rowid 不进入行元组、字典与摘要，只供增量更新对齐。
+CALL_EDGE_ID_SQL = "SELECT id, " + CALL_EDGE_SQL.removeprefix("SELECT ")
+
+
 @dataclass(frozen=True)
 class CallEdgeRows:
-    """按读取顺序保存的调用边元组及其列名。"""
+    """按读取顺序保存的调用边元组及其列名。
+
+    ``ids``（#1723）是各行的 ``edges.id``，与 ``rows`` 一一对应；不参与摘要与字典。
+    """
 
     names: tuple[str, ...]
     rows: list[tuple[Any, ...]]
+    ids: list[int] = field(default_factory=list, compare=False)
 
     def to_dicts(self) -> list[dict[str, Any]]:
         """与 ``[dict(row) for row in cursor]``（``sqlite3.Row``）逐项相同。"""
@@ -87,9 +95,34 @@ def _tuple_cursor(conn: sqlite3.Connection, sql: str) -> sqlite3.Cursor:
 
 def read_call_edge_rows(conn: sqlite3.Connection) -> CallEdgeRows:
     """读取全部 CALLS 边（元组）；SQL 错误原样抛出，由调用方决定语义。"""
-    cursor = _tuple_cursor(conn, CALL_EDGE_SQL)
-    names = tuple(str(column[0]) for column in cursor.description)
-    return CallEdgeRows(names, cursor.fetchall())
+    return _id_rows(_tuple_cursor(conn, CALL_EDGE_ID_SQL))
+
+
+def read_call_edge_rows_where(
+    conn: sqlite3.Connection, condition: str, params: list[Any]
+) -> CallEdgeRows:
+    """#1723：满足 ``condition`` 的调用边（同一列与转换），按 rowid 顺序。"""
+    cursor = conn.cursor()
+    cursor.row_factory = None
+    # ``+kind``：不让 ``kind`` 上的索引替代条件里更有选择性的 rowid / 文件 / 名字索引
+    # （否则每个分块都要扫描全部调用边）。条件只由调用方的占位符拼成，值全部经参数传入。
+    sql = _SCOPED_EDGE_SQL + f" AND ({condition}) ORDER BY id"  # nosec B608
+    cursor.execute(sql, params)
+    return _id_rows(cursor)
+
+
+_SCOPED_EDGE_SQL = CALL_EDGE_ID_SQL.replace(
+    "WHERE kind = 'calls'", "WHERE +kind = 'calls'"
+)
+
+
+def _id_rows(cursor: sqlite3.Cursor) -> CallEdgeRows:
+    """首列为 ``id`` 的结果拆成行元组与对应的 rowid。"""
+    names = tuple(str(column[0]) for column in cursor.description[1:])
+    fetched = cursor.fetchall()
+    return CallEdgeRows(
+        names, [row[1:] for row in fetched], [int(row[0]) for row in fetched]
+    )
 
 
 def read_function_rows(conn: sqlite3.Connection) -> FunctionRows:

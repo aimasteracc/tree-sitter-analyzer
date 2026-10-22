@@ -25,7 +25,12 @@ dogfood 第 9 轮：长驻 MCP 服务器里，发布刷新之后的第一次 ``n
 的刷新运行（``watcher_refresh()``，由 ``FileWatcherDaemon`` 的同步标记）。客户端显式
 刷新后紧接着的第一次调用会与后台构建争用 CPU，总时间不会更短（门禁实测），因此
 显式刷新与之前完全相同。``TSA_GRAPH_WARM=always`` 让显式刷新也预构图，
-``TSA_GRAPH_WARM=off`` 全部关闭。"""
+``TSA_GRAPH_WARM=off`` 全部关闭。
+
+#1723：刷新的回填范围有界（#1714）且内存里有基于刷新起点版本的图时，后台任务改为
+按同一范围**增量更新**那张图（``call_graph_incremental``）。工作量与改动成正比，
+因此显式刷新同样运行；``nav`` 只等到增量结果就绪（不等之后的摘要与落盘）。增量
+放弃时给出原因，并只在本来就会全量预构图时（监视器驱动或 ``always``）退回全量。"""
 
 from __future__ import annotations
 
@@ -53,12 +58,15 @@ _threads: dict[str, threading.Thread] = {}
 _last: dict[str, dict[str, Any]] = {}
 #: 在途构建正在读取的索引库：项目根 -> 库的真实路径。
 _building: dict[str, str] = {}
+#: #1723：在途构建结束“在途”状态（就绪或放弃）时置位：项目根 -> 事件。增量结果就绪后
+#: 线程还要补算摘要，``nav`` 只等到就绪，不等整个线程结束。
+_settled: dict[str, threading.Event] = {}
 #: 已完成的预构图：项目根 -> (库身份, 输入摘要)。
 _ready: dict[str, tuple[tuple[Any, ...], str]] = {}
 #: ``nav`` 等待同一库的在途预构图的上限（秒）；超时后照常自行构图。
 _ADOPT_WAIT_SECONDS = 600.0
-#: 在途构建期间又发布了新版本的项目根：结束后再构图一次。
-_again: set[str] = set()
+#: 在途构建期间又发布了新版本的项目根：结束后按这次的任务再构图一次。
+_again: dict[str, Any] = {}
 
 
 def enable() -> None:
@@ -127,52 +135,88 @@ def after_publish(project_root: str) -> dict[str, Any] | None:
     根已有在途构建（上一个版本）时不并行启动第二个，而是让它结束后再为当时的
     活动版本构图一次（``queued``）。
     """
-    if not enabled() or not (_watcher_driven() or _always()):
+    from . import call_graph_incremental
+
+    # #1723：刷新的范围回填有界时，按同一范围增量更新上一张图——显式刷新同样适用，
+    # 因为增量的工作量与改动成正比，紧接着的第一次调用只需等它很短的时间。
+    plan = call_graph_incremental.take_plan(project_root)
+    incremental = plan is not None and _has_base(project_root, plan)
+    full = _watcher_driven() or _always()
+    if not enabled() or not (full or incremental):
         return None
     key = _key(project_root)
     previous = last_outcome(project_root)
+    job = _Job(plan if incremental else None, full)
     with _lock:
         if _closed:
             return None
         running = _threads.get(key)
         if running is not None and running.is_alive():
-            _again.add(key)
+            # 在途构建结束后为当时的活动版本再构图一次；增量基础那时已是新图。
+            _again[key] = job
             return {"scheduled": True, "queued": True, "previous": previous}
         # 调度时即登记将要读取的库，使紧随其后的 ``nav`` 调用等这次构建。
         _building[key] = _active_database(project_root)
+        _settled[key] = threading.Event()
         thread = threading.Thread(
             target=_run,
-            args=(project_root, key),
+            args=(project_root, key, job),
             name="tsa-call-graph-warm",
             daemon=True,
         )
         _threads[key] = thread
         thread.start()
-    return {"scheduled": True, "previous": previous}
+    return {"scheduled": True, "incremental": incremental, "previous": previous}
 
 
-def _run(project_root: str, key: str) -> None:
+def _has_base(project_root: str, plan: Any) -> bool:
+    """内存里有可作增量基础的图：读的正是刷新所基于的版本。"""
+    from pathlib import Path
+
+    from . import call_graph_memo
+
+    if plan.base_generation is None:
+        return False
+    previous = call_graph_memo.latest(str(Path(project_root).resolve()))
+    memo = previous.get("_incremental") if previous is not None else None
+    return isinstance(memo, dict) and memo.get("generation") == plan.base_generation
+
+
+class _Job:
+    """一次预构图：可选的增量范围，以及增量放弃时是否全量构图。"""
+
+    def __init__(self, plan: Any, full: bool) -> None:
+        self.plan = plan
+        self.full = full
+
+
+def _run(project_root: str, key: str, job: _Job) -> None:
     while True:
         started = time.perf_counter()
         outcome: dict[str, Any] = {"warmed": False}
         try:
-            outcome["warmed"] = _build(project_root)
+            outcome.update(_build(project_root, job))
         except Exception:  # nosec B110 — 预构图失败只记日志：发布已经完成
             logger.warning("call-graph warm after publish failed", exc_info=True)
         outcome["seconds"] = round(time.perf_counter() - started, 3)
         with _lock:
             _last[key] = outcome
-            if key in _again and not _closed:
-                _again.discard(key)
+            queued = _again.pop(key, None)
+            if queued is not None and not _closed:
+                job = queued
                 continue
-            _again.discard(key)
             if _threads.get(key) is threading.current_thread():
                 del _threads[key]
             return
 
 
-def _build(project_root: str) -> bool:
-    """与 ``nav callers`` / ``callees`` 相同的构图代码与参数（``persist=True``）。"""
+def _build(project_root: str, job: _Job) -> dict[str, Any]:
+    """与 ``nav callers`` / ``callees`` 相同的构图代码与参数（``persist=True``）。
+
+    #1723：带范围时先按范围增量更新上一张图，就绪后立即让 ``nav`` 采用，再补算输入
+    摘要并落盘（供认证快照上的调用与冷进程按摘要取用）。放弃时给出原因，并只在本次
+    构图本来就会运行（监视器驱动或 ``always``）时退回全量。
+    """
     from .ast_cache import ASTCache
     from .call_graph import CachedCallGraph
 
@@ -182,9 +226,15 @@ def _build(project_root: str) -> bool:
         database = str(getattr(cache, "db_path", "") or "")
         with _lock:
             _building[key] = _real(database)
+            _settled.setdefault(key, threading.Event())
             _ready.pop(key, None)
         before = database_identity(database)
         graph = CachedCallGraph(project_root, cache=cache, fallback=False, persist=True)
+        outcome: dict[str, Any] = {}
+        if job.plan is not None:
+            applied = _incremental(graph, key, job.plan, before, database, outcome)
+            if applied or not job.full:
+                return {**outcome, "warmed": applied}
         graph.build()
         digest = getattr(graph, "_input_digest", None)
         built = bool(getattr(graph, "_built", False))
@@ -192,11 +242,57 @@ def _build(project_root: str) -> bool:
             if database_identity(database) == before:
                 with _lock:
                     _ready[key] = (before, digest)
-        return built
+        return {**outcome, "warmed": built}
     finally:
-        with _lock:
-            _building.pop(key, None)
+        _settle(key)
         cache.close()
+
+
+def _incremental(
+    graph: Any,
+    key: str,
+    plan: Any,
+    before: tuple[Any, ...] | None,
+    database: str,
+    outcome: dict[str, Any],
+) -> bool:
+    """增量更新上一张图；成功时登记就绪、补算摘要，结果写入 ``outcome``。"""
+    from . import call_graph_incremental, call_graph_memo
+
+    root = str(graph.project_root)
+    previous = call_graph_memo.latest(root)
+    reason = (
+        "NO_PREVIOUS_GRAPH"
+        if previous is None
+        else "DATABASE_IDENTITY_UNKNOWN"
+        if before is None
+        else call_graph_incremental.update(graph, previous, plan)
+    )
+    outcome["incremental"] = {"applied": reason is None, "reason": reason}
+    if reason is not None or before is None:  # before 为 None 时 reason 已非空
+        return False
+    outcome["incremental"].update(graph._incremental_stats)
+    memo_key = call_graph_incremental.memo_key(before)
+    state = graph._export_state()
+    call_graph_memo.store(root, memo_key, state)
+    if database_identity(database) == before:
+        with _lock:
+            _ready[key] = (before, memo_key)
+    # 就绪即不再“在途”：紧接着的 ``nav`` 不必等下面的摘要与落盘。
+    _settle(key)
+    started = time.perf_counter()
+    outcome["incremental"]["digest"] = call_graph_incremental.finalize(graph, state)
+    outcome["incremental"]["digest_seconds"] = round(time.perf_counter() - started, 3)
+    return True
+
+
+def _settle(key: str) -> None:
+    """结束 ``key`` 的“在途”状态并唤醒等待的 ``nav``。"""
+    with _lock:
+        _building.pop(key, None)
+        event = _settled.pop(key, None)
+    if event is not None:
+        event.set()
 
 
 def _active_database(project_root: str) -> str:
@@ -260,9 +356,13 @@ def adopt(project_root: str, database: str | None) -> str | None:
     key = _key(project_root)
     target = _real(database)
     with _lock:
-        thread = _threads.get(key) if _building.get(key) == target else None
-    if thread is not None and thread is not threading.current_thread():
-        thread.join(_ADOPT_WAIT_SECONDS)
+        building = _building.get(key) == target
+        thread = _threads.get(key) if building else None
+        event = _settled.get(key) if building else None
+    waiting = thread is not None and thread is not threading.current_thread()
+    if event is not None and waiting:
+        # 在途构建登记时总带着事件；增量结果就绪即置位（不等之后的摘要与落盘）。
+        event.wait(_ADOPT_WAIT_SECONDS)
     with _lock:
         ready = _ready.get(key)
     if ready is None or ready[0][0] != target:

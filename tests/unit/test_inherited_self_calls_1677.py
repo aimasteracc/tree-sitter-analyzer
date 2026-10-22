@@ -161,7 +161,7 @@ def test_load_hierarchy_tolerates_a_broken_index() -> None:
 def test_mro_edge_cases_stay_conservative() -> None:
     import sqlite3
 
-    from tree_sitter_analyzer.call_graph import _lazy_hierarchy
+    from tree_sitter_analyzer.call_graph import _LazyHierarchy
     from tree_sitter_analyzer.class_mro import (
         ClassKey,
         Hierarchy,
@@ -184,7 +184,7 @@ def test_mro_edge_cases_stay_conservative() -> None:
         def get_conn(self):
             raise AttributeError("closed")
 
-    lazy = _lazy_hierarchy(_NoConn())
+    lazy = _LazyHierarchy(_NoConn())
     assert lazy().parents == {} and lazy() is lazy()
 
     conn = sqlite3.connect(":memory:")

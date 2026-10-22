@@ -20,6 +20,7 @@ import importlib
 import json
 import sqlite3
 from collections import defaultdict
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -156,6 +157,46 @@ def load_hierarchy(conn: sqlite3.Connection) -> Hierarchy:
         extends = conn.execute(_EXTENDS_SQL).fetchall()
     except sqlite3.Error:
         return Hierarchy()
+    return _hierarchy_from_rows(classes, method_rows, extends)
+
+
+def load_hierarchy_update(
+    conn: sqlite3.Connection, base: Hierarchy, files: Collection[str]
+) -> Hierarchy:
+    """#1723：在 ``base`` 上只重新读取 ``files`` 中的类与方法（其余文件的条目沿用）。
+
+    刷新的解析范围给出 ``files``（改动文件与其依赖文件）；范围外文件的类行、方法行
+    与继承边都与上一轮相同，因此结果与全量 :func:`load_hierarchy` 相同。读库失败
+    退回全量读取。
+    """
+    wanted = sorted(set(files))
+    if not wanted:
+        return base
+    classes: list[Any] = []
+    method_rows: list[Any] = []
+    try:
+        for start in range(0, len(wanted), 500):
+            chunk = wanted[start : start + 500]
+            marks = ",".join("?" * len(chunk))
+            scope = f" AND ast_index.file_path IN ({marks})"
+            classes += conn.execute(_CLASS_ROWS_SQL + scope, chunk).fetchall()  # nosec B608
+            method_rows += conn.execute(_METHOD_ROWS_SQL + scope, chunk).fetchall()  # nosec B608
+        extends = conn.execute(_EXTENDS_SQL).fetchall()
+    except sqlite3.Error:
+        return load_hierarchy(conn)
+    part = _hierarchy_from_rows(classes, method_rows, extends)
+    keep = set(wanted)
+    updated = Hierarchy()
+    updated.parents = {k: v for k, v in base.parents.items() if k.file not in keep}
+    updated.parents.update(part.parents)
+    updated.methods = {k: v for k, v in base.methods.items() if k.file not in keep}
+    updated.methods.update(part.methods)
+    return updated
+
+
+def _hierarchy_from_rows(
+    classes: list[Any], method_rows: list[Any], extends: list[Any]
+) -> Hierarchy:
     resolved: dict[tuple[str, str, int], list[ClassKey]] = defaultdict(list)
     for source, target in extends:
         child, parent = _node(source), _node(target)

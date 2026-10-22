@@ -504,6 +504,10 @@ def post_index_backfill(
         changed = int(stats.get("indexed", 0) or 0) + int(stats.get("pruned", 0) or 0)
     decision = backfill_scope.decide(cache, conn, changed)
     stats["backfill_scope"] = decision.to_dict()
+    # #1723：发布后内存调用图按同一范围增量更新。
+    from .. import call_graph_incremental
+
+    call_graph_incremental.note_scope(cache, decision)
     with backfill_scope.active(conn, decision.scope):
         _post_index_backfill(cache, stats, root_fd=root_fd)
 

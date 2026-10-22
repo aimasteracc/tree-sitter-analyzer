@@ -41,6 +41,8 @@ _MAX_ROOTS = 4
 _LOCK = threading.Lock()
 #: 项目根 -> (输入摘要, 构建完成的图状态)。
 _MEMO: OrderedDict[str, tuple[str, dict[str, Any]]] = OrderedDict()
+#: #1723：项目根 -> 当前状态的其他键（增量结果先按版本键存入，再补登输入摘要）。
+_EXTRA_KEYS: dict[str, set[str]] = {}
 
 
 def stable_form(value: Any) -> Any:
@@ -126,19 +128,30 @@ def lookup(root: str, digest: str) -> dict[str, Any] | None:
     """摘要相同时返回已构建的图状态，否则 None。"""
     with _LOCK:
         entry = _MEMO.get(root)
-        if entry is None or entry[0] != digest:
+        if entry is None or (
+            entry[0] != digest and digest not in _EXTRA_KEYS.get(root, ())
+        ):
             return None
         _MEMO.move_to_end(root)
         return entry[1]
+
+
+def latest(root: str) -> dict[str, Any] | None:
+    """#1723：`root` 最近一次构图的状态（不论摘要）；供发布后的增量更新作为基础。"""
+    with _LOCK:
+        entry = _MEMO.get(root)
+        return entry[1] if entry is not None else None
 
 
 def store(root: str, digest: str, state: dict[str, Any]) -> None:
     """记录 ``root`` 最近一次构图；同根的旧状态被替换。"""
     with _LOCK:
         _MEMO[root] = (digest, state)
+        _EXTRA_KEYS.pop(root, None)
         _MEMO.move_to_end(root)
         while len(_MEMO) > _MAX_ROOTS:
-            _MEMO.popitem(last=False)
+            evicted, _entry = _MEMO.popitem(last=False)
+            _EXTRA_KEYS.pop(evicted, None)
 
 
 #: #1708：正在构建的图：(项目根, 输入摘要) -> 构建完成时置位的事件。
@@ -168,13 +181,28 @@ def release(root: str, digest: str) -> None:
         event.set()
 
 
+def add_key(root: str, state: dict[str, Any], digest: str) -> bool:
+    """#1723：为 ``root`` 当前的图状态再登记一个键（增量结果补算出的输入摘要）。
+
+    只在 ``state`` 仍是当前状态时登记并返回 True；之后按任一键都能取到它。
+    """
+    with _LOCK:
+        entry = _MEMO.get(root)
+        if entry is None or entry[1] is not state:
+            return False
+        _EXTRA_KEYS.setdefault(root, set()).add(digest)
+        return True
+
+
 def discard(root: str) -> None:
     """丢弃 ``root`` 的记忆（输入已变、即将重建时调用）。"""
     with _LOCK:
         _MEMO.pop(root, None)
+        _EXTRA_KEYS.pop(root, None)
 
 
 def clear() -> None:
     """清空记忆（测试与项目根切换后的显式释放）。"""
     with _LOCK:
         _MEMO.clear()
+        _EXTRA_KEYS.clear()

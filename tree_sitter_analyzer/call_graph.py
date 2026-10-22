@@ -15,14 +15,15 @@ Key classes:
 import gc
 import os
 import sqlite3
+import time
 from collections import defaultdict, deque
-from collections.abc import Callable, Iterator
+from collections.abc import Collection, Iterable, Iterator
 from collections.abc import Set as AbstractSet
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from . import call_graph_memo, call_graph_store
+from . import call_graph_incremental, call_graph_memo, call_graph_store
 from .cache import graph_input_rows, index_file_facts
 from .cached_edge_resolution import CachedEdgeResolver
 from .cached_reexport_binding import PackageReexportBinder
@@ -30,7 +31,7 @@ from .call_graph_binding import RefIdentity, pick_caller_ref, ref_identity
 from .call_graph_possible import PossibleEdgesMixin
 from .call_graph_self_dispatch import SubclassIndex
 from .callee_resolution import CalleeResolver
-from .class_mro import Hierarchy, load_hierarchy
+from .class_mro import Hierarchy, load_hierarchy, load_hierarchy_update
 from .constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
 from .constants import JS_TS_MODULE_EXTS
 from .core.parser import Parser, ParseResult
@@ -62,7 +63,15 @@ SUPPORTED_EXTS: frozenset[str] = frozenset(
 class FunctionRef:
     """A qualified reference to a function/method in the project."""
 
-    __slots__ = ("file_path", "name", "start_line", "end_line", "language", "receiver")
+    __slots__ = (
+        "file_path",
+        "name",
+        "start_line",
+        "end_line",
+        "language",
+        "receiver",
+        "_hash",
+    )
 
     def __init__(
         self,
@@ -79,6 +88,8 @@ class FunctionRef:
         self.end_line = end_line if end_line is not None else start_line
         self.language = language
         self.receiver = receiver
+        # #1723：身份字段创建后不再改写；构图对每个引用要哈希上百万次，只算一次。
+        self._hash = hash((file_path, name, start_line))
 
     def qualified_name(self) -> str:
         if self.receiver:
@@ -95,7 +106,21 @@ class FunctionRef:
         )
 
     def __hash__(self) -> int:
-        return hash((self.file_path, self.name, self.start_line))
+        return self._hash
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        # 字符串哈希按进程随机化：反序列化时重新计算缓存的哈希。
+        return (
+            FunctionRef,
+            (
+                self.file_path,
+                self.name,
+                self.start_line,
+                self.language,
+                self.receiver,
+                self.end_line,
+            ),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -754,6 +779,11 @@ class CachedCallGraph(CallGraph):
         self._fallback = fallback
         # #1675：为真时把边解析结果落盘，供冷进程复用（只读 / 零写入路由保持 False）。
         self._persist = persist
+        self._input_digest: str | None = None
+        # #1723：增量更新的对齐依据与上次增量的统计（`call_graph_incremental`）。
+        self._incremental: dict[str, Any] | None = None
+        self._incremental_stats: dict[str, Any] = {}
+        self._hierarchy_loader: _LazyHierarchy | None = None
 
     def build(self) -> None:
         if self._built:
@@ -808,14 +838,10 @@ class CachedCallGraph(CallGraph):
         if known_input is not None:
             digest, edge_count = known_input
         else:
-            digest = call_graph_memo.input_digest(
-                *graph_input_rows.source_digest_parts(edge_source),
-                *graph_input_rows.source_digest_parts(function_source),
-                imports_raw,
-                # #1675：集合按值排序后再摘要，摘要跨进程稳定（落盘结果按它取用）。
-                call_graph_memo.stable_form(reexport_binder.evidence()),
-                call_graph_memo.stable_form(subclasses.evidence()),
+            digest = graph_input_digest(
+                edge_source, function_source, imports_raw, reexport_binder, subclasses
             )
+
             edge_count = _row_count(edge_source)
             if digest is not None:
                 index_file_facts.record(
@@ -905,13 +931,16 @@ class CachedCallGraph(CallGraph):
             if digest is not None
             else None
         )
-        if (
-            stored is not None
-            and self._build_from_inputs(
+        # #1723：边 rowid 与被调名留作下一次刷新后增量更新的对齐依据。
+        alignment = call_graph_incremental.alignment(edge_source)
+        records = (
+            self._build_from_inputs(
                 [], functions, imports_raw, reexport_binder, subclasses, stored=stored
             )
-            is not None
-        ):
+            if stored is not None
+            else None
+        )
+        if records is not None:
             del edge_source, function_source
         else:
             self._reset_graph_state()
@@ -929,6 +958,13 @@ class CachedCallGraph(CallGraph):
             )
             if self._built and self._persist and digest is not None and records:
                 call_graph_store.save(root, digest, self._functions, records)
+        if self._built:
+            if alignment is None:
+                # #1726：摘要已知、未读边行时，只在长驻进程里补读对齐依据。
+                alignment = call_graph_incremental.alignment_from_index(self._cache)
+            call_graph_incremental.remember(
+                self, alignment, records, reexport_binder, subclasses
+            )
         if self._built and digest is not None:
             call_graph_memo.store(root, digest, self._export_state())
 
@@ -962,9 +998,8 @@ class CachedCallGraph(CallGraph):
         if not functions and not edges and stored is None:
             return None
 
-        rel_files: set[str] = set()
-        for func in functions:
-            ref = FunctionRef(
+        self._index_function_refs(
+            FunctionRef(
                 file_path=func["file"],
                 name=func["name"],
                 start_line=func["line"],
@@ -972,13 +1007,49 @@ class CachedCallGraph(CallGraph):
                 end_line=func.get("end_line", func["line"]),
                 receiver=func.get("class"),
             )
-            self._functions.append(ref)
-            self._func_by_name[func["name"]].append(ref)
-            self._func_by_file[func["file"]].append(ref)
-            qname = ref.qualified_name()
-            self._func_by_qualified[qname] = ref
-            rel_files.add(func["file"])
+            for func in functions
+        )
+        edge_resolver = self._make_edge_resolver(
+            imports_raw, reexport_binder, subclasses
+        )
+        if stored is not None:
+            try:
+                records = call_graph_store.decode(stored, self._functions, FunctionRef)
+            except (ValueError, TypeError):
+                return None
+        else:
+            records = [
+                _resolve_edge(self._func_by_name, edge_resolver, e) for e in edges
+            ]
+        # 现场解析与已存结果走同一个应用函数，两条路径构出的图状态相同。
+        self._apply_edge_records(records)
 
+        # #1657：构图内记忆只服务这一次构建；保留下来的裸名解析器不再带着它。
+        edge_resolver.release_memos()
+        self._built = True
+        return records
+
+    def _index_function_refs(self, refs: Iterable[FunctionRef]) -> None:
+        """按读取顺序登记函数定义（#1723：增量更新复用同一登记）。"""
+        for ref in refs:
+            self._functions.append(ref)
+            self._func_by_name[ref.name].append(ref)
+            self._func_by_file[ref.file_path].append(ref)
+            self._func_by_qualified[ref.qualified_name()] = ref
+
+    def _make_edge_resolver(
+        self,
+        imports_raw: dict[str, Any],
+        reexport_binder: PackageReexportBinder,
+        subclasses: SubclassIndex,
+        hierarchy_base: Hierarchy | None = None,
+        hierarchy_files: Collection[str] = (),
+    ) -> CachedEdgeResolver:
+        """函数索引登记完毕后，构造本次构图的边解析器（全量与增量共用）。"""
+        self._hierarchy_loader = _LazyHierarchy(
+            self._cache, hierarchy_base, hierarchy_files
+        )
+        rel_files = {path for path, refs in self._func_by_file.items() if refs}
         module_to_file: dict[str, str] = {}
         for rel in rel_files:
             p = Path(rel)
@@ -1019,41 +1090,37 @@ class CachedCallGraph(CallGraph):
             # #1657：函数与 import 索引此时已完整且不再变化，相同输入只解析一次。
             memoize=True,
             # #1677：继承调用的 MRO 只读取一次，且只在需要时读取。
-            hierarchy=_lazy_hierarchy(self._cache),
+            hierarchy=self._hierarchy_loader,
         )
         if self._callee_resolver is None:
             self._callee_resolver = edge_resolver.callee_resolver
-        if stored is not None:
-            try:
-                records = call_graph_store.decode(stored, self._functions, FunctionRef)
-            except (ValueError, TypeError):
-                return None
-        else:
-            records = [
-                _resolve_edge(self._func_by_name, edge_resolver, e) for e in edges
-            ]
-        # 现场解析与已存结果走同一个应用函数，两条路径构出的图状态相同。
-        self._apply_edge_records(records)
-
-        # #1657：构图内记忆只服务这一次构建；保留下来的裸名解析器不再带着它。
-        edge_resolver.release_memos()
-        self._built = True
-        return records
+        return edge_resolver
 
     def _apply_edge_records(self, records: list[call_graph_store.EdgeRecord]) -> None:
-        """按边的读取顺序把解析结果写入调用图（#1675：现场与已存结果共用）。"""
+        """按边的读取顺序把解析结果写入调用图（#1675：现场与已存结果共用）。
+
+        #1723：增量更新每次都重放全部结果，这里把属性查找提到循环之外（效果与逐条
+        调用 ``_add_possible_edges`` 相同）。
+        """
+        callees, callers, call_edges = self._callees, self._callers, self._call_edges
+        possible_callees, possible_callers = (
+            self._possible_callees,
+            self._possible_callers,
+        )
+        record_binding = self._record_edge_binding
         for record in records:
             if record is None:
                 continue
             caller_ref, certain, possible, binding, line = record
-            self._add_possible_edges(
-                caller_ref, possible if isinstance(possible, list) else list(possible)
-            )
+            if possible:
+                possible_callees[caller_ref].extend(possible)
+                for candidate in possible:
+                    possible_callers[candidate].append(caller_ref)
             for callee_ref in certain:
-                self._callees[caller_ref].append(callee_ref)
-                self._callers[callee_ref].append(caller_ref)
-                self._call_edges.append((caller_ref, callee_ref, line))
-                self._record_edge_binding(caller_ref, callee_ref, binding)
+                callees[caller_ref].append(callee_ref)
+                callers[callee_ref].append(caller_ref)
+                call_edges.append((caller_ref, callee_ref, line))
+                record_binding(caller_ref, callee_ref, binding)
 
     def _reset_graph_state(self) -> None:
         """丢弃未完成的构图状态（已存结果解码失败后照常重建前）。"""
@@ -1063,7 +1130,27 @@ class CachedCallGraph(CallGraph):
 #: #1708：等待同一输入的在途构建（发布后的后台预构图）的上限；超时后自行构建。
 _INFLIGHT_WAIT_SECONDS = 600.0
 #: 不随复用的图状态共享的属性：缓存句柄属于各自的图对象，项目根由构造参数给出。
-_UNSHARED_STATE = frozenset({"_cache", "_fallback", "_persist", "project_root"})
+_UNSHARED_STATE = frozenset(
+    {"_cache", "_fallback", "_persist", "project_root", "_hierarchy_loader"}
+)
+
+
+def graph_input_digest(
+    edge_source: Any,
+    function_source: Any,
+    imports_raw: Any,
+    reexport_binder: PackageReexportBinder,
+    subclasses: SubclassIndex,
+) -> str | None:
+    """构图全部输入的内容摘要（#1657）；#1723 的增量结果补算同一摘要。"""
+    return call_graph_memo.input_digest(
+        *graph_input_rows.source_digest_parts(edge_source),
+        *graph_input_rows.source_digest_parts(function_source),
+        imports_raw,
+        # #1675：集合按值排序后再摘要，摘要跨进程稳定（落盘结果按它取用）。
+        call_graph_memo.stable_form(reexport_binder.evidence()),
+        call_graph_memo.stable_form(subclasses.evidence()),
+    )
 
 
 #: ``index_file_facts`` 中构图输入事实的名字：``[#1663 输入摘要, 调用边行数]``。
@@ -1123,19 +1210,39 @@ def _resolve_edge(
     )
 
 
-def _lazy_hierarchy(cache: Any) -> Callable[[], Hierarchy]:
-    """#1677：首次需要时从索引读取类层级；读取失败为空层级（没有 MRO 证据）。"""
-    loaded: list[Hierarchy] = []
+class _LazyHierarchy:
+    """#1677：首次需要时从索引读取类层级；读取失败为空层级（没有 MRO 证据）。
 
-    def load() -> Hierarchy:
-        if not loaded:
+    #1723：给出上一张图的层级 ``base`` 与解析范围内的文件时，只重读这些文件。
+    """
+
+    def __init__(
+        self,
+        cache: Any,
+        base: Hierarchy | None = None,
+        files: Collection[str] = (),
+    ) -> None:
+        self._cache = cache
+        self._base = base
+        self._files = files
+        self.value: Hierarchy | None = None
+        #: #1723：读取层级花费的秒数（增量统计用）。
+        self.seconds = 0.0
+
+    def __call__(self) -> Hierarchy:
+        if self.value is None:
+            started = time.perf_counter()
             try:
-                loaded.append(load_hierarchy(cache.get_conn()))
+                conn = self._cache.get_conn()
+                self.value = (
+                    load_hierarchy_update(conn, self._base, self._files)
+                    if self._base is not None
+                    else load_hierarchy(conn)
+                )
             except Exception:  # nosec B110 — 没有连接：没有 MRO 证据。
-                loaded.append(Hierarchy())
-        return loaded[0]
-
-    return load
+                self.value = Hierarchy()
+            self.seconds = time.perf_counter() - started
+        return self.value
 
 
 @contextmanager

@@ -50,6 +50,10 @@ def run_call_graph_pipeline(cache: Any, result: Any = None) -> tuple[bool, int]:
     decision = backfill_scope.decide(cache, conn, _changed_count(result))
     if result is not None:
         result.backfill_scope = decision.to_dict()
+    # #1723：发布后内存调用图按同一范围增量更新。
+    from . import call_graph_incremental
+
+    call_graph_incremental.note_scope(cache, decision)
     with backfill_scope.active(conn, decision.scope):
         return _run_stages(cache, result)
 
