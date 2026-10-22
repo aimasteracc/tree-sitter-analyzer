@@ -86,11 +86,19 @@ def _stable_failure_count(result: Any) -> int:
     )
 
 
+def _resolve_import_specifiers(cache: Any) -> Mapping[str, int]:
+    from .cache.import_specifier_edges import resolve_import_specifier_edges
+
+    return resolve_import_specifier_edges(cache.get_conn())
+
+
 def _run_stages(cache: Any, result: Any) -> tuple[bool, int]:
     clear_call_graph_built_strict(cache.get_conn())
     complete = True
     synapse_resolved = 0
     stages = (
+        # #1746：相对导入说明符按最终文件集合解析（与索引顺序无关），先于其他回填。
+        ("import_specifiers", lambda: _resolve_import_specifiers(cache)),
         ("cross_file", cache.backfill_cross_file_edges),
         ("synapse", cache._run_synapse_backfill),
         ("unresolved", cache._run_unresolved_refs_backfill),
