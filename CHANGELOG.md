@@ -164,6 +164,18 @@
   repository).
 ### Fixed
 
+- **A JS/TS method with a string-literal name matches its element-access calls**
+  (#1762). In zod,
+  `"~validate"(data) {...}` is called as `this["~validate"](data)`; the call
+  edge recorded the whole subscript as its callee and the definition kept its
+  quotes, so the two never met and `ZodType."~validate"` answered `complete, 0`.
+  A call whose callee is `obj["m"]` or `obj['m']` (a constant string with no
+  escapes) is now recorded as `obj.m()`, string-literal method names are stored
+  without quotes, and a quoted name in a query (`ZodType."~validate"`) matches
+  the unquoted one. A computed key (`this[name]()`) is unchanged: it stays an
+  unresolved computed-dispatch site in its file, which keeps its declaring
+  file's methods non-complete in both query forms (the qualified form through
+  #1759's guard). The extractor version goes from 49 to 50.
 - **An unresolved `x.m()` keeps every same-named method a possible target**
   (#1758). When the calling file itself declared an `m`, the cached resolver
   took the same-file definition from its local tier and never looked further,
