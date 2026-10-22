@@ -28,6 +28,7 @@ from .callers_annotated import (
 )
 from .callers_call_lines import call_edge_lines
 from .callers_dispatch import narrow_to_target
+from .callers_external_producers import drop_external_producers
 from .callers_name_only import name_only_fields, name_only_sites, name_only_step
 from .callers_reason_steps import (
     read_unresolved_inbound,
@@ -69,6 +70,34 @@ _PROVENANCE_FIELDS = ("resolution_kind", "receiver_type", "type_source", "confid
 #: How many sites the next_step names inline. Small on purpose: the hint is there
 #: to make the work bounded, not to duplicate the payload.
 _UNRESOLVED_SITES_NAMED = 3
+
+
+def _same_name_definitions(graph: Any, func_name: str, file_path: str) -> list[Any]:
+    """Every definition named ``func_name`` in ``file_path`` (functions and methods).
+
+    #1759: ``CallGraph.resolve_targets`` answers a bare ``name`` + ``file_path``
+    with the exact ``file:name`` function when there is one, which hides a
+    same-named method in that file (``fastapi/applications.py`` defines the
+    method ``FastAPI.openapi`` and a nested ``openapi`` closure).
+    """
+    return [
+        ref
+        for ref in graph.function_refs_in_file(file_path)
+        if getattr(ref, "name", None) == func_name
+    ]
+
+
+def _sibling_methods(graph: Any, func_name: str, file_path: str | None) -> list[str]:
+    """``Class.name`` for each method named ``func_name`` in ``file_path`` (bare queries)."""
+    if not file_path or any(ch in func_name for ch in ".:/\\"):
+        return []
+    try:
+        refs = _same_name_definitions(graph, func_name, file_path)
+    except Exception:  # noqa: BLE001 — unreadable graph: nothing to add
+        return []
+    return sorted(
+        {f"{ref.receiver}.{func_name}" for ref in refs if getattr(ref, "receiver", None)}
+    )
 
 
 def _declaring_file_unresolved(
@@ -364,6 +393,30 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             return graph, "cache"
         return self._get_call_graph(), self._data_source
 
+    def _single_method_name(
+        self, bound_cache: Any, func_name: str, file_path: str | None
+    ) -> str:
+        """``Class.method`` when the bare ``func_name`` names one method in ``file_path``.
+
+        Anything else — a dotted or path-like name, no ``file_path``, a module
+        function, several definitions, or a graph that cannot be read — returns
+        ``func_name`` unchanged.
+        """
+        if not file_path or not func_name or any(ch in func_name for ch in ".:/\\"):
+            return func_name
+        try:
+            graph = self._graph_for(bound_cache)[0]
+            refs = _same_name_definitions(graph, func_name, file_path)
+        except Exception:  # noqa: BLE001 — unreadable graph: keep the bare path
+            return func_name
+        if len(refs) != 1:
+            return func_name
+        ref = refs[0]
+        receiver = getattr(ref, "receiver", None)
+        if not receiver or ref.file_path != file_path or ref.name != func_name:
+            return func_name
+        return f"{receiver}.{func_name}"
+
     async def _execute_bound(
         self, arguments: dict[str, Any], bound_cache: Any, source_reader: Any
     ) -> dict[str, Any]:
@@ -391,6 +444,13 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             from ..utils.format_helper import apply_output_format_to_response
 
             return apply_output_format_to_response(result, output_format)
+
+        # #1759: a bare name that resolves to exactly one method definition in
+        # the named file is answered as that `Class.method`, so the bare and the
+        # qualified question get the same answer by construction — same callers,
+        # same evidence, same completeness. A bare name with several definitions
+        # keeps the union path below (#1740), never more confident than any one.
+        func_name = self._single_method_name(bound_cache, func_name, file_path)
 
         # Detect "ClassName.method_name" qualified lookup.  The SQL fast-path
         # stores bare callee names and can't filter by receiver class, so we
@@ -450,6 +510,21 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             possible_callers = _unlisted(
                 graph.possible_callers_of(func_name, file_path), callers
             )
+            # #1759: several same-named definitions in the file — the union must
+            # also cover each *method* among them; the bare lookup above resolves
+            # to the module-level function only.
+            for method in _sibling_methods(graph, func_name, file_path):
+                callers = callers + label_graph_relations(
+                    graph,
+                    method,
+                    file_path,
+                    _unlisted(graph.callers_of(method, file_path), callers),
+                    inbound=True,
+                )
+                possible_callers = possible_callers + _unlisted(
+                    graph.possible_callers_of(method, file_path),
+                    callers + possible_callers,
+                )
             name_only_inbound = len(possible_callers)
         else:
             graph, data_source = self._graph_for(bound_cache)
@@ -544,6 +619,10 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         if self.project_root:
             declaring_sites, excluded_sites = narrow_to_target(
                 declaring_sites, excluded_sites, count_name
+            )
+            # #1759：项目外函数产出的可调用对象不经点名到达不了项目内的目标。
+            declaring_sites, excluded_sites = drop_external_producers(
+                cache, self.project_root, declaring_sites, excluded_sites
             )
         unresolved_in_declaring_files = (
             None if declaring_sites is None else len(declaring_sites)
