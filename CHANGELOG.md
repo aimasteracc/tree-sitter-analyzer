@@ -179,7 +179,7 @@
   shadows a same-named field. On the round-10 gson sample, call-site recall goes
   from 28/76 to 45/76 (qualified) and from 31/76 to 48/76 (bare), with 0 wrong
   `complete`. Supertype-receiver sites named as evidence go from 10/11 to 11/11.
-  The extractor version goes from 47 to 48.
+  The extractor version goes from 48 to 49.
 - **The scoped backfill also runs on a checkout with stable grammar failures**
   (#1735). A file whose optional grammar is not installed (for example the
   Swift and Lua fixtures here) is a stable failure (#1671): it writes no rows,
