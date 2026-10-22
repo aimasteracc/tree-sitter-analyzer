@@ -357,6 +357,8 @@ def _surface(row: Any) -> _Surface:
             "truncated_depth",
             "import_projection_complete",
             "js_exports",
+            # #1743：Java 匿名子类的基类型与范围（this.m() 分派的覆写候选）。
+            "java_anonymous",
         )
     }
     for symbol in payload.get("symbols") or []:

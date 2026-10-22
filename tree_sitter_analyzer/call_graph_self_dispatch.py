@@ -16,6 +16,7 @@ dogfood 第 6 轮：``Base.run`` 调用 ``self.hook()``，同文件的 ``Sub`` �
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict, deque
 from typing import TYPE_CHECKING, Any
 
@@ -44,6 +45,31 @@ class SubclassIndex:
     def __init__(self, cache: Any) -> None:
         self._cache = cache
         self._children: dict[str, set[str]] | None = None
+        self._anonymous: dict[str, list[tuple[str, int, int]]] | None = None
+
+    def anonymous_spans(self, class_names: set[str]) -> list[tuple[str, int, int]]:
+        """#1743：基类型在 ``class_names`` 中的 Java 匿名子类的类体 ``(文件, 起行, 止行)``。"""
+        if self._anonymous is None:
+            spans: dict[str, list[tuple[str, int, int]]] = defaultdict(list)
+            try:
+                rows = self._cache.get_conn().execute(
+                    "SELECT file_path, symbols_json FROM ast_index "
+                    "WHERE language = 'java' AND instr(symbols_json, 'java_anonymous') > 0"
+                )
+                for file_path, symbols_json in rows:
+                    payload = json.loads(symbols_json or "{}")
+                    for item in payload.get("java_anonymous") or []:
+                        spans[str(item.get("base") or "")].append(
+                            (
+                                str(file_path),
+                                int(item.get("line") or 0),
+                                int(item.get("end_line") or 0),
+                            )
+                        )
+            except Exception:  # nosec B110 — 缺表 / 旧索引：没有匿名子类证据。
+                spans = defaultdict(list)
+            self._anonymous = spans
+        return [span for name in class_names for span in self._anonymous.get(name, ())]
 
     def _load(self) -> dict[str, set[str]]:
         if self._children is None:
@@ -94,11 +120,21 @@ def override_candidates(
     if qualifier not in OWN_INSTANCE_QUALIFIERS or not caller_class:
         return []
     names = subclasses.subclasses(caller_class)
-    if not names:
-        return []
-    return [
+    found = [
         ref for ref in functions_by_name.get(base_name, []) if ref.receiver in names
     ]
+    # #1743：Java 匿名子类（`new T() { ... }`）里的覆写没有类名，按类体范围认领。
+    spans = subclasses.anonymous_spans({caller_class, *names})
+    if spans:
+        present = set(found)
+        for ref in functions_by_name.get(base_name, []):
+            if ref not in present and any(
+                ref.file_path == path and start <= ref.start_line <= end
+                for path, start, end in spans
+            ):
+                present.add(ref)
+                found.append(ref)
+    return found
 
 
 def _is_java_node(node_id: Any) -> bool:

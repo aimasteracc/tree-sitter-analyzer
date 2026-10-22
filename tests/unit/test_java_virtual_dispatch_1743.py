@@ -171,3 +171,46 @@ async def test_external_type_and_shadowed_field_are_not_bound(project) -> None:
     for result in await _answers(project, "Printer.size", "Printer.java"):
         assert "f" not in _callers(result)
         assert "h" not in _callers(result)
+
+
+_ANON = {
+    P + "Adapter.java": (
+        "package com.ex;\n\npublic abstract class Adapter<T> {\n  abstract long[] values(T t);\n\n"
+        "  public long first(T t) {\n    return values(t)[0];\n  }\n}\n"
+    ),
+    P + "Adapters.java": (
+        "package com.ex;\n\npublic final class Adapters {\n"
+        "  static final Adapter<String> STRING =\n      new Adapter<String>() {\n"
+        "        @Override\n        long[] values(String s) {\n          return new long[] {s.length()};\n        }\n      };\n}\n"
+    ),
+    P + "Client.java": (
+        'package com.ex;\n\npublic class Client {\n  long a(Adapter<String> ad) {\n    return ad.values("x")[0];\n  }\n}\n'
+    ),
+}
+
+
+@pytest.mark.asyncio
+async def test_anonymous_subclass_override_lists_base_class_dispatch(tmp_path) -> None:
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    for rel_path, text in _ANON.items():
+        path = tmp_path / rel_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
+        {"mode": "full", "max_files": 50}
+    )
+    assert indexed["published"] is True
+
+    result = await CodeGraphCallersTool(str(tmp_path)).execute(
+        {
+            "function_name": "values",
+            "file_path": P + "Adapters.java",
+            "include_bodies": False,
+        }
+    )
+
+    # gson ``IntegerFieldsTypeAdapter.write`` calls the abstract ``integerValues(value)``;
+    # the anonymous ``new IntegerFieldsTypeAdapter<Period>() {...}`` override may run.
+    assert {"first", "a"} <= _possible(result)
+    assert result["completeness"] != "complete"

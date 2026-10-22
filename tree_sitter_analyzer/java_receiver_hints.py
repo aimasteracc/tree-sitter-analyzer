@@ -135,7 +135,9 @@ def _collect_locals(node: Any, out: dict[str, str]) -> None:
         elif kind == "enhanced_for_statement":
             name = child.child_by_field_name("name")
             if name is not None:
-                _record(out, _text(name), declared_type(child.child_by_field_name("type")))
+                _record(
+                    out, _text(name), declared_type(child.child_by_field_name("type"))
+                )
         elif kind == "catch_formal_parameter":
             name = child.child_by_field_name("name")
             catch_types = [c for c in child.children if c.type == "catch_type"]
@@ -152,7 +154,11 @@ def _collect_locals(node: Any, out: dict[str, str]) -> None:
                 elif param.type == "formal_parameter":
                     pname = param.child_by_field_name("name")
                     if pname is not None:
-                        _record(out, _text(pname), declared_type(param.child_by_field_name("type")))
+                        _record(
+                            out,
+                            _text(pname),
+                            declared_type(param.child_by_field_name("type")),
+                        )
             if params is not None and params.type == "identifier":
                 _record(out, _text(params), None)
         _collect_locals(child, out)
@@ -190,9 +196,13 @@ class JavaReceiverHintScope:
 
     def for_function(self, func_node: Any) -> JavaReceiverHintScope:
         params, locals_ = method_variables(func_node)
-        return JavaReceiverHintScope(params, locals_, tuple(enclosing_fields(func_node)))
+        return JavaReceiverHintScope(
+            params, locals_, tuple(enclosing_fields(func_node))
+        )
 
-    def hint_for(self, receiver: str | None, enclosing_class: str | None) -> Hint | None:
+    def hint_for(
+        self, receiver: str | None, enclosing_class: str | None
+    ) -> Hint | None:
         if not receiver:
             return None
         this_field = _THIS_FIELD.match(receiver)
@@ -220,8 +230,35 @@ class JavaReceiverHintScope:
         return None
 
 
+def anonymous_subclasses(root: Any) -> list[dict[str, Any]]:
+    """``new T(...) { ... }`` 的匿名子类：``{base, line, end_line}``（类体的行范围）。
+
+    匿名类没有名字，也没有 ``extends`` 边；其中的方法覆写 ``T`` 的方法，``this.m()``
+    （以及裸调用 ``m()``）可能分派到它们（#1743）。
+    """
+    out: list[dict[str, Any]] = []
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if node.type == "object_creation_expression":
+            body = next((c for c in node.children if c.type == "class_body"), None)
+            base = declared_type(node.child_by_field_name("type"))
+            if body is not None and base:
+                out.append(
+                    {
+                        "base": base.rsplit(".", 1)[-1],
+                        "line": body.start_point[0] + 1,
+                        "end_line": body.end_point[0] + 1,
+                    }
+                )
+        stack.extend(node.children)
+    out.sort(key=lambda item: (item["line"], item["end_line"], item["base"]))
+    return out
+
+
 __all__ = [
     "JavaReceiverHintScope",
+    "anonymous_subclasses",
     "class_fields",
     "declared_type",
     "enclosing_fields",

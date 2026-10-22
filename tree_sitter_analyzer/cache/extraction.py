@@ -291,4 +291,11 @@ def _extract_call_edges(
         shape = export_shape(source_code)
         if shape is not None:
             symbols["js_exports"] = shape
+    if tree is not None and language == "java":
+        # #1743：匿名子类（`new T() {...}`）的基类型与类体范围，供 this.m() 分派使用。
+        from ..java_receiver_hints import anonymous_subclasses
+
+        anonymous = anonymous_subclasses(tree.root_node)
+        if anonymous:
+            symbols["java_anonymous"] = anonymous
     return extract_call_edges(tree, source_code, language)
