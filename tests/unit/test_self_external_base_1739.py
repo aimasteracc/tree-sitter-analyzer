@@ -22,30 +22,21 @@ from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
 
 _FILES = {
     "pkg/__init__.py": "",
-    "pkg/text.py": (
-        "class Text:\n"
-        "    def join(self, lines):\n"
-        "        return lines\n"
-    ),
+    "pkg/text.py": ("class Text:\n    def join(self, lines):\n        return lines\n"),
     "pkg/progress.py": (
         "from threading import Thread\n\n\n"
         "class _TrackThread(Thread):\n"
         "    def __exit__(self, *exc):\n"
         "        self.join()\n"
     ),
-    "pkg/utils.py": (
-        "class GetterDict:\n"
-        "    def keys(self):\n"
-        "        return []\n"
-    ),
+    "pkg/utils.py": ("class GetterDict:\n    def keys(self):\n        return []\n"),
     "pkg/generics.py": (
         "class LimitedDict(dict):\n"
         "    def __setitem__(self, key, value):\n"
         "        return list(self.keys())\n"
     ),
     "pkg/serializers.py": (
-        "def nested_serializers():\n"
-        "    return lambda self, v: list(self.keys())\n"
+        "def nested_serializers():\n    return lambda self, v: list(self.keys())\n"
     ),
     # lambda 定义在方法里：它的 `self` 参数遮蔽了方法的 `self`。
     "pkg/holder.py": (
@@ -58,11 +49,7 @@ _FILES = {
         "        return self.items()\n"
     ),
     # 对照：项目基类定义了 `fmt`，经 MRO 的 `self.fmt()` 仍是确定调用。
-    "pkg/fmt_base.py": (
-        "class FmtBase:\n"
-        "    def fmt(self):\n"
-        "        return ''\n"
-    ),
+    "pkg/fmt_base.py": ("class FmtBase:\n    def fmt(self):\n        return ''\n"),
     "pkg/fmt_child.py": (
         "from pkg.fmt_base import FmtBase\n\n\n"
         "class FmtChild(FmtBase):\n"

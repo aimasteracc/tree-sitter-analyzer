@@ -270,6 +270,19 @@ several base branches define `m`, the C3 order decides. A nested function that
 reads a closure variable bound by `x = T(...)` in the enclosing function gets
 that type unless it rebinds the name.
 
+#1739: in Python, these MRO rules are the **only** way a `self.m()` / `cls.m()`
+call becomes certain. The call is certain for the enclosing class's own `m`, or
+for the nearest `m` in a fully known MRO. If the MRO reaches an external or
+unresolved base before a project `m` (for example `class T(Thread)` calling
+`self.join()`, or `class D(dict)` calling `self.keys()`), the call is not a
+caller of any project method, even when the project has exactly one method
+with that name. That method only gets a name-only possible caller, so its
+answer stays non-`complete`. `self` / `cls` is a method receiver only when it
+is the first parameter of a function defined directly in a class body. When
+it is a lambda parameter, the parameter of a module-level or nested function,
+or not the first parameter, it is an ordinary unproven receiver. Such calls
+are stored as `(self).m`.
+
 ## Index write admission codes (RFC-0032)
 
 An index write can be refused before it changes anything: another write

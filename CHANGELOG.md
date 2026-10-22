@@ -203,6 +203,23 @@
   `symbols_json.js_exports`, so a refresh re-resolves importers when it changes.
   On the round-10 axios sample, call-site recall goes from 17/53 to 45/53, with
   0 wrong `complete`. The extractor version goes from 46 to 47.
+
+
+- **`self.m()` in a class with an external base is no longer a definite
+  caller of an unrelated project method** (#1739, dogfood round 10: rich,
+  pydantic). Two cases were bound as `callee_resolution: "project"` to the
+  only project method with that name: `class _TrackThread(Thread)` calling
+  `self.join()` was bound to `Text.join`, and `class LimitedDict(dict)` calling
+  `self.keys()` was bound to `GetterDict.keys`. A lambda parameter named `self`
+  got the same treatment. In Python, `self.m()` / `cls.m()` is now certain
+  only for the enclosing class's own `m`, or for the nearest `m` in a fully
+  known MRO (#1677 / #1699). Any other same-name method is only a possible
+  target (`NAME_ONLY_INBOUND`), and subclass overrides stay possible (#1648).
+  `self` / `cls` counts as the receiver only as the first parameter of a method
+  defined in a class body. A lambda, module-level or nested-function parameter
+  with that name is an ordinary unproven receiver: the call is stored as
+  x
+
 - **One source edit now causes one watcher sync** (#1730). When the project
   has a stable per-file failure, such as an optional grammar that is not
   installed (#1554 / #1671), every sync reports `errors > 0`. The file watcher
