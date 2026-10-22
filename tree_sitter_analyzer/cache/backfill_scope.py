@@ -357,6 +357,8 @@ def _surface(row: Any) -> _Surface:
             "truncated_depth",
             "import_projection_complete",
             "js_exports",
+            # #1743：Java 匿名子类的基类型与范围（this.m() 分派的覆写候选）。
+            "java_anonymous",
         )
     }
     for symbol in payload.get("symbols") or []:
@@ -521,6 +523,55 @@ def _dependent_files(
         typed_by_file.setdefault(path, set()).add(class_name)
     found |= _importer_closure(cache, conn, names_by_file, typed_by_file, wide)
     found |= _js_importer_closure(cache, wide)
+    found |= _java_typed_dependents(conn, class_names)
+    return found
+
+
+def _java_typed_dependents(conn: sqlite3.Connection, class_names: set[str]) -> set[str]:
+    """#1743：调用边按声明类型绑定到变化的 Java 类（或其传递子类）的文件。
+
+    ``x.m()`` 经 ``x`` 的声明类型 ``S`` 在 ``S`` 与其祖先上找 ``m``；``S`` 或其祖先的基类型、
+    方法变化时，绑定可能改变，而调用名与解析到的文件都不一定在差异里。
+    """
+    if not class_names:
+        return set()
+    children: dict[str, set[str]] = defaultdict(set)
+    for source, target in conn.execute(
+        "SELECT source_node_id, target_node_id FROM edges "
+        "WHERE kind IN ('extends', 'implements') "
+        f"UNION SELECT source, target FROM temp.{_EXTENDS}"  # nosec B608
+    ):
+        child = _node(source)
+        if child is None or not child[0].endswith(".java"):
+            continue
+        text = str(target)
+        if text.startswith("class:"):
+            parent = text[len("class:") :].split("<", 1)[0].rsplit(".", 1)[-1]
+        else:
+            node = _node(target)
+            parent = node[1] if node is not None else ""
+        if parent:
+            children[parent].add(child[1])
+    names = set(class_names)
+    queue = deque(class_names)
+    while queue:
+        for child_name in children.get(queue.popleft(), ()):
+            if child_name not in names:
+                names.add(child_name)
+                queue.append(child_name)
+    found: set[str] = set()
+    for file_path, metadata in conn.execute(
+        "SELECT file_path, metadata FROM edges WHERE kind = 'calls' "
+        "AND file_path LIKE '%.java' AND instr(metadata, 'receiver_hint') > 0"
+    ):
+        try:
+            hint = json.loads(metadata or "{}").get("receiver_hint") or {}
+        except (TypeError, ValueError, AttributeError):
+            found.add(str(file_path))
+            continue
+        type_name = str(hint.get("type") or "").rsplit(".", 1)[-1]
+        if type_name in names:
+            found.add(str(file_path))
     return found
 
 

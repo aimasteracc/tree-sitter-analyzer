@@ -107,8 +107,12 @@ def _resolve_module_attribute(row: Any, ctx: Any) -> Any:
 
 
 def _resolve_annotated(row: Any, ctx: Any) -> Any:
-    """RFC-0038：调用点带接收者类型线索时，先按注解所指的类解析。"""
-    if ctx.file_languages.get(row["caller_file"]) != "python":
+    """RFC-0038：调用点带接收者类型线索时，先按注解所指的类解析。
+
+    #1743：Java 的线索是接收者的声明类型（形参 / 局部 / 字段）。
+    """
+    language = ctx.file_languages.get(row["caller_file"])
+    if language not in ("python", "java"):
         return None
     from ..synapse_resolver._annotated import (
         receiver_hint_from_metadata,
@@ -118,6 +122,12 @@ def _resolve_annotated(row: Any, ctx: Any) -> Any:
     hint = receiver_hint_from_metadata(_row_value(row, "metadata"))
     if hint is None:
         return None
+    if language == "java":
+        from ..synapse_resolver._java_typed import resolve_java_typed_receiver
+
+        return resolve_java_typed_receiver(
+            hint, row["callee_name"], row["caller_file"], ctx
+        )
     return resolve_annotated_receiver(
         hint, row["callee_name"], row["caller_file"], row["caller_name"] or "", ctx
     )

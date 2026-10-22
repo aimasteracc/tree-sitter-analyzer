@@ -198,7 +198,7 @@ def test_extractor_version_is_bumped_for_module_attribute_aliases() -> None:
     assert (
         ast_cache._AST_CACHE_EXTRACTOR_VERSION,
         indexer._AST_CACHE_EXTRACTOR_VERSION,
-    ) == (48, 48)
+    ) == (49, 49)
 
 
 def _context(tmp_path: Path, imports: list, files: dict[str, str]):

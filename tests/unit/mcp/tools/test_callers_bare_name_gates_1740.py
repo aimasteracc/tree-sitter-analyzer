@@ -14,7 +14,8 @@ import pytest
 
 from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
 
-# gson 形态：接收者是参数 / 字段，类型无法绑定（只按同名匹配）。
+# gson 形态：接收者类型无法绑定（只按同名匹配）。#1743 起声明类型的形参 / 字段
+# 可以绑定，因此这里用转型表达式作接收者，它没有声明类型线索。
 _GSON = {
     "src/com/google/gson/Gson.java": (
         "package com.google.gson;\n\n"
@@ -28,8 +29,8 @@ _GSON = {
         "package com.google.gson.internal;\n\n"
         "import com.google.gson.Gson;\n\n"
         "public final class Excluder {\n"
-        "  public Object create(Gson gson, Object type) {\n"
-        "    return gson.getDelegateAdapter(null, type);\n"
+        "  public Object create(Object holder, Object type) {\n"
+        "    return ((Gson) holder).getDelegateAdapter(null, type);\n"
         "  }\n"
         "}\n"
     ),

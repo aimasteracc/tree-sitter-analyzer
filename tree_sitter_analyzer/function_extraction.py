@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 from .python_own_receiver import mark_unbound_own_receiver
 from .receiver_hints import (
@@ -539,13 +539,16 @@ def walk_tree(node: Any, source: str, language: str) -> tuple[list[dict], list[d
     definitions: list[dict[str, Any]] = []
     calls: list[dict[str, Any]] = []
     fixture_types = _collect_fixture_types(node, source, language)
-    hint_scope = (
-        _ReceiverHintScope(
+    hint_scope: _HintScope | None = None
+    if language == "python":
+        hint_scope = _ReceiverHintScope(
             attributes=class_attribute_hints(node), module=module_hints(node)
         )
-        if language == "python"
-        else None
-    )
+    elif language == "java":
+        # #1743：Java 的接收者声明类型（形参 / 局部 / 字段）。
+        from .java_receiver_hints import JavaReceiverHintScope
+
+        hint_scope = JavaReceiverHintScope()
     _extract_recursive(
         node,
         source,
@@ -558,6 +561,16 @@ def walk_tree(node: Any, source: str, language: str) -> tuple[list[dict], list[d
         hint_scope,
     )
     return definitions, calls
+
+
+class _HintScope(Protocol):
+    """接收者线索作用域：Python（RFC-0038）与 Java（#1743）各有实现。"""
+
+    def for_function(self, func_node: Any) -> _HintScope: ...
+
+    def hint_for(
+        self, receiver: str | None, enclosing_class: str | None
+    ) -> dict[str, Any] | None: ...
 
 
 @dataclass(frozen=True)
@@ -792,7 +805,7 @@ def _extract_recursive(
     enclosing_class: str | None,
     local_types: dict[str, tuple[str, int]] | None,
     fixture_types: dict[str, str] | None = None,
-    hint_scope: _ReceiverHintScope | None = None,
+    hint_scope: _HintScope | None = None,
 ) -> None:
     if not hasattr(node, "type"):
         return

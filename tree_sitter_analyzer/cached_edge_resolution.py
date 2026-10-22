@@ -141,6 +141,9 @@ class CachedEdgeResolver:
             )
         if not caller_class:
             return targets
+        if not qualifier and edge.get("language") == "java":
+            # #1743：Java 方法里的裸调用 ``m()`` 是 ``this.m()``：子类覆写同样可能被分派到。
+            qualifier = "this"
         if qualifier in _SUPER_QUALIFIERS:
             # ``super().m()`` 从不调用外围类自己的 ``m``。
             certain = [r for r in targets.certain if r.receiver != caller_class]

@@ -164,6 +164,22 @@
   repository).
 ### Fixed
 
+- **Java calls through a typed receiver bind; overrides stay possible** (#1743).
+  In `void create(Gson gson) { gson.getDelegateAdapter(...) }` the receiver's
+  declared type was ignored, so every such call was only a same-name match and
+  no Java answer could list it as a caller. The extractor now records the
+  declared type of a receiver `x` / `this.x` (parameter, local, enhanced-for or
+  catch variable, or a field of an enclosing class; generics are dropped). The
+  call binds certainly to the method on that type, or on its nearest project
+  ancestor through `extends` / `implements`. Overrides in subtypes, including
+  anonymous `new T() { ... }` subclasses, are possible callers
+  (`NAME_ONLY_INBOUND` / `name_only_sites`): never certain, never omitted. A bare
+  `m()` inside a Java class dispatches like `this.m()`. Nothing is bound for
+  overloaded methods, type variables, types outside the project, or a local that
+  shadows a same-named field. On the round-10 gson sample, call-site recall goes
+  from 28/76 to 45/76 (qualified) and from 31/76 to 48/76 (bare), with 0 wrong
+  `complete`. Supertype-receiver sites named as evidence go from 10/11 to 11/11.
+  The extractor version goes from 48 to 49.
 - **The scoped backfill also runs on a checkout with stable grammar failures**
   (#1735). A file whose optional grammar is not installed (for example the
   Swift and Lua fixtures here) is a stable failure (#1671): it writes no rows,
