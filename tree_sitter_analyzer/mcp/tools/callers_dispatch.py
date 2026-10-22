@@ -82,6 +82,51 @@ def trailing_segment(text: str) -> str | None:
     return text[last_dot + 1 :]
 
 
+#: 函数字面量的开头：``function``、``async``、``lambda``，或箭头函数的参数表 + ``=>``。
+_FUNCTION_LITERAL_HEAD = re.compile(
+    r"^(?:async\s+)?(?:function\b|lambda\b"
+    r"|\((?:[^()]|\([^()]*\))*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)"
+)
+
+
+def _strip_wrapping_parens(text: str) -> str | None:
+    """去掉包住整段文本的成对括号；括号不配对时为 None。"""
+    while text.startswith("("):
+        depth = 0
+        quote = ""
+        close = -1
+        escaped = False
+        for index, char in enumerate(text):
+            if quote:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == quote:
+                    quote = ""
+            elif char in "\"'`":
+                quote = char
+            elif char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+                if depth == 0:
+                    close = index
+                    break
+        if close == -1:
+            return None
+        if close != len(text) - 1:
+            return text
+        text = text[1:-1].strip()
+    return text
+
+
+def is_function_literal(callee_full: str) -> bool:
+    """调用文本是（被括号包住的）函数字面量：``(() => {…})``、``(function () {…})``。"""
+    inner = _strip_wrapping_parens((callee_full or "").strip())
+    return bool(inner) and _FUNCTION_LITERAL_HEAD.match(inner or "") is not None
+
+
 def could_name_target(callee_full: str, target: str) -> bool:
     """调用文本是否可能点名 ``target``：同名，或名字在运行时计算。
 
@@ -89,6 +134,10 @@ def could_name_target(callee_full: str, target: str) -> bool:
     ``incomplete`` / ``unknown``，少计才会在真实调用边上宣称不存在。
     """
     text = (callee_full or "").strip()
+    if is_function_literal(text):
+        # #1741：立即调用的函数字面量（IIFE / ``(lambda: …)()``）只调用它自己；
+        # 体内的调用各有自己的边，不会经由这个调用点到达目标。
+        return False
     literal = _LITERAL_GETATTR.match(text)
     if literal is not None:
         return literal.group(2) == target

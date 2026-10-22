@@ -350,7 +350,14 @@ def _surface(row: Any) -> _Surface:
     payload = json.loads(symbols_json or "{}")
     flags = {
         key: payload.get(key)
-        for key in ("syntax_error", "truncated_depth", "import_projection_complete")
+        # #1741：JS 导出形状（默认导出对象成员 / 展开、具名导出）改变时，经导入对象的
+        # 调用可能换了目标；按文件级标记处理，导入方全部重新解析。
+        for key in (
+            "syntax_error",
+            "truncated_depth",
+            "import_projection_complete",
+            "js_exports",
+        )
     }
     for symbol in payload.get("symbols") or []:
         if symbol.get("kind") == "import":
@@ -513,6 +520,47 @@ def _dependent_files(
         names_by_file.setdefault(path, set()).add(class_name)
         typed_by_file.setdefault(path, set()).add(class_name)
     found |= _importer_closure(cache, conn, names_by_file, typed_by_file, wide)
+    found |= _js_importer_closure(cache, wide)
+    return found
+
+
+def _js_importer_closure(cache: Any, wide: set[str]) -> set[str]:
+    """#1741：导出形状变化的 JS 文件经相对导入（含 ``...spread`` 再导出链）到达的导入方。
+
+    ``obj.m()`` 的解析经默认导入对象、命名空间导入与展开的中间文件到达定义；这些
+    导入在 ``name_to_source`` 之外，只能按说明符解析出的文件追踪，最多 ``_IMPORT_HOPS`` 跳。
+    """
+    from ..synapse_resolver import build_resolver_context
+    from ..synapse_resolver._typescript_imports import resolve_typescript_specifier
+
+    targets = {path for path in wide if path.endswith((".js", ".jsx", ".mjs", ".cjs"))}
+    if not targets:
+        return set()
+    ctx = build_resolver_context(cache)
+    indexed = frozenset(ctx.file_languages)
+    importers_of: dict[str, set[str]] = defaultdict(set)
+    for importer, entries in ctx.imports_by_file.items():
+        if ctx.file_languages.get(importer) not in ("javascript", "jsx"):
+            continue
+        for entry in entries:
+            if not entry.is_relative:
+                continue
+            target = resolve_typescript_specifier(entry.module_path, importer, indexed)
+            if target and target != importer:
+                importers_of[target].add(importer)
+    found: set[str] = set()
+    frontier = set(targets)
+    for _hop in range(_IMPORT_HOPS):
+        following = {
+            importer
+            for target in frontier
+            for importer in importers_of.get(target, ())
+            if importer not in found and importer not in targets
+        }
+        found |= following
+        frontier = following
+        if not frontier:
+            break
     return found
 
 

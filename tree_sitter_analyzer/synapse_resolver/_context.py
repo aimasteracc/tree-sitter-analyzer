@@ -716,6 +716,8 @@ def _build_resolver_context_uncached(cache: ASTCache) -> ResolverContext:
                 file_class_methods=_file_class_methods_thunk,
                 conn=_live_connection(cache, conn),
                 line_idx=line_idx,
+                # #1741：需要读源码的语言（JS 默认导出对象）从这里拿项目根。
+                project_root=getattr(cache, "project_root", None),
             )
 
         return build

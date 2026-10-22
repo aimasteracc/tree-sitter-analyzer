@@ -73,7 +73,8 @@ from ._ast_cache_query_mixin import ASTCacheQueryMixin
 # v44：继承方法经单例 / 构造 / 注解 / super() 接收者按 C3 MRO 解析，闭包继承外层构造类型（#1699）。
 # v45：经模块属性调用的再导出名（`owner._f()`）解析到真实定义（#1705）。
 # v46：symbols_json 记录 `global` / 模块级 `del` 重新绑定的名字，进入范围回填的解析面（#1721）。
-_AST_CACHE_EXTRACTOR_VERSION = 46
+# v47：JS 经默认导出对象 / 命名空间导入的 `obj.m()` 解析到定义，symbols_json 记录 JS 导出形状（#1741）。
+_AST_CACHE_EXTRACTOR_VERSION = 47
 
 # Preserve the historical public exception identity after implementation split.
 SchemaIntegrityError.__module__ = __name__
