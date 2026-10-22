@@ -578,25 +578,16 @@ def _callers_into(previous: dict[str, Any], changed: frozenset[str]) -> set[Any]
 
 def _read_rows(conn: Any, plan: RefreshPlan, extra_ids: list[int]) -> Any:
     """范围内的行与受影响旧行在新库中的当前内容（按 rowid）。"""
-    from .cache.graph_input_rows import CallEdgeRows, read_call_edge_rows_where
+    from .cache.graph_input_rows import read_call_edge_rows_matching
 
-    collected: dict[int, tuple[Any, ...]] = {}
-    names: tuple[str, ...] = ()
-    for column, values in (
-        ("file_path", sorted(plan.files)),
-        ("callee_name", sorted(plan.names)),
-        ("id", extra_ids),
-    ):
-        for start in range(0, len(values), _CHUNK):
-            chunk = list(values[start : start + _CHUNK])
-            marks = ",".join("?" * len(chunk))
-            part = read_call_edge_rows_where(conn, f"{column} IN ({marks})", chunk)
-            names = part.names or names
-            collected.update(zip(part.ids, part.rows, strict=True))
-    if not names:
-        names = read_call_edge_rows_where(conn, "0", []).names
-    ordered = sorted(collected)
-    return CallEdgeRows(names, [collected[edge_id] for edge_id in ordered], ordered)
+    return read_call_edge_rows_matching(
+        conn,
+        (
+            ("file_path", sorted(plan.files)),
+            ("callee_name", sorted(plan.names)),
+            ("id", extra_ids),
+        ),
+    )
 
 
 def finalize(graph: CachedCallGraph, state: dict[str, Any]) -> bool:

@@ -218,14 +218,17 @@ class CrossFileResolver:
         return "", 0
 
     def resolve_call_edges(
-        self, edge_filter: Callable[[dict[str, Any]], bool] | None = None
+        self,
+        edge_filter: Callable[[dict[str, Any]], bool] | None = None,
+        edges: list[dict[str, Any]] | None = None,
     ) -> list[ResolvedEdge]:
         """Re-resolve all call edges with improved cross-file resolution.
 
         #1696：``edge_filter`` 给出时只处理它接受的边（按依赖界定的回填范围）。
+        #1749：``edges`` 给出时不再读取全部调用边（调用方已按范围读出，rowid 顺序）。
         """
         self.build()
-        raw_edges = self._cache.get_call_edges()
+        raw_edges = self._cache.get_call_edges() if edges is None else edges
         resolved: list[ResolvedEdge] = []
         for edge in raw_edges:
             if edge_filter is not None and not edge_filter(edge):

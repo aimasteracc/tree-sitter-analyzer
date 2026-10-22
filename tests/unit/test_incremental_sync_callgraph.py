@@ -313,22 +313,28 @@ def test_marker_certification_rechecks_consistency_after_writer_lock(
     monkeypatch,
 ) -> None:
     # PR #1253 thread 3763600672: marker publication and final check are atomic.
+    # #1749：只剩写锁内的那一次核验——核验时标记行已写入（即已持有写锁），失败则回滚。
     from tree_sitter_analyzer.cache import callgraph_state
 
     conn = sqlite3.connect(":memory:")
-    checks = iter((True, False))
-    monkeypatch.setattr(
-        callgraph_state,
-        "call_graph_edges_are_consistent",
-        # #1684：写入方以自己的期限调用（deadline 关键字）。
-        lambda _conn, **_kwargs: next(checks),
-    )
+    pending_markers: list[int] = []
+
+    def check(check_conn, **_kwargs) -> bool:  # #1684：写入方以自己的期限调用
+        pending_markers.append(
+            check_conn.execute(
+                "SELECT count(*) FROM ast_call_graph_state WHERE built = 1"
+            ).fetchone()[0]
+        )
+        return False
+
+    monkeypatch.setattr(callgraph_state, "call_graph_edges_are_consistent", check)
 
     with pytest.raises(
         sqlite3.OperationalError, match="CALL_GRAPH_DANGLING_RESOLUTION"
     ):
         callgraph_state.mark_call_graph_built_strict(conn)
 
+    assert pending_markers == [1]
     rows = conn.execute(
         "SELECT id, built, pipeline_version FROM ast_call_graph_state"
     ).fetchall()
