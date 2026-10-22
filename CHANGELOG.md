@@ -164,6 +164,18 @@
   repository).
 ### Fixed
 
+- **An unresolved `x.m()` keeps every same-named method a possible target**
+  (#1758). When the calling file itself declared an `m`, the cached resolver
+  took the same-file definition from its local tier and never looked further,
+  so same-named methods in other files, such as overrides of a same-file
+  abstract method, were never possible callees. Dogfood round 11 on rich:
+  `console.py` calls `hook.process_renderables(...)` on an untyped loop variable
+  next to the abstract `RenderHook.process_renderables`, and
+  `Live.process_renderables` in `live.py` answered `complete, 0`. With the
+  receiver unproven, the global tier's same-named candidates are now possible
+  targets too: `Live.process_renderables` answers `unknown`
+  (`NAME_ONLY_INBOUND`) and names `console.py:1715` and `:2017`, in both bare
+  and qualified form. A proven receiver still binds to the one definition.
 - **Java calls through a typed receiver bind; overrides stay possible** (#1743).
   In `void create(Gson gson) { gson.getDelegateAdapter(...) }` the receiver's
   declared type was ignored, so every such call was only a same-name match and

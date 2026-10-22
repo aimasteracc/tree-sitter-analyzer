@@ -452,8 +452,24 @@ class CachedEdgeResolver:
                 qualifier, scoped[0], caller_file
             ):
                 return EdgeTargets(certain=scoped)
-            return EdgeTargets(possible=scoped)
-        globals_ = _bare_reachable(
+            # #1758：接收者未被证明时，本地 / import 档的命中并不排除别处的同名方法
+            # （如同文件抽象类在别的文件里的覆写）：全局档的同名候选同样是可能目标。
+            return EdgeTargets(
+                possible=_merged(
+                    scoped, self._global_candidates(full_name, qualifier, caller_file)
+                )
+            )
+        globals_ = self._global_candidates(full_name, qualifier, caller_file)
+        narrowed = _narrow_by_receiver(globals_, qualifier)
+        if len(narrowed) == 1 and _qualifier_admits_global(qualifier, narrowed[0]):
+            return EdgeTargets(certain=narrowed)
+        return EdgeTargets(possible=globals_)
+
+    def _global_candidates(
+        self, full_name: str, qualifier: str, caller_file: str
+    ) -> list[FunctionRef]:
+        """全局档（不含本地 / import 档）的同名候选。"""
+        return _bare_reachable(
             [
                 ref
                 for ref, _confidence in self._resolver.resolve_items(
@@ -462,10 +478,6 @@ class CachedEdgeResolver:
             ],
             qualifier,
         )
-        narrowed = _narrow_by_receiver(globals_, qualifier)
-        if len(narrowed) == 1 and _qualifier_admits_global(qualifier, narrowed[0]):
-            return EdgeTargets(certain=narrowed)
-        return EdgeTargets(possible=globals_)
 
     def _receiver_proven(
         self, qualifier: str, ref: FunctionRef, caller_file: str
@@ -516,6 +528,17 @@ _KEY_GETTERS: dict[tuple[str, ...], Callable[[dict[str, Any]], tuple[Any, ...]]]
 def _split_qualifier(name: str) -> tuple[str, str]:
     # #1669：`Foo(a.b).m` 的接收者是 `Foo(a.b)`，括号内的点不参与拆分。
     return split_receiver(name)
+
+
+def _merged(first: list[FunctionRef], more: list[FunctionRef]) -> list[FunctionRef]:
+    """``first`` 之后接上 ``more`` 中尚未出现的候选（保持顺序，按身份去重）。"""
+    merged = list(first)
+    seen = set(first)
+    for ref in more:
+        if ref not in seen:
+            seen.add(ref)
+            merged.append(ref)
+    return merged
 
 
 def _bare_reachable(refs: list[FunctionRef], qualifier: str) -> list[FunctionRef]:
