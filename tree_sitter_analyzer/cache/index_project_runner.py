@@ -78,7 +78,7 @@ def run_index_project(
         certification_tracking.disarm(record_conn)
     else:
         certification_tracking.arm(record_conn)
-        backfill_scope.begin(record_conn)
+        backfill_scope.begin(record_conn, backfill_scope.published_parent(cache))
     clear_record(record_conn)
     record_conn.commit()
     if resolve_only:

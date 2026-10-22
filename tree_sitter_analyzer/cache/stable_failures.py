@@ -39,8 +39,6 @@ logger = logging.getLogger(__name__)
 
 #: ``ast_cache_metadata`` 中的键。
 RECORD_KEY = "tsa.converged_refresh"
-#: #1735：私有副本从父版本继承的“调用边已收敛（只差稳定失败）”一次性标记。
-PARENT_CONVERGED_KEY = "tsa.parent_converged_refresh"
 RECORD_VERSION = 1
 #: 记录的字节上限；超过即不签发（失败文件过多时退回真实运行）。
 _RECORD_BYTE_LIMIT = 1024 * 1024
@@ -200,63 +198,51 @@ def clear_record(conn: sqlite3.Connection) -> None:
 
 
 def clear_record_at(database: Path) -> None:
-    """私有副本建立后立即清除继承的记录：其后的写入尚未证明收敛。
-
-    #1735：父版本带收敛记录时，副本另记一个一次性标记，说明它的调用边解析是收敛
-    的（至多差已记录的稳定失败）；范围回填（#1696）武装时读取并消费它。
-    """
+    """私有副本建立后立即清除继承的记录：其后的写入尚未证明收敛。"""
     connection = sqlite3.connect(database)
     try:
-        record = read_record(connection)
         clear_record(connection)
-        if record is not None:
-            connection.execute(
-                "INSERT OR REPLACE INTO ast_cache_metadata (key, value) VALUES (?, ?)",
-                (PARENT_CONVERGED_KEY, _encode(record)),
-            )
         connection.commit()
     finally:
         connection.close()
 
 
-def converged_except_stable_failures(conn: sqlite3.Connection) -> bool:
-    """本库的调用边是否来自一次收敛的刷新，且唯一的失败是已记录的稳定失败。
+def converged_except_stable_failures(
+    conn: sqlite3.Connection, parent: Path | None = None
+) -> bool:
+    """调用边是否来自一次收敛的刷新，且唯一的失败是已记录的稳定失败（#1735）。
 
-    证据是 #1671 的收敛记录（本库自己的，或私有副本从父版本继承的一次性标记），
-    它必须列出至少一个稳定失败，并绑定当前的提取器与调用图流水线版本。没有失败的
-    收敛刷新会盖出当前的调用图标记，不经这里；其余任何状态都返回 False。
+    证据是 #1671 的收敛记录：本库自己的（原地写入的库，运行开始时尚未清除），或
+    ``parent``——私有副本复制自的已发布版本（已封存，记录随版本不变）。记录必须列出
+    至少一个稳定失败，并绑定当前的提取器与调用图流水线版本。没有失败的收敛刷新会
+    盖出当前的调用图标记，不经这里；其余任何状态都返回 False。
     """
+    records = [read_record(conn)]
+    if parent is not None:
+        records.append(_read_record_at(parent))
+    return any(_converged(record) for record in records)
+
+
+def _converged(record: StableFailureRecord | None) -> bool:
     from .callgraph_state import CALL_GRAPH_PIPELINE_VERSION
 
-    for record in (read_record(conn), _read_key(conn, PARENT_CONVERGED_KEY)):
-        if (
-            record is not None
-            and record.failures
-            and record.extractor_version == current_extractor_version()
-            and record.pipeline_version == CALL_GRAPH_PIPELINE_VERSION
-        ):
-            return True
-    return False
+    return (
+        record is not None
+        and bool(record.failures)
+        and record.extractor_version == current_extractor_version()
+        and record.pipeline_version == CALL_GRAPH_PIPELINE_VERSION
+    )
 
 
-def consume_parent_converged(conn: sqlite3.Connection) -> None:
-    """删除继承的一次性标记（在调用方的事务内）；它不进入发布的版本。"""
-    if _has_metadata_table(conn):
-        conn.execute(
-            "DELETE FROM ast_cache_metadata WHERE key = ?", (PARENT_CONVERGED_KEY,)
-        )
-
-
-def _read_key(conn: sqlite3.Connection, key: str) -> StableFailureRecord | None:
+def _read_record_at(database: Path) -> StableFailureRecord | None:
     try:
-        if not _has_metadata_table(conn):
-            return None
-        row = conn.execute(
-            "SELECT value FROM ast_cache_metadata WHERE key = ?", (key,)
-        ).fetchone()
-    except sqlite3.Error:
+        connection = sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)
+    except (sqlite3.Error, ValueError, OSError):
         return None
-    return None if row is None else _decode(row[0])
+    try:
+        return read_record(connection)
+    finally:
+        connection.close()
 
 
 def issue_record(

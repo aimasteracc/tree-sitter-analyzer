@@ -175,19 +175,34 @@ def test_only_a_converged_record_with_stable_failures_arms(tmp_path) -> None:
     assert _armed(_record_conn(_record(extractor_version=1), tmp_path)) is False
 
 
-def test_a_private_copy_inherits_the_converged_state_once(tmp_path) -> None:
-    from tree_sitter_analyzer.cache import stable_failures
+def test_a_private_copy_arms_on_its_published_parent_record(tmp_path) -> None:
+    from tree_sitter_analyzer.cache import backfill_scope, stable_failures
 
-    conn = _record_conn(_record(), tmp_path)
-    conn.commit()
-    database = Path(conn.execute("PRAGMA database_list").fetchone()[2])
-    conn.close()
+    parent = _record_conn(_record(), tmp_path)
+    parent.commit()
+    parent_path = Path(parent.execute("PRAGMA database_list").fetchone()[2])
+    parent.close()
+    copy = _record_conn(None, tmp_path)
+    copy_path = Path(copy.execute("PRAGMA database_list").fetchone()[2])
 
-    stable_failures.clear_record_at(database)
+    stable_failures.clear_record_at(copy_path)
 
-    copy = sqlite3.connect(database)
-    assert stable_failures.read_record(copy) is None  # 收敛记录照旧撤销
-    assert _armed(copy) is True  # 但范围回填可以接在父版本之后
-    # 只用一次：武装时已消费继承的标记。
-    copy.commit()
-    assert _armed(copy) is False
+    assert stable_failures.read_record(copy) is None  # 副本不继承记录
+    backfill_scope.begin(copy, parent_path)
+    assert backfill_scope._armed(copy) is True
+    backfill_scope.begin(copy, None)
+    assert backfill_scope._armed(copy) is False
+    # 读不到父版本时不武装。
+    backfill_scope.begin(copy, tmp_path / "missing.db")
+    assert backfill_scope._armed(copy) is False
+
+
+def test_published_parent_is_none_for_the_live_database(tmp_path) -> None:
+    from tree_sitter_analyzer.cache.backfill_scope import published_parent
+
+    class _Cache:
+        project_root = str(tmp_path)
+        db_path = str(tmp_path / "index.db")
+
+    assert published_parent(_Cache()) is None  # 没有已发布版本
+    assert published_parent(object()) is None

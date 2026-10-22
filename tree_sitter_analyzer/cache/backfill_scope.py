@@ -31,6 +31,7 @@ from collections import defaultdict, deque
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -124,19 +125,19 @@ class _Surface:
     classes: frozenset[str]
 
 
-def begin(conn: sqlite3.Connection) -> None:
-    """刷新开始：武装本连接的记录并清空上一轮的残留。"""
+def begin(conn: sqlite3.Connection, parent: Path | None = None) -> None:
+    """刷新开始：武装本连接的记录并清空上一轮的残留。
+
+    ``parent``（#1735）是私有副本复制自的已发布版本；它带稳定失败的收敛记录时，
+    副本的调用边解析同样可作为基准。
+    """
     try:
         for table, columns in _TABLES:
             conn.execute(f"CREATE TEMP TABLE IF NOT EXISTS {table} ({columns})")  # nosec B608
             conn.execute(f"DELETE FROM temp.{table}")  # nosec B608
         # 上一轮回填未收敛（调用图标记不是当前的）时，旧解析不可作为未变部分的基准。
         # #1735：唯一的原因是已记录的稳定失败（标记按设计保持撤销）时照常武装。
-        from .stable_failures import consume_parent_converged
-
-        converged = _previous_run_converged(conn)
-        consume_parent_converged(conn)
-        if not converged:
+        if not _previous_run_converged(conn, parent):
             disarm(conn)
             return
         for statement in _OLD_ROW_TRIGGERS:
@@ -147,7 +148,7 @@ def begin(conn: sqlite3.Connection) -> None:
         disarm(conn)
 
 
-def _previous_run_converged(conn: sqlite3.Connection) -> bool:
+def _previous_run_converged(conn: sqlite3.Connection, parent: Path | None) -> bool:
     """上一轮的调用边解析可作为基准：标记当前，或只差已记录的稳定失败（#1735）。
 
     后者与发布、监视器（#1733）的 ``stable_failures_only`` 规则同源：#1671 的收敛记录
@@ -162,13 +163,32 @@ def _previous_run_converged(conn: sqlite3.Connection) -> bool:
 
     if writer_marker_is_current(conn):
         return True
-    if not converged_except_stable_failures(conn):
+    if not converged_except_stable_failures(conn, parent):
         return False
     import time
 
     return call_graph_edges_are_consistent(
         conn, deadline=time.monotonic() + _WRITER_CHECK_DEADLINE_SECONDS
     )
+
+
+def published_parent(cache: Any) -> Path | None:
+    """#1735：``cache`` 是已发布版本的私有副本时，返回它复制自的已发布库。
+
+    私有副本在运行开始前复制自当时的活动版本；活动版本若已被取代，本次发布会被
+    CAS 拒绝，结果不会生效。``cache`` 就是活动库（原地写入）时返回 None。
+    """
+    try:
+        from .generation_routing import resolve_index_location
+
+        location = resolve_index_location(str(cache.project_root))
+        own = Path(str(cache.db_path)).resolve()
+        published = Path(location.path).resolve()
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+    if not location.published or published == own:
+        return None
+    return published
 
 
 def disarm(conn: sqlite3.Connection) -> None:
