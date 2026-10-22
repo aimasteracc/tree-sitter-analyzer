@@ -65,11 +65,10 @@ def parameter_names(params: Any) -> list[str]:
         if child.type == "identifier":
             names.append(_text(child))
         elif child.type in _PARAMETER_WRAPPERS:
-            first = next(
-                (sub for sub in child.children if sub.type == "identifier"), None
+            # 名字是包装节点的第一个子节点（`*args: T` 的第一个子节点不是标识符）。
+            names.extend(
+                _text(sub) for sub in child.children[:1] if sub.type == "identifier"
             )
-            if first is not None:
-                names.append(_text(first))
     return names
 
 
@@ -87,10 +86,7 @@ def _defined_in_class_body(func_node: Any) -> bool:
 
 
 def _text(node: Any) -> str:
-    text = getattr(node, "text", b"")
-    if isinstance(text, bytes):
-        return text.decode("utf-8", errors="replace")
-    return str(text)
+    return bytes(node.text or b"").decode("utf-8", errors="replace")
 
 
 __all__ = [

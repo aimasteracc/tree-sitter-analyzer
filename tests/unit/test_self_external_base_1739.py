@@ -154,7 +154,12 @@ _SHAPES = (
     "    def helper(x, self):\n"
     "        return self.f()\n\n\n"
     "def module_level(self):\n"
-    "    return self.g().h()\n"
+    "    return self.g().h()\n\n\n"
+    "class D:\n"
+    "    def run(self, *rest: int):\n"
+    "        return lambda: self.i()\n\n"
+    "    j = self.j()\n\n\n"
+    "self.k()\n"
 )
 
 
@@ -169,6 +174,9 @@ _SHAPES = (
         ("f", "(self).f"),  # 不是第一个参数。
         ("g", "(self).g"),  # 模块级函数的参数。
         ("h", "(self).g().h"),  # 链式调用的接收者根同样改写。
+        ("i", "self.i"),  # 无参数 lambda 读取方法的 `self`（`*rest: int` 不遮蔽）。
+        ("j", "(self).j"),  # 类体中的 `self` 不是任何方法的参数。
+        ("k", "(self).k"),  # 模块顶层。
     ],
 )
 def test_own_receiver_is_only_a_method_first_parameter(
