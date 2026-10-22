@@ -133,3 +133,47 @@ async def test_new_source_in_an_indexed_directory_is_still_unindexed(
     )
     assert result["unindexed_source_files"] == ["late.py"]
     assert result["unindexed_source_files_total"] == 1
+
+
+def _fake_cache(indexed: list[str]):
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index (file_path TEXT)")
+    conn.executemany("INSERT INTO ast_index VALUES (?)", [(p,) for p in indexed])
+
+    class _Cache:
+        def get_conn(self):
+            return conn
+
+    return _Cache()
+
+
+@pytest.mark.parametrize(
+    ("indexed", "config"),
+    [
+        # 未入库：只进入文本引用扫描列表。
+        (["widget.py"], [".github/scripts/tool.py", ".github/workflows/ci.yml"]),
+        # 已手工入库（#1738 的单文件绕行）：按语言扫描，不在文本列表中重复。
+        (["widget.py", ".github/scripts/tool.py"], [".github/workflows/ci.yml"]),
+    ],
+)
+def test_extra_root_sources_are_never_unindexed(
+    tmp_path: Path, indexed: list[str], config: list[str]
+) -> None:
+    from tree_sitter_analyzer.mcp.tools.project_walk_cache import WALK_CACHE
+    from tree_sitter_analyzer.mcp.tools.unindexed_sources import project_files
+
+    (tmp_path / "widget.py").write_text(_WIDGET, encoding="utf-8")
+    (tmp_path / "late.py").write_text("x = 1\n", encoding="utf-8")
+    scripts = tmp_path / ".github" / "scripts"
+    scripts.mkdir(parents=True)
+    (scripts / "tool.py").write_text("x = 2\n", encoding="utf-8")
+    (tmp_path / ".github" / "workflows").mkdir()
+    (tmp_path / ".github" / "workflows" / "ci.yml").write_text("jobs: {}\n")
+    WALK_CACHE.clear()
+
+    files = project_files(_fake_cache(indexed), str(tmp_path), frozenset({"python"}))
+
+    assert files is not None
+    assert (files.unindexed, files.config) == (["late.py"], config)
