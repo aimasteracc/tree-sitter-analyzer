@@ -186,6 +186,23 @@
   | google/gson, qualified | 0 of 8 | 0 of 8 |
   | Textualize/rich, bare | 4 of 26 | 0 of 22 |
   | Textualize/rich, qualified | 0 of 23 | 0 of 23 |
+- **JavaScript calls through an imported object resolve** (#1741). In
+  `import utils from '../utils.js'; utils.findKey()`, which is axios's dominant
+  style, the call was always `unknown`, so `nav action=callers` missed it and
+  pointed at no evidence. `obj.m()` now binds when `obj` is a default import
+  (or `ns.default` of a namespace import) of a relative project module whose
+  default export is an object literal, or `export default IDENT` for a const
+  object, with a single member `m`. The member can be shorthand, `m: ident`, or
+  come from a `...spread` of another default or namespace import. `ns.m()` binds
+  to a static named export. The member must reach a top-level function or a
+  `const f = (...) => ...` / `= function` definition. Nothing is bound when the
+  caller assigns `obj.m`, the import is a named `import { obj }`, the object has
+  computed keys, or a spread module has `export *`. Immediately invoked
+  function literals (`(() => {...})()`) are no longer listed as declaring-file
+  sites that could reach a symbol. The extractor records the JS export shape in
+  `symbols_json.js_exports`, so a refresh re-resolves importers when it changes.
+  On the round-10 axios sample, call-site recall goes from 17/53 to 45/53, with
+  0 wrong `complete`. The extractor version goes from 46 to 47.
 - **One source edit now causes one watcher sync** (#1730). When the project
   has a stable per-file failure, such as an optional grammar that is not
   installed (#1554 / #1671), every sync reports `errors > 0`. The file watcher
