@@ -131,9 +131,12 @@ def begin(conn: sqlite3.Connection) -> None:
             conn.execute(f"CREATE TEMP TABLE IF NOT EXISTS {table} ({columns})")  # nosec B608
             conn.execute(f"DELETE FROM temp.{table}")  # nosec B608
         # 上一轮回填未收敛（调用图标记不是当前的）时，旧解析不可作为未变部分的基准。
-        from .callgraph_state import writer_marker_is_current
+        # #1735：唯一的原因是已记录的稳定失败（标记按设计保持撤销）时照常武装。
+        from .stable_failures import consume_parent_converged
 
-        if not writer_marker_is_current(conn):
+        converged = _previous_run_converged(conn)
+        consume_parent_converged(conn)
+        if not converged:
             disarm(conn)
             return
         for statement in _OLD_ROW_TRIGGERS:
@@ -142,6 +145,30 @@ def begin(conn: sqlite3.Connection) -> None:
     except sqlite3.Error:
         logger.debug("backfill scope collector could not be armed", exc_info=True)
         disarm(conn)
+
+
+def _previous_run_converged(conn: sqlite3.Connection) -> bool:
+    """上一轮的调用边解析可作为基准：标记当前，或只差已记录的稳定失败（#1735）。
+
+    后者与发布、监视器（#1733）的 ``stable_failures_only`` 规则同源：#1671 的收敛记录
+    只在全部错误都是稳定失败、回填零错误的完整运行结束时签发；边的一致性仍须成立。
+    """
+    from .callgraph_state import (
+        _WRITER_CHECK_DEADLINE_SECONDS,
+        call_graph_edges_are_consistent,
+        writer_marker_is_current,
+    )
+    from .stable_failures import converged_except_stable_failures
+
+    if writer_marker_is_current(conn):
+        return True
+    if not converged_except_stable_failures(conn):
+        return False
+    import time
+
+    return call_graph_edges_are_consistent(
+        conn, deadline=time.monotonic() + _WRITER_CHECK_DEADLINE_SECONDS
+    )
 
 
 def disarm(conn: sqlite3.Connection) -> None:
