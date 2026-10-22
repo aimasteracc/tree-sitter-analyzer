@@ -111,7 +111,11 @@ result and in the `stats` returned by `index_project`:
 - the remaining fields count the scope's files, names and edges.
 
 The refresh falls back to the full backfill when it cannot bound the scope:
-- the previous backfill did not converge (`COLLECTOR_NOT_ARMED`);
+- the previous backfill did not converge (`COLLECTOR_NOT_ARMED`). A previous
+  run that converged except for recorded stable failures (an optional grammar
+  that is not installed, #1671) counts as converged (#1735): its call-graph
+  marker stays revoked by design, but its converged-refresh record, read from
+  the published parent generation, proves the edges converged;
 - a write was not recorded (`CHANGED_FILE_NOT_RECORDED`);
 - the changed set is unknown (`CHANGED_FILES_UNKNOWN`);
 - computing the scope failed (`SCOPE_COMPUTATION_FAILED`);
