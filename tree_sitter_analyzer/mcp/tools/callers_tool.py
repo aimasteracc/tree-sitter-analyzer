@@ -12,6 +12,7 @@ import os
 import sqlite3
 from typing import Any
 
+from ...member_names import unquote_member_name
 from ...module_scope_caller import is_module_caller, module_caller_entry
 from ...receiver_proof import has_unproven_receiver
 from ...utils import setup_logger
@@ -367,7 +368,8 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
     async def _execute_bound(
         self, arguments: dict[str, Any], bound_cache: Any, source_reader: Any
     ) -> dict[str, Any]:
-        func_name = arguments["function_name"]
+        # #1762：`ZodType."~validate"` 与 `"~validate"` 按去掉引号的成员名查询。
+        func_name = unquote_member_name(arguments["function_name"])
         file_path = arguments.get("file_path")
         output_format = arguments.get("output_format", "json")
         include_activation = bool(arguments.get("include_activation", False))
@@ -525,11 +527,13 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # number.  A caller told only "3 unresolved calls sit in a file that
         # declares this symbol" has to re-read the file to act; a caller given the
         # sites and their mechanisms can go straight to them.
-        declaring_sites = _declaring_file_unresolved(cache, func_name, file_path)
+        # #1762：按裸方法名查找声明文件——`Table.reset` 原先查不到任何声明文件，
+        # 限定名查询从不经过声明文件门，`this[name]()` 这类计算式分发被漏掉。
+        declaring_sites = _declaring_file_unresolved(cache, count_name, file_path)
         # The complement of the sites above: what was ruled out, and on what
         # grounds. Without it, "this file is not a census" cannot be checked
         # against "this file is a browser asset full of builtin attribute calls".
-        excluded_sites = _declaring_file_excluded(cache, func_name, file_path)
+        excluded_sites = _declaring_file_excluded(cache, count_name, file_path)
         declaring_sites = drop_bound_sites(declaring_sites, bound_targets)
         # #1596 / #1643：非调用引用门（#1593）会扫描别名与回调，守卫只需计入
         # 可能点名目标的调用点（同名或计算式分发）。该门对有无调用方都运行，

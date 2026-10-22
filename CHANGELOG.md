@@ -164,6 +164,20 @@
   repository).
 ### Fixed
 
+- **A JS/TS method with a string-literal name matches its element-access calls,
+  and a qualified query passes the declaring-file gate** (#1762). In zod,
+  `"~validate"(data) {...}` is called as `this["~validate"](data)`; the call
+  edge recorded the whole subscript as its callee and the definition kept its
+  quotes, so the two never met and `ZodType."~validate"` answered `complete, 0`.
+  A call whose callee is `obj["m"]` or `obj['m']` (a constant string with no
+  escapes) is now recorded as `obj.m()`, string-literal method names are stored
+  without quotes, and a quoted name in a query (`ZodType."~validate"`) matches
+  the unquoted one. A computed key (`this[name]()`) is unchanged: it stays an
+  unresolved computed-dispatch site in its file. That file gate (RFC-0028 §1.2)
+  looked up the declaring files by the full `Class.method` name, which matches
+  no symbol, so a qualified query never applied it and `Table.reset` beside
+  `this[name]()` answered `complete`; it now uses the bare method name, as the
+  bare query does. The extractor version goes from 49 to 50.
 - **An unresolved `x.m()` keeps every same-named method a possible target**
   (#1758). When the calling file itself declared an `m`, the cached resolver
   took the same-file definition from its local tier and never looked further,
