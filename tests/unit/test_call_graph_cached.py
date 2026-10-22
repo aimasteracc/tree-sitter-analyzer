@@ -315,8 +315,9 @@ class TestCachedCallGraphNoBareNameFanout:
         cg = self._graph(functions, [edge])
         assert cg.callees_of("run") == []
 
-    def test_self_call_binds_unique_mixin_method(self):
-        # #1559：`self.helper()` 指向唯一的 mixin 方法时仍然绑定。
+    def test_self_call_outside_a_class_is_not_bound_to_a_unique_method(self):
+        # #1739：`run` 不在任何类中，`self` 不是方法接收者；唯一的同名方法
+        # 只是可能目标，不是确定的被调方（#1559 曾把它绑定为确定目标）。
         functions = [
             {"name": "run", "file": "app.py", "line": 1, "language": "python"},
             {
@@ -329,7 +330,9 @@ class TestCachedCallGraphNoBareNameFanout:
         ]
         edge = {**_publish_edge("self.helper"), "callee_name": "helper"}
         cg = self._graph(functions, [edge])
-        assert [c["file"] for c in cg.callees_of("run")] == ["mixins.py"]
+        assert cg.callees_of("run") == []
+        possible = cg.possible_callers_of("HelperMixin.helper", "mixins.py")
+        assert [c["name"] for c in possible] == ["run"]
 
 
 # ============================================================

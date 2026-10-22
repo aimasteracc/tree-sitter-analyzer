@@ -24,6 +24,15 @@ def has_unproven_receiver(callee_full: str) -> bool:
     return split_receiver(callee_full)[0] not in OWN_RECEIVERS
 
 
+def is_own_instance_call(callee_full: str) -> bool:
+    """``self.m`` / ``cls.m``：接收者恰是调用方自身的实例或类（#1739）。
+
+    这样的调用只能经外围类的 MRO 确定（Synapse 的 self 规则与
+    ``inherited_self_calls``）；按名字挑候选的路径不得绑定它。
+    """
+    return split_receiver(callee_full)[0] in ("self", "cls")
+
+
 def split_receiver(callee_full: str) -> tuple[str, str]:
     """``Foo(a.b).m`` -> ``("Foo(a.b)", "m")``：括号内的点不参与拆分。"""
     depth = 0
@@ -71,6 +80,7 @@ __all__ = [
     "OWN_RECEIVERS",
     "constructed_class",
     "has_unproven_receiver",
+    "is_own_instance_call",
     "receiver_type_name",
     "split_receiver",
 ]

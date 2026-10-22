@@ -12,7 +12,9 @@
    函数时，沿包再导出与基类找唯一定义（#1578）。
 2. 持久化解析为 ``builtin`` / ``stdlib`` / ``external`` 时不是项目函数，不建边。
 3. 其余情况沿用本地 / import 两档高置信解析；全局兜底只在**唯一**候选、且调用
-   无接收者、接收者为 ``self`` 一类、或接收者正是候选所属类时才绑定。
+   无接收者、接收者为 ``self`` 一类、或接收者正是候选所属类时才绑定。Python 的
+   ``self`` / ``cls`` 例外（#1739）：只有外围类自己的方法或完全已知 MRO 中最近的
+   定义是确定目标，唯一的同名候选只是可能目标。
 4. 无法确定的边不建边，候选只作为 ``possible``（供死代码可达性保守使用），
    而完整性由 RFC-0028 的未解析计数如实报告。
 """
@@ -50,6 +52,9 @@ _NON_PROJECT_RESOLUTIONS = frozenset({"builtin", "stdlib", "external"})
 _PROJECT_RESOLUTIONS = frozenset({"project", "local"})
 #: 指向调用者自身实例 / 类的接收者：唯一的全局候选（如 mixin 方法）可以绑定。
 _SELF_QUALIFIERS = frozenset({"self", "cls", "this", "super", "super()"})
+#: #1739：Python 方法接收者；``self.m()`` 只经外围类的 MRO 确定。
+_PY_OWN_QUALIFIERS = frozenset({"self", "cls"})
+_PY_SUFFIXES = (".py", ".pyi")
 #: ``super`` 接收者：指向基类，而不是外围类自己的方法（#1635）。
 _SUPER_QUALIFIERS = frozenset({"super", "super()"})
 #: ``_static_targets`` 不读取的边字段（只描述调用方与调用点位置），不进入记忆键。
@@ -126,6 +131,14 @@ class CachedEdgeResolver:
             edge.get("callee_name") or ""
         )
         qualifier, base_name = _split_qualifier(full_name)
+        if (
+            qualifier in _PY_OWN_QUALIFIERS
+            and caller_file.endswith(_PY_SUFFIXES)
+            and self._hierarchy is not None
+        ):
+            return self._python_self_targets(
+                targets, base_name, qualifier, caller_class, caller_file
+            )
         if not caller_class:
             return targets
         if qualifier in _SUPER_QUALIFIERS:
@@ -164,20 +177,80 @@ class CachedEdgeResolver:
             if own is not None:
                 possible = [ref for ref in certain + possible if ref != own]
                 certain = [own]
-        if self._subclasses is not None:
-            present = {*certain, *possible}
-            for ref in override_candidates(
-                self._subclasses,
-                self._functions_by_name,
-                base_name,
-                qualifier,
-                caller_class,
-            ):
-                # #1657：按身份去重（与 ``in`` 列表同义，但不是 O(n²)）。
-                if ref not in present:
-                    present.add(ref)
-                    possible.append(ref)
-        return EdgeTargets(certain=certain, possible=possible)
+        return EdgeTargets(
+            certain=certain,
+            possible=self._with_overrides(
+                certain, possible, base_name, qualifier, caller_class
+            ),
+        )
+
+    def _python_self_targets(
+        self,
+        targets: EdgeTargets,
+        base_name: str,
+        qualifier: str,
+        caller_class: str | None,
+        caller_file: str,
+    ) -> EdgeTargets:
+        """#1739：Python 的 ``self.m()`` 只在 ``m`` 经外围类 MRO 解析到项目定义时确定。
+
+        外围类自己的 ``m``，或完全已知 MRO 中最近的继承定义，是确定目标。其余同名
+        候选（唯一的全局 / 同文件定义、另一个类的方法）都只是可能目标：MRO 在找到
+        项目定义之前遇到外部基类（``Thread``、``dict``）时，真正的目标是外部方法。
+        没有外围类（lambda / 模块级函数的 ``self`` 参数）时没有确定目标。
+        """
+        candidates = [*targets.certain, *targets.possible]
+        if not caller_class:
+            return EdgeTargets(possible=candidates, binding=targets.binding)
+        own = self._own_method(caller_file, caller_class, base_name)
+        if own is None:
+            own = self._inherited_target(caller_file, caller_class, base_name)
+        certain = [] if own is None else [own]
+        possible = [ref for ref in candidates if ref != own]
+        return EdgeTargets(
+            certain=certain,
+            possible=self._with_overrides(
+                certain, possible, base_name, qualifier, caller_class
+            ),
+            binding=targets.binding,
+        )
+
+    def _own_method(
+        self, caller_file: str, caller_class: str, base_name: str
+    ) -> FunctionRef | None:
+        """外围类（同一文件中的 ``caller_class``）恰有一个 ``base_name`` 时返回它。"""
+        own = [
+            ref
+            for ref in self._functions_by_name.get(base_name, [])
+            if ref.receiver == caller_class and ref.file_path == caller_file
+        ]
+        return own[0] if len(own) == 1 else None
+
+    def _with_overrides(
+        self,
+        certain: list[FunctionRef],
+        possible: list[FunctionRef],
+        base_name: str,
+        qualifier: str,
+        caller_class: str,
+    ) -> list[FunctionRef]:
+        """``possible`` 加上外围类各子类中的覆写（#1648），按身份去重。"""
+        if self._subclasses is None:
+            return possible
+        merged = list(possible)
+        present = {*certain, *possible}
+        for ref in override_candidates(
+            self._subclasses,
+            self._functions_by_name,
+            base_name,
+            qualifier,
+            caller_class,
+        ):
+            # #1657：按身份去重（与 ``in`` 列表同义，但不是 O(n²)）。
+            if ref not in present:
+                present.add(ref)
+                merged.append(ref)
+        return merged
 
     def _inherited_target(
         self, caller_file: str, caller_class: str, base_name: str
