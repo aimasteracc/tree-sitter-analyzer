@@ -13,7 +13,7 @@ import stat
 
 import pytest
 
-from tests.unit._index_canonical_dump import canonical_dump
+from tests.unit._index_canonical_dump import canonical_dump, dump_differences
 
 _UTILS_WITH = (
     "const findKey = (o, k) => o[k];\n\nfunction other() {\n  return 1;\n}\n\n"
@@ -92,10 +92,6 @@ def _calls(dump: dict) -> list:
     )
 
 
-def _call_edges(dump: dict) -> list:
-    return sorted(repr(edge) for edge in dump["edges"] if "'calls'" in repr(edge))
-
-
 @pytest.fixture(autouse=True)
 def _fresh_guard():
     from tree_sitter_analyzer.mcp.utils import auto_index_guard
@@ -138,6 +134,5 @@ def test_refresh_after_default_export_change_equals_fresh_rebuild(
 
     assert result.backfill_scope["mode"] in {"scoped", "full"}, result.backfill_scope
     assert _calls(refreshed) == _calls(rebuilt)
-    # 全部调用边一致。`imports` 边的 `callee_resolved_file` 在刷新与重建之间的差异
-    # 在 develop 上同样存在（与本修复无关，另行追踪）。
-    assert _call_edges(refreshed) == _call_edges(rebuilt)
+    # #1746：`imports` 边的解析与索引顺序无关之后，全部边种类（及整份索引）都须一致。
+    assert dump_differences(refreshed, rebuilt) == {}

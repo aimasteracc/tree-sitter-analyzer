@@ -522,6 +522,15 @@ def _post_index_backfill(
 ) -> None:
     stats.setdefault("backfill_errors", 0)
     try:
+        # #1746：相对导入说明符按最终文件集合解析（与索引顺序无关），先于其他回填。
+        # 不单列统计（响应体积不变）；失败照常计入 ``backfill_errors``。
+        from .import_specifier_edges import resolve_import_specifier_edges
+
+        resolve_import_specifier_edges(cache.get_conn())
+    except Exception:
+        stats["backfill_errors"] += 1
+        logger.debug("import specifier backfill failed", exc_info=True)
+    try:
         _record_backfill_result(
             stats, "cross_file_backfill", cache.backfill_cross_file_edges()
         )
