@@ -149,3 +149,51 @@ async def test_override_in_a_subclass_stays_possible(ext_root: str) -> None:
 
     assert result["caller_count"] == 0
     assert result["completeness"] != "complete"
+
+
+_SHAPES = (
+    "class C:\n"
+    "    def method(self):\n"
+    "        self.a()\n"
+    "        def closure():\n"
+    "            return self.b()\n"
+    "        def shadow(self):\n"
+    "            return self.c()\n"
+    "        return lambda self=None: self.d()\n\n"
+    "    @classmethod\n"
+    "    def build(cls):\n"
+    "        return cls.e()\n\n"
+    "    @staticmethod\n"
+    "    def helper(x, self):\n"
+    "        return self.f()\n\n\n"
+    "def module_level(self):\n"
+    "    return self.g().h()\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("name", "full_name"),
+    [
+        ("a", "self.a"),  # 方法的第一个参数。
+        ("b", "self.b"),  # 闭包读取外层方法的 `self`。
+        ("c", "(self).c"),  # 嵌套函数自己的 `self` 参数。
+        ("d", "(self).d"),  # lambda 参数（带默认值）。
+        ("e", "cls.e"),  # classmethod 的 `cls`。
+        ("f", "(self).f"),  # 不是第一个参数。
+        ("g", "(self).g"),  # 模块级函数的参数。
+        ("h", "(self).g().h"),  # 链式调用的接收者根同样改写。
+    ],
+)
+def test_own_receiver_is_only_a_method_first_parameter(
+    name: str, full_name: str
+) -> None:
+    import tree_sitter
+    import tree_sitter_python
+
+    from tree_sitter_analyzer.function_extraction import walk_tree
+
+    parser = tree_sitter.Parser(tree_sitter.Language(tree_sitter_python.language()))
+    tree = parser.parse(_SHAPES.encode("utf-8"))
+    _definitions, calls = walk_tree(tree.root_node, _SHAPES, "python")
+
+    assert {call["name"]: call["full_name"] for call in calls}[name] == full_name
