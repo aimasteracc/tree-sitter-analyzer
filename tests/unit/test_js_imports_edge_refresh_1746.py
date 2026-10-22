@@ -119,3 +119,58 @@ def test_a_deleted_target_clears_its_importer(tmp_path) -> None:
     assert _import_targets(refreshed) == {
         "file:lib/platform/index.js -> module:./node/index.js": ""
     }
+
+
+def test_the_pass_rewrites_only_well_formed_js_edges_whose_target_changed() -> None:
+    """直接在边表上：只改形状正确、解析结果变了的 JS/TS 导入边；其余原样保留。"""
+    import sqlite3
+
+    from tree_sitter_analyzer.cache.import_specifier_edges import (
+        resolve_import_specifier_edges,
+    )
+    from tree_sitter_analyzer.graph.edge_store import EdgeStore
+
+    conn = sqlite3.connect(":memory:")
+    EdgeStore(conn)
+    conn.execute("CREATE TABLE ast_index (file_path TEXT PRIMARY KEY)")
+    conn.executemany(
+        "INSERT INTO ast_index(file_path) VALUES (?)", [(_TARGET,), (_IMPORTER,)]
+    )
+
+    def meta(resolved: str) -> str:
+        return json.dumps(
+            {"callee_resolved_file": resolved, "language": "javascript"},
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+
+    rows = [
+        # (source, target, line, metadata, column) —— 只有第一行该被改写
+        ("file:lib/platform/index.js", "module:./node/index.js", 1, meta(""), ""),
+        (
+            "file:lib/platform/index.js",
+            "module:./node/index.js",
+            2,
+            meta(_TARGET),
+            _TARGET,
+        ),
+        ("file:lib/platform/index.js", "module:./missing.js", 3, meta(""), ""),
+        ("file:lib/platform/index.js", "module:./node/index.js", 4, "{not json", ""),
+        ("file:lib/platform/index.js", "module:./node/index.js", 5, "[1, 2]", ""),
+        ("lib/platform/index.js", "module:./node/index.js", 6, meta(""), ""),
+        ("file:lib/platform/index.js", "./node/index.js", 7, meta(""), ""),
+    ]
+    conn.executemany(
+        "INSERT INTO edges (source_node_id, target_node_id, kind, line, metadata, "
+        "language, callee_resolved_file) VALUES (?, ?, 'imports', ?, ?, 'javascript', ?)",
+        rows,
+    )
+
+    stats = resolve_import_specifier_edges(conn)
+
+    stored = conn.execute(
+        "SELECT line, callee_resolved_file, metadata FROM edges ORDER BY line"
+    ).fetchall()
+    assert stats == {"total": 3, "resolved": 1, "unchanged": 2, "errors": 0}
+    assert stored[0] == (1, _TARGET, meta(_TARGET))
+    assert [row[1:] for row in stored[1:]] == [(row[4], row[3]) for row in rows[1:]]

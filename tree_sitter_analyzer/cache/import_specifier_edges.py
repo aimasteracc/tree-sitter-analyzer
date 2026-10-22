@@ -50,13 +50,10 @@ def resolve_import_specifier_edges(conn: sqlite3.Connection) -> dict[str, int]:
         metadata = _metadata(metadata_text)
         if (
             metadata is None
-            or metadata.get("language") not in _RELATIVE_SPECIFIER_LANGUAGES
+            or not str(source).startswith(_FILE_PREFIX)
+            or not str(target).startswith(_MODULE_PREFIX)
         ):
-            continue
-        if not str(source).startswith(_FILE_PREFIX) or not str(target).startswith(
-            _MODULE_PREFIX
-        ):
-            continue
+            continue  # 不是本函数写出的形状：保持原样
         stats["total"] += 1
         resolved = resolve_typescript_specifier(
             str(target)[len(_MODULE_PREFIX) :],
