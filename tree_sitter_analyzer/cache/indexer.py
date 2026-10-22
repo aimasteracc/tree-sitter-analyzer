@@ -444,7 +444,14 @@ def _update_authoritative_manifest(
         from ..index_snapshot_schema import stamp_full_index_manifest
 
         try:
-            stamp_full_index_manifest(conn, cache.project_root, source_scope)
+            from ..incremental_sync_support import publication_candidate_rows
+
+            stamp_full_index_manifest(
+                conn,
+                cache.project_root,
+                source_scope,
+                candidate_rows=publication_candidate_rows(cache, candidate_snapshot),
+            )
             # RFC-0039：这次盖章是增量还是完整重算，以及原因。
             stats["certification"] = certification_tracking.last_decision(conn)
             return True

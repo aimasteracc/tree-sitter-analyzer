@@ -14,6 +14,7 @@ from .incremental_sync_support import (
     SyncResult,
     file_changed,
     get_changes,
+    publication_candidate_rows,
     stamp_certified_at,
 )
 from .index_source_scope import default_exclude_patterns
@@ -434,7 +435,14 @@ class IncrementalSync:
             from .index_snapshot_schema import stamp_full_index_manifest
 
             try:
-                stamp_full_index_manifest(conn, self._cache.project_root, source_scope)
+                stamp_full_index_manifest(
+                    conn,
+                    self._cache.project_root,
+                    source_scope,
+                    candidate_rows=publication_candidate_rows(
+                        self._cache, candidate_snapshot
+                    ),
+                )
                 stamped = True
                 # RFC-0039：这次盖章是增量还是完整重算，以及原因。
                 result.certification = certification_tracking.last_decision(conn)
@@ -533,7 +541,13 @@ class IncrementalSync:
 
         if candidate_snapshot is not None:
             validate_index_candidate_snapshot(
-                self._cache.project_root, max_files, candidate_snapshot
+                self._cache.project_root,
+                max_files,
+                candidate_snapshot,
+                # #1737：发布路由在租约内重新扫描复核，不再逐文件 realpath 第二遍。
+                resolve_paths=not getattr(
+                    self._cache, "_publication_rechecks_sources", False
+                ),
             )
             if any(
                 entry.frozen_path is not None

@@ -30,6 +30,20 @@
 
 ### Changed
 
+- **A 1-file refresh spends less time capturing, validating and publishing**
+  (#1737). On the publisher route the manifest stamp is computed from the rows
+  captured with the candidate, not from a second walk over the sources. The
+  publish recheck still re-hashes every file under the lease, so a rewrite with
+  the same metadata before publication is still rejected. Candidate validation
+  on that route skips path resolution but keeps every structural check.
+  `.gitignore` matching uses one combined pattern when the rules allow it, and
+  falls back to `pathspec` otherwise. Parsed rule files are reused by content.
+  Per-language resolver contexts are built on first use, so a Python-only edit
+  never scans the TypeScript files. On this repository the stamp went from
+  3.7–5.0 s to 0.9–1.25 s, validation from 1.0–1.8 s to 0.5–1.2 s and publish
+  from 3.1–4.3 s to 2.2–3.6 s. A 1-file refresh still takes about 28 s,
+  because the call-graph step (9–17 s) is unchanged. That step is tracked in
+  #1749.
 - **A 1-file refresh re-resolves only the call edges whose inputs changed**
   (#1696). Before, every refresh ran all three call-graph backfills over every
   call edge in the project. The refresh now compares the changed file's

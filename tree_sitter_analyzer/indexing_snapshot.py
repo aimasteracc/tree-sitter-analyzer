@@ -250,8 +250,15 @@ def validate_index_candidate_snapshot(
     project_root: str,
     max_files: int,
     snapshot: IndexCandidateSnapshot,
+    *,
+    resolve_paths: bool = True,
 ) -> None:
-    """Reject forged or incompatible snapshots before they drive cache writes."""
+    """Reject forged or incompatible snapshots before they drive cache writes.
+
+    #1737：``resolve_paths=False`` 只用于发布前会重新扫描并复核每个文件的版本路由
+    （RFC-0032）：候选是同一进程刚由版本仓库构建的，逐文件 ``realpath`` 由发布复核的
+    新扫描承担，这里保留其余结构检查。
+    """
     logical_root = os.path.abspath(project_root)
     if logical_root != snapshot.project_root:
         raise ValueError("candidate snapshot belongs to a different project root")
@@ -268,9 +275,14 @@ def validate_index_candidate_snapshot(
                 entry_info = os.stat(logical_path, follow_symlinks=False)
             except OSError:
                 entry_info = None
-        resolved_path = _realpath_of_regular_file(logical_path, entry_info, directories)
-        if not Path(resolved_path).is_relative_to(resolved_root):
-            raise ValueError(f"candidate path escapes project root: {entry.abs_path}")
+        if resolve_paths:
+            resolved_path = _realpath_of_regular_file(
+                logical_path, entry_info, directories
+            )
+            if not Path(resolved_path).is_relative_to(resolved_root):
+                raise ValueError(
+                    f"candidate path escapes project root: {entry.abs_path}"
+                )
         expected_rel_path = os.path.relpath(logical_path, logical_root)
         if os.name == "nt":
             expected_rel_path = expected_rel_path.replace("\\", "/")

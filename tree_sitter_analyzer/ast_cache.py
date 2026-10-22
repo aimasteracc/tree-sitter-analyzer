@@ -119,6 +119,8 @@ class ASTCache(
         self._publishes_project_index = False
         # #1673：私有构建由发布侧捕获时绑定的内容摘要（相对路径 -> 摘要）。
         self._bound_source_digests: dict[str, str] = {}
+        # #1737：仅 GenerationStore 发布路由置真——该路由在发布租约内复核源码。
+        self._publication_rechecks_sources = False
         self._unindexed_uri: str | None = None
         self._unindexed_anchor: sqlite3.Connection | None = None
         self._unindexed_sealed = False

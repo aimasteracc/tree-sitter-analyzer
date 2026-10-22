@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from collections import OrderedDict
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from ..callee_resolution import CalleeResolver
@@ -21,6 +23,50 @@ from ._java_constants import EXTERNAL_METHODS_JAVA, STDLIB_METHODS_JAVA
 
 if TYPE_CHECKING:
     from ..ast_cache import ASTCache
+
+
+class LazyLanguageContexts:
+    """语言 -> 解析上下文；第一次 ``get`` 某语言时才调用其构建函数（#1737）。
+
+    构建结果（含 ``None``）只计算一次。线程安全：并发的首次访问只构建一次。
+    """
+
+    def __init__(self, builders: dict[str, Callable[[], Any]]) -> None:
+        self._builders = dict(builders)
+        self._built: dict[str, Any] = {}
+        self._lock = threading.Lock()
+
+    def get(self, language: str, default: Any = None) -> Any:
+        if language in self._built:
+            value = self._built[language]
+            return default if value is None else value
+        builder = self._builders.get(language)
+        if builder is None:
+            return default
+        with self._lock:
+            if language not in self._built:
+                self._built[language] = builder()
+            value = self._built[language]
+        return default if value is None else value
+
+    def setdefault(self, language: str, value: Any) -> Any:
+        if self.get(language) is None:
+            with self._lock:
+                self._built[language] = value
+            return value
+        return self.get(language)
+
+    def __contains__(self, language: object) -> bool:
+        return isinstance(language, str) and self.get(language) is not None
+
+
+def _live_connection(cache: Any, conn: Any) -> Any:
+    """构建时的连接若已关闭，改用缓存当前的连接（上下文可能晚于构建它的连接存活）。"""
+    try:
+        conn.execute("SELECT 1")
+        return conn
+    except Exception:  # nosec B110 — 连接已关闭：取缓存的当前连接
+        return cache.get_conn() if cache is not None else conn
 
 
 class ResolverContext:
@@ -56,7 +102,7 @@ class ResolverContext:
         callee_resolver: CalleeResolver | None = None,
         file_languages: dict[str, str] | None = None,
         java_context: Any | None = None,
-        lang_contexts: dict[str, Any] | None = None,
+        lang_contexts: dict[str, Any] | LazyLanguageContexts | None = None,
         module_to_file: dict[str, str] | None = None,
     ) -> None:
         self.project_root = project_root
@@ -65,7 +111,11 @@ class ResolverContext:
         # RFC-0010: per-language resolver contexts keyed by language name. The
         # legacy ``java_context`` kwarg is folded in for back-compat with callers
         # that still pass it explicitly.
-        self._lang_contexts: dict[str, Any] = dict(lang_contexts or {})
+        self._lang_contexts: Any = (
+            lang_contexts
+            if isinstance(lang_contexts, LazyLanguageContexts)
+            else dict(lang_contexts or {})
+        )
         if java_context is not None:
             self._lang_contexts.setdefault("java", java_context)
         self._file_symbols = file_symbols or {}
@@ -656,22 +706,29 @@ def _build_resolver_context_uncached(cache: ASTCache) -> ResolverContext:
             _fcm_cache["value"] = _build_file_class_methods(conn, line_idx)
         return _fcm_cache["value"]
 
-    lang_contexts: dict[str, Any] = {}
-    for _lang in registered_languages():
-        _resolver = get_language_resolver(_lang)
-        if _resolver is None:
-            continue
-        _built = _resolver.build_context(
-            imports_by_file=imports_by_file,
-            file_languages=file_languages,
-            file_symbols=file_symbols,
-            global_name_table=global_name_table,
-            file_class_methods=_file_class_methods_thunk,
-            conn=conn,
-            line_idx=line_idx,
-        )
-        if _built is not None:
-            lang_contexts[_lang] = _built
+    def _builder(resolver: Any) -> Callable[[], Any]:
+        def build() -> Any:
+            return resolver.build_context(
+                imports_by_file=imports_by_file,
+                file_languages=file_languages,
+                file_symbols=file_symbols,
+                global_name_table=global_name_table,
+                file_class_methods=_file_class_methods_thunk,
+                conn=_live_connection(cache, conn),
+                line_idx=line_idx,
+            )
+
+        return build
+
+    # #1737：各语言的上下文在第一次需要时才构建（TypeScript 的影子局部变量要扫描
+    # 全部 TS 文件，只改了 Python 文件的刷新从不需要它）。
+    lang_contexts = LazyLanguageContexts(
+        {
+            language: _builder(resolver)
+            for language in registered_languages()
+            if (resolver := get_language_resolver(language)) is not None
+        }
+    )
 
     return ResolverContext(
         project_root=cache.project_root,
