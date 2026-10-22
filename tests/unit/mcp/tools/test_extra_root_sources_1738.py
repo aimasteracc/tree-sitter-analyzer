@@ -22,7 +22,11 @@ _WIDGET = (
     "    def unused(self):\n"
     "        return 0\n\n"
     "    def spin(self):\n"
-    "        return 1\n"
+    "        return 1\n\n\n"
+    "def helper():\n"
+    "    return 2\n\n\n"
+    "def run():\n"
+    "    return helper()\n"
 )
 _PEOPLE = "def main():\n    return 'people'\n"
 
@@ -87,7 +91,7 @@ async def test_github_source_mentioning_the_name_is_a_reference(github_root) -> 
 async def test_github_config_is_still_scanned(github_root) -> None:
     # #1624：`.github` 工作流里点名的函数仍是非调用引用。
     (github_root / ".github" / "workflows" / "spin.yml").write_text(
-        "jobs:\n  spin:\n    steps:\n      - run: python -c 'spin'\n",
+        "jobs:\n  lint:\n    steps:\n      - run: python -c 'spin'\n",
         encoding="utf-8",
     )
 

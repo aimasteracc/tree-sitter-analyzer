@@ -220,6 +220,15 @@
   with that name is an ordinary unproven receiver: the call is stored as
   `(self).m`, and the name-based backfill no longer binds `self.m()`. The
   extractor version goes from 47 to 48.
+- **A `.py` under `.github/` no longer blocks every `complete`** (#1738). The
+  index skips dot-directories, but the unindexed-source check (#1607) also
+  walks `.github` for config references (#1624) and reported its source files
+  as `UNINDEXED_SOURCE_FILES`. The suggested refresh indexes 0 files, so no
+  `nav action=callers` answer on such a repo (pydantic) could be `complete`.
+  Source files under an extra root are now scanned as text for references
+  (a mention still blocks `complete` with `NON_CALL_REFERENCES`), but never
+  count as unindexed. A new source file in an indexed directory still gives
+  `UNINDEXED_SOURCE_FILES`.
 
 - **One source edit now causes one watcher sync** (#1730). When the project
   has a stable per-file failure, such as an optional grammar that is not
