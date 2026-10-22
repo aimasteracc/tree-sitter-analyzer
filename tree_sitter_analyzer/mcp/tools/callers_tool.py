@@ -525,11 +525,18 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # number.  A caller told only "3 unresolved calls sit in a file that
         # declares this symbol" has to re-read the file to act; a caller given the
         # sites and their mechanisms can go straight to them.
-        declaring_sites = _declaring_file_unresolved(cache, func_name, file_path)
+        #
+        # #1759: the scope is the files declaring the *bare* method name, for the
+        # qualified form too. Looking up `Class.method` found no declaring file, so
+        # a qualified query skipped the guard entirely: `self.handlers[e](data)`
+        # over `{e: getattr(self, "handle_" + e)}` reaches `Handler.handle_open`
+        # without naming it, yet the qualified answer was `complete, 0` while the
+        # bare one was (correctly) `unknown`.
+        declaring_sites = _declaring_file_unresolved(cache, count_name, file_path)
         # The complement of the sites above: what was ruled out, and on what
         # grounds. Without it, "this file is not a census" cannot be checked
         # against "this file is a browser asset full of builtin attribute calls".
-        excluded_sites = _declaring_file_excluded(cache, func_name, file_path)
+        excluded_sites = _declaring_file_excluded(cache, count_name, file_path)
         declaring_sites = drop_bound_sites(declaring_sites, bound_targets)
         # #1596 / #1643：非调用引用门（#1593）会扫描别名与回调，守卫只需计入
         # 可能点名目标的调用点（同名或计算式分发）。该门对有无调用方都运行，

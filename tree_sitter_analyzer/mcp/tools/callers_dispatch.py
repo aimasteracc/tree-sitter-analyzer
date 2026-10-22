@@ -42,6 +42,10 @@ _COMPUTED_MARKERS = (
 _LITERAL_GETATTR = re.compile(
     r"^getattr\(\s*[^,()\[\]]+\s*,\s*([\"'])([A-Za-z_$][\w$]*)\1\s*\)$"
 )
+#: ``type(<表达式>)``：调用它构造一个实例（#1759）。
+_TYPE_CONSTRUCTION = re.compile(r"^type\(\s*[A-Za-z_$][\w$.]*\s*\)$")
+#: 构造实例时可能执行的方法。
+_CONSTRUCTION_METHODS = frozenset({"__init__", "__new__", "__call__", "__init_subclass__"})
 #: 调用文本末尾的名字：整个文本是标识符，或 ``.`` 之后的标识符。
 _TRAILING_NAME = re.compile(r"(?:^|\.)\s*([A-Za-z_$][\w$]*)$")
 #: 把调用转发给前缀对象本身的尾段名（``f.call(...)``、``f.__call__()``）：
@@ -134,6 +138,9 @@ def could_name_target(callee_full: str, target: str) -> bool:
     ``incomplete`` / ``unknown``，少计才会在真实调用边上宣称不存在。
     """
     text = (callee_full or "").strip()
+    if _TYPE_CONSTRUCTION.match(text):
+        # #1759：``type(self)(...)`` 只构造实例：只到达构造相关的方法。
+        return target in _CONSTRUCTION_METHODS
     if is_function_literal(text):
         # #1741：立即调用的函数字面量（IIFE / ``(lambda: …)()``）只调用它自己；
         # 体内的调用各有自己的边，不会经由这个调用点到达目标。
