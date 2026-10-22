@@ -80,15 +80,18 @@ def _require_consistent_edges(conn: sqlite3.Connection) -> None:
 
 
 def mark_call_graph_built_strict(conn: sqlite3.Connection) -> None:
-    """Persist and verify the exact current pipeline marker transactionally."""
-    _require_consistent_edges(conn)
+    """Persist and verify the exact current pipeline marker transactionally.
+
+    #1749：边的一致性只在取得写锁后核验一次。原先写锁前还有一次乐观核验，两次结论
+    相同：不一致时写锁内的核验同样抛出同一错误并回滚到保存点，标记不会落库。
+    """
     _ensure_state_schema(conn)
     savepoint = "call_graph_marker_certification"
     conn.execute(f"SAVEPOINT {savepoint}")
     try:
-        # This write obtains SQLite's writer lock.  Rechecking the canonical
-        # graph after it closes the gap between the optimistic check above and
-        # marker publication without discarding an existing caller transaction.
+        # This write obtains SQLite's writer lock.  Checking the canonical graph
+        # after it leaves no gap before marker publication, without discarding
+        # an existing caller transaction.
         conn.execute(
             "INSERT INTO ast_call_graph_state (id, built, built_at, pipeline_version) "
             "VALUES (1, 1, ?, ?) "

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, cast
 
@@ -123,6 +124,33 @@ def _id_rows(cursor: sqlite3.Cursor) -> CallEdgeRows:
     return CallEdgeRows(
         names, [row[1:] for row in fetched], [int(row[0]) for row in fetched]
     )
+
+
+_IN_CHUNK = 500
+
+
+def read_call_edge_rows_matching(
+    conn: sqlite3.Connection, columns: Iterable[tuple[str, Sequence[Any]]]
+) -> CallEdgeRows:
+    """#1749：任一 ``(列, 取值)`` 命中的调用边，去重后按 rowid 顺序。
+
+    与全量读取 :func:`read_call_edge_rows` 再按同一条件过滤的结果逐项相同（全量读取
+    同样是 rowid 顺序）。``列`` 只能是调用方给出的固定列名。
+    """
+    collected: dict[int, tuple[Any, ...]] = {}
+    names: tuple[str, ...] = ()
+    for column, values in columns:
+        ordered = list(values)
+        for start in range(0, len(ordered), _IN_CHUNK):
+            chunk = ordered[start : start + _IN_CHUNK]
+            marks = ",".join("?" * len(chunk))
+            part = read_call_edge_rows_where(conn, f"{column} IN ({marks})", chunk)
+            names = part.names or names
+            collected.update(zip(part.ids, part.rows, strict=True))
+    if not names:
+        names = read_call_edge_rows_where(conn, "0", []).names
+    ids = sorted(collected)
+    return CallEdgeRows(names, [collected[edge_id] for edge_id in ids], ids)
 
 
 def read_function_rows(conn: sqlite3.Connection) -> FunctionRows:

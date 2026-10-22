@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -152,19 +153,33 @@ def annotation_index(ctx: ResolverContext) -> AnnotationIndex:
     return index
 
 
-def _load_index(conn: Any, index: AnnotationIndex) -> None:
+_INDEX_SYMBOLS_SQL = (
+    "SELECT id, name, kind, file_path, line FROM ast_symbol_rows "
+    "WHERE kind IN ('function', 'method', 'class')"
+)
+_INDEX_PAYLOAD_SQL = (
+    "SELECT file_path, symbols_json FROM ast_index WHERE language = 'python'"
+)
+
+
+def _load_index(
+    conn: Any, index: AnnotationIndex, files: Collection[str] | None = None
+) -> None:
+    """``files``（#1749）只读取这些文件；每个文件的条目只取决于它自己的行。"""
+    from ._context_inputs import scoped_rows
+
+    def rows(sql: str) -> Any:
+        if files is None:
+            return conn.execute(sql)
+        return scoped_rows(conn, sql, files, "")
+
     by_position: dict[tuple[str, str, int], int] = {}
-    for row in conn.execute(
-        "SELECT id, name, kind, file_path, line FROM ast_symbol_rows "
-        "WHERE kind IN ('function', 'method', 'class')"
-    ):
+    for row in rows(_INDEX_SYMBOLS_SQL):
         sym_id = int(row[0])
         index.kinds[sym_id] = str(row[2])
         index.lines[sym_id] = int(row[4] or 0)
         by_position[(str(row[3]), str(row[1]), int(row[4] or 0))] = sym_id
-    for file_path, symbols_json in conn.execute(
-        "SELECT file_path, symbols_json FROM ast_index WHERE language = 'python'"
-    ):
+    for file_path, symbols_json in rows(_INDEX_PAYLOAD_SQL):
         try:
             payload = json.loads(symbols_json)
             symbols = payload.get("symbols", [])

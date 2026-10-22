@@ -30,6 +30,21 @@
 
 ### Changed
 
+- **The call-graph step of a refresh no longer rebuilds the resolver context
+  from scratch** (#1749). Every refresh runs on a new index generation, so the
+  old context cache, keyed on the database file, never matched, and the
+  symbol tables, import maps, class-method map and annotation index were rebuilt
+  for the whole project after a one-line edit. The context is now kept per
+  project together with each file's content evidence (its `ast_index` row and
+  content hash, extractor version, and the ids of its symbol and import rows).
+  When the next build sees the same set of files with a few of them changed,
+  only those files are re-read and patched in; any added, deleted or renamed
+  file, a changed module map, or more than 10% of files changed rebuilds in
+  full. A patched context equals a full build field by field.
+  `TSA_RESOLVER_CONTEXT_REUSE=0` turns reuse off. The scoped cross-file stage
+  now reads only the call edges in scope instead of all of them, and the
+  call-graph marker checks edge consistency once, under the writer lock,
+  instead of also checking before it.
 - **A 1-file refresh spends less time capturing, validating and publishing**
   (#1737). On the publisher route the manifest stamp is computed from the rows
   captured with the candidate, not from a second walk over the sources. The
