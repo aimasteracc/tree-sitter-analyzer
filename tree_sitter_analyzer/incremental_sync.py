@@ -111,7 +111,7 @@ class IncrementalSync:
 
         # RFC-0039 slice 2：在本连接写入任何行之前武装增量认证（记录脏组）。
         certification_tracking.arm(conn)
-        backfill_scope.begin(conn)
+        backfill_scope.begin(conn, backfill_scope.published_parent(self._cache))
         # #1671：先撤销继承的稳定失败记录；只有收敛的运行结束时重新签发。
         clear_record(conn)
         conn.commit()

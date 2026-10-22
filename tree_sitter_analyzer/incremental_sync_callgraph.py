@@ -64,7 +64,22 @@ def _changed_count(result: Any) -> int | None:
         if type(count) is not int:
             return None
         total += count
-    return total
+    # #1735：稳定失败（缺少可选语法等）的文件不写任何行，也就没有可记录的写入；
+    # 它们在全新重建中同样没有行，不属于需要界定的改动。
+    return total - _stable_failure_count(result)
+
+
+def _stable_failure_count(result: Any) -> int:
+    from .cache.publication_policy import FAILURE_KIND, STABLE
+
+    return sum(
+        1
+        for detail in getattr(result, "details", None) or ()
+        if isinstance(detail, Mapping)
+        and detail.get("status") == "error"
+        and detail.get(FAILURE_KIND) == STABLE
+        and detail.get("file")
+    )
 
 
 def _run_stages(cache: Any, result: Any) -> tuple[bool, int]:

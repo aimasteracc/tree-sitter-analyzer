@@ -207,6 +207,44 @@ def clear_record_at(database: Path) -> None:
         connection.close()
 
 
+def converged_except_stable_failures(
+    conn: sqlite3.Connection, parent: Path | None = None
+) -> bool:
+    """调用边是否来自一次收敛的刷新，且唯一的失败是已记录的稳定失败（#1735）。
+
+    证据是 #1671 的收敛记录：本库自己的（原地写入的库，运行开始时尚未清除），或
+    ``parent``——私有副本复制自的已发布版本（已封存，记录随版本不变）。记录必须列出
+    至少一个稳定失败，并绑定当前的提取器与调用图流水线版本。没有失败的收敛刷新会
+    盖出当前的调用图标记，不经这里；其余任何状态都返回 False。
+    """
+    records = [read_record(conn)]
+    if parent is not None:
+        records.append(_read_record_at(parent))
+    return any(_converged(record) for record in records)
+
+
+def _converged(record: StableFailureRecord | None) -> bool:
+    from .callgraph_state import CALL_GRAPH_PIPELINE_VERSION
+
+    return (
+        record is not None
+        and bool(record.failures)
+        and record.extractor_version == current_extractor_version()
+        and record.pipeline_version == CALL_GRAPH_PIPELINE_VERSION
+    )
+
+
+def _read_record_at(database: Path) -> StableFailureRecord | None:
+    try:
+        connection = sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)
+    except (sqlite3.Error, ValueError, OSError):
+        return None
+    try:
+        return read_record(connection)
+    finally:
+        connection.close()
+
+
 def issue_record(
     conn: sqlite3.Connection,
     *,

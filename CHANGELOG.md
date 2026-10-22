@@ -110,6 +110,19 @@
   repository).
 ### Fixed
 
+- **The scoped backfill also runs on a checkout with stable grammar failures**
+  (#1735). A file whose optional grammar is not installed (for example the
+  Swift and Lua fixtures here) is a stable failure (#1671): it writes no rows,
+  and the call-graph marker stays revoked by design. `backfill_scope.begin`
+  required a current marker, so every refresh on such a checkout ran the full
+  backfill (`COLLECTOR_NOT_ARMED`). It now also arms when the published parent
+  generation carries the converged-refresh record of #1671 with at least one
+  stable failure, for the current extractor and pipeline versions, and the edges
+  are consistent. That record is only issued when every error was a stable
+  failure and the backfill had no errors, the same `stable_failures_only` rule
+  publication and the watcher (#1733) use. Any other non-current state still
+  falls back to the full backfill. Stable-failure files are not counted as
+  unrecorded writes (`CHANGED_FILE_NOT_RECORDED`).
 - **One source edit now causes one watcher sync** (#1730). When the project
   has a stable per-file failure, such as an optional grammar that is not
   installed (#1554 / #1671), every sync reports `errors > 0`. The file watcher
