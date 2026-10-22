@@ -176,6 +176,27 @@
   unresolved computed-dispatch site in its file, which keeps its declaring
   file's methods non-complete in both query forms (the qualified form through
   #1759's guard). The extractor version goes from 49 to 50.
+
+- **JS/TS arrow-function constants are function definitions** (#1763, ts1
+  dogfood: hono). `export const cors = (options?) => { ... }`,
+  `export const getCookie: GetCookie = (c, key?) => { ... }` and
+  `const verify = async function (t) { ... }` were indexed only as variables.
+  Three things went wrong: `nav callers` could not target them; the calls in
+  their bodies had no caller; and in hono the 16 `cors()` calls in tests were
+  attributed to the inner `return async function cors(c, next)`, which made
+  them 16 false callers. An arrow function or function expression that is the
+  initializer of a `const` / `let` / `var` declarator, with or without a type
+  annotation, is now a function named after the declarator, with its span and
+  parameters, in both TypeScript and JavaScript. An anonymous callback no
+  longer becomes a "function" named after its single parameter
+  (`x => f(x)`). A definition nested inside another function is not reachable
+  by name from another file, so `import { cors }` binds the module-level
+  `cors`, and `file:cors` names the outer definition. On hono, false callers
+  drop from 16 to 0 and ground-truth recall goes from 62/87 to 63/87.
+  Non-test calls with an empty caller drop from 81% to 15%. The rest are mostly
+  in anonymous `describe` / `it` callbacks. The extractor version goes from
+  50 to 51.
+
 - **An unresolved `x.m()` keeps every same-named method a possible target**
   (#1758). When the calling file itself declared an `m`, the cached resolver
   took the same-file definition from its local tier and never looked further,

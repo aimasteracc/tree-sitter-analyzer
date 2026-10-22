@@ -95,9 +95,9 @@ def test_arrow_and_function_expression_constants_are_definitions(
 
 @pytest.mark.parametrize("language", ["typescript", "javascript"])
 def test_calls_inside_constant_functions_have_that_caller(language: str) -> None:
-    from tree_sitter_analyzer.cache.call_edges import extract_call_edges
-
     import tree_sitter
+
+    from tree_sitter_analyzer.cache.call_edges import extract_call_edges
 
     source = _CORS_TS if language == "typescript" else _js(_CORS_TS)
     if language == "typescript":
