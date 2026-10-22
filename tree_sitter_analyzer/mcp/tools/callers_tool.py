@@ -12,7 +12,7 @@ import os
 import sqlite3
 from typing import Any
 
-from ...module_scope_caller import module_caller_entry
+from ...module_scope_caller import is_module_caller, module_caller_entry
 from ...receiver_proof import has_unproven_receiver
 from ...utils import setup_logger
 from . import certification_timeouts
@@ -349,6 +349,21 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                     pass
         return await self._execute_bound(arguments, None, None)
 
+    def _graph_for(self, bound_cache: Any) -> tuple[Any, str]:
+        """限定名与裸名共用的调用图（及其数据来源标签）。"""
+        if bound_cache is not None:
+            from ...call_graph import CachedCallGraph
+
+            # #1675：边解析结果落盘，冷进程的首个 callers 不再重新解析。
+            graph = CachedCallGraph(
+                self.project_root or ".",
+                cache=bound_cache,
+                fallback=False,
+                persist=True,
+            )
+            return graph, "cache"
+        return self._get_call_graph(), self._data_source
+
     async def _execute_bound(
         self, arguments: dict[str, Any], bound_cache: Any, source_reader: Any
     ) -> dict[str, Any]:
@@ -413,22 +428,31 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             bound_targets = name_bound_targets(cache, func_name, file_path)
             data_source = "sql"
             has_any_call_edges = True  # SQL path only runs when edges exist
+            # #1740：裸名与限定名必须经过同一道 NAME_ONLY 门。SQL 路径只列出已解析
+            # 的边；接收者无法绑定的同名调用点只有调用图知道——不查它们，裸名查询会对
+            # 限定名会判为 unknown 的方法给出 complete（dogfood r10：gson 7/40）。
+            # 裸名对应多个定义时，并集使答案不比其中最不确定者更确定。
+            graph = self._graph_for(bound_cache)[0]
+            # 调用图绑定、但未落到 SQL 边上的确定调用方（如经混入类 MRO 绑定的实例调用）
+            # 同样列出：裸名答案不得比限定名少列确定的调用方。
+            callers = callers + label_graph_relations(
+                graph,
+                func_name,
+                file_path,
+                [
+                    c
+                    for c in _unlisted(graph.callers_of(func_name, file_path), callers)
+                    # 模块作用域调用点已由 SQL 边列出或计入 unattributed，不再重复。
+                    if not is_module_caller(str(c.get("name") or ""))
+                ],
+                inbound=True,
+            )
+            possible_callers = _unlisted(
+                graph.possible_callers_of(func_name, file_path), callers
+            )
+            name_only_inbound = len(possible_callers)
         else:
-            graph: Any
-            if bound_cache is not None:
-                from ...call_graph import CachedCallGraph
-
-                # #1675：边解析结果落盘，冷进程的首个 callers 不再重新解析。
-                graph = CachedCallGraph(
-                    self.project_root or ".",
-                    cache=bound_cache,
-                    fallback=False,
-                    persist=True,
-                )
-                data_source = "cache"
-            else:
-                graph = self._get_call_graph()
-                data_source = self._data_source
+            graph, data_source = self._graph_for(bound_cache)
             callers = graph.callers_of(func_name, file_path)
             bound_targets = graph_bound_targets(graph, func_name, file_path)
             # #1578：仅同名匹配、无法绑定到目标的入边——它们存在时不能宣称 complete。
@@ -869,3 +893,19 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 )
             results.append(entry)
         return results, unattributed
+
+
+def _unlisted(
+    possible: list[dict[str, Any]], listed: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """#1740：去掉已作为确定调用方列出的同名候选（同文件、同名、同起始行）。"""
+    seen = {
+        (str(c.get("file") or "").replace("\\", "/"), c.get("name"), c.get("line"))
+        for c in listed
+    }
+    return [
+        c
+        for c in possible
+        if (str(c.get("file") or "").replace("\\", "/"), c.get("name"), c.get("line"))
+        not in seen
+    ]

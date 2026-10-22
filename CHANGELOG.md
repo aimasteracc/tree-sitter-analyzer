@@ -123,6 +123,30 @@
   publication and the watcher (#1733) use. Any other non-current state still
   falls back to the full backfill. Stable-failure files are not counted as
   unrecorded writes (`CHANGED_FILE_NOT_RECORDED`).
+
+- **`nav callers` with a bare method name no longer answers `complete` while
+  same-named calls stay unbound** (#1740). `function_name=getDelegateAdapter`
+  with `file_path=.../Gson.java` took the SQL fast path, which lists only
+  resolved call edges and never ran the name-only inbound check. Calls whose
+  receiver could not be bound to the method were dropped silently, and the
+  answer was often `complete, 0`. The qualified form, `Gson.getDelegateAdapter`,
+  ran the check and answered `unknown, NAME_ONLY_INBOUND`.
+
+  The bare form now goes through the same check, using the same call graph,
+  and reports the same `name_only_sites`. A caller that is already listed is
+  never also reported as name-only. When a bare name has several definitions,
+  the check covers all of them, so the answer is never more confident than
+  the least confident one.
+
+  Re-run of the round-10 sweep (seed 20261024, 40 methods per repository,
+  same index for before and after):
+
+  | repository | wrong `complete`, before | wrong `complete`, after |
+  |---|---|---|
+  | google/gson, bare | 8 of 16 | 0 of 8 |
+  | google/gson, qualified | 0 of 8 | 0 of 8 |
+  | Textualize/rich, bare | 4 of 26 | 0 of 22 |
+  | Textualize/rich, qualified | 0 of 23 | 0 of 23 |
 - **One source edit now causes one watcher sync** (#1730). When the project
   has a stable per-file failure, such as an optional grammar that is not
   installed (#1554 / #1671), every sync reports `errors > 0`. The file watcher
