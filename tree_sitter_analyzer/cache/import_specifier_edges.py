@@ -23,7 +23,7 @@ _MODULE_PREFIX = "module:"
 #: ``language`` 列取自同一份元数据：只读 JS/TS 的导入边，其他语言不解析 JSON。
 _SELECT_SQL = (
     "SELECT id, source_node_id, target_node_id, metadata, callee_resolved_file "
-    "FROM edges WHERE kind = 'imports' AND language IN ("  # nosec B608 — 常量语言列表
+    "FROM edges WHERE kind = 'imports' AND language IN ("
     + ", ".join(f"'{language}'" for language in _RELATIVE_SPECIFIER_LANGUAGES)
     + ")"
 )
