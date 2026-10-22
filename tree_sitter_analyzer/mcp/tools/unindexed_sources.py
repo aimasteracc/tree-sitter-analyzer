@@ -12,6 +12,8 @@ dogfood 第 4 轮实测：新建一个尚未入索引、两次直接调用某方
 #1624：同一次遍历还列出需要做非调用引用扫描的配置 / 脚本文件（另加
 ``.github``，点目录本身仍被跳过），避免为它们再走一遍目录。
 #1633：JSON（不超过大小上限）、Notebook 与模板文件同样在这次遍历中列出。
+#1738：额外根目录不在索引的发现范围内，其中的源码只做文本引用扫描，从不计入
+未入索引源码——建议的刷新永远不会入库它们，否则答案再也不能 ``complete``。
 """
 
 from __future__ import annotations
@@ -122,6 +124,11 @@ def project_files(
                     continue
                 if not source:
                     config.append(rel_path)
+                elif start:
+                    # #1738：额外根目录在索引的发现规则之外，其中源码永不入库，
+                    # 不是“索引之后新增”；仍按文本扫描非调用引用（#1624）。
+                    if rel_path not in indexed:
+                        config.append(rel_path)
                 elif rel_path not in indexed:
                     unindexed.append(rel_path)
     except (CandidateDiscoveryBudgetExceeded, CandidateDiscoveryError, OSError):
