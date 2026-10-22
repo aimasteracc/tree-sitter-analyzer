@@ -51,10 +51,14 @@ class SubclassIndex:
             try:
                 rows = self._cache.get_conn().execute(
                     "SELECT source_node_id, target_node_id FROM edges "
-                    "WHERE kind = 'extends'"
+                    "WHERE kind IN ('extends', 'implements')"
                 )
                 for source, target in rows:
                     child, parent = _class_name(source), _class_name(target)
+                    if not parent and _is_java_node(source):
+                        # #1743：Java 的 extends / implements 目标以 ``class:Name``
+                        # 占位（名字未解析到节点）；按类名记入子类关系。
+                        parent = _placeholder_class(target)
                     if child and parent and child != parent:
                         children[parent].add(child)
             except Exception:  # nosec B110 — 缺表 / 旧索引：没有子类证据。
@@ -95,6 +99,19 @@ def override_candidates(
     return [
         ref for ref in functions_by_name.get(base_name, []) if ref.receiver in names
     ]
+
+
+def _is_java_node(node_id: Any) -> bool:
+    return str(node_id).rsplit(":", 2)[0].endswith(".java")
+
+
+def _placeholder_class(node_id: Any) -> str:
+    """``class:pkg.Name`` / ``class:Name<T>`` 占位目标中的简单类名；不是占位时为空串。"""
+    text = str(node_id)
+    if not text.startswith("class:"):
+        return ""
+    name = text[len("class:") :].split("<", 1)[0].strip()
+    return name.rsplit(".", 1)[-1] if name else ""
 
 
 def _class_name(node_id: Any) -> str:
