@@ -124,7 +124,9 @@ def override_candidates(
         ref for ref in functions_by_name.get(base_name, []) if ref.receiver in names
     ]
     # #1743：Java 匿名子类（`new T() { ... }`）里的覆写没有类名，按类体范围认领。
-    spans = subclasses.anonymous_spans({caller_class, *names})
+    # 只有真实的 SubclassIndex 有匿名子类证据；其他实现（测试替身）没有就跳过。
+    reader = getattr(subclasses, "anonymous_spans", None)
+    spans = reader({caller_class, *names}) if callable(reader) else []
     if spans:
         present = set(found)
         for ref in functions_by_name.get(base_name, []):
