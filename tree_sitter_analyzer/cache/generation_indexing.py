@@ -216,6 +216,8 @@ def _mutate_published_cache(
                 writable = ASTCache(cache.project_root, str(store.database(selector)))
                 # #1673：本次捕获绑定的内容摘要交给运行本身（不重读文件）。
                 writable._bound_source_digests = bound_digests(candidate)
+                # #1737：本路由在发布租约内复核源码，盖章可与候选行比较。
+                writable._publication_rechecks_sources = True
                 try:
                     if snapshot_operation is not None:
                         result = snapshot_operation(writable, candidate.snapshot)
@@ -302,6 +304,8 @@ def run_incremental_sync(
             writable._publishes_project_index = True
             # #1673：本次捕获绑定的内容摘要交给同步本身（不为比较重读每个文件）。
             writable._bound_source_digests = bound_digests(candidate)
+            # #1737：本路由在发布租约内复核源码，盖章可与候选行比较。
+            writable._publication_rechecks_sources = True
             try:
                 arguments["candidate_snapshot"] = candidate.snapshot
                 result = (sync_factory or IncrementalSync)(writable).sync(**arguments)

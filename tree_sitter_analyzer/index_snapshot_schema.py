@@ -251,8 +251,16 @@ def stamp_full_index_manifest(
     conn: sqlite3.Connection,
     project_root: str,
     source_scope: SourceScopeDescriptor | None = None,
+    *,
+    candidate_rows: frozenset[tuple[str, str, str]] | None = None,
 ) -> None:
-    """Certify one source/index epoch while excluding every SQLite writer."""
+    """Certify one source/index epoch while excluding every SQLite writer.
+
+    #1737：``candidate_rows`` 只由会在发布租约内复核源码的版本路由给出（RFC-0032：
+    发布前重新扫描并比较每个文件的内容摘要，不一致即拒绝发布）。此时盖章把记录的行
+    与捕获时绑定的候选行比较，不再另做一次完整的源码扫描与重哈希；之后源码的任何
+    变化都由发布复核拒绝，读者仍按 RFC-0030 对当前源码独立复核。其他路由照常现场捕获。
+    """
     # Finish all preceding indexing work before the certification transaction.
     conn.commit()
     transaction_started = False
@@ -272,7 +280,13 @@ def stamp_full_index_manifest(
 
         index, tree = stamp_commitment(conn, root, deadline=stamp_deadline)
         recorded = recorded_source_rows(conn)
-        if os.name == "posix" and os.path.exists("/dev/fd"):
+        if candidate_rows is not None:
+            if candidate_rows != recorded:
+                raise sqlite3.OperationalError(
+                    "SOURCE_CHANGED:state=candidate:reason=CANDIDATE_ROWS_DIFFER:"
+                    f"rows_current={len(candidate_rows)}:rows_recorded={len(recorded)}"
+                )
+        elif os.name == "posix" and os.path.exists("/dev/fd"):
             current = capture_current_source_snapshot(
                 root, scope, deadline=stamp_deadline
             )
@@ -282,7 +296,9 @@ def stamp_full_index_manifest(
             current = capture_portable_source_snapshot(
                 root, scope, deadline=stamp_deadline
             )
-        if current.state != "exact" or current.rows != recorded:
+        if candidate_rows is None and (
+            current.state != "exact" or current.rows != recorded
+        ):
             # 携带具体原因(#1364 诊断):区分超时/不安全/行不一致三种死法
             raise sqlite3.OperationalError(
                 f"SOURCE_CHANGED:state={current.state}:"

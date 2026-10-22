@@ -164,3 +164,28 @@ def stamp_certified_at(
         "AND (certified_at IS NULL OR file_path IN (SELECT value FROM json_each(?)))",
         [epoch, *paths, json.dumps(changed, ensure_ascii=False)],
     )
+
+
+def publication_candidate_rows(
+    cache: Any, snapshot: Any
+) -> frozenset[tuple[str, str, str]] | None:
+    """#1737：发布前会复核源码的版本路由里，盖章用的候选源码行。
+
+    只有 ``GenerationStore`` 的发布路由（``_publication_rechecks_sources``）且捕获
+    时为每个选中文件绑定了内容摘要，才返回 ``(路径, 摘要, 语言)`` 集合；否则返回
+    ``None``，盖章照常现场捕获源码。
+    """
+    if snapshot is None or not getattr(cache, "_publication_rechecks_sources", False):
+        return None
+    bound = getattr(cache, "_bound_source_digests", None)
+    if not isinstance(bound, dict):
+        return None
+    rows: set[tuple[str, str, str]] = set()
+    for entry in snapshot.selected_entries:
+        digest = bound.get(entry.rel_path) or getattr(
+            entry.fingerprint, "content_hash", None
+        )
+        if not digest or not entry.language:
+            return None
+        rows.add((entry.rel_path, str(digest), str(entry.language)))
+    return frozenset(rows)
