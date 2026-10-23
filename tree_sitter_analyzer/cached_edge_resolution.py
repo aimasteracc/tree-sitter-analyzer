@@ -54,6 +54,10 @@ _PROJECT_RESOLUTIONS = frozenset({"project", "local"})
 _SELF_QUALIFIERS = frozenset({"self", "cls", "this", "super", "super()"})
 #: #1739：Python 方法接收者；``self.m()`` 只经外围类的 MRO 确定。
 _PY_OWN_QUALIFIERS = frozenset({"self", "cls"})
+#: #1765：JS/TS 源文件后缀（``this.m()`` 只确定绑定外围类自己的方法）。
+_JSTS_THIS_SUFFIXES = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts")
+#: #1765：沿 ``extends`` 链最多走的步数。
+_JSTS_CHAIN_MAX = 32
 _PY_SUFFIXES = (".py", ".pyi")
 #: #1763：JS/TS 源文件后缀（嵌套定义不可从别的文件按名字到达）。
 _JSTS_SUFFIXES = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts")
@@ -91,6 +95,7 @@ class CachedEdgeResolver:
         subclasses: SubclassIndex | None = None,
         memoize: bool = False,
         hierarchy: Callable[[], Hierarchy] | None = None,
+        jsts_imports: dict[str, dict[str, str]] | None = None,
     ) -> None:
         self._functions_by_file = functions_by_file
         self._functions_by_name = functions_by_name
@@ -101,6 +106,10 @@ class CachedEdgeResolver:
         self._subclasses = subclasses
         # #1677：类层级（有序基类与方法表），惰性读取，只在继承调用时需要。
         self._hierarchy = hierarchy
+        #: #1765：JS/TS 文件中按名字导入的绑定 -> 目标文件。
+        self._jsts_imports = jsts_imports or {}
+        #: #1765：方法所属类名 -> 定义文件（惰性建立）。
+        self._receiver_files: dict[str, set[str]] | None = None
         self._resolver = CalleeResolver(
             functions_by_name=functions_by_name,
             functions_by_file=functions_by_file,
@@ -145,6 +154,10 @@ class CachedEdgeResolver:
         ):
             return self._python_self_targets(
                 targets, base_name, qualifier, caller_class, caller_file
+            )
+        if qualifier == "this" and caller_file.endswith(_JSTS_THIS_SUFFIXES):
+            return self._jsts_this_targets(
+                targets, base_name, caller_class, caller_file
             )
         if not caller_class:
             return targets
@@ -224,6 +237,124 @@ class CachedEdgeResolver:
             ),
             binding=targets.binding,
         )
+
+    def _jsts_this_targets(
+        self,
+        targets: EdgeTargets,
+        base_name: str,
+        caller_class: str | None,
+        caller_file: str,
+    ) -> EdgeTargets:
+        """#1765：JS/TS 的 ``this.m()`` 按调用方的外围类分派。
+
+        ts1 dogfood（hono）：``class Sub extends RegExpRouter`` 里的
+        ``this.buildAllMatchers()`` 被绑定为同文件另一个类
+        ``PreparedRegExpRouter.buildAllMatchers`` 的调用，真正的目标
+        ``RegExpRouter.buildAllMatchers`` 答 ``complete, 0``。
+
+        * 外围类自己定义 ``m``：它是确定目标；
+        * 否则沿 ``extends`` 链（JS/TS 单继承，按类名）找第一个定义 ``m`` 的基类，
+          链上每一步都唯一时它是确定目标；链上其余同名方法只是可能目标；
+        * 没有继承证据：项目里每个同名方法都只是可能目标；
+        * 调用方不在类中（类字段箭头函数、嵌套回调）：沿用 Synapse 的单类文件绑定，
+          其余同名方法是可能目标。
+
+        子类覆写始终是可能目标（#1648）。
+        """
+        methods = [
+            ref for ref in self._functions_by_name.get(base_name, []) if ref.receiver
+        ]
+        static = [*targets.certain, *targets.possible]
+        if not caller_class:
+            others = [ref for ref in methods if ref not in targets.certain]
+            return EdgeTargets(
+                certain=list(targets.certain),
+                possible=_merged(list(targets.possible), others),
+                binding=targets.binding,
+            )
+        own = self._own_method(caller_file, caller_class, base_name)
+        if own is not None:
+            certain, possible = [own], []
+        else:
+            ancestors = (
+                None
+                if self._subclasses is None
+                else self._subclasses.ancestors(caller_class)
+            )
+            if ancestors is None:
+                certain, possible = [], _merged(static, methods)
+            else:
+                chain = [ref for ref in methods if ref.receiver in ancestors]
+                nearest = self._jsts_nearest(
+                    caller_class, caller_file, base_name, methods
+                )
+                certain = [] if nearest is None else [nearest]
+                possible = [ref for ref in chain if ref != nearest]
+        return EdgeTargets(
+            certain=certain,
+            possible=self._with_overrides(
+                certain, possible, base_name, "this", caller_class
+            ),
+            binding=targets.binding,
+        )
+
+    def _jsts_nearest(
+        self,
+        caller_class: str,
+        caller_file: str,
+        base_name: str,
+        methods: list[FunctionRef],
+    ) -> FunctionRef | None:
+        """沿单继承链找第一个定义 ``base_name`` 的基类；任何一步无法确定即放弃。
+
+        每一步的基类按名字定位到文件：所在文件 ``import`` 了它、同文件定义了它，
+        或项目里只有一个同名类。zod 的 v3 / v4 各有一个 ``ZodType``，只有导入
+        能说明 ``class ZodString extends ZodType`` 指的是哪一个。
+        """
+        assert self._subclasses is not None  # 调用方已检查。
+        current, current_file = caller_class, caller_file
+        seen = {(current, current_file)}
+        for _ in range(_JSTS_CHAIN_MAX):
+            parents = self._subclasses.parents_of(current)
+            if len(parents) != 1:
+                return None
+            (parent,) = parents
+            parent_file = self._jsts_class_file(parent, current_file)
+            if parent_file is None or (parent, parent_file) in seen:
+                return None
+            seen.add((parent, parent_file))
+            found = [
+                ref
+                for ref in methods
+                if ref.receiver == parent and ref.file_path == parent_file
+            ]
+            if found:
+                return found[0] if len(found) == 1 else None
+            current, current_file = parent, parent_file
+        return None
+
+    def _jsts_class_file(self, class_name: str, from_file: str) -> str | None:
+        """``from_file`` 中名字 ``class_name`` 指向的类所在文件；无法确定为 None。"""
+        imported = self._jsts_imports.get(from_file, {}).get(class_name)
+        if imported:
+            return str(imported)
+        if any(
+            ref.receiver == class_name
+            for ref in self._functions_by_file.get(from_file, [])
+        ):
+            return from_file
+        assert self._subclasses is not None
+        if not self._subclasses.unique_class(class_name):
+            return None
+        if self._receiver_files is None:
+            receivers: dict[str, set[str]] = {}
+            for refs in self._functions_by_name.values():
+                for ref in refs:
+                    if ref.receiver:
+                        receivers.setdefault(ref.receiver, set()).add(ref.file_path)
+            self._receiver_files = receivers
+        files = self._receiver_files.get(class_name, set())
+        return next(iter(files)) if len(files) == 1 else None
 
     def _own_method(
         self, caller_file: str, caller_class: str, base_name: str

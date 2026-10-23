@@ -29,6 +29,7 @@ from ._symbol_syntax import (
     _find_parent_class,
     _node_text,
     _scala_symbol_from_node,
+    jsts_class_expression_name,
 )
 
 _CPP_MODULE_IMPORT_RE = re.compile(
@@ -887,9 +888,11 @@ class _SymbolWalker:
 
     def _append_class(self, node: Any, name_node: Any) -> None:
         effective_name = self._class_name_node(node, name_node)
-        if effective_name is None:
-            return
-        name = _node_text(effective_name, self.source)
+        if effective_name is not None:
+            name = _node_text(effective_name, self.source)
+        else:
+            # #1765：`const X = class extends B {...}` 以常量名索引为类。
+            name = jsts_class_expression_name(node, self.source) or ""
         if not name:
             return
         symbol: dict[str, Any] = {

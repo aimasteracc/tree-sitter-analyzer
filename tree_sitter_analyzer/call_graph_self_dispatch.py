@@ -45,6 +45,8 @@ class SubclassIndex:
     def __init__(self, cache: Any) -> None:
         self._cache = cache
         self._children: dict[str, set[str]] | None = None
+        self._parents: dict[str, set[str]] | None = None
+        self._class_counts: dict[str, int] | None = None
         self._anonymous: dict[str, list[tuple[str, int, int]]] | None = None
 
     def anonymous_spans(self, class_names: set[str]) -> list[tuple[str, int, int]]:
@@ -96,6 +98,47 @@ class SubclassIndex:
         """#1657：构图实际使用的子类关系（读库失败时为空），供输入摘要使用。"""
         return self._load()
 
+    def parents_of(self, class_name: str) -> set[str]:
+        """#1765：``class_name`` 的直接基类名（按类名、含未解析的占位）。"""
+        self.ancestors(class_name)  # 建立反向索引。
+        assert self._parents is not None
+        return set(self._parents.get(class_name, ()))
+
+    def unique_class(self, class_name: str) -> bool:
+        """#1765：项目里恰有一个名为 ``class_name`` 的类（读库失败视为否）。"""
+        if self._class_counts is None:
+            counts: dict[str, int] = {}
+            try:
+                rows = self._cache.get_conn().execute(
+                    "SELECT name, count(*) FROM ast_symbol_rows "
+                    "WHERE kind = 'class' GROUP BY name"
+                )
+                counts = {str(name): int(count) for name, count in rows}
+            except Exception:  # nosec B110 — 缺表 / 旧索引：没有类证据。
+                counts = {}
+            self._class_counts = counts
+        return self._class_counts.get(class_name, 0) == 1
+
+    def ancestors(self, class_name: str) -> set[str] | None:
+        """#1765：``class_name`` 的全部传递基类名；没有任何基类证据时为 None。"""
+        if self._parents is None:
+            inverted: dict[str, set[str]] = defaultdict(set)
+            for parent, kids in self._load().items():
+                for kid in kids:
+                    inverted[kid].add(parent)
+            self._parents = inverted
+        parents = self._parents
+        if class_name not in parents:
+            return None
+        found: set[str] = set()
+        queue = deque([class_name])
+        while queue and len(found) < _MAX_SUBCLASSES:
+            for parent in parents.get(queue.popleft(), ()):
+                if parent not in found and parent != class_name:
+                    found.add(parent)
+                    queue.append(parent)
+        return found
+
     def subclasses(self, class_name: str) -> set[str]:
         """``class_name`` 的全部传递子类名（不含自身）。"""
         children = self._load()
@@ -139,8 +182,23 @@ def override_candidates(
     return found
 
 
+#: #1765：``extends`` 目标以 ``class:Name`` 占位、按类名记入继承关系的语言。
+_PLACEHOLDER_PARENT_SUFFIXES = (
+    ".java",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".ts",
+    ".tsx",
+    ".mts",
+    ".cts",
+)
+
+
 def _is_java_node(node_id: Any) -> bool:
-    return str(node_id).rsplit(":", 2)[0].endswith(".java")
+    """Java（#1743）与 JS/TS（#1765）：第二遍解析不处理它们的 ``extends`` 占位。"""
+    return str(node_id).rsplit(":", 2)[0].endswith(_PLACEHOLDER_PARENT_SUFFIXES)
 
 
 def _placeholder_class(node_id: Any) -> str:

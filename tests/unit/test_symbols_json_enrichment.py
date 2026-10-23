@@ -172,8 +172,9 @@ class TestExtractorVersionBump:
         # v50：JS/TS 字符串字面量成员名与 `obj["m"]()` 归一（#1762）。
         # v51：JS/TS 以常量定义的箭头函数 / 函数表达式索引为函数（#1763）。
         # v52：TS 调用经 ES 模块导入 / 再导出解析（#1764）。
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 52
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 52
+        # v53：TS 类的 extends 基类与类表达式（#1765）。
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 53
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 53
 
 
 def test_python_star_imported_loader_fails_closed() -> None:

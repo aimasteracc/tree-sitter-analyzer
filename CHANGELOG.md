@@ -226,6 +226,32 @@
   in anonymous `describe` / `it` callbacks. The extractor version goes from
   50 to 51.
 
+- **TS `this.m()` dispatches through the enclosing class and its `extends`
+  chain, including anonymous class expressions** (#1765, ts1 dogfood: hono).
+  In `const RegExpRouterWithMatcherExport = class<T> extends RegExpRouter<T> {
+  buildAndExportAllMatchers() { return this.buildAllMatchers() } }`, the call
+  was bound to `PreparedRegExpRouter.buildAllMatchers`, the only class in the
+  same file defining the name. It never appeared in the answer for
+  `RegExpRouter.buildAllMatchers`. The same happened in a named
+  `class Sub extends Base`. A base method called only that way answered
+  `complete, 0`. Four changes:
+  - TS classes now record their `extends` base in `parents`. Before, the
+    grammar's `extends_clause` was skipped, so every TS class had no base.
+  - A class expression assigned to a constant is indexed as a class named
+    after the constant, and its methods belong to it.
+  - In JS/TS, `this.m()` is certain for the enclosing class's own `m`. Failing
+    that, it is certain for the first base in the `extends` chain that defines
+    `m`, where each base is located through the file's relative `import`, the
+    same file, or a unique class name. zod's v3 and v4 each have a `ZodType`.
+  - When the chain cannot be followed, every same-named method on the chain,
+    or in the project if there is no chain, is only a possible target. A
+    method of an unrelated class, such as a sibling in the same file or a
+    method on a class extending the external `Error`, is never a target.
+
+  Subclass overrides stay possible (#1648). The extractor version goes from 52
+  to 53.
+
+
 - **An unresolved `x.m()` keeps every same-named method a possible target**
   (#1758). When the calling file itself declared an `m`, the cached resolver
   took the same-file definition from its local tier and never looked further,

@@ -1080,11 +1080,14 @@ class CachedCallGraph(CallGraph):
             if name_map:
                 file_import_map[file_path] = name_map
 
+        from .jsts_import_targets import jsts_import_map
+
         edge_resolver = CachedEdgeResolver(
             functions_by_name=self._func_by_name,
             functions_by_file=self._func_by_file,
             file_import_map=file_import_map,
             external_imports=_package_imported_names(imports_raw),
+            jsts_imports=jsts_import_map(imports_raw, rel_files | set(imports_raw)),
             reexport_binder=reexport_binder,
             subclasses=subclasses,
             # #1657：函数与 import 索引此时已完整且不再变化，相同输入只解析一次。
