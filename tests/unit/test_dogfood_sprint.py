@@ -271,3 +271,28 @@ def test_cli_description_preserves_pipeline_and_report_contract() -> None:
     ]
 
     assert description_lines == expected_lines
+
+
+def test_build_priority_matrix_ignores_low_confidence_dead_code() -> None:
+    """#1790：低置信度的死代码结论不进入待办；标题使用高置信度总数。"""
+    low_only = {
+        "data": {
+            "dead_functions": [{"name": "_unused_helper", "confidence": "low"}],
+            "stats": {"dead_functions_high_confidence": 0},
+        }
+    }
+    mixed = {
+        "data": {
+            "dead_functions": [
+                {"name": "orphan", "confidence": "high"},
+                {"name": "_unused_helper", "confidence": "low"},
+            ],
+            "stats": {"dead_functions_high_confidence": 7},
+        }
+    }
+
+    assert _build_priority_matrix({}, low_only, {}, []) == []
+    items = _build_priority_matrix({}, mixed, {}, [])
+    assert [(i["category"], i["title"], i["details"]) for i in items] == [
+        ("dead_code", "7 potentially dead function(s) detected", "orphan")
+    ]

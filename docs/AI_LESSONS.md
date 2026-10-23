@@ -797,3 +797,35 @@ dogfood 2026-10-14：同一 MCP 服务器内 `nav action=callers` 建索引后�
 `tests/unit/test_generation_retirement.py` 经公共路由 `index action=cache mode=index`
 固定：5 次无变化刷新后仍只有 1 个版本且 `publication_reason == "INDEX_UNCHANGED"`；
 空闲的长驻 nav 实例不再钉住旧版本；进行中的读者所用版本绝不被回收。
+
+## 2026-10 — 死代码的“根”与“边”必须覆盖非调用的使用
+
+### Context
+
+#1790：Dogfood Sprint（run 39100429318）把“50 个疑似死函数”列为 P3 待办，其中
+47 个是活代码。issue 推测原因是目录名 `agent-tasks` 里的连字符让模块解析失败；
+实测把同一夹具放在 `agent-tasks` 与 `agent_tasks` 下结果完全相同，推测不成立。
+真实原因有两个：(1) 调用图只记录 `f(...)` 调用，函数存进分发表、作为实参传入、
+按属性取出、被装饰器登记时都没有边；(2) 根集合只有测试文件和 `main` 等少数名字，
+`__init__` / `__call__` / `visit_*` 与模块作用域调用到的函数都不是根。本仓库同一份
+图上旧算法报 1875 个死函数，修复后 200 个，修复没有新增任何死函数；50 条里真正
+未被使用的 3 条仍被报告，其中位于 `agent-tasks/` 的 1 条为 `confidence=low`。
+
+### Lessons learned
+
+1. **“没有调用者”不等于“没有使用者”。** 判死之前必须同时看值引用（分发表、实参、
+   属性、装饰器、字符串名），否则任何注册式架构都会整片误报。
+2. **根集合要包含运行时隐式调用的入口。** dunder、命名约定回调、模块作用域执行的
+   代码都没有显式调用点。
+3. **issue 里的原因推测要先用对照夹具验证。** 只改变被怀疑的一个变量（这里是目录
+   名），结果不变就说明原因在别处。
+4. **解析不完整时降低置信度，而不是给出确定结论。** 模块路径无法导入的文件，跨文件
+   使用可能缺失，结论标 `low` 并排除出 dogfood 待办。
+
+### Required guardrail
+
+`tests/unit/test_dead_code_references.py` 固定：连字符 / 下划线目录结果一致；
+dict / list / tuple / set 分发表、实参传递、属性与别名导入、dunder、装饰器登记、
+模块作用域调用都不判死；死函数里的引用不会复活目标；真正未使用的函数仍被报告；
+连字符目录下的结论为 `confidence=low`，且 `scripts/_dogfood_sprint_priority.py`
+不把低置信度结论写进待办。

@@ -20,7 +20,7 @@ from __future__ import annotations
 import os
 import re
 from collections import deque
-from collections.abc import Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -29,7 +29,13 @@ from .call_graph import CachedCallGraph, CallGraph, FunctionRef
 from .call_graph_binding import ref_identity
 from .constants import EXCLUDE_DIRS
 from .core.parser import Parser
+from .dead_code_references import (
+    ReferenceIndex,
+    build_reference_index,
+    module_path_unresolvable,
+)
 from .import_extractors import walk_imports
+from .module_scope_caller import is_module_caller
 from .project_graph import _language_from_ext
 from .utils import setup_logger
 
@@ -113,12 +119,26 @@ _CLASS_DEF_TYPES = {
 }
 
 
+CONFIDENCE_HIGH = "high"
+CONFIDENCE_LOW = "low"
+#: 文件的点分模块路径无法导入（如 ``agent-tasks/``），
+#: 指向它的跨文件调用 / 引用连不上（#1790）。
+LOW_CONFIDENCE_UNRESOLVED_MODULE = "module_path_unresolvable"
+
+_PY_DUNDER = re.compile(r"^__\w+__$")
+# 框架按命名约定分派的方法（``ast.NodeVisitor`` / docutils 访问器、``http.server``
+# 处理器）：源码里从不按名字调用。
+_PY_CONVENTION_CALLBACK = re.compile(r"^(?:visit_\w+|depart_\w+|do_[A-Z]+)$")
+
+
 @dataclass
 class DeadFunction:
     function: FunctionRef
     reason: str
     depth: int = 0
     dead_callees: list[str] = field(default_factory=list)
+    confidence: str = CONFIDENCE_HIGH
+    confidence_reason: str | None = None
 
 
 @dataclass
@@ -170,33 +190,47 @@ def find_transitive_dead_code(
     2. Find entry points (zero callers) that are NOT dead:
        - functions in test files
        - known entry patterns (main, setup, etc.)
-       - functions with external callers outside the graph
+       - 运行时隐式调用的方法（dunder、``visit_*`` 等；#1790）
+       - 模块作用域（``<module>`` 伪调用方）调用到的函数（#1790）
     3. BFS from entry points, marking reachable functions as alive.
-    4. Remaining unmarked functions are transitively dead.
+    4. 对仍未标记的函数扫描项目里的非调用使用（分发表、实参、属性、登记型
+       装饰器；#1790），沿这些引用边继续 BFS。
+    5. 剩余未标记的函数即传递性死代码；模块路径无法解析的文件里的结论为
+       ``confidence="low"``。
     """
     all_funcs = set(graph.function_refs())
-    alive: set[FunctionRef] = set()
+    roots = {
+        func
+        for func in all_funcs
+        if (not include_test_files and _is_test_file(func.file_path))
+        or _is_known_entry(func.name, func.language)
+        or _is_implicit_entry(func)
+    }
+    # #1790：模块作用域（导入时执行）的调用点调用到的函数也是根。
+    roots.update(_module_scope_callees(graph) & all_funcs)
+    # 键为存活函数，值为它离最近的根的深度（BFS 层数）。
+    depth: dict[FunctionRef, int] = dict.fromkeys(roots, 0)
 
-    for func in all_funcs:
-        if not include_test_files and _is_test_file(func.file_path):
-            alive.add(func)
-            continue
-
-        if _is_known_entry(func.name, func.language):
-            alive.add(func)
-            continue
-
-    queue: deque[tuple[FunctionRef, int]] = deque((f, 0) for f in alive)
-    while queue:
-        func, depth = queue.popleft()
-        if depth >= max_depth:
-            continue
+    def successors(func: FunctionRef) -> Iterable[FunctionRef]:
         # #1559/#1560：模糊的同名候选也算可达，不能把它们判为死代码。
-        for callee in graph.reachable_callee_refs_of(func):
-            if callee not in alive and callee in all_funcs:
-                alive.add(callee)
-                queue.append((callee, depth + 1))
+        return graph.reachable_callee_refs_of(func)
 
+    _flood(depth, all_funcs, successors, max_depth, list(depth))
+
+    # #1790：分发表 / 实参 / 属性 / 装饰器登记等“作为值”的使用不是调用边，单独补上。
+    references = _reference_index(graph, all_funcs - set(depth))
+    if references is not None:
+        seeds = _reference_seeds(references, depth, all_funcs, max_depth)
+
+        def successors_with_refs(func: FunctionRef) -> Iterable[FunctionRef]:
+            return [
+                *graph.reachable_callee_refs_of(func),
+                *references.edges.get(func, ()),
+            ]
+
+        _flood(depth, all_funcs, successors_with_refs, max_depth, seeds)
+
+    alive = set(depth)
     dead_funcs = all_funcs - alive
     results: list[DeadFunction] = []
 
@@ -219,16 +253,151 @@ def find_transitive_dead_code(
             else:
                 reason = "no_callers_has_dead_callees"
 
+        confidence, confidence_reason = _confidence_for(func)
         results.append(
             DeadFunction(
                 function=func,
                 reason=reason,
                 dead_callees=dead_callee_names,
+                confidence=confidence,
+                confidence_reason=confidence_reason,
             )
         )
 
-    results.sort(key=lambda d: (d.function.file_path, d.function.start_line))
+    # #1790：高置信度在前，避免低置信度条目占满展示上限。
+    results.sort(
+        key=lambda d: (
+            d.confidence != CONFIDENCE_HIGH,
+            d.function.file_path,
+            d.function.start_line,
+        )
+    )
     return results
+
+
+def _flood(
+    depth: dict[FunctionRef, int],
+    universe: set[FunctionRef],
+    successors: Callable[[FunctionRef], Iterable[FunctionRef]],
+    max_depth: int,
+    start: Iterable[FunctionRef],
+) -> None:
+    """从 ``start`` 出发做 BFS，就地把可达函数连同深度写入 ``depth``。
+
+    深度达到 ``max_depth`` 的函数不再展开，与引用边共用同一个深度上限。
+    """
+    queue: deque[FunctionRef] = deque(start)
+    while queue:
+        func = queue.popleft()
+        current = depth[func]
+        if current >= max_depth:
+            continue
+        for callee in successors(func):
+            if callee not in depth and callee in universe:
+                depth[callee] = current + 1
+                queue.append(callee)
+
+
+def _reference_seeds(
+    references: ReferenceIndex,
+    depth: dict[FunctionRef, int],
+    universe: set[FunctionRef],
+    max_depth: int,
+) -> list[FunctionRef]:
+    """#1790：把引用补成新的存活函数并返回它们（就地写入 ``depth``）。
+
+    模块作用域引用与装饰器登记是根（深度 0）；存活函数里的引用与调用边一样
+    计一层，超过 ``max_depth`` 的不展开。
+    """
+    seeds: list[FunctionRef] = []
+    for target in (*references.module_targets, *references.registered):
+        if target in universe and target not in depth:
+            depth[target] = 0
+            seeds.append(target)
+    for source, targets in references.edges.items():
+        level = depth.get(source)
+        if level is None or level >= max_depth:
+            continue
+        for target in targets:
+            if target in universe and target not in depth:
+                depth[target] = level + 1
+                seeds.append(target)
+    return seeds
+
+
+def _is_implicit_entry(func: FunctionRef) -> bool:
+    """#1790：由运行时隐式调用的方法（``__init__`` / ``__call__`` /
+    ``__post_init__`` / JS ``constructor`` ...）没有显式调用点，但不是死代码。"""
+    if func.language == "python":
+        return bool(
+            _PY_DUNDER.match(func.name) or _PY_CONVENTION_CALLBACK.match(func.name)
+        )
+    if func.language in ("javascript", "typescript"):
+        return func.name == "constructor"
+    return False
+
+
+def _module_scope_callees(graph: CallGraph) -> set[FunctionRef]:
+    """模块作用域（``<module>`` 伪调用方，#1622）调用到的函数。"""
+    try:
+        # ``Any``：测试替身可能给出非 dict 的映射，下面单独检查。
+        callees_map: Any = graph.callees_map()
+    except Exception:  # noqa: BLE001 — 取不到映射只会少几个根
+        return set()
+    if not isinstance(callees_map, dict):
+        return set()
+    roots: set[FunctionRef] = set()
+    for caller in callees_map:
+        if isinstance(caller, FunctionRef) and is_module_caller(caller.name):
+            roots.update(graph.reachable_callee_refs_of(caller))
+    return roots
+
+
+def _reference_index(
+    graph: CallGraph, candidates: set[FunctionRef]
+) -> ReferenceIndex | None:
+    """仍判为死的 ``candidates`` 的“作为值”引用；图没有可扫描的磁盘项目时为 None。"""
+    if not candidates:
+        return None
+    project_root = getattr(graph, "project_root", None)
+    if not isinstance(project_root, (str, os.PathLike)):
+        return None
+    if not Path(project_root).is_dir():
+        return None
+    return build_reference_index(project_root, graph.function_refs(), candidates)
+
+
+def filter_value_referenced(
+    graph: CallGraph, candidates: list[FunctionRef]
+) -> list[FunctionRef]:
+    """#1790：去掉运行时隐式调用、或在任何位置作为值使用（分发表、实参、
+    装饰器）的候选。``codegraph_overview`` 的孤立函数列表共用此规则，两处结论一致。"""
+    remaining = [func for func in candidates if not _is_implicit_entry(func)]
+    pending = set(remaining)
+    references = _reference_index(graph, pending)
+    if references is None:
+        return remaining
+    # 只认可来自模块作用域、装饰器登记或非候选函数的引用；候选函数自己的引用
+    # 要等该候选被认定为“在用”之后才生效，避免死函数把目标藏起来。
+    used = set(references.module_targets) | set(references.registered)
+    for source, targets in references.edges.items():
+        if source not in pending:
+            used.update(targets)
+    frontier = list(used & pending)
+    while frontier:
+        source = frontier.pop()
+        for target in references.edges.get(source, ()):
+            if target in pending and target not in used:
+                used.add(target)
+                frontier.append(target)
+    return [func for func in remaining if func not in used]
+
+
+def _confidence_for(func: FunctionRef) -> tuple[str, str | None]:
+    """#1790：模块路径无法解析的文件，跨文件引用连不上，结论只能是低置信度。"""
+    if module_path_unresolvable(func.file_path):
+        return CONFIDENCE_LOW, LOW_CONFIDENCE_UNRESOLVED_MODULE
+    return CONFIDENCE_HIGH, None
 
 
 def find_unused_imports(
