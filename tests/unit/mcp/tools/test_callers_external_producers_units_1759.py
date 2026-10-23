@@ -244,7 +244,8 @@ def test_sibling_methods_edges() -> None:
     assert callers_tool._sibling_methods(graph, "m", "pkg/mod.py") == ["A.m", "B.m"]
     assert callers_tool._sibling_methods(graph, "A.m", "pkg/mod.py") == []
     assert callers_tool._sibling_methods(graph, "m", None) == []
-    assert callers_tool._sibling_methods(_Graph(None), "m", "pkg/mod.py") == []
+    # RFC-0040：读不到调用图不是“没有同名方法”。
+    assert callers_tool._sibling_methods(_Graph(None), "m", "pkg/mod.py") is None
 
 
 @pytest.mark.parametrize(
