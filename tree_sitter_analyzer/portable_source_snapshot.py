@@ -57,6 +57,18 @@ def _suffix(name: str) -> str:
     return ""
 
 
+def _may_be_directory(entry: os.DirEntry[str]) -> bool:
+    """目录枚举记下的类型（不跟随链接）可能是目录；读不到类型时按可能处理。
+
+    只用于跳过不支持扩展名的项：它们只有在 ``lstat`` 判为目录时才会被处理，而
+    目录（含 junction）在这里总是返回 True，交给 ``lstat`` 判定。
+    """
+    try:
+        return entry.is_dir(follow_symlinks=False)
+    except OSError:
+        return True
+
+
 def _scope_root(project_root: Path, relative: str) -> Path:
     normalized = relative.replace("\\", "/")
     parts = tuple(part for part in normalized.split("/") if part not in ("", "."))
@@ -136,8 +148,14 @@ def _portable_inventory(
                             or counters["path_bytes"] > _SOURCE_PATH_BYTE_BUDGET
                         ):
                             raise OverflowError
-                        before = os.lstat(path)
                         language = EXT_TO_LANG.get(_suffix(name))
+                        if language is None and not _may_be_directory(entry):
+                            # #1778：不支持的非目录项无论 lstat 结果如何都跳过，不为它
+                            # 付一次打开文件的 lstat（Windows 上每次约 0.1–0.2 ms，
+                            # fastapi 一遍扫描约 2 千次）。扫描期间换成目录的项会改变
+                            # 所在目录的身份，由下面的目录身份复核标为不安全。
+                            continue
+                        before = os.lstat(path)
                         if stat.S_ISDIR(before.st_mode):
                             if name in EXCLUDE_DIRS or name.startswith("."):
                                 continue
