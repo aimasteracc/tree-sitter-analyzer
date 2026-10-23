@@ -139,7 +139,7 @@ def _evidence(answer: dict) -> set[str]:
         ("flattenError", "src/core/errors.ts", "src/classic/errors.ts:flat"),
         ("toDotPath", "src/core/errors.ts", "src/classic/chain.ts:chain"),
         ("flattenError", "src/core/errors.ts", "src/classic/chain.ts:top"),
-        ("Status.merge", "src/jwt/jws.ts", "src/jwt/jwt.ts:<module>"),
+        ("Status.merge", "src/jwt/jws.ts", "src/jwt/jwt.ts:verify"),
         ("signing", "src/jwt/jws.ts", "src/jwt/jwt.ts:sign"),
     ],
     ids=[
@@ -170,7 +170,7 @@ async def test_an_es_import_binds_the_cross_file_call(
 async def test_a_module_level_call_is_never_lost(
     tmp_path: Path, name: str, site: str
 ) -> None:
-    """模块级箭头函数里的调用没有调用方名字：它要么被列出，要么作为证据出现。
+    """箭头函数常量里的调用：它要么被列出，要么作为证据出现。
 
     #1768：改名的默认导入曾让 ``signer`` 答出 ``complete, 0``。
     """
@@ -178,7 +178,8 @@ async def test_a_module_level_call_is_never_lost(
 
     answer = await _callers(root, name, "src/jwt/jws.ts")
 
-    listed = "src/jwt/jwt.ts:<module>" in _caller_sites(answer)
+    # #1763: the arrow constant `verify` is a function, so the call is attributed to it.
+    listed = "src/jwt/jwt.ts:verify" in _caller_sites(answer)
     assert listed or site in _evidence(answer), answer
     if answer["completeness"] == "complete":
         assert listed, answer
