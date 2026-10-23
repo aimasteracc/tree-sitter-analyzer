@@ -699,3 +699,126 @@ def test_batch_reader_is_safe_under_concurrent_reads(tmp_path, kernel):
 
     assert data == [f"value = {number}\n".encode() for number in range(24)]
     assert len([r for r in kernel.requests if r[1] == 0x80]) == 2 + 2  # pin + verify
+
+
+@pytest.fixture
+def windows_oracle(kernel, monkeypatch):
+    from tree_sitter_analyzer import source_oracle
+
+    monkeypatch.setattr(source_oracle, "_supports_nofollow", lambda: False)
+    monkeypatch.setattr(
+        source_oracle, "os", SimpleNamespace(**{**vars(os), "name": "nt"})
+    )
+    return source_oracle
+
+
+def test_source_batch_reader_maps_windows_reader_outcomes(tmp_path, windows_oracle):
+    (source,) = _populate(tmp_path, 1)
+    oracle = windows_oracle
+
+    with oracle.SourceBatchReader(
+        str(tmp_path), deadline=time.monotonic() + 5
+    ) as reader:
+        captured = reader.read(source, limit=1024)
+        missing = reader.read("pkg/absent.py", limit=1024)
+        with pytest.raises(oracle.SourceOracleError, match="^DIFF_SNAPSHOT_CAPACITY$"):
+            reader.read(source, limit=1)
+        reader.verify()
+
+    assert (captured.kind, captured.data) == ("file", b"value = 0\n")
+    assert len(captured.metadata) == 3
+    assert missing.kind == "missing"
+
+
+def test_source_batch_reader_verify_maps_directory_drift(tmp_path, windows_oracle):
+    (source,) = _populate(tmp_path, 1)
+    oracle = windows_oracle
+    with oracle.SourceBatchReader(
+        str(tmp_path), deadline=time.monotonic() + 5
+    ) as reader:
+        reader.read(source, limit=1024)
+        (tmp_path / "pkg").rename(tmp_path / "moved")
+        (tmp_path / "pkg").mkdir()
+        with pytest.raises(
+            oracle.SourceOracleError, match="^DIFF_SNAPSHOT_SOURCE_CHANGED$"
+        ):
+            reader.verify()
+
+
+def test_source_batch_reader_maps_construction_failures(
+    tmp_path, windows_oracle, kernel
+):
+    oracle = windows_oracle
+    with pytest.raises(oracle.SourceOracleError, match="^DIFF_SNAPSHOT_TIMEOUT$"):
+        oracle.SourceBatchReader(str(tmp_path), deadline=0.0)
+    kernel.fail = "open"
+    with pytest.raises(oracle.SourceOracleError, match="^DIFF_SNAPSHOT_UNSAFE_PATH$"):
+        oracle.SourceBatchReader(str(tmp_path), deadline=time.monotonic() + 5)
+
+
+def test_source_batch_reader_close_failure_surfaces_only_on_success(
+    tmp_path, windows_oracle, kernel
+):
+    oracle = windows_oracle
+    reader = oracle.SourceBatchReader(str(tmp_path), deadline=time.monotonic() + 5)
+    kernel.fail = "close"
+    with pytest.raises(oracle.SourceOracleError, match="^DIFF_SNAPSHOT_UNSAFE_PATH$"):
+        with reader:
+            pass
+    kernel.fail = None
+    reader = oracle.SourceBatchReader(str(tmp_path), deadline=time.monotonic() + 5)
+    kernel.fail = "close"
+    with pytest.raises(KeyError, match="original"):
+        with reader:
+            raise KeyError("original")
+
+
+def test_source_batch_reader_rejects_unsupported_platforms(tmp_path, monkeypatch):
+    from tree_sitter_analyzer import source_oracle
+
+    monkeypatch.setattr(source_oracle, "_supports_nofollow", lambda: False)
+    monkeypatch.setattr(
+        source_oracle, "os", SimpleNamespace(**{**vars(os), "name": "java"})
+    )
+    with pytest.raises(
+        source_oracle.SourceOracleError, match="^DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED$"
+    ):
+        source_oracle.SourceBatchReader(str(tmp_path), deadline=time.monotonic() + 5)
+
+
+def test_batch_reader_releases_handle_when_identity_fails(tmp_path, kernel):
+    paths = _populate(tmp_path, 1)
+    with owner.PinnedWorkspaceReader(
+        str(tmp_path), deadline=time.monotonic() + 5
+    ) as reader:
+        kernel.fail = "identifier"
+        with pytest.raises(OSError):
+            reader.read(paths[0], limit=1024)
+        kernel.fail = None
+    assert all(directory is False for _p, directory, _i in kernel.handles.values())
+    kernel.fail = "identifier"
+    with pytest.raises(OSError):
+        owner.PinnedWorkspaceReader(str(tmp_path), deadline=time.monotonic() + 5)
+    assert all(directory is False for _p, directory, _i in kernel.handles.values())
+
+
+def test_batch_reader_close_reports_failure_after_releasing_all(tmp_path, kernel):
+    paths = _populate(tmp_path, 1)
+    reader = owner.PinnedWorkspaceReader(str(tmp_path), deadline=time.monotonic() + 5)
+    reader.read(paths[0], limit=1024)
+    kernel.fail = "close"
+    with pytest.raises(OSError):
+        reader.close()
+    assert all(directory is False for _p, directory, _i in kernel.handles.values())
+
+
+def test_batch_reader_verify_maps_reopen_failure(tmp_path, kernel):
+    paths = _populate(tmp_path, 1)
+    with owner.PinnedWorkspaceReader(
+        str(tmp_path), deadline=time.monotonic() + 5
+    ) as reader:
+        reader.read(paths[0], limit=1024)
+        kernel.fail = "open"
+        with pytest.raises(ValueError, match="^INDEX_SOURCE_CHANGED$"):
+            reader.verify()
+        kernel.fail = None

@@ -415,3 +415,144 @@ def test_tool_error_without_details_keeps_legacy_envelope(tmp_path, monkeypatch)
     )
     assert "budget" not in result
     assert "scan_progress" not in result
+
+
+def _run_main(monkeypatch, capsys, payload) -> dict:
+    import io
+
+    monkeypatch.setattr(
+        text_search.sys,
+        "stdin",
+        io.StringIO(payload if isinstance(payload, str) else json.dumps(payload)),
+    )
+    text_search._main()
+    return json.loads(capsys.readouterr().out)
+
+
+def _worker_payload(project: Path) -> dict:
+    return {
+        "project_root": str(project),
+        "root": ".",
+        "query": "needle",
+        "case_mode": "smart",
+        "word_match": False,
+        "include_globs": [],
+        "exclude_globs": [],
+        "timeout": 5.0,
+    }
+
+
+def test_worker_main_reports_complete_result(tmp_path, monkeypatch, capsys):
+    _write_files(tmp_path, 2)
+
+    result = _run_main(monkeypatch, capsys, _worker_payload(tmp_path))
+
+    assert [hit["file"] for hit in result["hits"]] == ["f00.py", "f01.py"]
+    assert result["scan_complete"] is True
+
+
+def test_worker_main_serialises_budget_details(tmp_path, monkeypatch, capsys):
+    _write_files(tmp_path, 1, body="needle\n" * 3)
+    monkeypatch.setattr(text_search, "_MAX_MATCHES", 1)
+
+    result = _run_main(monkeypatch, capsys, _worker_payload(tmp_path))
+
+    assert result["error"] == "SOURCE_MATCH_BUDGET_EXCEEDED"
+    assert result["details"]["budget"]["name"] == "matches"
+
+
+def test_worker_main_rejects_invalid_request(monkeypatch, capsys):
+    assert _run_main(monkeypatch, capsys, {"query": "x"}) == {
+        "error": "SOURCE_WORKER_INVALID_REQUEST"
+    }
+
+
+def test_worker_main_names_response_budget(tmp_path, monkeypatch, capsys):
+    _write_files(tmp_path, 1)
+    monkeypatch.setattr(text_search, "_MAX_RESPONSE_BYTES", 10)
+
+    result = _run_main(monkeypatch, capsys, _worker_payload(tmp_path))
+
+    assert result["error"] == "SOURCE_RESPONSE_BUDGET_EXCEEDED"
+    assert result["details"]["budget"] == {
+        "name": "response_bytes",
+        "limit": 10,
+        "unit": "bytes",
+    }
+
+
+def test_last_progress_ignores_noise() -> None:
+    stderr = "\n".join(
+        ["not json", json.dumps([1, 2]), json.dumps({"progress": "bad"})]
+    )
+    assert text_search._last_progress(stderr) is None
+    assert text_search._last_progress(None) is None
+
+
+def test_reader_construction_timeout_reports_time_budget(tmp_path, monkeypatch):
+    from tree_sitter_analyzer.source_oracle import SourceOracleError
+
+    def refuse(_root, *, deadline):
+        raise SourceOracleError("DIFF_SNAPSHOT_TIMEOUT")
+
+    monkeypatch.setattr(text_search, "SourceBatchReader", refuse)
+    with pytest.raises(TextSearchError) as caught:
+        search_text(_request(tmp_path, timeout=2.0))
+    assert caught.value.details["budget"] == {
+        "name": "time",
+        "limit": 2.0,
+        "unit": "seconds",
+    }
+
+
+def test_end_of_scan_verify_failure_fails_closed(tmp_path, monkeypatch):
+    from tree_sitter_analyzer.source_oracle import SourceOracleError
+
+    _write_files(tmp_path, 2)
+
+    class _DriftReader(_GatedReader):
+        def verify(self) -> None:
+            raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED")
+
+    monkeypatch.setattr(text_search, "SourceBatchReader", _DriftReader(parties=1))
+    with pytest.raises(TextSearchError, match="^SOURCE_FILE_CHANGED$"):
+        search_text(_request(tmp_path))
+
+
+def test_symlink_and_special_entries_are_skipped_in_reader_threads(
+    tmp_path, monkeypatch
+):
+    _write_files(tmp_path, 1)
+    (tmp_path / "missing-now.py").write_text("needle\n", encoding="utf-8")
+    real_lstat = Path.lstat
+
+    def lstat(self):
+        if self.name == "missing-now.py":
+            raise FileNotFoundError(self)
+        return real_lstat(self)
+
+    monkeypatch.setattr(Path, "lstat", lstat)
+    with pytest.raises(TextSearchError, match="^SOURCE_FILE_UNAVAILABLE$"):
+        search_text(_request(tmp_path))
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("file_bytes", "Exclude the oversized file"),
+        ("matches", "more specific query"),
+        ("entries", "narrow"),
+    ],
+)
+def test_tool_budget_explanation_names_the_next_action(name, expected) -> None:
+    from tree_sitter_analyzer.mcp.tools.text_search_tool import _budget_explanation
+
+    summary, next_step = _budget_explanation(
+        "SOURCE_X", {"name": name, "limit": 1, "unit": "u", "file": "a.py"}, None
+    )
+
+    assert summary == (
+        f"text search failed: SOURCE_X ({name} budget 1 u exceeded; at a.py); "
+        "no partial results are returned"
+    )
+    assert expected in next_step
