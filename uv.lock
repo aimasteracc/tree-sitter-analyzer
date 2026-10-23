@@ -3332,7 +3332,7 @@ wheels = [
 
 [[package]]
 name = "tree-sitter-analyzer"
-version = "2.2.0"
+version = "3.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
@@ -3663,7 +3663,7 @@ requires-dist = [
     { name = "isort", marker = "extra == 'dev'", specifier = ">=8.0.1" },
     { name = "isort", marker = "extra == 'full'", specifier = ">=8.0.1" },
     { name = "jsonschema", specifier = ">=4.26.0" },
-    { name = "ladybug", marker = "extra == 'graph'", specifier = ">=0.17.1,<0.21.0" },
+    { name = "ladybug", marker = "extra == 'graph'", specifier = ">=0.17.1,<0.22.0" },
     { name = "mcp", specifier = ">=1.12.3,<3.0.0" },
     { name = "mcp", marker = "extra == 'all'", specifier = ">=1.12.2" },
     { name = "mcp", marker = "extra == 'full'", specifier = ">=1.12.2" },
@@ -3797,10 +3797,10 @@ requires-dist = [
     { name = "tree-sitter-markdown", marker = "extra == 'integration'", specifier = ">=0.3.1" },
     { name = "tree-sitter-markdown", marker = "extra == 'markdown'", specifier = ">=0.3.1" },
     { name = "tree-sitter-php", specifier = ">=0.24.1" },
-    { name = "tree-sitter-php", marker = "extra == 'all-languages'", specifier = ">=0.23.0,<0.25.0" },
-    { name = "tree-sitter-php", marker = "extra == 'php'", specifier = ">=0.23.0,<0.25.0" },
-    { name = "tree-sitter-php", marker = "extra == 'test'", specifier = ">=0.23.0,<0.25.0" },
-    { name = "tree-sitter-php", marker = "extra == 'web'", specifier = ">=0.23.0,<0.25.0" },
+    { name = "tree-sitter-php", marker = "extra == 'all-languages'", specifier = ">=0.23.0,<0.26.0" },
+    { name = "tree-sitter-php", marker = "extra == 'php'", specifier = ">=0.23.0,<0.26.0" },
+    { name = "tree-sitter-php", marker = "extra == 'test'", specifier = ">=0.23.0,<0.26.0" },
+    { name = "tree-sitter-php", marker = "extra == 'web'", specifier = ">=0.23.0,<0.26.0" },
     { name = "tree-sitter-python", specifier = ">=0.23.6" },
     { name = "tree-sitter-python", marker = "extra == 'all'", specifier = ">=0.23.0,<0.25.0" },
     { name = "tree-sitter-python", marker = "extra == 'all-languages'", specifier = ">=0.23.0,<0.25.0" },
