@@ -16,6 +16,7 @@ from typing import Any, cast
 
 from ...call_graph import CachedCallGraph, CallGraph
 from ...call_graph_binding import RefIdentity, ref_identity
+from ...dead_code_analyzer import filter_value_referenced
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
 from .index_bound_graph import index_bound_graph, reset_index_bound_graph
@@ -252,20 +253,25 @@ def _find_hub_functions(graph: CallGraph, limit: int) -> list[dict[str, Any]]:
 
 
 def _find_dead_code(graph: CallGraph, limit: int) -> list[dict[str, Any]]:
-    """Functions with zero callers AND zero callees (dead code candidates)."""
-    dead = []
-    for func in graph.function_refs():
-        callers = graph.caller_refs_of(func)
-        callees = graph.callee_refs_of(func)
-        if not callers and not callees:
-            dead.append(
-                {
-                    "name": func.name,
-                    "file": func.file_path,
-                    "line": func.start_line,
-                    "language": func.language,
-                }
-            )
+    """Functions with zero callers AND zero callees (dead code candidates).
+
+    #1790：运行时隐式调用、或作为值使用（分发表、实参、装饰器）的孤立函数
+    不是死代码，按 ``dead_code_analyzer`` 的同一规则剔除。
+    """
+    orphans = [
+        func
+        for func in graph.function_refs()
+        if not graph.caller_refs_of(func) and not graph.callee_refs_of(func)
+    ]
+    dead = [
+        {
+            "name": func.name,
+            "file": func.file_path,
+            "line": func.start_line,
+            "language": func.language,
+        }
+        for func in filter_value_referenced(graph, orphans)
+    ]
     dead.sort(key=lambda x: (x["file"], x["name"]))
     return dead[:limit]
 
