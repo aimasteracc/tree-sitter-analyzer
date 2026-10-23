@@ -7,7 +7,7 @@ import hashlib
 import os
 import stat
 import time
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from typing import Literal
 
@@ -121,26 +121,75 @@ def capture_current_source_snapshot(
     deadline = (
         time.monotonic() + _SOURCE_DEADLINE_SECONDS if deadline is None else deadline
     )
-    root = os.path.abspath(project_root)
     try:
-        root_before = os.stat(root, follow_symlinks=False)
-        first, unsafe = _inventory(root, deadline, scope, with_content=True)
-        second, unsafe_second = _inventory(root, deadline, scope, with_content=False)
-        revalidated = _revalidate_source_rows(root, second, deadline)
-        root_current = _reopened_root_matches(root, root_before)
+        scan = _scan_source_scope(os.path.abspath(project_root), scope, deadline)
     except TimeoutError:
-        return CurrentSourceSnapshot(
-            frozenset(), None, None, "unknown", "SOURCE_SCAN_DEADLINE"
-        )
+        return _unknown_snapshot("SOURCE_SCAN_DEADLINE")
     except OverflowError:
-        return CurrentSourceSnapshot(
-            frozenset(), None, None, "unknown", "SOURCE_SCOPE_UNBOUNDED"
-        )
+        return _unknown_snapshot("SOURCE_SCOPE_UNBOUNDED")
     except OSError:
+        return _unknown_snapshot("SOURCE_SCOPE_UNREADABLE")
+
+    rows = frozenset(
+        (path, marker.split("|", 1)[1], language)
+        for path, marker, language in scan.first
+    )
+    try:
+        fingerprint = inventory_fingerprint(rows, deadline=deadline)
+    except TimeoutError:
+        return _unknown_snapshot("SOURCE_SCAN_DEADLINE")
+    generation = "idxsrc-v3:" + fingerprint.removeprefix("sha256:")
+    if not scan.exact():
         return CurrentSourceSnapshot(
-            frozenset(), None, None, "unknown", "SOURCE_SCOPE_UNREADABLE"
+            rows, fingerprint, generation, "unsafe", "SOURCE_SCOPE_UNSAFE"
+        )
+    return CurrentSourceSnapshot(rows, fingerprint, generation, "exact", None)
+
+
+def _unknown_snapshot(reason: str) -> CurrentSourceSnapshot:
+    """A snapshot whose source state could not be determined."""
+    return CurrentSourceSnapshot(frozenset(), None, None, "unknown", reason)
+
+
+@dataclass(frozen=True, slots=True)
+class _SourceScan:
+    """The two inventories of one capture and the checks made around them."""
+
+    first: frozenset[tuple[str, str, str]]
+    unsafe: bool
+    second: frozenset[tuple[str, str, str]]
+    unsafe_second: bool
+    revalidated: bool
+    root_current: bool
+
+    def exact(self) -> bool:
+        """Both walks are clean, agree with each other, and still match the tree."""
+        return (
+            not self.unsafe
+            and not self.unsafe_second
+            and self.root_current
+            and _inventories_agree(self.first, self.second)
+            and self.revalidated
         )
 
+
+def _scan_source_scope(
+    root: str, scope: SourceScopeDescriptor, deadline: float
+) -> _SourceScan:
+    """Walk the scope with content, walk it again by metadata, then revalidate."""
+    root_before = os.stat(root, follow_symlinks=False)
+    first, unsafe = _inventory(root, deadline, scope, with_content=True)
+    second, unsafe_second = _inventory(root, deadline, scope, with_content=False)
+    revalidated = _revalidate_source_rows(root, second, deadline)
+    root_current = _reopened_root_matches(root, root_before)
+    return _SourceScan(first, unsafe, second, unsafe_second, revalidated, root_current)
+
+
+def _inventories_agree(
+    first: frozenset[tuple[str, str, str]],
+    second: frozenset[tuple[str, str, str]],
+) -> bool:
+    """The content walk's metadata matches the metadata walk, path for path."""
     metadata = {(path, language): marker for path, marker, language in second}
     stable = all(
         metadata.get((path, language)) == marker.split("|", 1)[0]
@@ -149,30 +198,21 @@ def capture_current_source_snapshot(
     first_scope = frozenset((r[0], r[2]) for r in first)
     second_scope = frozenset((r[0], r[2]) for r in second)
     unique_scope = len(first_scope) == len(first) and len(second_scope) == len(second)
-    same_paths = first_scope == second_scope
-    rows = frozenset(
-        (path, marker.split("|", 1)[1], language) for path, marker, language in first
-    )
-    try:
-        fingerprint = inventory_fingerprint(rows, deadline=deadline)
-    except TimeoutError:
-        return CurrentSourceSnapshot(
-            frozenset(), None, None, "unknown", "SOURCE_SCAN_DEADLINE"
-        )
-    generation = "idxsrc-v3:" + fingerprint.removeprefix("sha256:")
-    if (
-        unsafe
-        or unsafe_second
-        or not root_current
-        or not stable
-        or not revalidated
-        or not same_paths
-        or not unique_scope
-    ):
-        return CurrentSourceSnapshot(
-            rows, fingerprint, generation, "unsafe", "SOURCE_SCOPE_UNSAFE"
-        )
-    return CurrentSourceSnapshot(rows, fingerprint, generation, "exact", None)
+    return stable and first_scope == second_scope and unique_scope
+
+
+def _directory_open_flags() -> int:
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    return flags | getattr(os, "O_NOFOLLOW", 0)
+
+
+def _leaf_open_flags() -> int:
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    return flags | getattr(os, "O_NONBLOCK", 0)
+
+
+#: One admitted leaf: its path parts, its ancestors' metadata and its own metadata.
+_AdmittedRow = tuple[tuple[str, ...], tuple[os.stat_result, ...], os.stat_result]
 
 
 def _revalidate_source_rows(
@@ -189,79 +229,17 @@ def _revalidate_source_rows(
     early leaf's stable interval reaches the recheck phase while a late leaf's
     interval starts in the admission phase, without retaining O(files) fds.
     """
-    directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-    directory_flags |= getattr(os, "O_NOFOLLOW", 0)
-    leaf_flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-    leaf_flags |= getattr(os, "O_NONBLOCK", 0)
     root_before = os.stat(root, follow_symlinks=False)
-    root_fd = os.open(root, directory_flags)
+    root_fd = os.open(root, _directory_open_flags())
     root_opened = os.fstat(root_fd)
-    admitted_rows: list[
-        tuple[tuple[str, ...], tuple[os.stat_result, ...], os.stat_result]
-    ] = []
-
-    def open_chain(
-        parts: tuple[str, ...], *, check_deadline: bool
-    ) -> tuple[int, list[int], tuple[os.stat_result, ...], os.stat_result]:
-        current = os.dup(root_fd)
-        opened_fds = [current]
-        ancestors: list[os.stat_result] = []
-        try:
-            for component in parts[:-1]:
-                if check_deadline and time.monotonic() > deadline:
-                    raise TimeoutError
-                before = os.stat(component, dir_fd=current, follow_symlinks=False)
-                child = os.open(component, directory_flags, dir_fd=current)
-                opened_fds.append(child)
-                opened = os.fstat(child)
-                if not stat.S_ISDIR(opened.st_mode) or not opened_entry_matches(
-                    before, opened
-                ):
-                    raise OSError("source ancestor changed")
-                ancestors.append(opened)
-                current = child
-            if check_deadline and time.monotonic() > deadline:
-                raise TimeoutError
-            before = os.stat(parts[-1], dir_fd=current, follow_symlinks=False)
-            leaf = os.open(parts[-1], leaf_flags, dir_fd=current)
-            opened_fds.append(leaf)
-            opened = os.fstat(leaf)
-            if not stat.S_ISREG(opened.st_mode) or not opened_entry_matches(
-                before, opened
-            ):
-                raise OSError("source leaf changed")
-            return leaf, opened_fds, tuple(ancestors), opened
-        except Exception:
-            for fd in reversed(opened_fds):
-                os.close(fd)
-            raise
-
     try:
         if not stat.S_ISDIR(root_opened.st_mode) or not opened_entry_matches(
             root_before, root_opened
         ):
             return False
-
-        # Admission: each descriptor chain is short-lived, but its complete
-        # identity/ctime record survives until the common recheck boundary.
-        for relative, expected_marker, _language in rows:
-            if time.monotonic() > deadline:
-                raise TimeoutError
-            parts = tuple(relative.split("/"))
-            if not parts or any(part in ("", ".", "..") for part in parts):
-                return False
-            try:
-                _leaf, fds, ancestors, opened = open_chain(parts, check_deadline=False)
-                if _metadata_marker(opened) != expected_marker:
-                    return False
-                admitted_rows.append((parts, ancestors, opened))
-            except OSError:
-                return False
-            finally:
-                if "fds" in locals():
-                    for fd in reversed(fds):
-                        os.close(fd)
-                    del fds
+        admitted_rows = _admit_rows(root_fd, rows, deadline)
+        if admitted_rows is None:
+            return False
 
         # The pinned root itself must still name the caller-visible root before
         # chain replay; otherwise a stable but renamed tree could authenticate.
@@ -272,35 +250,155 @@ def _revalidate_source_rows(
                 return False
         except OSError:
             return False
-
-        # Recheck: reopen every admitted chain from the pinned root and compare
-        # both identity and ctime-bearing mutation metadata.
-        for parts, admitted_ancestors, admitted_leaf in admitted_rows:
-            if time.monotonic() > deadline:
-                raise TimeoutError
-            try:
-                _leaf, fds, current_ancestors, current_leaf = open_chain(
-                    parts, check_deadline=True
-                )
-                if not _same_file_metadata(admitted_leaf, current_leaf):
-                    return False
-                if len(admitted_ancestors) != len(current_ancestors) or any(
-                    not _same_file_metadata(admitted, current)
-                    for admitted, current in zip(
-                        admitted_ancestors, current_ancestors, strict=True
-                    )
-                ):
-                    return False
-            except OSError:
-                return False
-            finally:
-                if "fds" in locals():
-                    for fd in reversed(fds):
-                        os.close(fd)
-                    del fds
-        return True
+        return _recheck_rows(root_fd, admitted_rows, deadline)
     finally:
         os.close(root_fd)
+
+
+def _admit_rows(
+    root_fd: int, rows: Iterable[tuple[str, str, str]], deadline: float
+) -> list[_AdmittedRow] | None:
+    """Admission: open each row's chain once and record it; None if any row fails.
+
+    Each descriptor chain is short-lived, but its complete identity/ctime record
+    survives until the common recheck boundary.
+    """
+    admitted_rows: list[_AdmittedRow] = []
+    for relative, expected_marker, _language in rows:
+        if time.monotonic() > deadline:
+            raise TimeoutError
+        parts = tuple(relative.split("/"))
+        if not parts or any(part in ("", ".", "..") for part in parts):
+            return None
+        try:
+            fds, ancestors, opened = _open_chain(
+                root_fd, parts, deadline, check_deadline=False
+            )
+        except OSError:
+            return None
+        try:
+            if _metadata_marker(opened) != expected_marker:
+                return None
+        finally:
+            _close_descriptors(fds)
+        admitted_rows.append((parts, ancestors, opened))
+    return admitted_rows
+
+
+def _recheck_rows(
+    root_fd: int, admitted_rows: list[_AdmittedRow], deadline: float
+) -> bool:
+    """Recheck: reopen every admitted chain from the pinned root and compare
+    both identity and ctime-bearing mutation metadata."""
+    for parts, admitted_ancestors, admitted_leaf in admitted_rows:
+        if time.monotonic() > deadline:
+            raise TimeoutError
+        try:
+            fds, current_ancestors, current_leaf = _open_chain(
+                root_fd, parts, deadline, check_deadline=True
+            )
+        except OSError:
+            # Includes the chain's own deadline check (TimeoutError is an OSError).
+            return False
+        try:
+            if not _same_chain(
+                admitted_ancestors, admitted_leaf, current_ancestors, current_leaf
+            ):
+                return False
+        finally:
+            _close_descriptors(fds)
+    return True
+
+
+def _same_chain(
+    admitted_ancestors: tuple[os.stat_result, ...],
+    admitted_leaf: os.stat_result,
+    current_ancestors: tuple[os.stat_result, ...],
+    current_leaf: os.stat_result,
+) -> bool:
+    if not _same_file_metadata(admitted_leaf, current_leaf):
+        return False
+    return len(admitted_ancestors) == len(current_ancestors) and all(
+        _same_file_metadata(admitted, current)
+        for admitted, current in zip(admitted_ancestors, current_ancestors, strict=True)
+    )
+
+
+def _close_quietly(fd: int) -> None:
+    """Close ``fd`` during cleanup, ignoring an error (the walk already failed)."""
+    try:
+        os.close(fd)
+    except OSError:
+        pass
+
+
+def _close_descriptors(fds: list[int]) -> None:
+    for fd in reversed(fds):
+        os.close(fd)
+
+
+def _open_chain(
+    root_fd: int, parts: tuple[str, ...], deadline: float, *, check_deadline: bool
+) -> tuple[list[int], tuple[os.stat_result, ...], os.stat_result]:
+    """Open every ancestor and the leaf of ``parts`` from the pinned root.
+
+    Returns the open descriptors (the caller closes them), the opened ancestors'
+    metadata and the opened leaf's metadata. On any failure the descriptors
+    opened so far are closed before the error propagates.
+    """
+    current = os.dup(root_fd)
+    opened_fds = [current]
+    ancestors: list[os.stat_result] = []
+    try:
+        for component in parts[:-1]:
+            if check_deadline and time.monotonic() > deadline:
+                raise TimeoutError
+            current, opened = _open_verified_child(
+                current,
+                component,
+                _directory_open_flags(),
+                opened_fds,
+                stat.S_ISDIR,
+                "source ancestor changed",
+            )
+            ancestors.append(opened)
+        if check_deadline and time.monotonic() > deadline:
+            raise TimeoutError
+        _leaf, opened = _open_verified_child(
+            current,
+            parts[-1],
+            _leaf_open_flags(),
+            opened_fds,
+            stat.S_ISREG,
+            "source leaf changed",
+        )
+        return opened_fds, tuple(ancestors), opened
+    except Exception:
+        _close_descriptors(opened_fds)
+        raise
+
+
+def _open_verified_child(
+    parent_fd: int,
+    name: str,
+    flags: int,
+    opened_fds: list[int],
+    is_kind: Callable[[int], bool],
+    changed: str,
+) -> tuple[int, os.stat_result]:
+    """Open ``name`` under ``parent_fd``: it must be of the expected kind and be
+    the entry that was stat'ed, else ``OSError(changed)``.
+
+    The new descriptor is appended to ``opened_fds`` as soon as it exists, so the
+    caller's cleanup closes it on every failure path.
+    """
+    before = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    child = os.open(name, flags, dir_fd=parent_fd)
+    opened_fds.append(child)
+    opened = os.fstat(child)
+    if not is_kind(opened.st_mode) or not opened_entry_matches(before, opened):
+        raise OSError(changed)
+    return child, opened
 
 
 def _reopened_root_matches(root: str, expected: os.stat_result) -> bool:
@@ -337,157 +435,181 @@ def _inventory(
         # Portable pathname traversal cannot close descendant-reparse and path-swap
         # TOCTOU windows, so certification is deliberately unavailable.
         return frozenset(), True
-    rows: set[tuple[str, str, str]] = set()
-    unsafe = False
-    counters = {"entries": 0, "path_bytes": 0, "input": 0, "output": 0}
-    replay_limit = min(scope.certification_max_files, _SOURCE_PATH_BUDGET)
-    supported_count = 0
-    directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-    directory_flags |= getattr(os, "O_NOFOLLOW", 0)
+    walk = _InventoryWalk(deadline, scope, with_content)
     root_before = os.stat(root, follow_symlinks=False)
-    root_fd = os.open(root, directory_flags)
+    root_fd = os.open(root, _directory_open_flags())
     try:
         root_info = os.fstat(root_fd)
         if not stat.S_ISDIR(root_info.st_mode):
             raise OSError("source root is not a directory")
         if not opened_entry_matches(root_before, root_info):
             return frozenset(), True
+        walk.walk_scope_roots(root_fd)
+    finally:
+        os.close(root_fd)
+    return frozenset(walk.rows), walk.unsafe
+
+
+#: One directory being enumerated: its descriptor, relative path and entries.
+_OpenDirectory = tuple[int, str, Iterator[tuple[str, os.stat_result]]]
+
+
+class _InventoryWalk:
+    """One inventory walk: the rows found, whether any entry was unsafe, and the
+    entry, byte and file budgets it has consumed."""
+
+    def __init__(
+        self, deadline: float, scope: SourceScopeDescriptor, with_content: bool
+    ) -> None:
+        self.deadline = deadline
+        self.scope = scope
+        self.with_content = with_content
+        self.rows: set[tuple[str, str, str]] = set()
+        self.unsafe = False
+        self.counters = {"entries": 0, "path_bytes": 0, "input": 0, "output": 0}
+        self.replay_limit = min(scope.certification_max_files, _SOURCE_PATH_BUDGET)
+        self.supported_count = 0
+
+    def walk_scope_roots(self, root_fd: int) -> None:
+        """Pin every scope root under ``root_fd``, then walk each one in turn."""
         scope_roots: list[tuple[int, str]] = []
         try:
-            for relative_root in scope.roots:
-                normalized = (
-                    relative_root.replace("\\", "/")
-                    if os.name == "nt"
-                    else relative_root
-                )
-                parts = [
-                    part for part in normalized.split("/") if part not in ("", ".")
-                ]
-                if any(part == ".." for part in parts) or normalized.startswith("/"):
-                    raise OSError("source root escapes project")
-                current = os.dup(root_fd)
-                try:
-                    scope_root_safe = True
-                    for part in parts:
-                        before = os.stat(part, dir_fd=current, follow_symlinks=False)
-                        child = os.open(part, directory_flags, dir_fd=current)
-                        child_info = os.fstat(child)
-                        if not opened_entry_matches(before, child_info):
-                            os.close(child)
-                            unsafe = True
-                            scope_root_safe = False
-                            break
-                        os.close(current)
-                        current = child
-                    if scope_root_safe:
-                        scope_roots.append((current, "/".join(parts)))
-                    else:
-                        os.close(current)
-                except Exception:
-                    os.close(current)
-                    raise
-
+            for relative_root in self.scope.roots:
+                pinned = self._open_scope_root(root_fd, relative_root)
+                if pinned is not None:
+                    scope_roots.append(pinned)
             while scope_roots:
                 scope_fd, prefix = scope_roots.pop(0)
-                stack: list[tuple[int, str, Iterator[tuple[str, os.stat_result]]]] = []
-                try:
-                    stack.append(
-                        (
-                            scope_fd,
-                            prefix,
-                            _enumerate_directory(scope_fd, prefix, deadline, counters),
-                        )
-                    )
-                    while stack:
-                        directory_fd, relative_dir, entries = stack[-1]
-                        try:
-                            name, info = next(entries)
-                        except StopIteration:
-                            os.close(directory_fd)
-                            stack.pop()
-                            continue
-                        rel = f"{relative_dir}/{name}" if relative_dir else name
-                        mode = info.st_mode
-                        if stat.S_ISDIR(mode):
-                            if name in EXCLUDE_DIRS or name.startswith("."):
-                                continue
-                            try:
-                                child_fd = os.open(
-                                    name, directory_flags, dir_fd=directory_fd
-                                )
-                            except OSError:
-                                unsafe = True
-                                continue
-                            try:
-                                child_info = os.fstat(child_fd)
-                                if not stat.S_ISDIR(
-                                    child_info.st_mode
-                                ) or not opened_entry_matches(info, child_info):
-                                    unsafe = True
-                                    os.close(child_fd)
-                                    continue
-                                child_entries = _enumerate_directory(
-                                    child_fd, rel, deadline, counters
-                                )
-                            except Exception:
-                                os.close(child_fd)
-                                raise
-                            stack.append((child_fd, rel, child_entries))
-                            continue
-
-                        language = EXT_TO_LANG.get(os.path.splitext(name)[1].lower())
-                        if language is None:
-                            continue
-                        if os.name == "posix" and "\\" in rel:
-                            unsafe = True
-                        if any(
-                            fnmatch.fnmatch(rel, pattern)
-                            for pattern in scope.effective_excludes
-                        ):
-                            continue
-                        if not stat.S_ISREG(mode):
-                            unsafe = True
-                            rows.add(
-                                (rel, _metadata_marker(info) + "|<unsafe>", language)
-                            )
-                            continue
-                        # Match candidate discovery: max_files is consumed only by
-                        # selected, supported regular files. Persisted exclusions
-                        # and unsafe special files never consume that budget.
-                        supported_count += 1
-                        if supported_count > replay_limit:
-                            raise OverflowError
-                        if not with_content:
-                            rows.add((rel, _metadata_marker(info), language))
-                            continue
-                        marker, content_hash, clean = hash_source_or_unsafe(
-                            directory_fd,
-                            name,
-                            info,
-                            deadline,
-                            counters,
-                            _SOURCE_BYTE_BUDGET,
-                            _metadata_marker,
-                            _same_file_metadata,
-                        )
-                        if not clean:
-                            unsafe = True
-                        rows.add((rel, marker + "|" + content_hash, language))
-                finally:
-                    for directory_fd, _relative_dir, _entries in stack:
-                        try:
-                            os.close(directory_fd)
-                        except OSError:
-                            pass
+                self._walk_tree(scope_fd, prefix)
         finally:
             for scope_fd, _prefix in scope_roots:
                 try:
                     os.close(scope_fd)
                 except OSError:
                     pass
-    finally:
-        os.close(root_fd)
-    return frozenset(rows), unsafe
+
+    def _open_scope_root(
+        self, root_fd: int, relative_root: str
+    ) -> tuple[int, str] | None:
+        """Open one scope root component by component; None (unsafe) if one moved."""
+        normalized = (
+            relative_root.replace("\\", "/") if os.name == "nt" else relative_root
+        )
+        parts = [part for part in normalized.split("/") if part not in ("", ".")]
+        if any(part == ".." for part in parts) or normalized.startswith("/"):
+            raise OSError("source root escapes project")
+        current = os.dup(root_fd)
+        try:
+            for part in parts:
+                before = os.stat(part, dir_fd=current, follow_symlinks=False)
+                child = os.open(part, _directory_open_flags(), dir_fd=current)
+                child_info = os.fstat(child)
+                if not opened_entry_matches(before, child_info):
+                    os.close(child)
+                    self.unsafe = True
+                    os.close(current)
+                    return None
+                os.close(current)
+                current = child
+        except Exception:
+            os.close(current)
+            raise
+        return current, "/".join(parts)
+
+    def _walk_tree(self, scope_fd: int, prefix: str) -> None:
+        """Depth-first walk below one pinned scope root (it owns ``scope_fd``)."""
+        # Creating the generator runs none of its body; enumeration starts at next().
+        entries = _enumerate_directory(scope_fd, prefix, self.deadline, self.counters)
+        stack: list[_OpenDirectory] = [(scope_fd, prefix, entries)]
+        try:
+            while stack:
+                directory_fd, relative_dir, entries = stack[-1]
+                try:
+                    name, info = next(entries)
+                except StopIteration:
+                    os.close(directory_fd)
+                    stack.pop()
+                    continue
+                rel = f"{relative_dir}/{name}" if relative_dir else name
+                if stat.S_ISDIR(info.st_mode):
+                    child = self._open_subdirectory(directory_fd, name, rel, info)
+                    if child is not None:
+                        stack.append(child)
+                    continue
+                self._visit_file(directory_fd, name, rel, info)
+        finally:
+            for directory_fd, _relative_dir, _entries in stack:
+                try:
+                    os.close(directory_fd)
+                except OSError:
+                    pass
+
+    def _open_subdirectory(
+        self, directory_fd: int, name: str, rel: str, info: os.stat_result
+    ) -> _OpenDirectory | None:
+        """Pin a subdirectory to descend into; None if it is skipped or unsafe."""
+        if name in EXCLUDE_DIRS or name.startswith("."):
+            return None
+        try:
+            child_fd = os.open(name, _directory_open_flags(), dir_fd=directory_fd)
+        except OSError:
+            self.unsafe = True
+            return None
+        try:
+            child_info = os.fstat(child_fd)
+            if not stat.S_ISDIR(child_info.st_mode) or not opened_entry_matches(
+                info, child_info
+            ):
+                self.unsafe = True
+                os.close(child_fd)
+                return None
+            child_entries = _enumerate_directory(
+                child_fd, rel, self.deadline, self.counters
+            )
+        except Exception:
+            os.close(child_fd)
+            raise
+        return child_fd, rel, child_entries
+
+    def _visit_file(
+        self, directory_fd: int, name: str, rel: str, info: os.stat_result
+    ) -> None:
+        """Record one non-directory entry if it is a supported, selected source."""
+        language = EXT_TO_LANG.get(os.path.splitext(name)[1].lower())
+        if language is None:
+            return
+        if os.name == "posix" and "\\" in rel:
+            self.unsafe = True
+        if any(
+            fnmatch.fnmatch(rel, pattern) for pattern in self.scope.effective_excludes
+        ):
+            return
+        if not stat.S_ISREG(info.st_mode):
+            self.unsafe = True
+            self.rows.add((rel, _metadata_marker(info) + "|<unsafe>", language))
+            return
+        # Match candidate discovery: max_files is consumed only by
+        # selected, supported regular files. Persisted exclusions
+        # and unsafe special files never consume that budget.
+        self.supported_count += 1
+        if self.supported_count > self.replay_limit:
+            raise OverflowError
+        if not self.with_content:
+            self.rows.add((rel, _metadata_marker(info), language))
+            return
+        marker, content_hash, clean = hash_source_or_unsafe(
+            directory_fd,
+            name,
+            info,
+            self.deadline,
+            self.counters,
+            _SOURCE_BYTE_BUDGET,
+            _metadata_marker,
+            _same_file_metadata,
+        )
+        if not clean:
+            self.unsafe = True
+        self.rows.add((rel, marker + "|" + content_hash, language))
 
 
 def _enumerate_directory(
