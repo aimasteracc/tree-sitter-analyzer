@@ -13,12 +13,21 @@ Highlights:
 
 - **Honest call answers.**
   - `nav action=callers` no longer answers `complete` when a real caller exists.
-    Dogfood rounds 10 and 11 (Python, Java, JavaScript) and the first
-    TypeScript round (zod, hono) gate at 0 wrong `complete` in both bare and
-    qualified form; the one the TypeScript round found is fixed (#1762).
+    The release gate (dogfood round 12b, on this release) found 0 wrong
+    `complete` across 7 real repos (rich, pydantic, fastapi, axios, gson, zod,
+    hono) in both bare and qualified form: about 1,570 sweep answers plus every
+    ground-truth battery.
   - Bare and qualified method queries now pass the same gates (#1740, #1759).
-  - Unresolved receivers keep every same-named method possible (#1758).
-- **TypeScript and JavaScript resolution.**
+  - Unresolved receivers keep every same-named method possible (#1758),
+    including structural `Protocol` / duck-typed implementations in test
+    files (#1772).
+- **Faster warm queries.** Warm `nav action=callers` is 44–67% faster than
+  v2.2: pydantic 0.39 → 0.15 s, fastapi 0.46 → 0.22 s, gson 0.24 → 0.08 s,
+  rich 0.14 → 0.08 s. The call graph is built at most once per query and
+  reused while the index snapshot is unchanged (#1774).
+- **TypeScript and JavaScript resolution.** Caller recall on zod rose from
+  64/87 to 85/87 and on hono from 62/87 to 81/103, with hono false callers
+  16 → 0.
   - Calls bind through ES-module imports and re-exports (#1764).
   - Calls also bind through imported default-export objects (#1741).
   - Arrow-function constants are functions (#1763).
