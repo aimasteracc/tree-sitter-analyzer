@@ -507,7 +507,9 @@ def _dependent_files(
       ``_IMPORT_HOPS`` 跳；变化的是类时，导入方自己的类型化导出（类、带返回注解的
       函数、模块单例）同样继续传播，因为它们的类型可能经这个类解析。
     """
-    if not deltas:
+    if not deltas and not wide:
+        # #1764：只有再导出的桶文件（``export * from './a'``）没有符号，解析面差异只有
+        # 文件级标记；它的导入方仍须沿再导出重新解析。
         return set()
     names_by_file: dict[str, set[str]] = {
         path: set(names) for path, names in deltas.items()
@@ -576,32 +578,45 @@ def _java_typed_dependents(conn: sqlite3.Connection, class_names: set[str]) -> s
 
 
 def _js_importer_closure(cache: Any, wide: set[str]) -> set[str]:
-    """#1741：导出形状变化的 JS 文件经相对导入（含 ``...spread`` 再导出链）到达的导入方。
+    """#1741 / #1764：导出形状变化的 JS / TS 文件经导入与再导出到达的导入方。
 
-    ``obj.m()`` 的解析经默认导入对象、命名空间导入与展开的中间文件到达定义；这些
-    导入在 ``name_to_source`` 之外，只能按说明符解析出的文件追踪，最多 ``_IMPORT_HOPS`` 跳。
+    ``obj.m()`` 的解析经默认导入对象、命名空间导入与展开的中间文件到达定义；TS 的
+    ``f()`` / ``ns.f()`` 还经桶文件的 ``export { f } from`` / ``export *`` /
+    ``export * as ns`` 与项目包说明符（``zod/v4``）。这些关系在 ``name_to_source``
+    之外，只能按说明符解析出的文件追踪，最多 ``_ES_HOPS`` 跳。
     """
     from ..synapse_resolver import build_resolver_context
+    from ..synapse_resolver._package_specifiers import PackageSpecifiers
     from ..synapse_resolver._typescript_imports import resolve_typescript_specifier
 
-    targets = {path for path in wide if path.endswith((".js", ".jsx", ".mjs", ".cjs"))}
+    targets = {path for path in wide if path.endswith(_ES_SUFFIXES)}
     if not targets:
         return set()
     ctx = build_resolver_context(cache)
     indexed = frozenset(ctx.file_languages)
+    packages = PackageSpecifiers(getattr(cache, "project_root", None), indexed)
+
+    def module_file(spec: str, importer: str) -> str:
+        return resolve_typescript_specifier(
+            spec, importer, indexed
+        ) or packages.resolve(spec)
+
     importers_of: dict[str, set[str]] = defaultdict(set)
     for importer, entries in ctx.imports_by_file.items():
-        if ctx.file_languages.get(importer) not in ("javascript", "jsx"):
+        if ctx.file_languages.get(importer) not in _ES_LANGUAGES:
             continue
         for entry in entries:
-            if not entry.is_relative:
-                continue
-            target = resolve_typescript_specifier(entry.module_path, importer, indexed)
+            target = module_file(entry.module_path, importer)
+            if target and target != importer:
+                importers_of[target].add(importer)
+    for importer, specs in _reexport_specs(cache.get_conn()).items():
+        for spec in specs:
+            target = module_file(spec, importer)
             if target and target != importer:
                 importers_of[target].add(importer)
     found: set[str] = set()
     frontier = set(targets)
-    for _hop in range(_IMPORT_HOPS):
+    for _hop in range(_ES_HOPS):
         following = {
             importer
             for target in frontier
@@ -613,6 +628,28 @@ def _js_importer_closure(cache: Any, wide: set[str]) -> set[str]:
         if not frontier:
             break
     return found
+
+
+#: ES 模块文件后缀与语言（#1764：TS 同样经导入 / 再导出解析）。
+_ES_SUFFIXES = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts")
+_ES_LANGUAGES = frozenset({"javascript", "jsx", "typescript", "tsx"})
+#: 经桶文件追踪的最大跳数（与 ``_es_module_binding.MAX_DEPTH`` 一致）。
+_ES_HOPS = 16
+
+
+def _reexport_specs(conn: sqlite3.Connection) -> dict[str, set[str]]:
+    """文件 -> 它再导出（``export … from`` / ``export *``）的说明符。"""
+    out: dict[str, set[str]] = defaultdict(set)
+    for path, language, symbols_json in conn.execute(
+        "SELECT file_path, language, symbols_json FROM ast_index"
+    ):
+        if language not in _ES_LANGUAGES or "js_exports" not in (symbols_json or ""):
+            continue
+        shape = json.loads(symbols_json or "{}").get("js_exports") or {}
+        for item in shape.get("reexports") or []:
+            out[str(path)].add(str(item[1]))
+        out[str(path)].update(str(spec) for spec in shape.get("stars") or [])
+    return out
 
 
 def _subclass_files(

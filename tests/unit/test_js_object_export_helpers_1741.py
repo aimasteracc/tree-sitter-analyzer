@@ -119,10 +119,22 @@ def test_export_shape_records_default_and_named() -> None:
     shape = J.export_shape(
         "// c\nexport function f() {}\nexport default { f, ...more };\n"
     )
-    assert shape == {"named": ["f"], "default": {"...": ["more"], "f": ["f"]}}
+    # #1768: the shape also records the export -> local map and the default's form.
+    assert shape == {
+        "named": ["f"],
+        "default": {"...": ["more"], "f": ["f"]},
+        "locals": {"default": "", "f": "f"},
+        "default_kind": "expression",
+        "function_consts": [],
+        "const_aliases": {},
+    }
     assert J.export_shape("export default class X {}\n") == {
         "named": [],
         "default": None,
+        "locals": {"default": "X"},
+        "default_kind": "declaration",
+        "function_consts": [],
+        "const_aliases": {},
     }
     assert J.export_shape("const x = 1;\n") is None
 

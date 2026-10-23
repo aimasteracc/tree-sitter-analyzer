@@ -164,6 +164,35 @@
   repository).
 ### Fixed
 
+- **TypeScript calls bind across files through ES-module imports** (#1764, #1768).
+  No TS call edge was ever stored as `project`: 0 of ~38k edges on hono and ~52k
+  on zod, although the import edges pointed at the right files.
+  - **What now binds.** `f()` after `import { f }`, `import { g as f }` or
+    `import f from`. `ns.f()` and `z.core.f()` after `import * as ns`.
+    `Cls.m()` on an imported class.
+  - **Barrel files are followed.** The resolver follows `export { f } from`,
+    `export *` and `export * as ns` through `index.ts` / `external.ts`.
+  - **Specifiers.** `./errors.js` names `./errors.ts` (nodenext). A bare
+    specifier naming one of the project's own packages (zod's `zod/v4`)
+    resolves through that `package.json`'s `exports`, but only when exactly one
+    condition target is an indexed file.
+  - **Only provable targets bind.** Two `export *` sources that both export the
+    name, a package `export *`, or an export table that can't be read all leave
+    the call `unknown`.
+  - **Renamed imports stay visible.** A renamed binding records its
+    `import_alias`, so a query for the real name sees the call. That includes
+    the renamed default import `import makeSig from './jws'`, which left
+    `signer` at `complete, 0` (#1768).
+  - **An unresolved call is no longer dropped.** A JS/TS call through an import
+    that stays unresolved used to be filtered out by its placeholder target
+    file. It now counts as an unresolved inbound site of every same-named
+    target: hono `verifying` at `jwt.ts:183`, and calls through a renamed import
+    of the declaring file.
+  - **Package imports are only possible targets.** After `import { f } from
+    'pkg'`, a same-named project function is a possible target of `f()`, not a
+    certain one.
+  - **Scoped refresh** follows re-exports to the files that import through a
+    barrel. The extractor version goes from 50 to 52; 51 is taken by #1763.
 - **A JS/TS method with a string-literal name matches its element-access calls**
   (#1762). In zod,
   `"~validate"(data) {...}` is called as `this["~validate"](data)`; the call
