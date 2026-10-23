@@ -1086,6 +1086,7 @@ class CachedCallGraph(CallGraph):
             functions_by_name=self._func_by_name,
             functions_by_file=self._func_by_file,
             file_import_map=file_import_map,
+            external_imports=_package_imported_names(imports_raw),
             jsts_imports=jsts_import_map(imports_raw, rel_files | set(imports_raw)),
             reexport_binder=reexport_binder,
             subclasses=subclasses,

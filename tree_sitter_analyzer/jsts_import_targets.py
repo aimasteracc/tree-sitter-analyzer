@@ -3,22 +3,23 @@
 读取端沿 ``extends`` 链找 ``this.m()`` 的继承定义时，需要知道
 ``import { ZodType } from './types'`` 里的 ``ZodType`` 是哪个文件的类——zod 的
 v3 / v4 各有一个 ``ZodType``。这里只做确定的映射：相对路径解析到索引中恰好存在
-的文件，否则不给出映射（调用方随之放弃确定绑定）。
+的文件，否则不给出映射（调用方随之放弃确定绑定）。说明符解析复用 #1764 的
+`resolve_typescript_specifier`（与 Synapse 的 ES 模块绑定一致）。
 """
 
 from __future__ import annotations
 
-import posixpath
 import re
 from collections.abc import Iterable, Mapping
 from typing import Any
+
+from .synapse_resolver._typescript_imports import resolve_typescript_specifier
 
 _IMPORT = re.compile(
     r"^\s*import\s+(?:type\s+)?(?P<clause>[\s\S]+?)\s+from\s+['\"](?P<spec>[^'\"]+)['\"]"
 )
 _NAMED = re.compile(r"\{([^}]*)\}")
-_EXTENSIONS = (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs")
-_JSTS_SUFFIXES = _EXTENSIONS
+_JSTS_SUFFIXES = (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs")
 
 
 def jsts_import_map(
@@ -36,8 +37,9 @@ def jsts_import_map(
             match = _IMPORT.match(text)
             if match is None:
                 continue
-            target = _resolve(file_path, match.group("spec"), files)
-            if target is None:
+            # #1764 的说明符解析（相对路径、扩展名、./x.js -> x.ts、index）。
+            target = resolve_typescript_specifier(match.group("spec"), file_path, files)
+            if not target:
                 continue
             for local in _local_names(match.group("clause")):
                 names[local] = target
@@ -61,23 +63,6 @@ def _local_names(clause: str) -> list[str]:
     if head and not head.startswith("*") and head.isidentifier():
         names.append(head)
     return names
-
-
-def _resolve(file_path: str, spec: str, files: set[str]) -> str | None:
-    if not spec.startswith("."):
-        return None
-    base = posixpath.normpath(posixpath.join(posixpath.dirname(file_path), spec))
-    stem, ext = posixpath.splitext(base)
-    candidates = [base] if ext in _EXTENSIONS else []
-    if ext in (".js", ".jsx", ".mjs", ".cjs"):
-        # TS 的 ESM 写法 `./x.js` 指向 `x.ts`。
-        candidates += [stem + other for other in _EXTENSIONS]
-    candidates += [base + other for other in _EXTENSIONS]
-    candidates += [f"{base}/index{other}" for other in _EXTENSIONS]
-    for candidate in candidates:
-        if candidate in files:
-            return candidate
-    return None
 
 
 __all__ = ["jsts_import_map"]
