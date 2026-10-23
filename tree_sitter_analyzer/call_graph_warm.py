@@ -140,7 +140,8 @@ def after_publish(project_root: str) -> dict[str, Any] | None:
     # #1723：刷新的范围回填有界时，按同一范围增量更新上一张图——显式刷新同样适用，
     # 因为增量的工作量与改动成正比，紧接着的第一次调用只需等它很短的时间。
     plan = call_graph_incremental.take_plan(project_root)
-    incremental = plan is not None and _has_base(project_root, plan)
+    refusal = _base_refusal(project_root, plan) if plan is not None else None
+    incremental = plan is not None and refusal is None
     full = _watcher_driven() or _always()
     if not enabled() or not (full or incremental):
         return None
@@ -166,20 +167,39 @@ def after_publish(project_root: str) -> dict[str, Any] | None:
         )
         _threads[key] = thread
         thread.start()
-    return {"scheduled": True, "incremental": incremental, "previous": previous}
+    reply: dict[str, Any] = {
+        "scheduled": True,
+        "incremental": incremental,
+        "previous": previous,
+    }
+    if refusal is not None:
+        reply["incremental_reason"] = refusal
+    return reply
 
 
-def _has_base(project_root: str, plan: Any) -> bool:
-    """内存里有可作增量基础的图：读的正是刷新所基于的版本。"""
+def _base_refusal(project_root: str, plan: Any) -> str | None:
+    """内存里没有可作增量基础的图时的原因；有（读的正是刷新所基于的版本）时为 None。
+
+    原因与 ``call_graph_incremental.update`` 的同名原因一致；认证快照上的图明确不作
+    基础（#1793，``CERTIFIED_SNAPSHOT_NOT_A_BASE``）。
+    """
     from pathlib import Path
 
     from . import call_graph_memo
 
     if plan.base_generation is None:
-        return False
+        return "BACKFILL_NOT_SCOPED:" + str(plan.reason)
     previous = call_graph_memo.latest(str(Path(project_root).resolve()))
-    memo = previous.get("_incremental") if previous is not None else None
-    return isinstance(memo, dict) and memo.get("generation") == plan.base_generation
+    if previous is None:
+        return "NO_PREVIOUS_GRAPH"
+    memo = previous.get("_incremental")
+    if not isinstance(memo, dict):
+        return "PREVIOUS_GRAPH_NOT_ALIGNED"
+    if memo.get("refused"):
+        return str(memo["refused"])
+    if memo.get("generation") != plan.base_generation:
+        return "PREVIOUS_GRAPH_OTHER_GENERATION"
+    return None
 
 
 class _Job:
