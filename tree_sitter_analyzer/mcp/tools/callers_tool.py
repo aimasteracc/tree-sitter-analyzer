@@ -10,6 +10,7 @@ Simpler and more discoverable than the monolithic codegraph_call_graph tool.
 
 import os
 import sqlite3
+from collections.abc import Callable
 from typing import Any
 
 from ...member_names import unquote_member_name
@@ -97,7 +98,11 @@ def _sibling_methods(graph: Any, func_name: str, file_path: str | None) -> list[
     except Exception:  # noqa: BLE001 — unreadable graph: nothing to add
         return []
     return sorted(
-        {f"{ref.receiver}.{func_name}" for ref in refs if getattr(ref, "receiver", None)}
+        {
+            f"{ref.receiver}.{func_name}"
+            for ref in refs
+            if getattr(ref, "receiver", None)
+        }
     )
 
 
@@ -395,18 +400,27 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         return self._get_call_graph(), self._data_source
 
     def _single_method_name(
-        self, bound_cache: Any, func_name: str, file_path: str | None
+        self,
+        bound_cache: Any,
+        func_name: str,
+        file_path: str | None,
+        query_graph: "_QueryGraph | None" = None,
     ) -> str:
         """``Class.method`` when the bare ``func_name`` names one method in ``file_path``.
 
         Anything else — a dotted or path-like name, no ``file_path``, a module
         function, several definitions, or a graph that cannot be read — returns
-        ``func_name`` unchanged.
+        ``func_name`` unchanged.  ``query_graph`` is the query's shared graph
+        (#1774); without it the graph is obtained directly.
         """
         if not file_path or not func_name or any(ch in func_name for ch in ".:/\\"):
             return func_name
         try:
-            graph = self._graph_for(bound_cache)[0]
+            graph = (
+                query_graph.get()
+                if query_graph is not None
+                else self._graph_for(bound_cache)
+            )[0]
             refs = _same_name_definitions(graph, func_name, file_path)
         except Exception:  # noqa: BLE001 — unreadable graph: keep the bare path
             return func_name
@@ -452,7 +466,11 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # qualified question get the same answer by construction — same callers,
         # same evidence, same completeness. A bare name with several definitions
         # keeps the union path below (#1740), never more confident than any one.
-        func_name = self._single_method_name(bound_cache, func_name, file_path)
+        # #1774：本次查询只取一次调用图，裸名改写与下方两条路径共用它。
+        query_graph = _QueryGraph(lambda: self._graph_for(bound_cache))
+        func_name = self._single_method_name(
+            bound_cache, func_name, file_path, query_graph
+        )
 
         # Detect "ClassName.method_name" qualified lookup.  The SQL fast-path
         # stores bare callee names and can't filter by receiver class, so we
@@ -494,7 +512,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             # 的边；接收者无法绑定的同名调用点只有调用图知道——不查它们，裸名查询会对
             # 限定名会判为 unknown 的方法给出 complete（dogfood r10：gson 7/40）。
             # 裸名对应多个定义时，并集使答案不比其中最不确定者更确定。
-            graph = self._graph_for(bound_cache)[0]
+            graph = query_graph.get()[0]
             # 调用图绑定、但未落到 SQL 边上的确定调用方（如经混入类 MRO 绑定的实例调用）
             # 同样列出：裸名答案不得比限定名少列确定的调用方。
             callers = callers + label_graph_relations(
@@ -529,7 +547,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 )
             name_only_inbound = len(possible_callers)
         else:
-            graph, data_source = self._graph_for(bound_cache)
+            graph, data_source = query_graph.get()
             callers = graph.callers_of(func_name, file_path)
             bound_targets = graph_bound_targets(graph, func_name, file_path)
             # #1578：仅同名匹配、无法绑定到目标的入边——它们存在时不能宣称 complete。
@@ -981,6 +999,26 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 )
             results.append(entry)
         return results, unattributed
+
+
+class _QueryGraph:
+    """#1774：一次 callers 查询内共用的调用图（及其数据来源标签）。
+
+    裸名查询先用调用图判断是否唯一的方法定义（#1759），再在 SQL 路径上做并集
+    （#1740），限定名改写后又走调用图路径；每处各取一次会在认证快照上构图两次。
+    取图失败不记住：之后的取用照常重试并原样抛出，与各处单独取图时相同。
+    """
+
+    __slots__ = ("_factory", "_value")
+
+    def __init__(self, factory: Callable[[], tuple[Any, str]]) -> None:
+        self._factory = factory
+        self._value: tuple[Any, str] | None = None
+
+    def get(self) -> tuple[Any, str]:
+        if self._value is None:
+            self._value = self._factory()
+        return self._value
 
 
 def _unlisted(

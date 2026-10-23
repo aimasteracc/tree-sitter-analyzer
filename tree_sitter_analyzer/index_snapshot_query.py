@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
+from collections import OrderedDict
 from collections.abc import Collection
 from typing import Any, cast
 
@@ -25,6 +27,23 @@ from .cache.query import (
 )
 from .cache.search import search_symbols_cascade
 from .graph.edge_store import EdgeKind, EdgeStore
+
+#: #1774：已核验调用图标记成立的快照身份（有上限，先进先出）。
+_BUILT_SNAPSHOTS_MAX = 16
+_BUILT_SNAPSHOTS: OrderedDict[tuple[str, ...], None] = OrderedDict()
+_BUILT_LOCK = threading.Lock()
+
+
+def _built_snapshot_known(identity: tuple[str, ...]) -> bool:
+    with _BUILT_LOCK:
+        return identity in _BUILT_SNAPSHOTS
+
+
+def _remember_built_snapshot(identity: tuple[str, ...]) -> None:
+    with _BUILT_LOCK:
+        _BUILT_SNAPSHOTS[identity] = None
+        while len(_BUILT_SNAPSHOTS) > _BUILT_SNAPSHOTS_MAX:
+            _BUILT_SNAPSHOTS.popitem(last=False)
 
 
 class CertifiedSnapshotCache:
@@ -53,6 +72,24 @@ class CertifiedSnapshotCache:
     def close(self) -> None:
         """连接由 owner 管理；此适配器没有独立关闭权。"""
         self._owner.require_active()
+
+    def graph_input_identity(self) -> tuple[str, ...] | None:
+        """#1774：本适配器所读不可变私有副本的身份；身份不全时为 None。
+
+        快照 ID 由注册表随机生成、从不复用，它命名的内存副本在捕获后只读，所以
+        同一身份下的构图输入恒定（``call_graph_snapshot_inputs``）。
+        """
+        self._owner.require_active()
+        snapshot = self._owner.snapshot
+        parts = (
+            snapshot.canonical_root,
+            snapshot.snapshot_id,
+            snapshot.index_fingerprint,
+            snapshot.source_generation,
+        )
+        if not all(isinstance(part, str) and part for part in parts):
+            return None
+        return ("certified-snapshot", *parts)
 
     def get_stats(self) -> dict[str, int]:
         row = self.get_conn().execute("SELECT COUNT(*) FROM ast_index").fetchone()
@@ -187,14 +224,23 @@ class CertifiedSnapshotCache:
         return bfs_callees(self.get_conn(), caller_name, normalized, max_depth)
 
     def call_graph_built(self) -> bool:
+        # #1774：不可变副本上的“已建成”是内容事实，同一快照只核验一次；
+        # 否定结果可能来自期限，不记住，下次照常核验。
+        identity = self.graph_input_identity()
+        if identity is not None and _built_snapshot_known(identity):
+            self._owner.require_active()
+            return True
         # PR #1491：外层 owner 已安装共同 deadline，内层探针不得清空它。
-        return bool(
+        built = bool(
             _call_graph_built(
                 self.get_conn(),
                 deadline=self._owner.deadline,
                 install_progress_handler=False,
             )
         )
+        if built and identity is not None:
+            _remember_built_snapshot(identity)
+        return built
 
     def _store(self) -> EdgeStore:
         return EdgeStore(self.get_conn(), ensure_schema=False)
