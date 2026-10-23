@@ -611,7 +611,7 @@ class CachedEdgeResolver:
             return EdgeTargets(
                 possible=_merged(
                     [*scoped, *hidden],
-                    self._global_candidates(full_name, qualifier, caller_file),
+                    self._possible_globals(full_name, qualifier, caller_file),
                 )
             )
         if hidden:
@@ -625,7 +625,12 @@ class CachedEdgeResolver:
         narrowed = _narrow_by_receiver(globals_, qualifier)
         if len(narrowed) == 1 and _qualifier_admits_global(qualifier, narrowed[0]):
             return EdgeTargets(certain=narrowed, possible=hidden)
-        return EdgeTargets(possible=[*globals_, *hidden])
+        return EdgeTargets(
+            possible=_merged(
+                [*globals_, *hidden],
+                self._possible_globals(full_name, qualifier, caller_file),
+            )
+        )
 
     def _split_nested(
         self, refs: list[FunctionRef], caller_file: str
@@ -667,17 +672,46 @@ class CachedEdgeResolver:
         return nested
 
     def _global_candidates(
-        self, full_name: str, qualifier: str, caller_file: str
+        self,
+        full_name: str,
+        qualifier: str,
+        caller_file: str,
+        *,
+        keep_test_shadows: bool = False,
     ) -> list[FunctionRef]:
         """全局档（不含本地 / import 档）的同名候选。"""
         return _bare_reachable(
             [
                 ref
                 for ref, _confidence in self._resolver.resolve_items(
-                    full_name, caller_file, include_local=False, include_import=False
+                    full_name,
+                    caller_file,
+                    include_local=False,
+                    include_import=False,
+                    keep_test_shadows=keep_test_shadows,
                 )
             ],
             qualifier,
+        )
+
+    def _possible_globals(
+        self, full_name: str, qualifier: str, caller_file: str
+    ) -> list[FunctionRef]:
+        """#1772：接收者未被证明的 ``x.m()`` 的全局可能目标，包括测试里的同名方法。
+
+        全局档为非测试调用方剔除测试文件里的同名定义，这只适合挑选确定目标。
+        pydantic 的 ``plugin.new_schema_validator(...)`` 在 Protocol 存根旁边，
+        测试里没有基类的结构实现 ``Plugin1.new_schema_validator`` 因此不是可能目标，
+        答 ``complete, 0``。接收者是未知值时，它同样可能被调用。
+
+        无接收者与 ``self`` 一类接收者不变：裸调用到达不了测试模块的定义，
+        ``self.m()`` 的覆写由子类索引给出。
+        """
+        return self._global_candidates(
+            full_name,
+            qualifier,
+            caller_file,
+            keep_test_shadows=bool(qualifier) and qualifier not in _SELF_QUALIFIERS,
         )
 
     def _receiver_proven(

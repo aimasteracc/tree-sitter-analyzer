@@ -164,6 +164,19 @@
   repository).
 ### Fixed
 
+- **An unresolved `x.m()` keeps a same-named method in a test file possible**
+  (#1772). For a non-test caller, the global tier drops test-file definitions
+  whenever a non-test one exists, so that a production call never binds to a
+  test mock. That is right for choosing a *certain* target, but the same
+  filtered list also made up the *possible* set. Dogfood round 12 on pydantic:
+  `_schema_validator.py:79` calls `plugin.new_schema_validator(...)` on a loop
+  variable, next to the `PydanticPluginProtocol` stub, and the structural
+  implementation `Plugin1.new_schema_validator` in `tests/test_plugins.py`
+  answered `complete, 0` in both modes. With no stub it was the only definition,
+  was not dropped, and correctly answered `unknown`. When the receiver is
+  unproven, test-file definitions now stay possible targets, so
+  `Plugin1.new_schema_validator` answers `unknown` (`NAME_ONLY_INBOUND`) and names
+  the site. Certain targets, bare calls and `self.m()` are unchanged.
 - **TypeScript calls bind across files through ES-module imports** (#1764, #1768).
   No TS call edge was ever stored as `project`: 0 of ~38k edges on hono and ~52k
   on zod, although the import edges pointed at the right files.
