@@ -240,7 +240,7 @@ def test_extractor_version_is_bumped_for_receiver_hints() -> None:
         indexer._AST_CACHE_EXTRACTOR_VERSION,
         # v40 引入接收者线索；v41（#1669）在其上停止按唯一方法名绑定。
         # v42（#1670）在其上记录改名导入的来源。
-    ) == (50, 50)
+    ) == (51, 51)
 
 
 @pytest.mark.asyncio

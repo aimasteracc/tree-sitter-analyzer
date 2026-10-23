@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol, cast
 
+from .jsts_function_names import FUNCTION_VALUE_TYPES, function_value_name
 from .python_own_receiver import mark_unbound_own_receiver
 from .receiver_hints import (
     Hint,
@@ -144,8 +145,18 @@ _CALL_NODE_TYPES = {
 
 _FUNC_DEF_TYPES = {
     "python": {"function_definition"},
-    "javascript": {"function_declaration", "method_definition", "arrow_function"},
-    "typescript": {"function_declaration", "method_definition", "arrow_function"},
+    "javascript": {
+        "function_declaration",
+        "method_definition",
+        "arrow_function",
+        "function_expression",
+    },
+    "typescript": {
+        "function_declaration",
+        "method_definition",
+        "arrow_function",
+        "function_expression",
+    },
     "java": {"method_declaration", "constructor_declaration"},
     "go": {"function_declaration", "method_declaration"},
     "c": {"function_definition"},
@@ -191,7 +202,12 @@ def _func_name_js(node: Any) -> str | None:
 
     #1762：方法名是字符串字面量（``"~validate"(data) {...}``）时取引号内的名字。
     只看 ``method_definition`` 的 ``name`` 字段：箭头函数的函数体可以是字符串。
+
+    #1763：箭头函数 / 函数表达式按自身名字或所属常量声明命名
+    （``const f = () => {}``）；匿名回调没有名字。
     """
+    if node.type in FUNCTION_VALUE_TYPES:
+        return function_value_name(node)
     if node.type == "method_definition":
         name_node = node.child_by_field_name("name")
         literal = _js_string_literal(name_node)

@@ -77,7 +77,8 @@ from ._ast_cache_query_mixin import ASTCacheQueryMixin
 # v48：lambda / 非方法函数参数 `self` 的调用写作 `(self).m`，不按方法接收者解析（#1739）。
 # v49：Java 调用边携带接收者声明类型（receiver_hint），按静态类型绑定、覆写为可能目标；symbols_json 记录匿名子类（#1743）。
 # v50：JS/TS 字符串字面量成员名去掉引号记录，`obj["m"]()` 按成员 `m` 记为调用（#1762）。
-_AST_CACHE_EXTRACTOR_VERSION = 50
+# v51：JS/TS 以常量定义的箭头函数 / 函数表达式按常量名索引为函数，函数体内调用归属于它（#1763）。
+_AST_CACHE_EXTRACTOR_VERSION = 51
 
 # Preserve the historical public exception identity after implementation split.
 SchemaIntegrityError.__module__ = __name__

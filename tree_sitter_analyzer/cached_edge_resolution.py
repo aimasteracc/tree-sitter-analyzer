@@ -55,6 +55,8 @@ _SELF_QUALIFIERS = frozenset({"self", "cls", "this", "super", "super()"})
 #: #1739：Python 方法接收者；``self.m()`` 只经外围类的 MRO 确定。
 _PY_OWN_QUALIFIERS = frozenset({"self", "cls"})
 _PY_SUFFIXES = (".py", ".pyi")
+#: #1763：JS/TS 源文件后缀（嵌套定义不可从别的文件按名字到达）。
+_JSTS_SUFFIXES = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts")
 #: ``super`` 接收者：指向基类，而不是外围类自己的方法（#1635）。
 _SUPER_QUALIFIERS = frozenset({"super", "super()"})
 #: ``_static_targets`` 不读取的边字段（只描述调用方与调用点位置），不进入记忆键。
@@ -107,6 +109,8 @@ class CachedEdgeResolver:
         self._static_memo: dict[tuple[Any, ...], EdgeTargets] | None = (
             {} if memoize else None
         )
+        #: #1763：定义是否嵌套在同文件另一个函数之内。
+        self._nested_memo: dict[FunctionRef, bool] = {}
 
     def release_memos(self) -> None:
         """#1657：构图结束后释放记忆（全局兜底列表约占数十 MB），之后不再记忆。"""
@@ -314,7 +318,9 @@ class CachedEdgeResolver:
             base_name = str(alias_name)
         if resolution in _PROJECT_RESOLUTIONS:
             resolved_file = str(edge.get("callee_resolved_file") or "")
-            persisted = self._persisted_targets(base_name, qualifier, resolved_file)
+            persisted = self._persisted_targets(
+                base_name, qualifier, resolved_file, caller_file
+            )
             if persisted is None:
                 persisted = self._reexported_targets(
                     base_name, qualifier, resolved_file
@@ -356,7 +362,11 @@ class CachedEdgeResolver:
         return EdgeTargets(certain=[target], possible=possible, binding=binding)
 
     def _persisted_targets(
-        self, base_name: str, qualifier: str, resolved_file: str
+        self,
+        base_name: str,
+        qualifier: str,
+        resolved_file: str,
+        caller_file: str = "",
     ) -> EdgeTargets | None:
         """持久化解析指向的文件中的同名函数；文件里没有同名函数时返回 ``None``。"""
         candidates = [
@@ -366,9 +376,16 @@ class CachedEdgeResolver:
         ]
         if not candidates:
             return None
+        hidden: list[FunctionRef] = []
+        if not qualifier and caller_file:
+            # #1763：别的文件按名字到达不了嵌套定义。
+            reachable, hidden = self._split_nested(candidates, caller_file)
+            if not reachable:
+                return EdgeTargets(possible=hidden)
+            candidates = reachable
         narrowed = _narrow_by_receiver(candidates, qualifier)
         if len(narrowed) == 1:
-            return EdgeTargets(certain=narrowed)
+            return EdgeTargets(certain=narrowed, possible=hidden)
         inherited = self._class_receiver_target(narrowed, base_name, qualifier)
         if inherited is not None:
             return EdgeTargets(
@@ -441,6 +458,9 @@ class CachedEdgeResolver:
         if certain and qualifier in _SELF_QUALIFIERS:
             # self / cls / super：由 ``resolve`` 按调用方的外围类分派（#1635）。
             return EdgeTargets(certain=certain)
+        hidden: list[FunctionRef] = []
+        if certain and not qualifier:
+            certain, hidden = self._split_nested(certain, caller_file)
         if certain:
             # #1621：本地 / import 档命中多个同名定义（`obj.hook()` 与同文件的
             # `A.hook`、`B.hook`）时无法确定是哪一个。接收者名恰是某个类时收窄；
@@ -451,19 +471,63 @@ class CachedEdgeResolver:
             if len(scoped) == 1 and self._receiver_proven(
                 qualifier, scoped[0], caller_file
             ):
-                return EdgeTargets(certain=scoped)
+                return EdgeTargets(certain=scoped, possible=hidden)
             # #1758：接收者未被证明时，本地 / import 档的命中并不排除别处的同名方法
             # （如同文件抽象类在别的文件里的覆写）：全局档的同名候选同样是可能目标。
             return EdgeTargets(
                 possible=_merged(
-                    scoped, self._global_candidates(full_name, qualifier, caller_file)
+                    [*scoped, *hidden],
+                    self._global_candidates(full_name, qualifier, caller_file),
                 )
             )
+        if hidden:
+            return EdgeTargets(possible=hidden)
         globals_ = self._global_candidates(full_name, qualifier, caller_file)
+        if not qualifier:
+            globals_, hidden = self._split_nested(globals_, caller_file)
         narrowed = _narrow_by_receiver(globals_, qualifier)
         if len(narrowed) == 1 and _qualifier_admits_global(qualifier, narrowed[0]):
-            return EdgeTargets(certain=narrowed)
-        return EdgeTargets(possible=globals_)
+            return EdgeTargets(certain=narrowed, possible=hidden)
+        return EdgeTargets(possible=[*globals_, *hidden])
+
+    def _split_nested(
+        self, refs: list[FunctionRef], caller_file: str
+    ) -> tuple[list[FunctionRef], list[FunctionRef]]:
+        """#1763：从别的文件按名字调用时，JS/TS 中嵌套在另一个函数里的定义不可达。
+
+        ``export const cors = () => { return async function cors() {} }``：内层
+        ``function cors`` 的名字只在外层函数内可见，``import { cors }`` 的调用只能
+        到达模块级的 ``cors``。返回 ``(可达, 不可达)``；不可达者只作为可能目标。
+        """
+        reachable: list[FunctionRef] = []
+        hidden: list[FunctionRef] = []
+        for ref in refs:
+            if (
+                ref.file_path != caller_file
+                and ref.file_path.endswith(_JSTS_SUFFIXES)
+                and self._is_nested(ref)
+            ):
+                hidden.append(ref)
+            else:
+                reachable.append(ref)
+        return reachable, hidden
+
+    def _is_nested(self, ref: FunctionRef) -> bool:
+        """``ref`` 的范围严格位于同文件另一个函数的范围之内（按定义记忆）。"""
+        cached = self._nested_memo.get(ref)
+        if cached is not None:
+            return cached
+        end = ref.end_line or ref.start_line
+        nested = any(
+            other is not ref
+            and other.start_line <= ref.start_line
+            and end <= (other.end_line or other.start_line)
+            and (other.start_line, other.end_line or other.start_line)
+            != (ref.start_line, end)
+            for other in self._functions_by_file.get(ref.file_path, [])
+        )
+        self._nested_memo[ref] = nested
+        return nested
 
     def _global_candidates(
         self, full_name: str, qualifier: str, caller_file: str
