@@ -56,6 +56,8 @@ _SELF_QUALIFIERS = frozenset({"self", "cls", "this", "super", "super()"})
 _PY_OWN_QUALIFIERS = frozenset({"self", "cls"})
 #: #1765：JS/TS 源文件后缀（``this.m()`` 只确定绑定外围类自己的方法）。
 _JSTS_THIS_SUFFIXES = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts")
+#: #1765：沿 ``extends`` 链最多走的步数。
+_JSTS_CHAIN_MAX = 32
 _PY_SUFFIXES = (".py", ".pyi")
 #: #1763：JS/TS 源文件后缀（嵌套定义不可从别的文件按名字到达）。
 _JSTS_SUFFIXES = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts")
@@ -236,31 +238,82 @@ class CachedEdgeResolver:
         caller_class: str | None,
         caller_file: str,
     ) -> EdgeTargets:
-        """#1765：JS/TS 的 ``this.m()`` 只在外围类自己定义 ``m`` 时确定。
+        """#1765：JS/TS 的 ``this.m()`` 按调用方的外围类分派。
 
         ts1 dogfood（hono）：``class Sub extends RegExpRouter`` 里的
         ``this.buildAllMatchers()`` 被绑定为同文件另一个类
         ``PreparedRegExpRouter.buildAllMatchers`` 的调用，真正的目标
-        ``RegExpRouter.buildAllMatchers`` 答 ``complete, 0``。外围类没有 ``m`` 时
-        （继承自基类，或调用方不在类中），项目里每个同名方法都只是可能目标，
-        答案保持非 ``complete``；子类覆写同样是可能目标（#1648）。
+        ``RegExpRouter.buildAllMatchers`` 答 ``complete, 0``。
+
+        * 外围类自己定义 ``m``：它是确定目标；
+        * 否则沿 ``extends`` 链（JS/TS 单继承，按类名）找第一个定义 ``m`` 的基类，
+          链上每一步都唯一时它是确定目标；链上其余同名方法只是可能目标；
+        * 没有继承证据：项目里每个同名方法都只是可能目标；
+        * 调用方不在类中（类字段箭头函数、嵌套回调）：沿用 Synapse 的单类文件绑定，
+          其余同名方法是可能目标。
+
+        子类覆写始终是可能目标（#1648）。
         """
         methods = [
             ref for ref in self._functions_by_name.get(base_name, []) if ref.receiver
         ]
-        candidates = _merged([*targets.certain, *targets.possible], methods)
-        own = (
-            self._own_method(caller_file, caller_class, base_name)
-            if caller_class
-            else None
-        )
-        certain = [] if own is None else [own]
-        possible = [ref for ref in candidates if ref != own]
-        if caller_class:
-            possible = self._with_overrides(
-                certain, possible, base_name, "this", caller_class
+        static = [*targets.certain, *targets.possible]
+        if not caller_class:
+            others = [ref for ref in methods if ref not in targets.certain]
+            return EdgeTargets(
+                certain=list(targets.certain),
+                possible=_merged(list(targets.possible), others),
+                binding=targets.binding,
             )
-        return EdgeTargets(certain=certain, possible=possible, binding=targets.binding)
+        own = self._own_method(caller_file, caller_class, base_name)
+        if own is not None:
+            certain, possible = [own], []
+        else:
+            ancestors = (
+                None if self._subclasses is None else self._subclasses.ancestors(caller_class)
+            )
+            if ancestors is None:
+                certain, possible = [], _merged(static, methods)
+            else:
+                chain = [ref for ref in methods if ref.receiver in ancestors]
+                nearest = self._jsts_nearest(caller_class, base_name, methods)
+                certain = [] if nearest is None else [nearest]
+                possible = [ref for ref in chain if ref != nearest]
+        return EdgeTargets(
+            certain=certain,
+            possible=self._with_overrides(
+                certain, possible, base_name, "this", caller_class
+            ),
+            binding=targets.binding,
+        )
+
+    def _jsts_nearest(
+        self, caller_class: str, base_name: str, methods: list[FunctionRef]
+    ) -> FunctionRef | None:
+        """沿单继承链找第一个定义 ``base_name`` 的基类；任何一步不唯一即放弃。"""
+        assert self._subclasses is not None  # 调用方已检查。
+        owners: dict[str, set[str]] = {}
+        for ref in self._functions_by_name.get(base_name, []):
+            if ref.receiver:
+                owners.setdefault(ref.receiver, set()).add(ref.file_path)
+        current = caller_class
+        seen = {current}
+        for _ in range(_JSTS_CHAIN_MAX):
+            parents = self._subclasses.parents_of(current)
+            if len(parents) != 1:
+                return None
+            (parent,) = parents
+            if parent in seen:
+                return None
+            seen.add(parent)
+            files = owners.get(parent, set())
+            if len(files) > 1 or not self._subclasses.unique_class(parent):
+                return None
+            if files:
+                found = [ref for ref in methods if ref.receiver == parent]
+                return found[0] if len(found) == 1 else None
+            current = parent
+        return None
 
     def _own_method(
         self, caller_file: str, caller_class: str, base_name: str
