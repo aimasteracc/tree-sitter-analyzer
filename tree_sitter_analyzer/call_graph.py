@@ -47,6 +47,7 @@ from .function_extraction import (
 from .import_extractors import walk_imports
 from .languages.lang_extension_map import EXT_TO_LANG
 from .module_scope_caller import MODULE_SCOPE, is_module_caller, module_caller_ref
+from .overload_stubs import drop_overload_stubs
 from .project_graph import _language_from_ext
 
 # Derived (not hardcoded) from EXT_TO_LANG — the project's single source
@@ -224,7 +225,8 @@ class CallGraph(PossibleEdgesMixin):
             self._collect_import_map(rel_path, imports, rel_to_abs)
 
             file_funcs: dict[str, FunctionRef] = {}
-            for defn in definitions:
+            # #1773：``@overload`` 存根由唯一的实现代表（与缓存构图相同）。
+            for defn in drop_overload_stubs(definitions):
                 ref = FunctionRef(
                     file_path=rel_path,
                     name=defn["name"],
@@ -941,7 +943,10 @@ class CachedCallGraph(CallGraph):
         call_graph_memo.discard(root)
 
         try:
-            functions = graph_input_rows.materialize_functions(function_source)
+            # #1773：``@overload`` 存根由唯一的实现代表，``self.m()`` 才能确定绑定。
+            functions = drop_overload_stubs(
+                graph_input_rows.materialize_functions(function_source)
+            )
         except Exception:
             return
         # #1675：冷进程先找同代码、同输入摘要下已存的边解析结果。
