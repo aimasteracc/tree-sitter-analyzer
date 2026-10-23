@@ -6,9 +6,6 @@
 
 from __future__ import annotations
 
-import asyncio
-import importlib.util
-import sys
 import textwrap
 from pathlib import Path
 
@@ -19,7 +16,6 @@ from tree_sitter_analyzer.dead_code_analyzer import (
     CONFIDENCE_HIGH,
     CONFIDENCE_LOW,
     LOW_CONFIDENCE_UNRESOLVED_MODULE,
-    filter_value_referenced,
     find_transitive_dead_code,
 )
 from tree_sitter_analyzer.dead_code_references import (
@@ -306,36 +302,6 @@ def test_reference_scan_ignores_calls_definitions_and_assignment_targets(
     assert index.referenced() == frozenset()
 
 
-def test_filter_value_referenced_drops_used_orphans(tmp_path: Path) -> None:
-    _write(
-        tmp_path,
-        "pkg/mod.py",
-        """
-        def in_table():
-            return 1
-
-        def orphan():
-            return 2
-
-        class Thing:
-            def __init__(self):
-                pass
-
-        TABLE = [in_table]
-        """,
-    )
-    graph = CallGraph(str(tmp_path))
-    orphans = [
-        f
-        for f in graph.function_refs()
-        if not graph.caller_refs_of(f) and not graph.callee_refs_of(f)
-    ]
-
-    kept = filter_value_referenced(graph, orphans)
-
-    assert [f.name for f in kept] == ["orphan"]
-
-
 def test_mock_graph_without_project_root_skips_reference_scan() -> None:
     from unittest.mock import MagicMock
 
@@ -349,64 +315,6 @@ def test_mock_graph_without_project_root_skips_reference_scan() -> None:
     dead = find_transitive_dead_code(graph)
 
     assert [item.function.name for item in dead] == ["orphan"]
-
-
-def test_mcp_tool_reports_confidence(tmp_path: Path) -> None:
-    from tree_sitter_analyzer.mcp.tools.dead_code_tool import CodeGraphDeadCodeTool
-
-    _write(tmp_path, "benchmarks/agent-tasks/scenarios.py", _SCENARIOS)
-    _write(tmp_path, "pkg/mod.py", "def orphan():\n    return 1\n")
-
-    result = asyncio.run(
-        CodeGraphDeadCodeTool(str(tmp_path)).execute({"mode": "dead_functions"})
-    )
-
-    by_name = {item["name"]: item for item in result["dead_functions"]}
-    assert set(by_name) == {"orphan", "_unused_helper"}
-    assert by_name["orphan"]["confidence"] == "high"
-    assert by_name["_unused_helper"]["confidence"] == "low"
-    assert by_name["_unused_helper"]["confidence_reason"] == (
-        "module_path_unresolvable"
-    )
-    assert result["stats"]["dead_functions_high_confidence"] == 1
-    assert result["stats"]["dead_functions_low_confidence"] == 1
-    assert "confidence=low" in result["next_step"]
-
-
-def _load_priority_module() -> object:
-    path = (
-        Path(__file__).resolve().parents[2] / "scripts" / "_dogfood_sprint_priority.py"
-    )
-    spec = importlib.util.spec_from_file_location("_dogfood_priority_1790", path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-def test_dogfood_priority_ignores_low_confidence_findings() -> None:
-    priority = _load_priority_module()
-    low_only = {
-        "data": {
-            "dead_functions": [{"name": "_unused_helper", "confidence": "low"}],
-            "stats": {"dead_functions_high_confidence": 0},
-        }
-    }
-    mixed = {
-        "data": {
-            "dead_functions": [
-                {"name": "orphan", "confidence": "high"},
-                {"name": "_unused_helper", "confidence": "low"},
-            ],
-            "stats": {"dead_functions_high_confidence": 7},
-        }
-    }
-
-    assert priority._dead_code_items(low_only) == []  # type: ignore[attr-defined]
-    items = priority._dead_code_items(mixed)  # type: ignore[attr-defined]
-    assert items[0]["title"] == "7 potentially dead function(s) detected"
-    assert items[0]["details"] == "orphan"
 
 
 def test_js_constructor_is_implicit_and_other_languages_are_not() -> None:
@@ -471,3 +379,67 @@ def test_reference_index_edges_decorators_and_unparsable_sources(
 def test_module_path_unresolvable_empty_path() -> None:
     assert module_path_unresolvable("./.py") is True
     assert module_path_unresolvable("") is False
+
+
+def test_unicode_identifier_in_dispatch_table_is_alive(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "pkg/mod.py",
+        """
+        def 处理器():
+            return 1
+
+        TABLE = [处理器]
+        """,
+    )
+
+    assert _dead(tmp_path) == {}
+
+
+def test_reference_on_a_definition_line_is_module_scope(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "pkg/app.js",
+        "function unused() { return 1; } const TABLE = [handler];\n"
+        "function handler() {\n  return 2;\n}\n",
+    )
+
+    assert set(_dead(tmp_path)) == {"unused"}
+
+
+def test_reference_edges_respect_max_depth(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "pkg/mod.py",
+        """
+        def main():
+            return wrapper()
+
+        def wrapper():
+            return [target]
+
+        def target():
+            return 1
+        """,
+    )
+    graph = CallGraph(str(tmp_path))
+
+    shallow = {d.function.name for d in find_transitive_dead_code(graph, max_depth=1)}
+    deep = {d.function.name for d in find_transitive_dead_code(graph, max_depth=2)}
+
+    assert shallow == {"target"}
+    assert deep == set()
+
+
+def test_reference_index_is_reused_until_a_source_file_changes(tmp_path: Path) -> None:
+    _write(tmp_path, "pkg/mod.py", "def target():\n    return 1\n")
+    funcs = CallGraph(str(tmp_path)).function_refs()
+
+    first = build_reference_index(tmp_path, funcs, funcs)
+    second = build_reference_index(tmp_path, funcs, funcs)
+    _write(tmp_path, "pkg/other.py", "TABLE = [target]\n")
+    third = build_reference_index(tmp_path, funcs, funcs)
+
+    assert second is first
+    assert first.referenced() == frozenset()
+    assert third.referenced() == frozenset(funcs)

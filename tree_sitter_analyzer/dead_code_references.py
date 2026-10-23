@@ -34,7 +34,8 @@ from .call_graph import FunctionRef
 from .constants import EXCLUDE_DIRS
 from .project_graph import _language_from_ext
 
-_IDENTIFIER = re.compile(r"[A-Za-z_$][\w$]*")
+# 首字符允许任意 Unicode 字母（Python 的 ``def 处理器()`` 等），不允许数字。
+_IDENTIFIER = re.compile(r"(?:[^\W\d]|\$)[\w$]*")
 # 定义关键字紧挨在名字前：``def name`` / ``function name`` / ``fn name`` ...
 _DEFINITION_PREFIX = re.compile(
     r"(?:^|[^\w$])(?:def|function|func|fn|fun|sub)\s+$", re.MULTILINE
@@ -104,6 +105,15 @@ def module_path_unresolvable(file_path: str) -> bool:
     parts = [part for part in normalized.split("/") if part not in ("", ".")]
     stem = parts[-1].rsplit(".", 1)[0]
     return any(not part.isidentifier() for part in (*parts[:-1], stem))
+
+
+#: 引用索引缓存：键为（项目根，候选集合，函数集合），值为（源文件签名，索引）。
+#: 同一张图重复查询（如 ``codegraph_overview``）时只做 ``stat``，不再重读源码。
+_INDEX_CACHE: dict[
+    tuple[str, frozenset[FunctionRef], frozenset[FunctionRef]],
+    tuple[tuple[tuple[str, int, int], ...], ReferenceIndex],
+] = {}
+_INDEX_CACHE_LIMIT = 8
 
 
 def _iter_source_files(root: Path) -> Iterable[Path]:
@@ -250,15 +260,23 @@ def build_reference_index(
 
     by_name: dict[str, list[FunctionRef]] = defaultdict(list)
     by_file: dict[str, list[FunctionRef]] = defaultdict(list)
-    for ref in functions:
+    function_list = list(functions)
+    for ref in function_list:
         by_file[normalize_rel_path(ref.file_path)].append(ref)
         if ref.name in names:
             by_name[ref.name].append(ref)
 
     root = Path(project_root)
+    files = _stat_source_files(root)
+    signature = tuple((str(path), mtime, size) for path, mtime, size in files)
+    cache_key = (str(root), frozenset(candidate_list), frozenset(function_list))
+    cached = _INDEX_CACHE.get(cache_key)
+    if cached is not None and cached[0] == signature:
+        return cached[1]
+
     module_targets: set[FunctionRef] = set()
     edges: dict[FunctionRef, set[FunctionRef]] = defaultdict(set)
-    for path in _iter_source_files(root):
+    for path, _mtime, _size in files:
         try:
             text = path.read_bytes().decode("utf-8", errors="replace")
         except OSError:
@@ -273,13 +291,31 @@ def build_reference_index(
             if not targets:
                 continue
             source = _enclosing(file_funcs, occurrence.line)
-            if source is None:
+            # 函数定义行上的引用（默认实参、单行 / 压缩代码里同一行的模块级
+            # 语句）无法按行区分作用域，按模块作用域处理：宁可漏报死代码。
+            if source is None or occurrence.line == source.start_line:
                 module_targets.update(targets)
             else:
                 edges[source].update(t for t in targets if t != source)
 
-    return ReferenceIndex(
+    index = ReferenceIndex(
         module_targets=frozenset(module_targets),
         edges={src: tuple(dst) for src, dst in edges.items() if dst},
         registered=frozenset(python_registered_functions(root, candidate_list)),
     )
+    if len(_INDEX_CACHE) >= _INDEX_CACHE_LIMIT:
+        _INDEX_CACHE.pop(next(iter(_INDEX_CACHE)))
+    _INDEX_CACHE[cache_key] = (signature, index)
+    return index
+
+
+def _stat_source_files(root: Path) -> list[tuple[Path, int, int]]:
+    """源文件及其 ``(mtime_ns, size)``；读不到状态的文件跳过。"""
+    files: list[tuple[Path, int, int]] = []
+    for path in _iter_source_files(root):
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        files.append((path, stat.st_mtime_ns, stat.st_size))
+    return files

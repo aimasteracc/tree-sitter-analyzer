@@ -337,3 +337,26 @@ async def test_overview_counts_new_function_after_in_server_refresh(tmp_path):
     await add_caller_and_refresh(project)
     result = await tool.execute({})
     assert result["summary_line"].split(",")[0] == "3 functions"
+
+
+def test_find_dead_code_drops_orphans_used_as_values(tmp_path) -> None:
+    """#1790：分发表里的孤立函数不是死代码；只被死函数引用的目标仍是死代码。"""
+    from tree_sitter_analyzer.call_graph import CallGraph
+
+    (tmp_path / "mod.py").write_text(
+        "def in_table():\n    return 1\n\n"
+        "def orphan():\n    return 2\n\n"
+        "def _callback():\n    return 3\n\n"
+        "def dead_registrar(register):\n    return register(_callback)\n\n"
+        "class Thing:\n    def __init__(self):\n        pass\n\n"
+        "TABLE = [in_table]\n",
+        encoding="utf-8",
+    )
+
+    dead = _find_dead_code(CallGraph(str(tmp_path)), 50)
+
+    assert sorted(item["name"] for item in dead) == [
+        "_callback",
+        "dead_registrar",
+        "orphan",
+    ]

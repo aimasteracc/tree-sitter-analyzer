@@ -199,7 +199,7 @@ def find_transitive_dead_code(
        ``confidence="low"``。
     """
     all_funcs = set(graph.function_refs())
-    alive: set[FunctionRef] = {
+    roots = {
         func
         for func in all_funcs
         if (not include_test_files and _is_test_file(func.file_path))
@@ -207,23 +207,20 @@ def find_transitive_dead_code(
         or _is_implicit_entry(func)
     }
     # #1790：模块作用域（导入时执行）的调用点调用到的函数也是根。
-    alive.update(_module_scope_callees(graph) & all_funcs)
+    roots.update(_module_scope_callees(graph) & all_funcs)
+    # 键为存活函数，值为它离最近的根的深度（BFS 层数）。
+    depth: dict[FunctionRef, int] = dict.fromkeys(roots, 0)
 
     def successors(func: FunctionRef) -> Iterable[FunctionRef]:
         # #1559/#1560：模糊的同名候选也算可达，不能把它们判为死代码。
         return graph.reachable_callee_refs_of(func)
 
-    _flood(alive, all_funcs, successors, max_depth)
+    _flood(depth, all_funcs, successors, max_depth, list(depth))
 
     # #1790：分发表 / 实参 / 属性 / 装饰器登记等“作为值”的使用不是调用边，单独补上。
-    references = _reference_index(graph, all_funcs - alive)
+    references = _reference_index(graph, all_funcs - set(depth))
     if references is not None:
-        seeds = set(references.module_targets) | set(references.registered)
-        for func in alive:
-            seeds.update(references.edges.get(func, ()))
-        seeds &= all_funcs
-        seeds -= alive
-        alive.update(seeds)
+        seeds = _reference_seeds(references, depth, all_funcs, max_depth)
 
         def successors_with_refs(func: FunctionRef) -> Iterable[FunctionRef]:
             return [
@@ -231,8 +228,9 @@ def find_transitive_dead_code(
                 *references.edges.get(func, ()),
             ]
 
-        _flood(alive, all_funcs, successors_with_refs, max_depth, start=seeds)
+        _flood(depth, all_funcs, successors_with_refs, max_depth, seeds)
 
+    alive = set(depth)
     dead_funcs = all_funcs - alive
     results: list[DeadFunction] = []
 
@@ -278,25 +276,53 @@ def find_transitive_dead_code(
 
 
 def _flood(
-    alive: set[FunctionRef],
+    depth: dict[FunctionRef, int],
     universe: set[FunctionRef],
     successors: Callable[[FunctionRef], Iterable[FunctionRef]],
     max_depth: int,
-    *,
-    start: Iterable[FunctionRef] | None = None,
+    start: Iterable[FunctionRef],
 ) -> None:
-    """从 ``start``（默认：全部存活函数）出发做 BFS，就地把可达函数标记为存活。"""
-    queue: deque[tuple[FunctionRef, int]] = deque(
-        (f, 0) for f in (alive if start is None else start)
-    )
+    """从 ``start`` 出发做 BFS，就地把可达函数连同深度写入 ``depth``。
+
+    深度达到 ``max_depth`` 的函数不再展开，与引用边共用同一个深度上限。
+    """
+    queue: deque[FunctionRef] = deque(start)
     while queue:
-        func, depth = queue.popleft()
-        if depth >= max_depth:
+        func = queue.popleft()
+        current = depth[func]
+        if current >= max_depth:
             continue
         for callee in successors(func):
-            if callee not in alive and callee in universe:
-                alive.add(callee)
-                queue.append((callee, depth + 1))
+            if callee not in depth and callee in universe:
+                depth[callee] = current + 1
+                queue.append(callee)
+
+
+def _reference_seeds(
+    references: ReferenceIndex,
+    depth: dict[FunctionRef, int],
+    universe: set[FunctionRef],
+    max_depth: int,
+) -> list[FunctionRef]:
+    """#1790：把引用补成新的存活函数并返回它们（就地写入 ``depth``）。
+
+    模块作用域引用与装饰器登记是根（深度 0）；存活函数里的引用与调用边一样
+    计一层，超过 ``max_depth`` 的不展开。
+    """
+    seeds: list[FunctionRef] = []
+    for target in (*references.module_targets, *references.registered):
+        if target in universe and target not in depth:
+            depth[target] = 0
+            seeds.append(target)
+    for source, targets in references.edges.items():
+        level = depth.get(source)
+        if level is None or level >= max_depth:
+            continue
+        for target in targets:
+            if target in universe and target not in depth:
+                depth[target] = level + 1
+                seeds.append(target)
+    return seeds
 
 
 def _is_implicit_entry(func: FunctionRef) -> bool:
@@ -347,10 +373,23 @@ def filter_value_referenced(
     """#1790：去掉运行时隐式调用、或在任何位置作为值使用（分发表、实参、
     装饰器）的候选。``codegraph_overview`` 的孤立函数列表共用此规则，两处结论一致。"""
     remaining = [func for func in candidates if not _is_implicit_entry(func)]
-    references = _reference_index(graph, set(remaining))
+    pending = set(remaining)
+    references = _reference_index(graph, pending)
     if references is None:
         return remaining
-    used = references.referenced()
+    # 只认可来自模块作用域、装饰器登记或非候选函数的引用；候选函数自己的引用
+    # 要等该候选被认定为“在用”之后才生效，避免死函数把目标藏起来。
+    used = set(references.module_targets) | set(references.registered)
+    for source, targets in references.edges.items():
+        if source not in pending:
+            used.update(targets)
+    frontier = list(used & pending)
+    while frontier:
+        source = frontier.pop()
+        for target in references.edges.get(source, ()):
+            if target in pending and target not in used:
+                used.add(target)
+                frontier.append(target)
     return [func for func in remaining if func not in used]
 
 

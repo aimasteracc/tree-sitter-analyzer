@@ -808,7 +808,7 @@ dogfood 2026-10-14：同一 MCP 服务器内 `nav action=callers` 建索引后�
 真实原因有两个：(1) 调用图只记录 `f(...)` 调用，函数存进分发表、作为实参传入、
 按属性取出、被装饰器登记时都没有边；(2) 根集合只有测试文件和 `main` 等少数名字，
 `__init__` / `__call__` / `visit_*` 与模块作用域调用到的函数都不是根。本仓库同一份
-图上旧算法报 1874 个死函数，修复后 202 个，修复没有新增任何死函数；50 条里真正
+图上旧算法报 1875 个死函数，修复后 200 个，修复没有新增任何死函数；50 条里真正
 未被使用的 3 条仍被报告，其中位于 `agent-tasks/` 的 1 条为 `confidence=low`。
 
 ### Lessons learned
@@ -824,7 +824,7 @@ dogfood 2026-10-14：同一 MCP 服务器内 `nav action=callers` 建索引后�
 
 ### Required guardrail
 
-`tests/unit/test_dead_code_references_1790.py` 固定：连字符 / 下划线目录结果一致；
+`tests/unit/test_dead_code_references.py` 固定：连字符 / 下划线目录结果一致；
 dict / list / tuple / set 分发表、实参传递、属性与别名导入、dunder、装饰器登记、
 模块作用域调用都不判死；死函数里的引用不会复活目标；真正未使用的函数仍被报告；
 连字符目录下的结论为 `confidence=low`，且 `scripts/_dogfood_sprint_priority.py`

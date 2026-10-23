@@ -534,3 +534,35 @@ def test_scoped_mode_ignores_hidden_category_truncation(tmp_path) -> None:
     # 20 dead functions exceed cap 5, but they are hidden in this mode.
     assert result["truncated"] is False
     assert "dead_functions" not in result
+
+
+def test_dead_function_confidence_is_reported_per_finding(tmp_path) -> None:
+    """#1790：模块路径无法解析（连字符目录）的结论为低置信度，并单独计数。"""
+    hyphenated = tmp_path / "benchmarks" / "agent-tasks"
+    hyphenated.mkdir(parents=True)
+    (hyphenated / "scenarios.py").write_text(
+        "def _unused_helper():\n    return 1\n", encoding="utf-8"
+    )
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "mod.py").write_text(
+        "def orphan():\n    return 1\n", encoding="utf-8"
+    )
+
+    result = asyncio.run(
+        CodeGraphDeadCodeTool(str(tmp_path)).execute({"mode": "dead_functions"})
+    )
+
+    by_name = {item["name"]: item for item in result["dead_functions"]}
+    assert [item["name"] for item in result["dead_functions"]] == [
+        "orphan",
+        "_unused_helper",
+    ]
+    assert by_name["orphan"]["confidence"] == "high"
+    assert by_name["orphan"]["confidence_reason"] is None
+    assert by_name["_unused_helper"]["confidence"] == "low"
+    assert by_name["_unused_helper"]["confidence_reason"] == (
+        "module_path_unresolvable"
+    )
+    assert result["stats"]["dead_functions_high_confidence"] == 1
+    assert result["stats"]["dead_functions_low_confidence"] == 1
+    assert "1 dead function(s) are confidence=low" in result["next_step"]
