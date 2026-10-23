@@ -79,7 +79,8 @@ from ._ast_cache_query_mixin import ASTCacheQueryMixin
 # v50：JS/TS 字符串字面量成员名去掉引号记录，`obj["m"]()` 按成员 `m` 记为调用（#1762）。
 # v51：JS/TS 以常量定义的箭头函数 / 函数表达式按常量名索引为函数，函数体内调用归属于它（#1763）。
 # v52：TS 调用经 ES 模块导入 / 再导出 / 项目包说明符解析到定义，symbols_json 记录 TS 导出形状与再导出（#1764 / #1768）。
-_AST_CACHE_EXTRACTOR_VERSION = 52
+# v53：TS 类的 `extends` 基类写入 parents；`const X = class extends B {...}` 以常量名索引为类（#1765）。
+_AST_CACHE_EXTRACTOR_VERSION = 53
 
 # Preserve the historical public exception identity after implementation split.
 SchemaIntegrityError.__module__ = __name__

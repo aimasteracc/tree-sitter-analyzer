@@ -54,6 +54,8 @@ _PROJECT_RESOLUTIONS = frozenset({"project", "local"})
 _SELF_QUALIFIERS = frozenset({"self", "cls", "this", "super", "super()"})
 #: #1739：Python 方法接收者；``self.m()`` 只经外围类的 MRO 确定。
 _PY_OWN_QUALIFIERS = frozenset({"self", "cls"})
+#: #1765：JS/TS 源文件后缀（``this.m()`` 只确定绑定外围类自己的方法）。
+_JSTS_THIS_SUFFIXES = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts")
 _PY_SUFFIXES = (".py", ".pyi")
 #: #1763：JS/TS 源文件后缀（嵌套定义不可从别的文件按名字到达）。
 _JSTS_SUFFIXES = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts")
@@ -146,6 +148,8 @@ class CachedEdgeResolver:
             return self._python_self_targets(
                 targets, base_name, qualifier, caller_class, caller_file
             )
+        if qualifier == "this" and caller_file.endswith(_JSTS_THIS_SUFFIXES):
+            return self._jsts_this_targets(targets, base_name, caller_class, caller_file)
         if not caller_class:
             return targets
         if not qualifier and edge.get("language") == "java":
@@ -224,6 +228,39 @@ class CachedEdgeResolver:
             ),
             binding=targets.binding,
         )
+
+    def _jsts_this_targets(
+        self,
+        targets: EdgeTargets,
+        base_name: str,
+        caller_class: str | None,
+        caller_file: str,
+    ) -> EdgeTargets:
+        """#1765：JS/TS 的 ``this.m()`` 只在外围类自己定义 ``m`` 时确定。
+
+        ts1 dogfood（hono）：``class Sub extends RegExpRouter`` 里的
+        ``this.buildAllMatchers()`` 被绑定为同文件另一个类
+        ``PreparedRegExpRouter.buildAllMatchers`` 的调用，真正的目标
+        ``RegExpRouter.buildAllMatchers`` 答 ``complete, 0``。外围类没有 ``m`` 时
+        （继承自基类，或调用方不在类中），项目里每个同名方法都只是可能目标，
+        答案保持非 ``complete``；子类覆写同样是可能目标（#1648）。
+        """
+        methods = [
+            ref for ref in self._functions_by_name.get(base_name, []) if ref.receiver
+        ]
+        candidates = _merged([*targets.certain, *targets.possible], methods)
+        own = (
+            self._own_method(caller_file, caller_class, base_name)
+            if caller_class
+            else None
+        )
+        certain = [] if own is None else [own]
+        possible = [ref for ref in candidates if ref != own]
+        if caller_class:
+            possible = self._with_overrides(
+                certain, possible, base_name, "this", caller_class
+            )
+        return EdgeTargets(certain=certain, possible=possible, binding=targets.binding)
 
     def _own_method(
         self, caller_file: str, caller_class: str, base_name: str
