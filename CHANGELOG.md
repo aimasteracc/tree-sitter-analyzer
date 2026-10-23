@@ -21,6 +21,26 @@
   Stubs with no implementation (`.pyi`, Protocol stubs) and two undecorated
   definitions (conditional definitions) are unchanged. The extractor version
   goes from 53 to 54.
+- **A cold fixture-detection scan walks the source tree once** (#1779). The
+  `is_fixture` Tier-2 scan of `tests/` resolved every `*.py` string literal
+  with its own `rglob` over `tree_sitter_analyzer/` and walked each test
+  module's AST twice. On this repository a cold scan took about 17 s locally
+  and overran the 30 s per-test timeout on a macOS release runner. The scan now
+  builds one basename index per run and walks each statement once; the result
+  is byte-identical and the cold scan takes about 6 s.
+- **A test that overruns its timeout fails as itself** (#1779). In the v3.0.0
+  release run, the timeout in `test_real_repo_finds_java_plugin` landed on an
+  instruction with no line number (`tb_lineno` is `None` on Python 3.11+).
+  pytest 8.4 could not render that traceback, so the xdist worker raised an
+  INTERNALERROR and the whole session ended with exit code 3 after 4192 passed
+  tests. On Windows, pytest-timeout's thread method calls `os._exit`, so a
+  timeout showed only as `worker 'gwN' crashed` with no stack (PR #1777). A
+  test plugin (`tests/pytest_crash_guard.py`) now makes the line number fall
+  back to the frame's, turns any report that still cannot be built into a
+  failed report naming the test, and raises the thread-method timeout in the
+  main thread. A timeout is now an ordinary, rerunnable test failure with its
+  traceback on every OS. A test stuck in native code is still ended by the
+  hang watchdog (#1638).
 
 ## [3.0.0] - 2026-10-23
 
