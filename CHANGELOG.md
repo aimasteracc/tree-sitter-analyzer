@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+### Performance
+
+- **First `nav action=callers` after an edit + refresh is faster on Windows**
+  (#1778). Profiling showed that #1776 did not cause the slower first query
+  seen in the v3.0.0 gate. On one shared index, develop with and without #1776
+  timed the same (fastapi 7.0 s vs 7.0 s), and so did the r12 and r12b wheels.
+  About 80% of the time is the certified snapshot capture. Graph building is
+  about 10%. The largest part of the capture is the source walk: four walks per
+  capture, each running an `lstat` (which opens the file on Windows) on every
+  directory entry. The walk now skips the `lstat` for entries that have an
+  unsupported extension and are not directories, because those entries are
+  skipped whatever `lstat` returns. On fastapi a walk drops from 4,457 to
+  2,485 `lstat` calls and from 0.62 s to 0.33 s. Same-machine A/B, 12 edit
+  cycles per side: fastapi 12.7 s → 9.0 s, axios 2.96 s → 2.85 s,
+  rich 2.12 s → 1.95 s. Warm queries are unchanged. The inventory rows and
+  verdicts are byte-identical. Answers on the r10 batteries after an edit
+  (fastapi 102, axios 19, rich 148 queries) are identical across four sources:
+  the warm process, a cold process on develop, a cold process with this change,
+  and develop's warm process. Extractor version unchanged.
+
 ### Fixed
 
 - **`self.m()` binds to a method that has `@overload` stubs** (#1773). Dogfood
