@@ -146,8 +146,8 @@ async def test_this_call_is_not_bound_to_another_class_in_the_file(
     assert [(c["file"], c["name"]) for c in prepared["callers"]] == [
         ("prepared-router.ts", "own")
     ]
+    # `Named` 继承 `RegExpRouter`：同文件的 `Sibling.buildAllMatchers` 不可能被它调用。
     assert sibling["callers"] == []
-    assert sibling["completeness"] != "complete"
 
 
 @pytest.mark.asyncio

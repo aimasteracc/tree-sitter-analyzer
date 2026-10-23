@@ -243,17 +243,9 @@ def _unique_class_method(
     to the resolver, so a name defined by two classes in the same file is
     ambiguous. Conservatively we resolve only the unambiguous (single-owner)
     case — never the file-wide first match, which would mis-bind ``B.bar ->
-    A.foo`` (Codex P2 #1).
-
-    #1765：只有一个类定义了它还不够——``class Sub extends Base`` 里的
-    ``this.m()`` 调用的是继承来的 ``Base.m``，不是同文件另一个类的 ``m``。因此
-    只在文件里恰好只有一个类（调用方必然在它之中）时绑定；其余交给读取端按
-    调用方的外围类分派。"""
-    classes = ctx.file_class_methods.get(file_path, {})
-    if len(classes) != 1:
-        return None
+    A.foo`` (Codex P2 #1)."""
     found: int | None = None
-    for methods in classes.values():
+    for methods in ctx.file_class_methods.get(file_path, {}).values():
         mid = methods.get(simple)
         if mid is None:
             continue

@@ -105,6 +105,8 @@ class CachedEdgeResolver:
         self._subclasses = subclasses
         # #1677：类层级（有序基类与方法表），惰性读取，只在继承调用时需要。
         self._hierarchy = hierarchy
+        #: #1765：方法所属类名 -> 定义文件（惰性建立）。
+        self._receiver_files: dict[str, set[str]] | None = None
         self._resolver = CalleeResolver(
             functions_by_name=functions_by_name,
             functions_by_file=functions_by_file,
@@ -280,7 +282,9 @@ class CachedEdgeResolver:
                 certain, possible = [], _merged(static, methods)
             else:
                 chain = [ref for ref in methods if ref.receiver in ancestors]
-                nearest = self._jsts_nearest(caller_class, base_name, methods)
+                nearest = self._jsts_nearest(
+                    caller_class, caller_file, base_name, methods
+                )
                 certain = [] if nearest is None else [nearest]
                 possible = [ref for ref in chain if ref != nearest]
         return EdgeTargets(
@@ -292,32 +296,62 @@ class CachedEdgeResolver:
         )
 
     def _jsts_nearest(
-        self, caller_class: str, base_name: str, methods: list[FunctionRef]
+        self,
+        caller_class: str,
+        caller_file: str,
+        base_name: str,
+        methods: list[FunctionRef],
     ) -> FunctionRef | None:
-        """沿单继承链找第一个定义 ``base_name`` 的基类；任何一步不唯一即放弃。"""
+        """沿单继承链找第一个定义 ``base_name`` 的基类；任何一步无法确定即放弃。
+
+        每一步的基类按名字定位到文件：所在文件 ``import`` 了它、同文件定义了它，
+        或项目里只有一个同名类。zod 的 v3 / v4 各有一个 ``ZodType``，只有导入
+        能说明 ``class ZodString extends ZodType`` 指的是哪一个。
+        """
         assert self._subclasses is not None  # 调用方已检查。
-        owners: dict[str, set[str]] = {}
-        for ref in self._functions_by_name.get(base_name, []):
-            if ref.receiver:
-                owners.setdefault(ref.receiver, set()).add(ref.file_path)
-        current = caller_class
-        seen = {current}
+        current, current_file = caller_class, caller_file
+        seen = {(current, current_file)}
         for _ in range(_JSTS_CHAIN_MAX):
             parents = self._subclasses.parents_of(current)
             if len(parents) != 1:
                 return None
             (parent,) = parents
-            if parent in seen:
+            parent_file = self._jsts_class_file(parent, current_file)
+            if parent_file is None or (parent, parent_file) in seen:
                 return None
-            seen.add(parent)
-            files = owners.get(parent, set())
-            if len(files) > 1 or not self._subclasses.unique_class(parent):
-                return None
-            if files:
-                found = [ref for ref in methods if ref.receiver == parent]
+            seen.add((parent, parent_file))
+            found = [
+                ref
+                for ref in methods
+                if ref.receiver == parent and ref.file_path == parent_file
+            ]
+            if found:
                 return found[0] if len(found) == 1 else None
-            current = parent
+            current, current_file = parent, parent_file
         return None
+
+    def _jsts_class_file(self, class_name: str, from_file: str) -> str | None:
+        """``from_file`` 中名字 ``class_name`` 指向的类所在文件；无法确定为 None。"""
+        imported = self._file_import_map.get(from_file, {}).get(class_name)
+        if imported:
+            return str(imported)
+        if any(
+            ref.receiver == class_name
+            for ref in self._functions_by_file.get(from_file, [])
+        ):
+            return from_file
+        assert self._subclasses is not None
+        if not self._subclasses.unique_class(class_name):
+            return None
+        if self._receiver_files is None:
+            receivers: dict[str, set[str]] = {}
+            for refs in self._functions_by_name.values():
+                for ref in refs:
+                    if ref.receiver:
+                        receivers.setdefault(ref.receiver, set()).add(ref.file_path)
+            self._receiver_files = receivers
+        files = self._receiver_files.get(class_name, set())
+        return next(iter(files)) if len(files) == 1 else None
 
     def _own_method(
         self, caller_file: str, caller_class: str, base_name: str
