@@ -24,6 +24,32 @@
 
 ### Fixed
 
+- **`nav action=callers` `complete` is now proof-carrying** (RFC-0040). It
+  used to mean "no failure check fired", so any path that skipped a check
+  answered `complete` (the #1740 / #1758 / #1759 / #1772 / #1644 class).
+  Now every check in a closed registry reports `Checked` or `NotChecked`,
+  and `complete` is built in one place, only when all 12 checks ran over the
+  queried target set and found nothing. A check that is missing, did not
+  run, or ran over another target fails closed to `unknown` (or `incomplete`
+  with callers listed) with a code naming it. Bare and qualified names
+  resolve to one target set before any check runs. This closes skip paths
+  that were still open:
+  - no project root;
+  - an unreadable accessor declaration;
+  - an unreadable graph for the same-file sibling methods;
+  - module-level call sites without a line, never counted on the
+    qualified/graph path;
+  - unreadable reference stamps;
+  - the index-rebuilding reply with no completeness.
+
+  New codes: `NAME_ONLY_INBOUND_UNCHECKED`,
+  `UNATTRIBUTED_CALL_SITES_UNCHECKED`, `ACCESSOR_UNCHECKED`. There is also a
+  bounded `completeness_checks` field (`{"required": 12, "checked": 12}` on a
+  census). The r12b dogfood batteries were rerun with develop and with this
+  branch on the same repo commits: 3,291 answers over 7 repos in both modes,
+  0 completeness or reason changes, and an unchanged `complete` share and
+  wrong-`complete` count. Extractor version unchanged.
+
 - **A call graph built on a certified snapshot is now explicitly not an
   incremental base** (#1793). `call_graph_incremental.generation_of` returned
   the snapshot's `source_generation` (`idxsrc-v3:…`), a source-tree

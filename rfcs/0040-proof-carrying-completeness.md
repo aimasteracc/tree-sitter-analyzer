@@ -230,9 +230,40 @@ New `tests/unit/mcp/tools/test_callers_proof_carrying_completeness.py`:
 
 The dogfood batteries of r12b were rerun on the same repo commits: the rich, pydantic and fastapi
 samples plus three sweeps; the axios and gson manual truth plus sweeps; the zod and hono GT plus
-sweeps. Both modes were run with `develop` (before) and this branch (after). The table, together
-with every answer that moved from `complete` to non-`complete` and the check responsible, is in
-the PR description.
+sweeps. Both modes were run with `develop` (before) and this branch (after). On each repo, both sides
+queried an index built from that repo's own fresh `git clone --local` copy, with in-process
+`CodeGraphCallersTool`.
+
+| Repo | Mode | n | `complete` before | `complete` after | Scorer flags before / after | r12b |
+|---|---|---|---|---|---|---|
+| rich | qualified | 363 | 120 (33.1%) | 120 (33.1%) | 0 / 0 | 120, 0 |
+| rich | bare | 363 | 121 (33.3%) | 121 (33.3%) | 0 / 0 | 121, 0 |
+| pydantic | qualified | 417 | 166 (39.8%) | 166 (39.8%) | 1 / 1 | 166, 1 |
+| pydantic | bare | 417 | 167 (40.0%) | 167 (40.0%) | 1 / 1 | 167, 1 |
+| fastapi | qualified | 378 | 92 (24.3%) | 92 (24.3%) | 2 / 2 | 92, 2 |
+| fastapi | bare | 378 | 92 (24.3%) | 92 (24.3%) | 2 / 2 | 92, 2 |
+| axios | qualified | 160 | 46 (28.8%) | 46 (28.8%) | 0 / 0 | 46, 0 |
+| axios | bare | 160 | 46 (28.8%) | 46 (28.8%) | 0 / 0 | 46, 0 |
+| gson | qualified | 138 | 57 (41.3%) | 57 (41.3%) | 2 / 2 | 57, 2 |
+| gson | bare | 138 | 60 (43.5%) | 60 (43.5%) | 2 / 2 | 60, 2 |
+| zod | qualified | 86 | 7 (8.1%) | 7 (8.1%) | 0 / 0 | 7, 0 |
+| zod | bare | 101 | 13 (12.9%) | 13 (12.9%) | 0 / 0 | 13, 0 |
+| hono | qualified | 91 | 8 (8.8%) | 8 (8.8%) | 4 / 4 | 8, 4 |
+| hono | bare | 101 | 15 (14.9%) | 15 (14.9%) | 4 / 4 | 15, 4 |
+
+- **Changed answers:** 0 of 3,291 paired answers changed `completeness`, `completeness_reasons`
+  or `caller_count`. No answer moved from `complete` to non-`complete`, so there is no wiring
+  miss.
+- **Proofs:** every `complete` answer carries `{"required": 12, "checked": 12}`. No real answer
+  hit a `NotChecked`. That is expected: the closed skip paths only open on read failures, or on
+  module-level edges that have no call line, and the indexer always writes that line.
+- **Scorer flags:** these are the same answers r12b adjudicated as benign:
+  - pydantic `general_wrap_validator_function` (an `@deprecated` string);
+  - fastapi `_CollectorServer.server_bind` (stdlib) and `asdict` (`dataclasses.asdict`);
+  - gson `getDeclaredClass` (javadoc);
+  - hono `EventProcessor` in the duplicated file.
+
+  None of them is new.
 
 ## Residual risks and out of scope
 
