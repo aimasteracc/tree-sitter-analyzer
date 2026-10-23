@@ -105,7 +105,9 @@ def jsts_class_expression_name(node: Any, source: str) -> str | None:
         return None
     name = parent.child_by_field_name("name")
     return (
-        _node_text(name, source) if name is not None and name.type == "identifier" else None
+        _node_text(name, source)
+        if name is not None and name.type == "identifier"
+        else None
     )
 
 

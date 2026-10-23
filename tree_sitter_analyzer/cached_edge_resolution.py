@@ -151,7 +151,9 @@ class CachedEdgeResolver:
                 targets, base_name, qualifier, caller_class, caller_file
             )
         if qualifier == "this" and caller_file.endswith(_JSTS_THIS_SUFFIXES):
-            return self._jsts_this_targets(targets, base_name, caller_class, caller_file)
+            return self._jsts_this_targets(
+                targets, base_name, caller_class, caller_file
+            )
         if not caller_class:
             return targets
         if not qualifier and edge.get("language") == "java":
@@ -270,7 +272,9 @@ class CachedEdgeResolver:
             certain, possible = [own], []
         else:
             ancestors = (
-                None if self._subclasses is None else self._subclasses.ancestors(caller_class)
+                None
+                if self._subclasses is None
+                else self._subclasses.ancestors(caller_class)
             )
             if ancestors is None:
                 certain, possible = [], _merged(static, methods)

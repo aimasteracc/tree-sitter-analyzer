@@ -78,8 +78,8 @@ async def _callers(root: str, name: str, file_path: str) -> dict:
 def _sites(result: dict) -> set[tuple[str, int]]:
     return {
         (site["file"], site["line"])
-        for site in result.get("name_only_sites") or []
-        + (result.get("unresolved_inbound_sites") or [])
+        for site in result.get("name_only_sites")
+        or [] + (result.get("unresolved_inbound_sites") or [])
     }
 
 
