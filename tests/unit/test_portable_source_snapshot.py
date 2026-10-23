@@ -480,3 +480,56 @@ def test_portable_identity_includes_windows_reparse_attributes(
 
     assert portable._identity(before) != portable._identity(after)
     assert portable._is_reparse(after) is True
+
+
+def _mixed_tree(root: Path) -> None:
+    (root / "kept.py").write_text("kept = True\n")
+    (root / "notes.txt").write_text("ignored\n")
+    (root / "LICENSE").write_text("ignored\n")
+    # A directory whose name has an unsupported suffix is still a directory.
+    (root / "data.txt").mkdir()
+    (root / "data.txt" / "inner.py").write_text("inner = True\n")
+    (root / "data.txt" / "inner.md").write_text("# ignored?\n")
+
+
+def test_portable_inventory_does_not_stat_unsupported_leaves(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # #1778: an unsupported non-directory entry is skipped whatever lstat says,
+    # so the walk no longer pays an lstat for it.
+    _mixed_tree(tmp_path)
+    real_lstat = os.lstat
+    seen: list[str] = []
+
+    def counting_lstat(path: os.PathLike[str] | str) -> os.stat_result:
+        seen.append(Path(path).name)
+        return real_lstat(path)
+
+    monkeypatch.setattr(portable.os, "lstat", counting_lstat)
+
+    rows, unsafe = _inventory(tmp_path)
+
+    assert not unsafe
+    assert {"kept.py", "inner.py"} <= {row[0].rsplit("/", 1)[-1] for row in rows}
+    assert "data.txt/inner.py" in {row[0] for row in rows}
+    assert "notes.txt" not in seen and "LICENSE" not in seen
+    assert "data.txt" in seen  # directories are still verified by lstat
+
+
+def test_portable_inventory_rows_match_the_stat_every_entry_walk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # #1778: skipping the lstat of unsupported leaves changes no row and no verdict.
+    _mixed_tree(tmp_path)
+    fast = _inventory(tmp_path)
+    monkeypatch.setattr(portable, "_may_be_directory", lambda _entry: True)
+
+    assert _inventory(tmp_path) == fast
+
+
+def test_may_be_directory_treats_an_unreadable_type_as_a_directory() -> None:
+    class _Entry:
+        def is_dir(self, *, follow_symlinks: bool) -> bool:
+            raise PermissionError("denied")
+
+    assert portable._may_be_directory(_Entry()) is True  # type: ignore[arg-type]
