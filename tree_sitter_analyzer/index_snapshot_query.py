@@ -4,11 +4,19 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
+from collections import OrderedDict
+from collections.abc import Collection
 from typing import Any, cast
 
 from .cache.callgraph_state import call_graph_built as _call_graph_built
 from .cache.graph import bfs_callees, bfs_callers
-from .cache.helpers import _build_function_entry
+from .cache.graph_input_rows import (
+    CallEdgeRows,
+    FunctionRows,
+    read_call_edge_rows,
+    read_function_rows,
+)
 from .cache.query import (
     fts_search,
     fts_search_ranked,
@@ -19,6 +27,23 @@ from .cache.query import (
 )
 from .cache.search import search_symbols_cascade
 from .graph.edge_store import EdgeKind, EdgeStore
+
+#: #1774：已核验调用图标记成立的快照身份（有上限，先进先出）。
+_BUILT_SNAPSHOTS_MAX = 16
+_BUILT_SNAPSHOTS: OrderedDict[tuple[str, ...], None] = OrderedDict()
+_BUILT_LOCK = threading.Lock()
+
+
+def _built_snapshot_known(identity: tuple[str, ...]) -> bool:
+    with _BUILT_LOCK:
+        return identity in _BUILT_SNAPSHOTS
+
+
+def _remember_built_snapshot(identity: tuple[str, ...]) -> None:
+    with _BUILT_LOCK:
+        _BUILT_SNAPSHOTS[identity] = None
+        while len(_BUILT_SNAPSHOTS) > _BUILT_SNAPSHOTS_MAX:
+            _BUILT_SNAPSHOTS.popitem(last=False)
 
 
 class CertifiedSnapshotCache:
@@ -47,6 +72,24 @@ class CertifiedSnapshotCache:
     def close(self) -> None:
         """连接由 owner 管理；此适配器没有独立关闭权。"""
         self._owner.require_active()
+
+    def graph_input_identity(self) -> tuple[str, ...] | None:
+        """#1774：本适配器所读不可变私有副本的身份；身份不全时为 None。
+
+        快照 ID 由注册表随机生成、从不复用，它命名的内存副本在捕获后只读，所以
+        同一身份下的构图输入恒定（``call_graph_snapshot_inputs``）。
+        """
+        self._owner.require_active()
+        snapshot = self._owner.snapshot
+        parts = (
+            snapshot.canonical_root,
+            snapshot.snapshot_id,
+            snapshot.index_fingerprint,
+            snapshot.source_generation,
+        )
+        if not all(isinstance(part, str) and part for part in parts):
+            return None
+        return ("certified-snapshot", *parts)
 
     def get_stats(self) -> dict[str, int]:
         row = self.get_conn().execute("SELECT COUNT(*) FROM ast_index").fetchone()
@@ -93,15 +136,11 @@ class CertifiedSnapshotCache:
         return search_symbols_linear(self.get_conn(), query, language)
 
     def get_functions(self) -> list[dict[str, Any]]:
-        rows = self.get_conn().execute(
-            "SELECT file_path, symbols_json, language FROM ast_index"
-        )
-        return [
-            _build_function_entry(symbol, row["file_path"], row["language"])
-            for row in rows
-            for symbol in json.loads(row["symbols_json"]).get("symbols", [])
-            if symbol.get("kind") in ("function", "method")
-        ]
+        return read_function_rows(self.get_conn()).to_functions()
+
+    def get_function_rows(self) -> FunctionRows:
+        """#1657：``get_functions`` 解析前的原始行（供构图输入摘要）。"""
+        return read_function_rows(self.get_conn())
 
     def get_symbols_by_kind(
         self, kind: str, limit: int = 50000
@@ -135,12 +174,12 @@ class CertifiedSnapshotCache:
         return result
 
     def get_call_edges(self) -> list[dict[str, Any]]:
-        rows = self.get_conn().execute(
-            "SELECT caller_name, file_path AS caller_file, caller_line, "
-            "callee_name, callee_full, callee_line, file_path, language "
-            "FROM edges WHERE kind='calls'"
-        )
-        return [dict(row) for row in rows]
+        # #1559/#1560：带上持久化解析列，内存调用图不再按裸名重新猜测。
+        return read_call_edge_rows(self.get_conn()).to_dicts()
+
+    def get_call_edge_rows(self) -> CallEdgeRows:
+        """#1657：``get_call_edges`` 的原始元组形式；SQL 错误照常抛出（严格）。"""
+        return read_call_edge_rows(self.get_conn())
 
     def query_edges(
         self,
@@ -185,22 +224,56 @@ class CertifiedSnapshotCache:
         return bfs_callees(self.get_conn(), caller_name, normalized, max_depth)
 
     def call_graph_built(self) -> bool:
+        # #1774：不可变副本上的“已建成”是内容事实，同一快照只核验一次；
+        # 否定结果可能来自期限，不记住，下次照常核验。
+        identity = self.graph_input_identity()
+        if identity is not None and _built_snapshot_known(identity):
+            self._owner.require_active()
+            return True
         # PR #1491：外层 owner 已安装共同 deadline，内层探针不得清空它。
-        return bool(
+        built = bool(
             _call_graph_built(
                 self.get_conn(),
                 deadline=self._owner.deadline,
                 install_progress_handler=False,
             )
         )
+        if built and identity is not None:
+            _remember_built_snapshot(identity)
+        return built
 
     def _store(self) -> EdgeStore:
         return EdgeStore(self.get_conn(), ensure_schema=False)
 
     def count_unresolved_callers(
-        self, name: str, file: str | None = None
+        self,
+        name: str,
+        file: str | None = None,
+        bound_targets: Collection[tuple[str, int]] | None = None,
     ) -> int | None:
-        return cast(int | None, self._store().count_unresolved_callers(name, file))
+        return cast(
+            int | None,
+            self._store().count_unresolved_callers(name, file, bound_targets),
+        )
+
+    def unresolved_caller_sites(
+        self,
+        name: str,
+        file: str | None = None,
+        bound_targets: Collection[tuple[str, int]] | None = None,
+    ) -> list[dict[str, object]] | None:
+        return cast(
+            list[dict[str, object]] | None,
+            self._store().unresolved_caller_sites(name, file, bound_targets),
+        )
+
+    def symbol_definitions(self, name: str) -> list[tuple[str, int]]:
+        rows = self.get_conn().execute(
+            "SELECT file_path, line FROM ast_symbol_rows WHERE name=? "
+            "AND kind IN ('function', 'method')",
+            (name,),
+        )
+        return [(str(row[0]), int(row[1] or 0)) for row in rows if row[0]]
 
     def unresolved_call_sites_in_file(
         self, file: str

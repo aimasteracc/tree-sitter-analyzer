@@ -248,9 +248,21 @@ def _add_mcp_change_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         default=False,
         help=(
-            "Emit the full 145KB --change-impact envelope (default since "
-            "v1.12: trimmed agent-summary). Use this when you genuinely "
-            "need verification_command, raw_files, raw_test_paths, etc."
+            "Emit the full --change-impact envelope (default since "
+            "v1.12: trimmed agent-summary). Its detail lists are summarized "
+            "to counts plus the top most-impacted items; add "
+            "--change-impact-include-details for the complete lists (#1617)."
+        ),
+    )
+    parser.add_argument(
+        "--change-impact-include-details",
+        action="store_true",
+        default=False,
+        help=(
+            "Emit the full --change-impact envelope with the complete "
+            "call_graph_impact / affected_symbols / changed_symbols / "
+            "affected_files lists and every command field (implies "
+            "--change-impact-full)."
         ),
     )
     parser.add_argument(
@@ -495,9 +507,20 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--ast-cache-include-details",
+        action="store_true",
+        help=(
+            "List every per-file detail for --ast-cache index, including "
+            "unchanged files (default: counts + at most 50 changed/errored files)"
+        ),
+    )
+    parser.add_argument(
         "--watch",
         action="store_true",
-        help="Start background file watcher for auto-sync (shortcut for --ast-cache --ast-cache-mode watch_start)",
+        help=(
+            "Run the file watcher for auto-sync until Ctrl-C (shortcut for "
+            "--ast-cache --ast-cache-mode watch_start)"
+        ),
     )
     parser.add_argument(
         "--watch-poll-interval",

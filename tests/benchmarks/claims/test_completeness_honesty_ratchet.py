@@ -58,11 +58,15 @@ CORPUS = PROJECT_ROOT / "tests" / "fixtures" / "call_graph" / "undecidable_proje
 #: ``(symbol, declaring file, the dispatch that reaches it)``.  Each entry is a
 #: real runtime edge that a call-site text search cannot find.
 _CASES: tuple[tuple[str, str, str], ...] = (
-    ("handle_alpha", "plugins.py", 'HANDLERS[name]() registry dispatch'),
-    ("handle_beta", "plugins.py", 'HANDLERS[name]() registry dispatch'),
+    ("handle_alpha", "plugins.py", "HANDLERS[name]() registry dispatch"),
+    ("handle_beta", "plugins.py", "HANDLERS[name]() registry dispatch"),
     ("method_one", "dynamic.py", "getattr(self, name)()"),
     ("method_two", "dynamic.py", "getattr(self, name)()"),
-    ("module_level_target", "dynamic.py", "globals()[name]() and getattr(module, attr)()"),
+    (
+        "module_level_target",
+        "dynamic.py",
+        "globals()[name]() and getattr(module, attr)()",
+    ),
 )
 
 #: Recorded, not ratcheted: the number of corpus cases the corpus itself proves
@@ -121,7 +125,9 @@ def test_the_corpus_still_exercises_the_undecidable_shape() -> None:
         )
 
 
-def test_corpus_records_unresolved_dispatch_under_the_expression(corpus_project) -> None:
+def test_corpus_records_unresolved_dispatch_under_the_expression(
+    corpus_project,
+) -> None:
     """What TSA does today with a computed callee: it names the expression.
 
     This is recorded rather than asserted as correct.  It is why a per-symbol
@@ -129,16 +135,23 @@ def test_corpus_records_unresolved_dispatch_under_the_expression(corpus_project)
     to ``HANDLERS[name]``, which is no symbol's name, so a lookup for
     ``handle_alpha`` finds nothing unresolved and reports a complete zero.
     """
-    import sqlite3
+    from tree_sitter_analyzer.ast_cache import ASTCache
 
-    conn = sqlite3.connect(f"{corpus_project}/.ast-cache/index.db")
+    # 经公开读路由读取当前已发布版本（#1600）：RFC-0032 slice 1（#1565）起默认缓存
+    # 由版本存储管理，旧 ``.ast-cache/index.db`` 不再写入；直接 sqlite3.connect
+    # 该路径只会新建一个无表空库，令本记录性断言因 "no such table: edges" 失效。
+    cache = ASTCache(corpus_project)
     try:
-        rows = conn.execute(
-            "SELECT callee_name FROM edges WHERE kind='calls' "
-            "AND callee_resolution NOT IN ('project','builtin','stdlib','local')"
-        ).fetchall()
+        rows = (
+            cache.get_conn()
+            .execute(
+                "SELECT callee_name FROM edges WHERE kind='calls' "
+                "AND callee_resolution NOT IN ('project','builtin','stdlib','local')"
+            )
+            .fetchall()
+        )
     finally:
-        conn.close()
+        cache.close()
     names = {row[0] for row in rows}
     # A dynamic site leaves a placeholder row, but keyed by the source text.
     assert any("[" in name or "(" in name for name in names), (
@@ -182,7 +195,9 @@ async def test_a_symbol_in_a_fully_resolved_file_still_answers_complete(
         cache.close()
 
     tool = CodeGraphCallersTool(str(tmp_path))
-    result = await tool.execute({"function_name": "clean_symbol", "output_format": "json"})
+    result = await tool.execute(
+        {"function_name": "clean_symbol", "output_format": "json"}
+    )
 
     assert result["completeness"] == "complete", (
         "a symbol whose own file is fully resolved must not inherit a sibling "
@@ -207,7 +222,10 @@ async def test_undecidable_edge_is_never_reported_as_confidently_absent(
     offenders = []
     for symbol, declaring, dispatch in _CASES:
         result = await tool.execute({"function_name": symbol, "output_format": "json"})
-        if result.get("caller_count", 0) == 0 and result.get("completeness") == "complete":
+        if (
+            result.get("caller_count", 0) == 0
+            and result.get("completeness") == "complete"
+        ):
             offenders.append((symbol, declaring, dispatch, result.get("completeness")))
     assert offenders == [], (
         "these corpus symbols have a real inbound edge but were answered with a "
@@ -231,7 +249,10 @@ async def test_honesty_ratchet_never_decreases(corpus_project) -> None:
     confident_zeros = []
     for symbol, _declaring, _dispatch in _CASES:
         result = await tool.execute({"function_name": symbol, "output_format": "json"})
-        if result.get("caller_count", 0) == 0 and result.get("completeness") == "complete":
+        if (
+            result.get("caller_count", 0) == 0
+            and result.get("completeness") == "complete"
+        ):
             confident_zeros.append(symbol)
         else:
             honest += 1

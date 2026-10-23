@@ -20,9 +20,11 @@ from collections import deque
 from typing import Any
 
 from ...call_graph import CachedCallGraph, CallGraph, FunctionRef
+from ...call_graph_binding import RefIdentity, ref_identity
 from ...utils import setup_logger
 from ...utils.test_detection import is_test_file
 from .base_tool import BaseMCPTool
+from .index_bound_graph import index_bound_graph, reset_index_bound_graph
 
 logger = setup_logger(__name__)
 
@@ -34,6 +36,18 @@ _MAX_DEPTH = 10
 # tool-result token budget. The agent gets a representative head + the true
 # counts + a truncation flag; the full list is one callers/callees call away.
 _MAX_LISTED = 50
+_NAME_ONLY = "name_only"
+
+
+def _impact_callers(
+    graph: CallGraph, ref: FunctionRef
+) -> tuple[list[FunctionRef], set[FunctionRef]]:
+    """影响分析用的调用方：确定的加上仅同名匹配的（#1559，过近似）。
+
+    返回 (全部调用方, 其中仅同名匹配的集合)，后者用于在输出中标记。
+    """
+    possible = list(graph.possible_caller_refs_of(ref))
+    return [*graph.caller_refs_of(ref), *possible], set(possible)
 
 
 def _partition_refs(
@@ -58,7 +72,7 @@ def _compute_transitive_callers(
     include_tests: bool = False,
 ) -> list[dict[str, Any]]:
     targets = graph.resolve_targets(func_name, file_path)
-    visited: set[str] = set()
+    visited: set[RefIdentity] = set()  # #1619：按身份去重，同名不合并
     result: list[dict[str, Any]] = []
     queue: deque[tuple[FunctionRef, int]] = deque((t, 0) for t in targets)
 
@@ -66,14 +80,17 @@ def _compute_transitive_callers(
         current, d = queue.popleft()
         if d >= max_depth:
             continue
-        for caller in graph.caller_refs_of(current):
+        callers, name_only = _impact_callers(graph, current)
+        for caller in callers:
             if not include_tests and is_test_file(caller.file_path):
                 continue  # filter before to_dict()
-            key = caller.qualified_name()
+            key = ref_identity(caller)
             if key not in visited:
                 visited.add(key)
                 entry = caller.to_dict()
                 entry["distance"] = d + 1
+                if caller in name_only:
+                    entry["match"] = _NAME_ONLY
                 result.append(entry)
                 queue.append((caller, d + 1))
                 if len(result) >= _MAX_TRANSITIVE:
@@ -89,7 +106,7 @@ def _compute_transitive_callees(
     include_tests: bool = False,
 ) -> list[dict[str, Any]]:
     targets = graph.resolve_targets(func_name, file_path)
-    visited: set[str] = set()
+    visited: set[RefIdentity] = set()  # #1619：按身份去重
     result: list[dict[str, Any]] = []
     queue: deque[tuple[FunctionRef, int]] = deque((t, 0) for t in targets)
 
@@ -100,7 +117,7 @@ def _compute_transitive_callees(
         for callee in graph.callee_refs_of(current):
             if not include_tests and is_test_file(callee.file_path):
                 continue  # filter before to_dict()
-            key = callee.qualified_name()
+            key = ref_identity(callee)
             if key not in visited:
                 visited.add(key)
                 entry = callee.to_dict()
@@ -169,7 +186,8 @@ def _compute_risk_score(
     ambiguous = candidate_count > 1 and file_path is None
 
     target = targets[0]
-    all_callers = graph.caller_refs_of(target)
+    # #1559：fan_in 含仅同名匹配的调用方，判定不能因丢弃模糊调用而变 SAFE。
+    all_callers, name_only_callers = _impact_callers(graph, target)
     all_callees = graph.callee_refs_of(target)
     prod_callers, test_callers = _partition_refs(all_callers)
     prod_callees, test_callees = _partition_refs(all_callees)
@@ -191,6 +209,9 @@ def _compute_risk_score(
     elif fan_in >= 3:
         score += 10
     factors["fan_in"] = fan_in
+    name_only_fan_in = sum(1 for c in prod_callers if c in name_only_callers)
+    if name_only_fan_in:
+        factors["name_only_callers"] = name_only_fan_in
 
     if cross_file_callers >= 5:
         score += 25
@@ -260,25 +281,26 @@ def _blast_radius_for_functions(
     file_path: str | None = None,
     depth: int = 5,
 ) -> dict[str, Any]:
-    all_affected: set[str] = set()
+    all_affected: set[RefIdentity] = set()  # #1619：按身份计数
     propagation_chains: list[dict[str, Any]] = []
     files_at_risk: dict[str, set[str]] = {}
 
     for func_name in function_names:
         targets = graph.resolve_targets(func_name, file_path)
         for target in targets:
-            start_key = target.qualified_name()
+            start_key = ref_identity(target)
             all_affected.add(start_key)
 
             queue: deque[tuple[FunctionRef, int]] = deque([(target, 0)])
-            visited: set[str] = {start_key}
+            visited: set[RefIdentity] = {start_key}
 
             while queue:
                 current, d = queue.popleft()
                 if d >= depth:
                     continue
-                for caller in graph.caller_refs_of(current):
-                    key = caller.qualified_name()
+                callers, name_only = _impact_callers(graph, current)
+                for caller in callers:
+                    key = ref_identity(caller)
                     if key not in visited:
                         visited.add(key)
                         all_affected.add(key)
@@ -286,18 +308,19 @@ def _blast_radius_for_functions(
                         caller_set.add(caller.name)
                         from_dict = current.to_dict()
                         to_dict = caller.to_dict()
-                        propagation_chains.append(
-                            {
-                                "from": from_dict,
-                                "to": to_dict,
-                                "direction": "upstream",
-                                "depth": d + 1,
-                            }
-                        )
+                        chain = {
+                            "from": from_dict,
+                            "to": to_dict,
+                            "direction": "upstream",
+                            "depth": d + 1,
+                        }
+                        if caller in name_only:
+                            chain["match"] = _NAME_ONLY
+                        propagation_chains.append(chain)
                         queue.append((caller, d + 1))
 
                 for callee in graph.callee_refs_of(current):
-                    key = callee.qualified_name()
+                    key = ref_identity(callee)
                     if key not in visited:
                         visited.add(key)
                         all_affected.add(key)
@@ -335,7 +358,7 @@ class CodeGraphImpactTool(BaseMCPTool):
         super().__init__(project_root)
 
     def _on_project_root_changed(self, project_root: str | None) -> None:
-        self._call_graph = None
+        reset_index_bound_graph(self)
 
     def _try_get_cache(self) -> Any:
         try:
@@ -353,15 +376,16 @@ class CodeGraphImpactTool(BaseMCPTool):
         return None
 
     def _get_call_graph(self) -> CallGraph:
-        if self._call_graph is None:
-            if not self.project_root:
-                raise ValueError("Project root not set. Call set_project_path first.")
-            cache = self._try_get_cache()
-            if cache is not None:
-                self._call_graph = CachedCallGraph(self.project_root, cache=cache)
-            else:
-                self._call_graph = CallGraph(self.project_root)
-        return self._call_graph
+        # #1611：调用图绑定索引身份，同一服务器内刷新索引后即重建。
+        return index_bound_graph(self, self.project_root, self._build_call_graph)
+
+    def _build_call_graph(self) -> CallGraph:
+        if not self.project_root:
+            raise ValueError("Project root not set. Call set_project_path first.")
+        cache = self._try_get_cache()
+        if cache is not None:
+            return CachedCallGraph(self.project_root, cache=cache)
+        return CallGraph(self.project_root)
 
     def get_call_graph(self) -> CallGraph:
         """Public alias for _get_call_graph() — use this instead of accessing _call_graph."""
@@ -616,7 +640,9 @@ class CodeGraphImpactTool(BaseMCPTool):
         depth: int,
         include_tests: bool = False,
     ) -> dict[str, Any]:
-        direct_callers = graph.callers_of(func_name, file_path)
+        # #1559：影响面过近似——确定的调用方之后附上仅同名匹配的调用方（带标记）。
+        possible_callers = list(graph.possible_callers_of(func_name, file_path))
+        direct_callers = [*graph.callers_of(func_name, file_path), *possible_callers]
         direct_callees = graph.callees_of(func_name, file_path)
         transitive_callers = _compute_transitive_callers(
             graph, func_name, file_path, max_depth=depth, include_tests=include_tests
@@ -651,6 +677,7 @@ class CodeGraphImpactTool(BaseMCPTool):
             "transitive_callers": transitive_callers[:_MAX_LISTED],
             "transitive_callees": transitive_callees[:_MAX_LISTED],
             "direct_caller_count": len(direct_callers),
+            "possible_caller_count": len(possible_callers),
             "direct_callee_count": len(direct_callees),
             "transitive_caller_count": len(transitive_callers),
             "transitive_callee_count": len(transitive_callees),

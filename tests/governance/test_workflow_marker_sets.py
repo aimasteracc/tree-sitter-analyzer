@@ -196,6 +196,28 @@ def test_every_positive_marker_is_carried_by_a_test(marker_sets) -> None:
     )
 
 
+def test_claim_invariant_failure_fails_the_dogfood_job() -> None:
+    """Claim 套件失败必须让作业变红，而不是只写进评论。"""
+    # Issue #1600：claims 步骤 continue-on-error 且无后续判定，诚实性棘轮在 develop
+    # 上失败了一整天却没有挡住任何 PR。
+    document = yaml.safe_load(
+        (WORKFLOWS / "dogfood-pr-check.yml").read_text(encoding="utf-8")
+    )
+    steps = document["jobs"]["claim-invariants"]["steps"]
+    ids = [step.get("id") for step in steps]
+    gates = [
+        step
+        for step in steps
+        if "steps.claims.outputs.status != 'passed'" in str(step.get("if", ""))
+    ]
+    assert len(gates) == 1
+    assert gates[0]["if"] == "always() && steps.claims.outputs.status != 'passed'"
+    assert gates[0]["run"].splitlines()[-1] == "exit 1"
+    # 判定步骤紧跟报告上传之后：先保留证据，再让作业失败。
+    assert ids.index("claims") + 2 == steps.index(gates[0])
+    assert steps[ids.index("claims") + 1]["name"] == "Upload claims report"
+
+
 def test_every_gate_names_a_job(marker_sets) -> None:
     """§3.2 asks for the job to be named; an unnamed gate cannot be reviewed."""
     unnamed = [entry for entry in marker_sets if not entry[1].strip()]

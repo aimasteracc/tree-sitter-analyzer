@@ -153,9 +153,8 @@ class _CallTreeBase(CodeGraphRelationToolMixin, BaseMCPTool):
             raise ValueError("symbol is required")
         return True
 
-    def _make_expander(self) -> _call_tree.Expander:
+    def _make_expander(self, cache: Any) -> _call_tree.Expander:
         """Return a storage-agnostic single-hop expand(name, file) callback."""
-        cache = self._try_get_cache()
         use_sql = cache is not None and cache.has_call_edges()
         # Build the graph fallback eagerly only when SQL edges are absent, so
         # the closure never has to deal with a ``None`` graph.
@@ -194,7 +193,16 @@ class _CallTreeBase(CodeGraphRelationToolMixin, BaseMCPTool):
         max_nodes = int(arguments.get("max_nodes", _call_tree.DEFAULT_MAX_NODES))
         output_format = arguments.get("output_format", "json")
 
-        expand = self._make_expander()
+        from ..utils.format_helper import apply_output_format_to_response
+
+        cache = self._try_get_cache()
+        # #1562：无索引的大仓库不现场解析，立即返回 INDEX_MISSING。
+        refusal = self._parse_fallback_refusal(
+            cache, f"{self._direction[:-1]}_tree", symbol=symbol
+        )
+        if refusal is not None:
+            return apply_output_format_to_response(refusal, output_format)
+        expand = self._make_expander(cache)
         tree = _call_tree.build_call_tree(
             symbol,
             file_path,
@@ -219,8 +227,6 @@ class _CallTreeBase(CodeGraphRelationToolMixin, BaseMCPTool):
             tree=tree,
         )
         result["next_step"] = deterrent
-
-        from ..utils.format_helper import apply_output_format_to_response
 
         return apply_output_format_to_response(result, output_format)
 

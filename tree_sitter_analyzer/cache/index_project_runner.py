@@ -7,6 +7,43 @@ from __future__ import annotations
 from typing import Any
 
 
+def _issue_stable_failure_record(
+    cache: Any,
+    conn: Any,
+    stats: dict[str, Any],
+    candidate_snapshot: Any,
+    scope_json: str,
+    *,
+    converged: bool,
+    stamped: bool,
+) -> None:
+    """#1671：精确（或仅稳定失败）且调用图已收敛的运行签发零变化判定的内容证据。
+
+    本函数不经门面全局绑定（``run_index_project`` 才是），所需值全部显式传入。
+    """
+    from .stable_failures import current_extractor_version, issue_after_run
+
+    issued = issue_after_run(
+        conn,
+        project_root=cache.project_root,
+        candidate=candidate_snapshot,
+        scope=scope_json,
+        extractor_version=current_extractor_version(),
+        details=stats.get("files", ()),
+        errors=int(stats.get("errors", 0) or 0),
+        converged=bool(
+            converged
+            and stats.get("backfill_errors", 0) == 0
+            and stats.get("changed_during_run", 0) == 0
+            and stats.get("incomplete_skips", 0) == 0
+            and not stats.get("truncated_by_max_files", False)
+        ),
+        stamped=stamped,
+    )
+    if issued and stats.get("errors"):
+        stats["stable_failures_recorded"] = int(stats.get("errors", 0) or 0)
+
+
 def run_index_project(
     cache: Any,
     max_files: int = 20_000,
@@ -28,6 +65,22 @@ def run_index_project(
     """
     max_files = normalize_index_max_files(max_files)
     activation_enabled = _project_index_activation_enabled(include_activation)
+    from .stable_failures import clear_record
+
+    # #1671：任何写运行都先撤销继承的稳定失败记录；只有收敛的运行结束时重新签发。
+    record_conn = cache._get_conn()
+    from . import backfill_scope, certification_tracking
+
+    # #1696：武装回填范围记录（强制重建与仅解析运行全量回填）。
+    # RFC-0039 slice 2：同样只在增量运行里武装增量认证，且在任何写入之前。
+    if force or resolve_only:
+        backfill_scope.disarm(record_conn)
+        certification_tracking.disarm(record_conn)
+    else:
+        certification_tracking.arm(record_conn)
+        backfill_scope.begin(record_conn, backfill_scope.published_parent(cache))
+    clear_record(record_conn)
+    record_conn.commit()
     if resolve_only:
         synapse = cache._run_synapse_backfill()
         edge_store_refresh = cache._refresh_graph_edges_from_cache()
@@ -187,8 +240,15 @@ def run_index_project(
                     _mark_call_graph_built(conn)
                 raise
         conn = cache._get_conn()
+        import time as _time
+
+        # #1673：写入方的核验用宽松期限。默认 5 秒期限保护交互式读者；写入方
+        # 在期限处中断会把“未核完”当作“不精确”，进而重写全部文件的投影
+        # （本仓库实测：负载下一次 1 文件刷新因此重新提取 2,504 个文件）。
         projection_repair = not symbol_projection_is_exact(
-            conn, require_fts=cache.fts5_available
+            conn,
+            require_fts=cache.fts5_available,
+            deadline=_time.monotonic() + _WRITER_PROJECTION_SECONDS,
         )
         if projection_repair and not rebuild_signaled:
             # Repair rewrites ordinary rows in committed batches just like a full
@@ -212,6 +272,8 @@ def run_index_project(
             language_filter,
             effective_exclude,
             candidate_snapshot,
+            # 本操作开头已校验同一快照（见上），不重复逐项 realpath（#1673）。
+            snapshot_validated=candidate_snapshot is not None,
         )
         cleanup_result = stats
         candidate_fingerprints = (
@@ -342,10 +404,9 @@ def run_index_project(
             # A partial projection cannot use the unchanged-file fast path. Every
             # canonical file has now been rewritten with ordinary/FTS/activation
             # rows in its writer transaction; remove only orphan derived paths.
-            conn.execute(
-                "DELETE FROM ast_symbol_rows WHERE file_path NOT IN "
-                "(SELECT file_path FROM ast_index)"
-            )
+            from .symbol_comments import prune_unindexed_symbol_rows
+
+            prune_unindexed_symbol_rows(conn)
             if cache.fts5_available:
                 # Contentless FTS5 cannot reliably predicate-delete stale rows.
                 # Rebuild it from the now-exact ordinary projection instead.
@@ -402,9 +463,10 @@ def run_index_project(
                 )
             )
         ):
-            stats["pruned"] = _prune_to_selected_scope(
+            stats["removed_files"] = _prune_to_selected_scope(
                 cache, conn, candidate_snapshot, root_fd=root_lease_fd
             )
+            stats["pruned"] = len(stats["removed_files"])
         run_incomplete = bool(
             stats.get("incomplete_skips", 0)
             or stats.get("truncated_by_max_files", False)
@@ -469,10 +531,28 @@ def run_index_project(
             stats["db_maintenance"] = (
                 _ast_cache_mod._reclaim_storage_after_full_rebuild(conn, cache.db_path)
             )
-        if certify_manifest:
-            _update_authoritative_manifest(
-                cache, candidate_snapshot, stats, source_scope
-            )
+        stamped = certify_manifest and _update_authoritative_manifest(
+            cache, candidate_snapshot, stats, source_scope
+        )
+        from .index_project_runner import _issue_stable_failure_record
+
+        # 回填或已在本次运行中零错误执行（needs_backfill），或因调用图标记
+        # 当前而无需执行——两种情况下图都已在本次内容上收敛。不盖清单的
+        # 调用（``index action=full`` 的分阶段运行）只能签发带失败的记录；
+        # 无失败时由盖清单的一方签发（``issue_after_stamp``）。
+        _issue_stable_failure_record(
+            cache,
+            conn,
+            stats,
+            candidate_snapshot,
+            canonical_source_scope_descriptor(source_scope),
+            converged=bool(
+                language_filter is None
+                and not projection_repair
+                and not stats.get("activation_errors")
+            ),
+            stamped=bool(stamped),
+        )
         return stats
     finally:
         try:

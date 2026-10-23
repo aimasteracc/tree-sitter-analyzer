@@ -49,6 +49,14 @@ def _same(before: os.stat_result, after: os.stat_result) -> bool:
     return _identity(before) == _identity(after)
 
 
+def _suffix(name: str) -> str:
+    """与 ``PurePath.suffix.lower()`` 相同的扩展名规则（含 ``.bashrc`` 无扩展名）。"""
+    dot = name.rfind(".")
+    if 0 < dot < len(name) - 1:
+        return name[dot:].lower()
+    return ""
+
+
 def _scope_root(project_root: Path, relative: str) -> Path:
     normalized = relative.replace("\\", "/")
     parts = tuple(part for part in normalized.split("/") if part not in ("", "."))
@@ -91,9 +99,14 @@ def _portable_inventory(
             return frozenset(), "scope_root_stat_failed"
         if not stat.S_ISDIR(base_before.st_mode) or _is_reparse(base_before):
             return frozenset(), "scope_root_reparse_or_not_dir"
-        stack = [(base, base_before)]
+        # #1561：相对路径随栈以字符串前缀传递；逐项 Path.relative_to 曾占单遍
+        # 扫描约 18% 的耗时（2,401 文件实测 0.85/4.74 秒），结果逐字节相同。
+        base_relative = base.relative_to(project).as_posix()
+        stack = [
+            (str(base), "" if base_relative == "." else base_relative, base_before)
+        ]
         while stack:
-            directory, discovered = stack.pop()
+            directory, directory_relative, discovered = stack.pop()
             try:
                 directory_before = os.lstat(directory)
                 if (
@@ -107,8 +120,13 @@ def _portable_inventory(
                     for entry in entries:
                         if time.monotonic() > deadline:
                             raise TimeoutError
-                        path = Path(entry.path)
-                        relative = path.relative_to(project).as_posix()
+                        path = entry.path
+                        name = entry.name
+                        relative = (
+                            f"{directory_relative}/{name}"
+                            if directory_relative
+                            else name
+                        )
                         counters["entries"] += 1
                         counters["path_bytes"] += len(
                             relative.encode("utf-8", "surrogatepass")
@@ -119,13 +137,13 @@ def _portable_inventory(
                         ):
                             raise OverflowError
                         before = os.lstat(path)
-                        language = EXT_TO_LANG.get(path.suffix.lower())
+                        language = EXT_TO_LANG.get(_suffix(name))
                         if stat.S_ISDIR(before.st_mode):
-                            if entry.name in EXCLUDE_DIRS or entry.name.startswith("."):
+                            if name in EXCLUDE_DIRS or name.startswith("."):
                                 continue
                             if _is_reparse(before):
                                 continue
-                            stack.append((path, before))
+                            stack.append((path, relative, before))
                             continue
                         if _is_reparse(before):
                             if language is not None:
@@ -146,7 +164,7 @@ def _portable_inventory(
                             raise OverflowError
                         marker, digest, clean = hash_source_at(
                             None,
-                            str(path),
+                            path,
                             before,
                             deadline,
                             counters,

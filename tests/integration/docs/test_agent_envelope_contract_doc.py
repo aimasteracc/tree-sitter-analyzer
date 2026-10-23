@@ -13,6 +13,8 @@ source also goes red.
 import re
 from pathlib import Path
 
+from tree_sitter_analyzer.cache.admission import ADMISSION_CODES, CAUSE_CODES
+from tree_sitter_analyzer.mcp.tools.callers_reasons import COMPLETENESS_REASONS
 from tree_sitter_analyzer.mcp.tools.tool_response import CANONICAL_VERDICTS
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
@@ -55,6 +57,43 @@ class TestAgentEnvelopeContractDoc:
             f"missing from doc={sorted(set(CANONICAL_VERDICTS) - documented)}, "
             f"stale in doc={sorted(documented - set(CANONICAL_VERDICTS))}"
         )
+
+    def test_completeness_reasons_match_closed_set(self) -> None:
+        # #1632：原因码表与 COMPLETENESS_REASONS 双向完全一致。
+        documented = _extract_marked_table_tokens(
+            DOC_PATH.read_text(encoding="utf-8"), "completeness-reasons"
+        )
+        assert documented == set(COMPLETENESS_REASONS)
+
+    def test_index_admission_codes_match_contract(self) -> None:
+        # RFC-0032 slice 4：准入码表的码、机器字段与原因码与源码双向一致。
+        content = DOC_PATH.read_text(encoding="utf-8")
+        assert _extract_marked_table_tokens(content, "index-admission-codes") == set(
+            ADMISSION_CODES
+        )
+        section = content.split("<!-- drift:index-admission-codes:start -->")[1]
+        rows = {}
+        for line in section.split("<!-- drift:index-admission-codes:end -->")[
+            0
+        ].splitlines():
+            cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+            if len(cells) == 6 and cells[0].startswith("`INDEX_"):
+                causes = set(re.findall(r"`(INDEX_[A-Z_]+)`", cells[4]))
+                rows[cells[0].strip("`")] = (
+                    cells[1] == "true",
+                    int(cells[2]),
+                    cells[3].strip("`"),
+                    causes,
+                )
+        assert rows == {
+            code: (
+                contract.retryable,
+                contract.retry_after_ms,
+                contract.next_action,
+                {cause for cause, mapped in CAUSE_CODES.items() if mapped == code},
+            )
+            for code, contract in ADMISSION_CODES.items()
+        }
 
     def test_cross_links_present(self) -> None:
         """CODEMAPS/mcp-tools.md must link the page."""

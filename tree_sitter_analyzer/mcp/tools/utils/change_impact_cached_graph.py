@@ -19,12 +19,13 @@ from typing import Any
 from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 
 from ....ast_cache import _AST_CACHE_EXTRACTOR_VERSION
-from ....cache.schema import CURRENT_SCHEMA_VERSION, already_applied_versions
+from ....cache.schema import already_applied_versions
+from ....index_snapshot_schema import reader_schema_supported
 from ....index_source_snapshot import (
     capture_current_source_snapshot,
     recorded_source_rows,
 )
-from ....project_graph import _IMPORT_RESOLVERS
+from ....project_graph import _IMPORT_RESOLVERS, python_submodule_import_targets
 from ....synapse_resolver import parse_imports
 
 logger = logging.getLogger(__name__)
@@ -104,10 +105,8 @@ def load_cached_dependency_graph(
         conn.execute("PRAGMA query_only=ON")
         conn.row_factory = sqlite3.Row
         conn.execute("BEGIN")
-        versions = already_applied_versions(conn)
-        if CURRENT_SCHEMA_VERSION not in versions or any(
-            version < 1 or version > CURRENT_SCHEMA_VERSION for version in versions
-        ):
+        # 读者要求 v17（schema 18 只加写入修订控制表）：已发布的 v17 版本照常可读。
+        if not reader_schema_supported(already_applied_versions(conn)):
             return None
         recorded = recorded_source_rows(conn)
         rows = _cached_index_rows(conn)
@@ -144,27 +143,32 @@ def _cached_index_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     result = []
     for row in rows:
         item = dict(row)
-        payload = json.loads(item["symbols_json"])
-        imports = json.loads(item["imports_json"])
-        if (
-            item["extractor_version"] != _AST_CACHE_EXTRACTOR_VERSION
-            or not isinstance(payload, dict)
-            or payload.get("truncated_depth") is not False
-            or payload.get("import_projection_complete") is not True
-            or payload.get("syntax_error") is not False
-            or not isinstance(imports, list)
-            or any(
-                not isinstance(entry, str)
-                and (
-                    not isinstance(entry, dict)
-                    or not isinstance(entry.get("text"), str)
-                )
-                for entry in imports
-            )
-        ):
+        if not row_is_admissible(item):
             return []
         result.append(item)
     return result
+
+
+def row_is_admissible(item: dict[str, Any]) -> bool:
+    """单行索引证据是否完整可信；JSON 损坏同样不可信（Issue #1591 逐行复用）。"""
+    try:
+        payload = json.loads(item["symbols_json"])
+        imports = json.loads(item["imports_json"])
+    except (TypeError, ValueError):
+        return False
+    return not (
+        item["extractor_version"] != _AST_CACHE_EXTRACTOR_VERSION
+        or not isinstance(payload, dict)
+        or payload.get("truncated_depth") is not False
+        or payload.get("import_projection_complete") is not True
+        or payload.get("syntax_error") is not False
+        or not isinstance(imports, list)
+        or any(
+            not isinstance(entry, str)
+            and (not isinstance(entry, dict) or not isinstance(entry.get("text"), str))
+            for entry in imports
+        )
+    )
 
 
 def _add_cached_import_edges(
@@ -181,6 +185,32 @@ def _add_cached_import_edges(
         resolved = resolver(module, source, nodes, is_relative)
         if resolved:
             graph.add_edge(source, resolved.replace("\\", "/"))
+    if language == "python":
+        for target in _python_submodule_targets(row, nodes):
+            graph.add_edge(source, target)
+
+
+def _python_submodule_targets(row: dict[str, Any], nodes: set[str]) -> list[str]:
+    """``from pkg import sub`` 的子模块边，与解析图共用候选规则（Issue #1557）。"""
+    try:
+        raw_imports = json.loads(row.get("imports_json") or "[]")
+    except (TypeError, json.JSONDecodeError):
+        return []
+    source = row.get("file_path", "")
+    targets: list[str] = []
+    for raw in raw_imports:
+        text = raw.get("text", "") if isinstance(raw, dict) else str(raw)
+        for entry in parse_imports(text, "python", source) if text else ():
+            targets.extend(
+                python_submodule_import_targets(
+                    entry.module_path,
+                    [entry.alias_of or entry.local_name],
+                    source,
+                    nodes,
+                    entry.is_relative,
+                )
+            )
+    return targets
 
 
 def _iter_cached_import_modules(row: dict[str, Any]) -> list[tuple[str, bool]]:

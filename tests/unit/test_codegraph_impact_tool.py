@@ -831,3 +831,141 @@ class TestImpactVerdictCriticalLevel:
         # blast_radius result shape has no "level" key; preserve its existing
         # INFO fallthrough (this fix must not change blast_radius semantics).
         assert _impact_verdict({"total_affected_functions": 5}) == "INFO"
+
+
+class TestNameOnlyCallersStayInImpact:
+    """#1559：模糊候选不进入精确答案，但影响 / 风险必须过近似地保留它们。"""
+
+    @staticmethod
+    async def _function_impact(tmp_path, mode: str = "function_impact"):
+        from tests.unit._navigation_test_support import (
+            index_ambiguous_publish_project,
+        )
+
+        root = await index_ambiguous_publish_project(tmp_path)
+        return await CodeGraphImpactTool(root).execute(
+            {
+                "mode": mode,
+                "function_name": "GenerationStore.publish",
+                "file_path": "gen_store.py",
+            }
+        )
+
+    @pytest.mark.asyncio
+    async def test_function_impact_keeps_name_only_caller(self, tmp_path):
+        # #1559：`x.publish()` 可能调用 GenerationStore.publish，影响面不能丢掉它。
+        result = await self._function_impact(tmp_path)
+        assert [c["name"] for c in result["direct_callers"]] == [
+            "relay",
+            "test_publish_any",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_function_impact_marks_name_only_caller(self, tmp_path):
+        # #1559：过近似得到的调用方必须在输出中标明只是同名匹配。
+        result = await self._function_impact(tmp_path)
+        assert (
+            [c["match"] for c in result["direct_callers"]],
+            result["possible_caller_count"],
+        ) == (["name_only", "name_only"], 2)
+
+    @pytest.mark.asyncio
+    async def test_risk_score_counts_name_only_caller(self, tmp_path):
+        # #1559：风险评分的 fan_in 含同名匹配调用方，判定不能因丢弃而变 SAFE。
+        result = await self._function_impact(tmp_path, mode="risk_score")
+        assert (
+            result["factors"]["fan_in"],
+            result["factors"]["name_only_callers"],
+        ) == (
+            1,
+            1,
+        )
+
+    @pytest.mark.asyncio
+    async def test_blast_radius_keeps_name_only_caller_file(self, tmp_path):
+        # #1559：爆炸半径必须包含经由模糊调用到达的文件。
+        from tests.unit._navigation_test_support import (
+            index_ambiguous_publish_project,
+        )
+
+        root = await index_ambiguous_publish_project(tmp_path)
+        result = await CodeGraphImpactTool(root).execute(
+            {
+                "mode": "blast_radius",
+                "function_names": ["GenerationStore.publish"],
+                "file_path": "gen_store.py",
+            }
+        )
+        assert result["files_at_risk"]["app.py"] == ["relay"]
+
+
+@pytest.mark.slow_ok  # 两次真实索引（首建 + 刷新）即被测行为
+@pytest.mark.asyncio
+async def test_impact_sees_new_caller_after_in_server_refresh(tmp_path):
+    # Issue #1611：同一实例在刷新索引后仍用旧调用图，SAFE 判定漏掉新调用者。
+    from tests.unit._index_refresh_support import (
+        add_caller_and_refresh,
+        make_indexed_project,
+    )
+    from tree_sitter_analyzer.mcp.tools.codegraph_impact_tool import (
+        CodeGraphImpactTool,
+    )
+
+    project = await make_indexed_project(tmp_path)
+    tool = CodeGraphImpactTool(str(project))
+    await tool.execute({"function_name": "target"})
+    await add_caller_and_refresh(project)
+    result = await tool.execute({"function_name": "target"})
+    assert sorted(c["name"] for c in result["direct_callers"]) == [
+        "new_caller",
+        "old_caller",
+    ]
+
+
+class TestSameNameRefsStayDistinct:
+    """#1619：同一文件中无 receiver 的同名函数（嵌套 ``inner``）不得在影响面中合并。"""
+
+    @pytest.mark.asyncio
+    async def test_transitive_callers_keep_both_same_name_callers(self, tmp_path):
+        # #1619：两个嵌套 `inner` 都调用 apply_budget，按 qualified_name 去重会丢掉第二个。
+        from tests.unit._navigation_test_support import (
+            index_same_name_nested_project,
+        )
+
+        root = await index_same_name_nested_project(tmp_path)
+        result = await CodeGraphImpactTool(root).execute(
+            {"function_name": "apply_budget"}
+        )
+        assert [
+            (c["name"], c["line"], c["distance"]) for c in result["transitive_callers"]
+        ] == [
+            ("inner", 14, 1),
+            ("inner", 20, 1),
+            ("outer_a", 13, 2),
+            ("outer_b", 19, 2),
+        ]
+
+    def test_transitive_callees_keep_both_same_name_callees(self):
+        # #1619：被调方去重同样按身份（文件、名字、定义行），两个同名 `inner` 都保留。
+        graph = MagicMock()
+        seed = _make_func("seed", "pulse.py", 1)
+        inner_a = _make_func("inner", "pulse.py", 5)
+        inner_b = _make_func("inner", "pulse.py", 9)
+        graph.resolve_targets.return_value = [seed]
+        callees_map = {seed: [inner_a, inner_b]}
+        graph.callee_refs_of.side_effect = lambda f: callees_map.get(f, [])
+        result = _compute_transitive_callees(graph, "seed")
+        assert [(r["name"], r["line"]) for r in result] == [("inner", 5), ("inner", 9)]
+
+    @pytest.mark.asyncio
+    async def test_blast_radius_counts_both_same_name_functions(self, tmp_path):
+        # #1619：apply_budget、两个 inner、log_a、log_b、outer_a、outer_b 共 7 个。
+        from tests.unit._navigation_test_support import (
+            index_same_name_nested_project,
+        )
+
+        root = await index_same_name_nested_project(tmp_path)
+        result = await CodeGraphImpactTool(root).execute(
+            {"mode": "blast_radius", "function_names": ["apply_budget"]}
+        )
+        assert result["total_affected_functions"] == 7

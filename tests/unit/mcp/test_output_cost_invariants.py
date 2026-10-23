@@ -404,3 +404,281 @@ def test_outline_wide_class_methods_bounded_by_cap(tmp_path) -> None:
     assert cls["methods_listed"] == DEFAULT_OUTLINE_CLASSES_CAP
     assert result["method_count"] == 500  # pre-cap total stays honest
     assert result["truncated"] is True
+
+
+# ── #1582: index action=cache mode=index — 未变文件默认不再逐个列出 ─────────────
+#
+# dogfood round 2（2026-10-14）：2417 文件仓库上只改 1 个文件的增量 index 仍返回
+# 320 KB，因为 ``files`` 明细逐个列出全部未变文件。修复后默认只列变化/出错文件，
+# 完整明细需 ``include_details=true``。
+# 实测（50 / 500 文件，改 1 个文件后的增量 run）：
+#   修复前 4133 B / 33388 B（随文件数线性增长）
+#   修复后 1189 B / 1195 B（差值只来自计数数字的位数）
+
+
+def _index_one_file_change(root, n: int, **extra) -> dict:
+    """建 n 个文件的项目，全量 index 后改 1 个文件，返回增量 index 响应。"""
+    from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
+
+    root.mkdir()
+    for i in range(n):
+        (root / f"m{i:04d}.py").write_text(f"def f{i}():\n    return {i}\n")
+    tool = ASTCacheTool(str(root))
+    asyncio.run(tool.execute({"mode": "index", **extra}))
+    (root / "m0000.py").write_text("def f0():\n    return 'changed'\n")
+    return asyncio.run(tool.execute({"mode": "index", **extra}))
+
+
+def test_index_one_file_incremental_size_independent_of_file_count(
+    tmp_path, monkeypatch
+) -> None:
+    """#1582 差分不变量：1 文件增量响应字节与项目文件总数无关（N=20 与 N=80）。
+
+    两个 N 的计数数字位数相同，所以字节必须完全相等；再精确钉住字节数。
+    N=80 会越过 64 个候选的进程池阈值，固定单进程以免测试被进程启动拖慢。
+    """
+    monkeypatch.setenv("TSA_INDEX_WORKERS", "0")
+    small = _index_one_file_change(tmp_path / "small", 20)
+    large = _index_one_file_change(tmp_path / "large", 80)
+
+    small_bytes = len(json.dumps(small, ensure_ascii=False))
+    large_bytes = len(json.dumps(large, ensure_ascii=False))
+    differing = {
+        key: (small.get(key), large.get(key))
+        for key in sorted(set(small) | set(large))
+        if json.dumps(small.get(key)) != json.dumps(large.get(key))
+    }
+    assert small_bytes == large_bytes, differing
+    # #1625：回复新增 removed / removed_files / removed_files_truncated 与摘要中的
+    # removed=0（+89 字节，仍与文件总数无关），重新钉为 1278。
+    # #1631：发布结果如实报告 "published": true（+19 字节，仍与文件总数无关），
+    # 重新钉为 1297。
+    # #1696：回复说明回填范围（"backfill": "scoped"，+22 字节，与文件总数无关；
+    # 完整统计留在索引器内部），重新钉为 1319。
+    assert large["backfill"] == "scoped"
+    # RFC-0039 slice 2：回复说明认证根是增量折叠（"certification": "incremental"，
+    # +32 字节，与文件总数无关），重新钉为 1351。
+    assert large["certification"] == "incremental"
+    assert large_bytes == 1351
+    assert [(d["file"], d["status"]) for d in large["files"]] == [
+        ("m0000.py", "indexed")
+    ]
+    assert (
+        large["indexed"],
+        large["cached"],
+        large["files_total"],
+        large["files_listed"],
+        large["files_truncated"],
+        large["unchanged_omitted"],
+    ) == (1, 79, 1, 1, False, 79)
+
+
+def test_index_include_details_restores_full_file_list(tmp_path) -> None:
+    """#1582：include_details=true 是显式 opt-in，返回含未变文件的完整明细。"""
+    full = _index_one_file_change(tmp_path / "p", 5, include_details=True)
+    assert sorted(d["status"] for d in full["files"]) == ["cached"] * 4 + ["indexed"]
+    assert (full["files_total"], full["files_listed"], full["unchanged_omitted"]) == (
+        5,
+        5,
+        0,
+    )
+    assert "files_next_step" not in full
+
+
+def test_index_files_projection_lists_errors_first_and_reports_truncation() -> None:
+    """#1582：超过上限时错误优先列出，截断计数如实报告，输入字典不被修改。"""
+    from tree_sitter_analyzer.mcp.tools.ast_cache_index_view import (
+        INDEX_FILES_CAP,
+        project_index_files,
+    )
+
+    indexed = [{"file": f"i{i}.py", "status": "indexed"} for i in range(60)]
+    cached = [{"file": f"c{i}.py", "status": "cached"} for i in range(7)]
+    errors = [{"file": "bad.py", "status": "error", "reason": "x"}]
+    raw = {"indexed": 60, "files": indexed + cached + errors}
+
+    projected = project_index_files(raw, include_details=False)
+
+    assert projected["files"][0] == errors[0]
+    assert projected["files"][1:] == indexed[: INDEX_FILES_CAP - 1]
+    assert (
+        projected["files_total"],
+        projected["files_listed"],
+        projected["files_cap"],
+        projected["files_truncated"],
+        projected["unchanged_omitted"],
+    ) == (61, 50, 50, True, 7)
+    assert projected["files_next_step"].startswith("pass include_details=true")
+    assert len(raw["files"]) == 68
+    assert project_index_files({"indexed": 1}, include_details=False) == {"indexed": 1}
+
+
+def test_index_include_details_validation_and_cli_twin() -> None:
+    """#1582：include_details 必须是布尔值；CLI --ast-cache-include-details 透传。"""
+    import argparse
+
+    import pytest
+
+    from tree_sitter_analyzer.cli.commands.mcp_commands._specs_core import (
+        _CORE_SPECS,
+    )
+    from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
+
+    with pytest.raises(ValueError, match="include_details must be a boolean"):
+        ASTCacheTool().validate_arguments({"mode": "index", "include_details": "yes"})
+    spec = next(s for s in _CORE_SPECS if s.flag_name == "ast_cache")
+    args = argparse.Namespace(ast_cache_include_details=True)
+    assert spec.build_tool_args(args, "json")["include_details"] is True
+
+
+# ── #1582: edit action=impact — 同一条验证命令不再重复十余次 ──────────────────
+#
+# dogfood round 2（2026-10-14）：完整 impact 响应约 100 KB，同一条 ~2.2 KB 的
+# pytest 命令出现 17 次。修复后顶层契约字段取值不变，agent_summary 只保留规范的
+# verification_command，文案中的长命令按字段名引用。
+
+
+def _impact_response_with_long_command(n_tests: int) -> dict:
+    """确定性的 local_low_impact 完整响应：n_tests 个测试目标拼成一条长命令。"""
+    from types import SimpleNamespace
+
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_response import (
+        AgentSummaryContext,
+        ChangeImpactResponseContext,
+        build_agent_summary,
+        build_change_impact_response,
+    )
+
+    tests = [f"tests/unit/test_feature_{i:03d}.py" for i in range(n_tests)]
+    focused = "uv run pytest " + " ".join(tests) + " -q"
+    local = "uv run pytest " + " ".join(tests) + " -n 2 -q"
+    verification = {
+        "test_required": True,
+        "test_runner": "pytest",
+        "default_test_command": "uv run pytest -q",
+        "pytest_required": True,
+        "verification_command": focused,
+        "verification_reason": "changed Python source",
+    }
+    strategy = {
+        "focused_test_command": focused,
+        "low_impact_focused_test_command": local,
+        "local_verification_command": local,
+        "ci_verification_command": focused,
+        "resource_profile": "local_low_impact",
+        "verification_strategy": "local_low_impact_focused_then_ci",
+        "verification_steps": [local],
+        "verification_hint": "run the focused tests",
+    }
+    changed = ["src/core.py"]
+    summary = build_agent_summary(
+        AgentSummaryContext(
+            risk="medium",
+            changed_files=changed,
+            scope_paths=None,
+            verification=verification,
+            strategy=strategy,
+            affected_count=n_tests,
+            tests_to_run_count=n_tests,
+        )
+    )
+    request = SimpleNamespace(
+        mode="diff", scope_paths=None, changed_files=changed, diff_stat=""
+    )
+    return build_change_impact_response(
+        ChangeImpactResponseContext(
+            request=request,
+            risk="medium",
+            affected=set(),
+            file_impacts=[],
+            visible_tests=tests[:20],
+            all_tests=tests,
+            verification=verification,
+            strategy=strategy,
+            test_mapping={},
+            agent_summary=summary,
+        )
+    )
+
+
+def test_impact_long_command_appears_once_per_contract_field() -> None:
+    """#1582 / #1676 结构不变量：长命令只出现在顶层契约字段，摘要按字段名引用。"""
+    response = _impact_response_with_long_command(60)
+    local = response["local_verification_command"]
+    focused = response["focused_test_command"]
+    text = json.dumps(response, ensure_ascii=False)
+
+    # 顶层 verification/test/pytest/local/low_impact 5 处 + verification_steps[0]
+    # 1 处；#1582 前为 11 处，#1676 前另有摘要 verification_command 1 处。
+    assert text.count(local) == 6
+    # 顶层 focused 与 ci 各 1 处；摘要与文案不再重复。
+    assert text.count(focused) == 2
+    summary = response["agent_summary"]
+    assert summary["verification_command"] == (
+        f"`verification_command` ({len(local)} chars)"
+    )
+    assert summary["next_step"] == (
+        f"Run low-impact local verification: `local_verification_command` "
+        f"({len(local)} chars); keep `ci_verification_command` ({len(focused)} "
+        "chars) for CI or queue boundary."
+    )
+    assert [key for key in summary if key.endswith("_command")] == [
+        "verification_command"
+    ]
+    # 精简视图从顶层读取命令字段，去重后读取特定字段的消费者不受影响。
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_response import (
+        build_agent_summary_only_response,
+    )
+
+    compact = build_agent_summary_only_response(response)
+    assert (
+        compact["local_verification_command"],
+        compact["ci_verification_command"],
+        compact["focused_test_command"],
+    ) == (local, focused, focused)
+
+
+def test_impact_response_bytes_pinned_after_dedup() -> None:
+    """#1582 字节不变量：60 个测试目标的确定性响应，修复前后字节精确钉住。
+
+    实测 2026-10-14：修复前 34336 B，修复后 19334 B（-43.7%）。
+    #1676（2026-10-18）：摘要中的长命令改为按字段名引用，17488 B。
+    """
+    response = _impact_response_with_long_command(60)
+    assert len(json.dumps(response, ensure_ascii=False)) == 17488
+
+
+# ── #1617: edit action=impact (diff) — 明细列表默认摘要 ──────────────────────
+#
+# dogfood R3/R4（2026-10-15）：多文件 diff 的完整 impact 响应 104-224 KB，主要来自
+# call_graph_impact（逐函数上下游调用方）、affected_symbols / changed_symbols 符号
+# 清单以及逐字重复的验证命令。修复后默认只给计数与影响最大的前 N 项（如实的
+# *_total / *_truncated），include_details=true 恢复完整列表。
+# 实测（本仓库 git diff 2702997c 3362b590，10 个文件，2026-10-17）：
+#   修复前 73947 B；修复后默认 20529 B，include_details=true 75738 B。
+#   较小的 git diff f7703cf1 3362b590（3 个文件）：44393 B → 9979 B。
+# 决策字段与 include_details 行为测试见 test_change_impact_tool_execute_and_mapping。
+# 预算 IMPACT_SUMMARY_BUDGET_BYTES = 24 KB 的依据见 change_impact_detail_view。
+
+from tests.unit._impact_summary_support import run_impact_tool  # noqa: E402
+
+
+def test_impact_default_summary_smaller_than_details(tmp_path, monkeypatch) -> None:
+    """#1617 差分不变量：默认摘要字节 < include_details 字节，且两者精确钉住。"""
+    from tree_sitter_analyzer.mcp.tools.utils.change_impact_detail_view import (
+        IMPACT_SUMMARY_BUDGET_BYTES,
+    )
+
+    summary = run_impact_tool(tmp_path, monkeypatch)
+    details = run_impact_tool(tmp_path, monkeypatch, include_details=True)
+    summary_bytes = len(json.dumps(summary, ensure_ascii=False))
+    details_bytes = len(json.dumps(details, ensure_ascii=False))
+
+    assert summary_bytes < details_bytes
+    # 默认摘要必须落在文档化的上下文预算（IMPACT_SUMMARY_BUDGET_BYTES）内。
+    assert summary_bytes <= IMPACT_SUMMARY_BUDGET_BYTES
+    # 精确钉住（夹具确定、不含临时路径）：实测 2026-10-17 默认 19701 B，
+    # include_details 173567 B（与 dogfood 的 104-224 KB 同量级），缩小 8.8 倍。
+    # #1676（2026-10-18）：local 命令按 command_aliases 指向规范命令、摘要中的命令
+    # 按字段名引用后，默认 19213 B，include_details 173330 B。
+    assert (summary_bytes, details_bytes) == (19213, 173330)

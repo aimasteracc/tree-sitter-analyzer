@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json  # noqa: F401  # historical monkeypatch surface
 import os
+import sqlite3
 from collections.abc import Callable
 import threading
 from _thread import LockType
@@ -29,6 +30,7 @@ from .cache.maintenance import (  # noqa: F401
 from .cache.schema import (
     EXPECTED_SCHEMA_VERSIONS as _EXPECTED_SCHEMA_VERSIONS,  # noqa: F401
 )
+from .cache.writer_state import WriterFence
 from .core.parser import Parser
 from ._ast_cache_database_mixin import (
     ASTCacheDatabaseMixin,
@@ -64,7 +66,21 @@ from ._ast_cache_query_mixin import ASTCacheQueryMixin
 # v33-v37: invalidate computed/header loaders, then retained execution paths.
 # v38: loader projection fails closed by default instead of enumerating risks.
 # v39：按语言分类驱动提取，修复成员作用域与 C++ 函数名称恢复。
-_AST_CACHE_EXTRACTOR_VERSION = 39
+# v40：Python 调用边携带接收者类型线索（RFC-0038 receiver_hint）。
+# v41：接收者未被证明的调用不再按项目唯一方法名绑定为 project（#1669）。
+# v42：改名导入的调用解析到真实目标，并在 metadata 中记录 import_alias（#1670）。
+# v43：继承方法的 self.m() 调用按 MRO 解析到最近的定义（#1677）。
+# v44：继承方法经单例 / 构造 / 注解 / super() 接收者按 C3 MRO 解析，闭包继承外层构造类型（#1699）。
+# v45：经模块属性调用的再导出名（`owner._f()`）解析到真实定义（#1705）。
+# v46：symbols_json 记录 `global` / 模块级 `del` 重新绑定的名字，进入范围回填的解析面（#1721）。
+# v47：JS 经默认导出对象 / 命名空间导入的 `obj.m()` 解析到定义，symbols_json 记录 JS 导出形状（#1741）。
+# v48：lambda / 非方法函数参数 `self` 的调用写作 `(self).m`，不按方法接收者解析（#1739）。
+# v49：Java 调用边携带接收者声明类型（receiver_hint），按静态类型绑定、覆写为可能目标；symbols_json 记录匿名子类（#1743）。
+# v50：JS/TS 字符串字面量成员名去掉引号记录，`obj["m"]()` 按成员 `m` 记为调用（#1762）。
+# v51：JS/TS 以常量定义的箭头函数 / 函数表达式按常量名索引为函数，函数体内调用归属于它（#1763）。
+# v52：TS 调用经 ES 模块导入 / 再导出 / 项目包说明符解析到定义，symbols_json 记录 TS 导出形状与再导出（#1764 / #1768）。
+# v53：TS 类的 `extends` 基类写入 parents；`const X = class extends B {...}` 以常量名索引为类（#1765）。
+_AST_CACHE_EXTRACTOR_VERSION = 53
 
 # Preserve the historical public exception identity after implementation split.
 SchemaIntegrityError.__module__ = __name__
@@ -107,16 +123,31 @@ class ASTCache(
         self._read_only = False
         self._generation_managed = False
         self._generation_guard: Callable[[], None] | None = None
+        self._publishes_project_index = False
+        # #1673：私有构建由发布侧捕获时绑定的内容摘要（相对路径 -> 摘要）。
+        self._bound_source_digests: dict[str, str] = {}
+        # #1737：仅 GenerationStore 发布路由置真——该路由在发布租约内复核源码。
+        self._publication_rechecks_sources = False
+        self._unindexed_uri: str | None = None
+        self._unindexed_anchor: sqlite3.Connection | None = None
+        self._unindexed_sealed = False
+        unindexed = False
         if db_path is None or os.path.abspath(db_path) == default_db_path:
             from .cache.generation_routing import resolve_index_location
 
             location = resolve_index_location(self.project_root)
             db_path = str(location.path)
             self._read_only = location.published
-            self._generation_managed = location.published
+            # 首次发布前的默认库同样只能经版本存储写入（#1554 / E1，2026-10-13）；
+            # 仅索引操作内绑定的私有构建库原地写。
+            self._generation_managed = location.published or db_path == default_db_path
             self._generation_guard = location.verify
+            if not location.published and db_path == default_db_path:
+                unindexed = self._open_unindexed_reader(db_path)
         self.db_path = db_path
         self._local = threading.local()
+        # RFC-0032 slice 5：原地写入的修订号围栏，schema 初始化完成后启用。
+        self._writer_fence = WriterFence()
         self._parser = Parser()
         self._index_lock = _shared_writer_lock(
             default_db_path if self._read_only else db_path
@@ -161,6 +192,10 @@ class ASTCache(
                 )
             else:
                 self._init_db()
+                if unindexed:
+                    # 空库只读：原始连接写入会静默丢失，须与已发布版本一样拒绝。
+                    self._unindexed_sealed = True
+                    self._get_conn().execute("PRAGMA query_only=ON")
             if self._cache_dir_fd is not None:  # pragma: no branch - POSIX owner
                 info = os.stat(cache_dir, follow_symlinks=False)
                 if (info.st_dev, info.st_ino) != self._cache_dir_identity:
@@ -192,12 +227,40 @@ class ASTCache(
     def db_path(self, path: str) -> None:
         self._db_path = path
 
+    @property
+    def _owns_project_mirror(self) -> bool:
+        """原地默认库或待发布的版本构建库：删除后派生镜像不得继续存活（#1554）。"""
+        return self._uses_project_mirror or self._publishes_project_index
+
+    def _open_unindexed_reader(self, legacy_path: str) -> bool:
+        """既无旧库也无版本时读者用进程内空库，只读调用不在项目内建库（#1554）。
+
+        锚连接随缓存对象存活（``close()`` 后仍可重新取连接），发布后才释放。
+        """
+        if os.path.lexists(legacy_path):
+            return False
+        from .cache.generation_bootstrap import (
+            open_unindexed_anchor,
+            unindexed_database_uri,
+        )
+
+        uri = unindexed_database_uri()
+        self._unindexed_anchor = open_unindexed_anchor(uri)
+        self._unindexed_uri = uri
+        return True
+
     def _adopt_published_generation(self) -> None:
         """写入成功后换绑只读连接，保留调用方缓存对象和解析器配置。"""
+        from .cache.generation_reads import adopt_read_location
         from .cache.generation_routing import resolve_index_location
 
         location = resolve_index_location(self.project_root)
+        adopt_read_location(self.project_root, location)
         ASTCacheDatabaseMixin.close(self)
+        self._unindexed_uri = None
+        if self._unindexed_anchor is not None:
+            self._unindexed_anchor.close()
+            self._unindexed_anchor = None
         self._read_only = location.published
         self.db_path = str(location.path)
         self._generation_managed = location.published

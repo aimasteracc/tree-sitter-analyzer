@@ -82,6 +82,7 @@ Categories of CLI surface:
 ### Cache & Index
 - `--ast-cache --ast-cache-mode index|stats|lookup|search|sync|changes|watch_start|watch_stop|watch_status|invalidate` — AST cache ops (project index default cap: 20k files)
 - `--ast-cache-include-activation` — opt in to slower temporal git activation during project indexing
+- `--ast-cache-include-details` — list every per-file index detail incl. unchanged files (default: counts + at most 50 changed/errored files, #1582)
 - `--autoindex [--autoindex-mode status|warm|reset]` — transparent auto-index
 - `--full-index [--full-index-mode full|incremental]` — one-shot complete index (default cap: 20k files)
 - `--full-index-include-activation` — opt in to temporal git activation during full-index rebuilds
@@ -151,7 +152,8 @@ After any code edit, agents should run the per-change verification command surfa
 
 ```bash
 uv run python -m tree_sitter_analyzer --change-impact --format json
-# → look at agent_summary.verification_command
+# → look at verification_command (agent_summary.verification_command names it
+#   by field when it is longer than 200 characters, #1676)
 ```
 
 The command is tailored to the change: `pytest <specific tests>`, `mypy <touched module>`,
@@ -168,7 +170,7 @@ boundary.
 
 ## See Also
 
-- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (361 unique flags total — this codemap is intentionally categorical, not exhaustive)
+- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (363 unique flags total — this codemap is intentionally categorical, not exhaustive)
 - [`docs/CODEMAPS/mcp-tools.md`](./mcp-tools.md) — MCP-side counterpart
 - [`tests/unit/cli/test_mcp_commands.py`](../../tests/unit/cli/test_mcp_commands.py) — Parity contract tests
 - [`scripts/codemap-sync-check.sh`](../../scripts/codemap-sync-check.sh) — pre-commit gate that blocks a change to the CLI **flag surface** (any `cli/**/*.py`, compared as a set) without a `cli.md` update

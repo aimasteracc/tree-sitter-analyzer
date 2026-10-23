@@ -40,14 +40,21 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from typing import Any
 
+from ...cache.admission import admission_failure_of
 from ...indexing_limits import normalize_index_max_files
 
 logger = logging.getLogger(__name__)
 
 _lock = threading.Lock()
 _indexed_roots: dict[str, bool] = {}
+#: #1684：上次预热结束后调用图标记仍非当前（例如带稳定失败的项目、认证超时或
+#: 回填未收敛）的时刻。每次预热都是一次完整的项目索引运行；在退避期内对已有
+#: 数据的项目不再自动重试，避免每个查询都重建一份约 350 MB 的版本。
+_failed_warms: dict[str, float] = {}
+WARM_RETRY_BACKOFF_SECONDS = 600.0
 
 
 def ensure_indexed(
@@ -63,6 +70,12 @@ def ensure_indexed(
     legacy/non-current marker is repaired by a normal cached ``index_project``
     run so all three graph backfill stages execute and the current marker is
     stamped.  ``auto_build=False`` is strictly read-only at this layer.
+
+    Raises the original exception when warming a never-indexed project is
+    refused by write admission (``admission_failure_of`` classifies it, e.g.
+    ``INDEX_WRITER_BUSY``).  Write routes map it with ``admission_error_response``
+    so MCP, CLI and the watcher report the same typed payload (RFC-0032).
+    Other warm failures still return the populated cache, or ``None``.
     """
     max_files = normalize_index_max_files(max_files)
     if project_root is None:
@@ -106,18 +119,42 @@ def ensure_indexed(
             _indexed_roots[project_root] = True
             return cache
 
+        last_failed = _failed_warms.get(project_root)
+        if (
+            populated
+            and last_failed is not None
+            and time.monotonic() - last_failed < WARM_RETRY_BACKOFF_SECONDS
+        ):
+            logger.info(
+                "auto-index: skipping re-warm of %s (previous warm left the "
+                "call-graph marker non-current %.0f s ago)",
+                project_root,
+                time.monotonic() - last_failed,
+            )
+            return cache
+
         logger.info("auto-index: warming cache for %s", project_root)
         try:
             # Deliberately not resolve_only: legacy markers need the complete
             # cached indexing/backfill/certification pipeline.
             cache.index_project(max_files=max_files)
-        except Exception:
+        except Exception as exc:
+            if not populated and admission_failure_of(exc) is not None:
+                # RFC-0032 (#1664): a never-indexed project has no cache to fall
+                # back on, so a refused write (busy writer, superseded candidate,
+                # recovery required) must reach the caller typed, not as None.
+                cache.close()
+                raise
             logger.exception("auto-index: failed for %s", project_root)
+            if populated:
+                _failed_warms[project_root] = time.monotonic()
             return cache if populated else None
 
         if _call_graph_marker_is_current(cache):
             _indexed_roots[project_root] = True
+            _failed_warms.pop(project_root, None)
         else:
+            _failed_warms[project_root] = time.monotonic()
             logger.warning(
                 "auto-index: pipeline marker remains non-current for %s", project_root
             )
@@ -136,9 +173,11 @@ def _open_cache(project_root: str) -> Any:
 def _call_graph_marker_is_current(cache: Any) -> bool:
     """Read the exact versioned marker without creating or updating it."""
     try:
-        from ...cache.callgraph_state import call_graph_marker_is_current
+        from ...cache.callgraph_state import writer_marker_is_current
 
-        return bool(call_graph_marker_is_current(cache.get_conn()))
+        # #1684：负载下 5 秒期限内核验不完不等于"标记非当前"；误判会触发一次
+        # 完整的预热索引。
+        return bool(writer_marker_is_current(cache.get_conn()))
     except Exception:
         return False
 
@@ -184,12 +223,14 @@ def _mark_resolution_converged(cache: Any) -> None:
 def mark_dirty(project_root: str) -> None:
     """Mark a project root as needing re-index on next ``ensure_indexed``."""
     _indexed_roots.pop(project_root, None)
+    _failed_warms.pop(project_root, None)
 
 
 def reset() -> None:
     """Clear all cached state (for testing)."""
     with _lock:
         _indexed_roots.clear()
+        _failed_warms.clear()
 
 
 def is_indexed(project_root: str) -> bool:

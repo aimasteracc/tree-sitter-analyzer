@@ -1,0 +1,108 @@
+"""有界回收未被引用的索引版本（RFC-0032 slice 6，#1554 所有者决定：按数量与年龄）。
+
+在成功发布之后、发布租约之内运行，活动选择器期间不变。永不回收活动或被钉住的版本；
+身份校验（32 位十六进制 ID、真实目录而非链接/重解析点、主库为普通文件）不通过的
+目录一律跳过。已密封（主库只读）的历史版本最多保留 ``RETAIN_COUNT`` 个且不超过
+``RETAIN_AGE_S``，给已解析选择器、尚未建钉的读者留余量；未密封目录是被杀构建者的
+孤儿（rfcs/evidence/0032-feasibility E3），无钉即回收。单次受 ``BUDGET_S`` 限制。
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+import stat
+import time
+from pathlib import Path
+
+from ..read_only_files import clear_read_only_tree, mark_read_only
+from .generation_pins import GENERATION_ID, TOMBSTONE, has_live_pin, pin_directory
+
+RETAIN_COUNT = 2
+RETAIN_AGE_S = 24 * 60 * 60
+BUDGET_S = 1.0
+
+
+def _plain(info: os.stat_result, kind: int) -> bool:
+    return stat.S_IFMT(info.st_mode) == kind and not (
+        getattr(info, "st_file_attributes", 0) & 0x400
+    )
+
+
+def _verified(directory: Path) -> tuple[bool, float] | None:
+    """返回 (已密封, 修改时间)；非版本返回 None，其他 OSError 上抛由发布方记录。"""
+    if not GENERATION_ID.fullmatch(directory.name):
+        return None
+    info = os.lstat(directory)
+    if not _plain(info, stat.S_IFDIR):
+        return None
+    try:
+        database = os.lstat(directory / "index.db")
+    except FileNotFoundError:
+        # 构建者在建目录与建主库之间被杀：未密封孤儿。
+        return False, info.st_mtime
+    if not _plain(database, stat.S_IFREG):
+        return None
+    return not database.st_mode & stat.S_IWUSR, database.st_mtime
+
+
+def _remove(storage: Path, directory: Path, sealed: bool) -> bool:
+    """墓碑→探测钉→删除；任一步失败都撤回墓碑并保留版本，不留下可写主库。"""
+    pins = pin_directory(storage, directory.name)
+    pins.mkdir(parents=True, exist_ok=True)
+    tombstone = pins / TOMBSTONE
+    tombstone.touch(exist_ok=True)
+    database = directory / "index.db"
+    removed = False
+    try:
+        if not has_live_pin(pins):
+            clear_read_only_tree(directory)
+            database.unlink(missing_ok=True)
+            removed = True
+    except OSError:
+        # 探测失败或主库仍被打开（Windows 不可删除）：恢复只读位，留待下次。
+        if sealed and database.exists():
+            mark_read_only(database)
+    if not removed:
+        tombstone.unlink(missing_ok=True)
+        return False
+    shutil.rmtree(directory, ignore_errors=True)
+    shutil.rmtree(pins, ignore_errors=True)
+    return not directory.exists()
+
+
+def retire_unpublished(storage: Path, generation_id: str) -> bool:
+    """立即回收一个从未发布的失败构建版本，返回是否已删除（#1595）。
+
+    失败构建密封后与历史版本无法区分，会按“最新两个”保留策略再存活 24 小时
+    （dogfood 实测 336 MB 孤儿）。它从未进入选择器，没有读者依赖它；仍走墓碑→探测钉。
+    """
+    directory = storage / "generations" / generation_id
+    verdict = _verified(directory) if os.path.lexists(directory) else None
+    return verdict is not None and _remove(storage, directory, verdict[0])
+
+
+def retire_generations(
+    storage: Path, active_id: str, *, now: float | None = None
+) -> list[str]:
+    """回收活动版本之外不再需要的版本，返回本次实际删除的版本 ID。"""
+    started, now = time.monotonic(), time.time() if now is None else now
+    directories = [Path(e.path) for e in os.scandir(storage / "generations")]
+    found = {
+        directory: verdict
+        for directory in directories
+        if directory.name != active_id and (verdict := _verified(directory))
+    }
+    newest_sealed = sorted(
+        (d for d, (sealed, _m) in found.items() if sealed),
+        key=lambda d: found[d][1],
+        reverse=True,
+    )[:RETAIN_COUNT]
+    kept = {d for d in newest_sealed if now - found[d][1] <= RETAIN_AGE_S}
+    removed = []
+    for directory, (sealed, _modified) in found.items():
+        if directory in kept or time.monotonic() - started > BUDGET_S:
+            continue
+        if _remove(storage, directory, sealed):
+            removed.append(directory.name)
+    return removed

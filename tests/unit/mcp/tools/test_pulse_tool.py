@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from contextlib import closing
 from unittest.mock import MagicMock
@@ -76,6 +77,7 @@ async def test_batch_corrupt_index_rejects_all_uncertified_targets(
     source = root / "bad.py"
     source.write_text("def broken():\n    pass\n", encoding="utf-8")
     cache.index_file(str(source))
+    os.chmod(cache.db_path, 0o600)  # 新密封版本只读，先恢复写位再注入损坏
     with closing(sqlite3.connect(cache.db_path)) as corrupt:
         corrupt.execute(
             "UPDATE ast_index SET symbols_json='{' WHERE file_path='bad.py'"
@@ -298,6 +300,8 @@ async def indexed_pulse_project(tmp_path):
     )
     await _certify_project(tmp_path)
     cache = ASTCache(str(tmp_path))
+    # 密封版本为只读文件（RFC-0032 E5）；损坏注入用例须先恢复写位。
+    os.chmod(cache.db_path, 0o600)
     yield tmp_path, cache
     cache.close()
 
@@ -770,6 +774,71 @@ async def test_certified_pulse_rejects_save_during_read(certified_pulse_project)
         "stale",
     )
     assert evidence["freshness"] == "unknown"
+
+
+async def test_pulse_certification_deadline_names_next_step(
+    certified_pulse_project, monkeypatch
+):
+    # Issue #1561：RFC-0030 禁止发布未认证 Pulse；超出认证期限时须给出可执行下一步。
+    from tree_sitter_analyzer import index_snapshot
+    from tree_sitter_analyzer.api.pulse_evidence import CERTIFICATION_BOUND_NEXT_STEP
+
+    monkeypatch.setattr(index_snapshot, "_CERTIFICATION_DEADLINE_SECONDS", -1.0)
+
+    result = await PulseTool(str(certified_pulse_project)).execute(
+        {"file": "leaf.py", "symbol": "leaf"}
+    )
+
+    assert result == {
+        "success": False,
+        "error_code": "SOURCE_EVIDENCE_UNAVAILABLE",
+        "error": "Pulse source evidence unavailable: INDEX_SNAPSHOT_DEADLINE",
+        "source_evidence": {
+            "freshness": "unknown",
+            "snapshot_id": None,
+            "source_generation": None,
+            "reason": "INDEX_SNAPSHOT_DEADLINE",
+        },
+        "next_step": CERTIFICATION_BOUND_NEXT_STEP.format(
+            reason="INDEX_SNAPSHOT_DEADLINE"
+        ),
+    }
+
+
+async def test_certified_pulse_shares_one_certification_deadline(
+    certified_pulse_project, monkeypatch
+):
+    # Issue #1561：捕获与读后复核共用一个 60 秒绝对期限，复核不得另起预算。
+    from tree_sitter_analyzer import index_snapshot
+
+    observed: list[tuple[str, float]] = []
+    lease = index_snapshot.lease_existing_snapshot
+    verify = index_snapshot.verify_snapshot_source_current
+
+    def recording_lease(root, *, deadline):
+        observed.append(("lease", deadline))
+        return lease(root, deadline=deadline)
+
+    def recording_verify(snapshot, *, deadline):
+        observed.append(("verify", deadline))
+        return verify(snapshot, deadline=deadline)
+
+    monkeypatch.setattr(index_snapshot, "lease_existing_snapshot", recording_lease)
+    monkeypatch.setattr(
+        index_snapshot, "verify_snapshot_source_current", recording_verify
+    )
+    started = index_snapshot._clock()
+
+    result = await PulseTool(str(certified_pulse_project)).execute(
+        {"file": "leaf.py", "symbol": "leaf"}
+    )
+
+    assert (result["success"], [kind for kind, _ in observed]) == (
+        True,
+        ["lease", "verify"],
+    )
+    assert observed[0][1] == observed[1][1]
+    assert round(observed[0][1] - started) == 60
 
 
 @pytest.mark.parametrize("failure", ["query", "save"])

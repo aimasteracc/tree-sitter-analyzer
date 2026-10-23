@@ -5,8 +5,11 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
+import time
 
 import pytest
+
+from tests.unit._ast_cache_helpers import legacy_cache
 
 requires_posix_fd = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
 pytestmark = requires_posix_fd
@@ -23,12 +26,11 @@ def _fd_is_closed(fd: int) -> bool:
 class TestSnapshotFailureContracts:
     @staticmethod
     def _certified_cache(root):
-        from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
 
         source = root / "sample.py"
         source.write_text("value = 1\n")
-        cache = ASTCache(str(root))
+        cache = legacy_cache(root)
         cache.index_file(str(source))
         stamp_full_index_manifest(cache.get_conn(), str(root))
         cache.close()
@@ -122,10 +124,9 @@ class TestSnapshotFailureContracts:
             schema._check_deadline(1.0)
 
     def test_manifest_stamp_rejects_nonbuilt_marker(self, tmp_path):
-        from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.index_snapshot_schema import stamp_full_index_manifest
 
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         try:
             conn = cache.get_conn()
             conn.execute(
@@ -278,11 +279,10 @@ def test_schema_inventory_table_count_is_bounded(monkeypatch):
 def test_manifest_stamp_blocks_concurrent_sqlite_epoch_mutation(tmp_path, monkeypatch):
     # PR #1253 review 3755216340: fingerprints and manifest share one writer lock.
     import tree_sitter_analyzer.index_snapshot_schema as schema
-    from tree_sitter_analyzer.ast_cache import ASTCache
 
     source = tmp_path / "sample.py"
     source.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(tmp_path)
     cache.index_file(str(source))
     schema.stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
     db_path = cache.db_path
@@ -325,7 +325,12 @@ def test_manifest_stamp_blocks_concurrent_sqlite_epoch_mutation(tmp_path, monkey
     manifest = conn.execute(
         "SELECT index_fingerprint FROM ast_index_snapshot_manifest"
     ).fetchone()[0]
-    assert manifest == schema.index_fingerprint(conn, os.path.realpath(str(tmp_path)))
+    # RFC-0039：manifest v3 记录认证根。
+    from tree_sitter_analyzer.index_certification_tree import certification_root
+
+    assert manifest == certification_root(
+        conn, os.path.realpath(str(tmp_path)), deadline=time.monotonic() + 60
+    )
     conn.close()
 
 
@@ -492,7 +497,7 @@ class TestFingerprintDeadlineConfig:
         )
 
         monkeypatch.setenv("TSA_FINGERPRINT_DEADLINE_SECONDS", value)
-        assert _fingerprint_deadline_seconds() == 5.0
+        assert _fingerprint_deadline_seconds() == 120.0
 
     def test_环境变量覆盖生效且有下限(self, monkeypatch):
         from tree_sitter_analyzer.index_snapshot_schema import (
@@ -504,13 +509,13 @@ class TestFingerprintDeadlineConfig:
         monkeypatch.setenv("TSA_FINGERPRINT_DEADLINE_SECONDS", "0.1")
         assert _fingerprint_deadline_seconds() == 1.0  # 下限保护
 
-    def test_误配回退默认5秒(self, monkeypatch):
+    def test_误配回退默认值(self, monkeypatch):
         from tree_sitter_analyzer.index_snapshot_schema import (
             _fingerprint_deadline_seconds,
         )
 
         monkeypatch.setenv("TSA_FINGERPRINT_DEADLINE_SECONDS", "not-a-number")
-        assert _fingerprint_deadline_seconds() == 5.0
+        assert _fingerprint_deadline_seconds() == 120.0
 
     def test_未设置用默认值(self, monkeypatch):
         from tree_sitter_analyzer.index_snapshot_schema import (
@@ -518,4 +523,4 @@ class TestFingerprintDeadlineConfig:
         )
 
         monkeypatch.delenv("TSA_FINGERPRINT_DEADLINE_SECONDS", raising=False)
-        assert _fingerprint_deadline_seconds() == 5.0
+        assert _fingerprint_deadline_seconds() == 120.0

@@ -185,6 +185,8 @@ class FacadeTool(BaseMCPTool):
         # are not in ``action_map`` but still need G3 rebind propagation, so
         # callers register them via ``register_bespoke_inner``.
         self._bespoke_inners: list[BaseMCPTool] = []
+        # #1562：bespoke 路由可声明机器可读 schema，供 action=help 返回。
+        self._bespoke_schemas: dict[str, dict[str, Any]] = {}
         self._description = description
         self._annotations = annotations
         self._extra_public_params: dict[str, dict[str, Any]] = dict(
@@ -196,6 +198,15 @@ class FacadeTool(BaseMCPTool):
         super().__init__(project_root)
 
     # -- rebind propagation (G3) -------------------------------------------
+
+    def register_bespoke_schema(
+        self, action: str, schema: dict[str, Any] | None
+    ) -> None:
+        """为 bespoke 动作登记 help schema；``None``（inner 无 schema）不登记。"""
+        if action not in self.bespoke_map:
+            raise ValueError(f"{action!r} is not a bespoke action")
+        if schema is not None:
+            self._bespoke_schemas[action] = schema
 
     def register_bespoke_inner(self, inner: BaseMCPTool) -> None:
         """Register an inner instance reachable only via a bespoke closure (F5).
@@ -521,6 +532,7 @@ class FacadeTool(BaseMCPTool):
                 bespoke_actions=set(self.bespoke_map),
                 arguments=arguments,
                 target_action=arguments.get("target_action"),
+                bespoke_schemas=self._bespoke_schemas,
             )
 
         if (

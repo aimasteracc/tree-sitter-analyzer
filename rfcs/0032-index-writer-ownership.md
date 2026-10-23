@@ -1,10 +1,10 @@
 # RFC-0032: Index writer ownership and obsolete-candidate fencing
 
-- **Status**: draft
+- **Status**: accepted — Revision 1 accepted by the owner on 2026-10-14 (generation-store CAS as the write fence; decisions under "Deferred / open questions"); implementation in progress, see "Implementation status"
 - **Author(s)**: @aimasteracc, Codex
 - **Created**: 2026-09-08
-- **Last updated**: 2026-09-09
-- **Tracking issue**: TBD after acceptance
+- **Last updated**: 2026-10-18
+- **Tracking issue**: #1554
 - **Affected source paths**:
   - `tree_sitter_analyzer/ast_cache.py`, `_ast_cache_*_mixin.py`
   - `tree_sitter_analyzer/cache/{schema,schema_extensions,write,indexer_snapshot,index_project_runner}.py`
@@ -18,6 +18,140 @@ writer from candidate capture through final publication, and restrict delayed cl
 to rows owned by that operation. Reject obsolete candidates before changing rows,
 graph state, or certification. This requires an ast_cache migration and therefore
 acceptance before implementation; this draft is not a shipped safety guarantee.
+
+## Revision 1 (2026-10-13) — feasibility outcome
+
+The guard-feasibility / native-compatibility gate was resolved by measurement in
+[`evidence/0032-feasibility/`](evidence/0032-feasibility/README.md) (Windows 11 / NTFS,
+Python 3.12.9, SQLite 3.47.1; POSIX/macOS statements there are reasoning that native CI
+must confirm). This revision supersedes the sections named below; where this section
+and the original text disagree, this section wins. Everything else stands.
+
+**Premise update.** #1421 (merged 2026-09-09, released in v2.0.0–v2.2.0) already routes
+default-locator caches through a copy-on-write generation store whose publication is a
+compare-and-set of the selector under a cross-process lease. On a published default cache
+the obsolete-candidate replay is rejected with `INDEX_GENERATION_SUPERSEDED` and the
+logical dump is preserved, including the identical-bytes ABA case. The replay still
+deletes newer rows on routes that write in place: custom `db_path`, and the default
+locator before its first publication (e.g. `ensure_indexed()` on a fresh project).
+
+**Supersedes "Released-interface boundary" paragraphs 1–3.** On 2026-10-13 the latest
+release is v2.2.0. Since v2.0.0, `IncrementalSync.sync` publicly accepts
+`candidate_snapshot`, and default-locator caches route through the generation store from
+#1421. On a published default cache, `db_path` reports the active generation file and
+`get_conn()` returns a read-only connection. Rejecting unbound candidates on the default
+route is already released behaviour; on custom paths it would be new and requires a
+deprecation period.
+
+**Supersedes "Persistent identity and schema migration" and "Write fence and cleanup"
+for managed storage.** The write fence for default-locator storage is the generation
+selector CAS defined by `GenerationStore.publish`. No SQL triggers or application-defined
+guard functions are installed: measured on SQLite 3.47.1 and 3.50.4 they are unsafe under
+`trusted_schema=OFF`, cannot cover FTS5, and cannot carry connection identity. Schema 18
+adds only `ast_writer_state(id=1, cache_uuid, revision)` for in-place custom databases;
+every TSA mutation there advances `revision` by compare-and-set inside its own
+`BEGIN IMMEDIATE` transaction. This fences same-version TSA writers only; mixed-version
+live writers stay out of scope.
+
+**Amends "Proposed isolated storage protocol" item 1.** The default-locator namespace is
+the shipped `.ast-cache/index-generations/`. `L + ".tsa-v18"` is kept only as a future
+custom-locator option (major version).
+
+**Amends "Crash recovery and publication".** Generation routes have no persisted writing
+phase: an unpublished generation is unreferenced and the next admitted writer proceeds.
+Bounded retirement of unreferenced generations is required; until it exists, orphan
+generations are retained on disk.
+
+**Amends "Typed admission failures and retry contract"** with the mapping
+`INDEX_GENERATION_SUPERSEDED` / `INDEX_GENERATION_SOURCE_CHANGED` →
+`INDEX_CANDIDATE_SUPERSEDED`; lease timeout and Windows sharing violation →
+`INDEX_WRITER_BUSY`; `INDEX_GENERATION_SELECTOR_INVALID` / `_MISSING` / `_PATH_UNSAFE` →
+`INDEX_RECOVERY_REQUIRED`. The existing `error` text and CLI exit 1 are preserved.
+
+**Adds a native publication clause.** On Windows, selector replacement uses
+`FileRenameInfoEx` with POSIX semantics and readers open the selector with
+`FILE_SHARE_DELETE`; if unsupported, publication fails closed with `INDEX_WRITER_BUSY`.
+Windows replacement is atomic but not claimed power-loss durable.
+
+**Supersedes "Proposed read-session contract".** Sealed generation files are marked
+read-only at the OS level before publication; `get_conn()` keeps returning
+`sqlite3.Connection`. Code with the same OS authority that alters file permissions is
+outside the boundary. The full read-session type remains a deferred major-version option.
+
+**Major version.** Not required for slices 1–6 below (each is already released, additive,
+or a type-preserving bug fix). Required only for custom-storage relocation, a
+non-`sqlite3.Connection` read session, or hard rejection of unbound custom-path candidates;
+all three are deferred.
+
+**Implementation slices** (each independently mergeable, RED-first; see the memo §6):
+1. default mutating routes bootstrap a generation before first publication;
+2. Windows selector publication fix *(shipped-defect bug fix, may land before acceptance)*;
+3. seal marks generations read-only *(shipped-defect bug fix, may land before acceptance)*;
+4. typed admission errors with CLI/MCP/watcher parity;
+5. custom-path cooperative revision CAS (schema 18);
+6. bounded retirement of unreferenced generations;
+7. *(optional, major version)* custom locator relocation and a read-session type.
+
+**Implementation status** (2026-10-18): slices 1 (#1565), 2 (#1550), 3 (#1551),
+4 (#1661), 5 (#1662) and 6 (#1567) are merged; the follow-ups of #1664 are listed
+at the end of this note. Slice 4 adds `cache/admission.py`: `ADMISSION_CODES` holds
+the codes of the table below with its `retryable` / `retry_after_ms` / `next_action`
+values, and `CAUSE_CODES` maps each internal reason to one of them. The
+publication-lease timeout now raises `IndexWriterBusy` instead of a raw
+`OperationalError`. MCP, CLI and the watcher return the same payload, documented in
+`docs/agent-envelope-contract.md`.
+Slice 5 adds schema 18 `ast_writer_state(id=1, cache_uuid, revision)` and
+`cache/writer_state.py`. Every write transaction committed through `ASTCache.get_conn()`
+advances `revision` by compare-and-set inside that transaction. `index_project`,
+`index_file`, `invalidate` and in-place `IncrementalSync.sync` bind the revision at
+operation start, or take it from a candidate bound with `ASTCache.writer_revision()`.
+A mismatch rolls back the transaction and raises `Superseded` (cause codes
+`INDEX_WRITER_REVISION_SUPERSEDED`, `INDEX_WRITER_CACHE_REPLACED`,
+`INDEX_WRITER_STATE_MISSING`). The revision table is a control table outside
+`index_fingerprint`. The reader-required snapshot version stays 17, so published v17
+generations stay readable. Not covered: already-open older-version writers and raw SQL
+on independent connections (same-version cooperative fence only).
+Slices 1–6 are implemented; slice 7 remains deferred (major version).
+
+Follow-ups (#1664, 2026-10-18):
+- **Lease wait: 30 s, as specified** (`LEASE_TIMEOUT_S`, was 5 s). Measured on
+  Windows 11 / NTFS with a copy of this repository (2,865 indexed files; record
+  `e6-lease-wait` in [`evidence/0032-feasibility/observations.jsonl`](evidence/0032-feasibility/observations.jsonl)):
+  a second writer released at the instant a refresh (`run_incremental_sync`) took
+  the publish lease waited 3.4, 5.4, 4.1, 6.6 and 5.2 s (median 5.2 s; 3 of 5 over
+  5 s). The publish critical section rechecks every source file (walk plus content
+  hash on path-only platforms), so it grows with the project; capture and admission
+  hold the lease for under 10 ms. A 5 s bound therefore reported `INDEX_WRITER_BUSY`
+  for ordinary contention on a mid-size repository. The wait ends as soon as the lease is released, so a caller waits for
+  the holder's actual critical section, and the full 30 s only when that section is
+  itself longer; it stays a wait bound, not a feedback SLA. The watcher's backoff
+  starts after a failed attempt and is unchanged.
+- **`ensure_indexed`** no longer turns a refused first warm of a never-indexed
+  project into `None`: it raises the typed admission error. `codegraph_incremental_sync`,
+  `auto_index mode=warm` and `codegraph_refactor` return the same payload as the other
+  write routes; read-only visualizations fall back to parsing source.
+- **`INDEX_CANDIDATE_UNBOUND` is emitted** on the default locator when a supplied
+  candidate is not publication-bound (it was not captured by
+  `build_index_candidate_snapshot`), before any lease or private build. It was
+  reported as `INDEX_CANDIDATE_SUPERSEDED`, whose `recapture` advice repeats the
+  failure for a caller that builds its candidate the same way. Custom paths still
+  accept unbound candidates (owner decision). **`INDEX_WRITER_FENCED` is removed**
+  from the table: every TSA write operation is synchronous, so no route can deliver
+  a result after its operation ends. Generation builds are private until the
+  publication CAS, and a custom-path operation that loses the revision race mid-way
+  has all its later commits refused as `INDEX_CANDIDATE_SUPERSEDED`. Retrying that
+  with a fresh capture is the correct remedy: the loser may hold source edits the
+  winner did not capture, so a non-retryable `discard_result` would lose them.
+- **Implicit commits are fenced.** On an armed `FencedConnection`, a `SAVEPOINT`
+  opened outside a transaction now starts one with `BEGIN`; releasing the outermost
+  savepoint ends it through the fenced commit. `executescript` first commits a
+  pending transaction through the fence, then runs the script inside a `BEGIN` and
+  commits it through the fence as well. Transactions that change no rows (read-only
+  savepoints, a rollback to the outermost savepoint, DDL-only scripts) end without a
+  revision advance, so readers take no write lock and bound candidates stay valid.
+- **The cached dependency graph reads v17 indexes.** Both change-impact loaders
+  require the reader version (`SNAPSHOT_SCHEMA_VERSION`, 17) instead of schema 18,
+  so a published v17 index serves the graph without a parse fallback.
 
 ## Motivation
 
@@ -453,7 +587,11 @@ Existing ordinary indexing errors retain their current result semantics.
 | `INDEX_CANDIDATE_SUPERSEDED` | true | 5000 | `recapture` |
 | `INDEX_CANDIDATE_UNBOUND` | false | 0 | `obtain_bound_candidate` |
 | `INDEX_RECOVERY_REQUIRED` | false | 0 | `recover_index` |
-| `INDEX_WRITER_FENCED` | false | 0 | `discard_result` |
+
+`INDEX_WRITER_FENCED` (`discard_result`) was removed from this table on 2026-10-18
+(#1664): no TSA route delivers a result after its write operation ends, and a
+writer that loses ownership mid-operation is refused as `INDEX_CANDIDATE_SUPERSEDED`
+so that it recaptures. See the follow-ups under "Implementation status".
 
 MCP adapters use `build_error` with `success=false`, `verdict="ERROR"`, a sanitized
 human-readable `error`, and these exact machine fields (`code` maps to `error_code`).
@@ -472,9 +610,9 @@ SQL exception, or operation token belongs in the human-readable error.
 admission errors, rather than reducing them to `{"error": ...}`. Background watchers
 retry only the two retryable codes, using fresh capture after delays of 5, 10, 20, 40,
 then 60 seconds (60-second cap). Existing notification coalescing and stop ownership
-remain mandatory. An unbound candidate or fenced late callback does not cause an
-automatic replay loop. Normal mutating coordination performs admitted recovery;
-capture-only callers must explicitly request recovery through a mutating route.
+remain mandatory. An unbound candidate does not cause an automatic replay loop.
+Normal mutating coordination performs admitted recovery; capture-only callers must
+explicitly request recovery through a mutating route.
 
 Watch status exposes `last_admission_error` (null or the failure payload) and increments
 its existing error counter once per failed attempt. Clear this diagnostic after a
@@ -533,7 +671,11 @@ coverage, and the runtime-contract quick gate before any implementation PR is pu
 
 ## Acceptance criteria
 
-- [ ] RFC accepted, guard feasibility/native compatibility gate resolved.
+- [x] Guard feasibility / native compatibility gate resolved — measured in
+  [`evidence/0032-feasibility/`](evidence/0032-feasibility/README.md) (2026-10-13);
+  outcome recorded as Revision 1.
+- [x] RFC accepted — owner accepted Revision 1 on 2026-10-14 with the decisions recorded
+  under "Deferred / open questions"; tracked in #1554.
 - [ ] Migration and exact schema/guard contracts pass; old writers cannot partially mutate.
 - [ ] Lazy table/DDL inventory is exact; rejected operations preserve committed state
   and leave no transaction that can publish delayed mutations.
@@ -567,3 +709,17 @@ admission and pending RFC-0031 verification execution remain separate work.
    compatibility and active-state isolation instead of in-place old-write rejection?
 3. Resolve selector errors, native publication, consumer inventory, and active-write
    guard feasibility before implementation; no experiment waives these requirements.
+
+Revision 1 status of the questions above: (2) is answered by the shipped generation store
+for the default locator; (3) is resolved by the feasibility memo, except consumer
+inventory, which slice 1 must complete.
+
+**Owner decisions (2026-10-14, accepting Revision 1):**
+- Custom-path policy: cooperative revision CAS now (schema 18 `ast_writer_state`);
+  relocating custom storage is deferred to a future major version.
+- Orphan generation retention: bounded by count and age; a generation is never retired
+  while active or while a reader pins it.
+- Durability claim: atomic replacement only on Windows/macOS; no power-loss durability
+  is claimed (no `MOVEFILE_WRITE_THROUGH` / `F_FULLFSYNC` work in this RFC).
+- Question (1): revision-bound candidates and schema 18 are accepted for in-place custom
+  databases only; unbound candidates on custom paths stay accepted until a major version.

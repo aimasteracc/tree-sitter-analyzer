@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Collection
 from typing import Any
 
 from ._ast_cache_database_mixin import ASTCacheSurface
 from .cache.callgraph_state import call_graph_built as _call_graph_built
 from .cache.graph import bfs_callees as _bfs_callees_impl
 from .cache.graph import bfs_callers as _bfs_callers_impl
+from .cache.graph_input_rows import CallEdgeRows, read_call_edge_rows
 from .cache.query import (
     backfill_cross_file_edges as _backfill_cross_file_edges,
 )
@@ -64,24 +66,27 @@ def _edge_store_traversal(
         return None
 
 
+def _call_edge_rows(cache: ASTCacheSurface) -> CallEdgeRows:
+    try:
+        return read_call_edge_rows(cache._get_conn())
+    except sqlite3.OperationalError:
+        return CallEdgeRows((), [])
+
+
 class ASTCacheGraphMixin(ASTCacheSurface):
     """Stable call-edge and graph-query API."""
 
     def get_call_edges(self) -> list[dict[str, Any]]:
-        """Return legacy-compatible CALLS rows from unified EdgeStore."""
-        try:
-            rows = (
-                self._get_conn()
-                .execute(
-                    "SELECT caller_name, file_path AS caller_file, caller_line, "
-                    "callee_name, callee_full, callee_line, file_path, language "
-                    "FROM edges WHERE kind = 'calls'"
-                )
-                .fetchall()
-            )
-        except sqlite3.OperationalError:
-            return []
-        return [dict(row) for row in rows]
+        """Return legacy-compatible CALLS rows from unified EdgeStore.
+
+        #1559/#1560：同时返回持久化解析列，内存调用图据此绑定目标，
+        不再按裸名重新猜测。
+        """
+        return _call_edge_rows(self).to_dicts()
+
+    def get_call_edge_rows(self) -> CallEdgeRows:
+        """#1657：``get_call_edges`` 的原始元组形式；读失败时与之一样为空。"""
+        return _call_edge_rows(self)
 
     def get_resolved_call_edges(self) -> list[dict[str, Any]]:
         """Return caller files paired with persisted resolved callee files."""
@@ -182,6 +187,7 @@ class ASTCacheGraphMixin(ASTCacheSurface):
         self,
         callee_name: str,
         callee_file: str | None = None,
+        bound_targets: Collection[tuple[str, int]] | None = None,
     ) -> int | None:
         """Count in-scope CALLS edges into ``callee_name`` not known resolved.
 
@@ -194,7 +200,23 @@ class ASTCacheGraphMixin(ASTCacheSurface):
 
             return EdgeStore(
                 self._get_conn(), ensure_schema=False
-            ).count_unresolved_callers(callee_name, callee_file)
+            ).count_unresolved_callers(callee_name, callee_file, bound_targets)
+        except sqlite3.OperationalError:
+            return None
+
+    def unresolved_caller_sites(
+        self,
+        callee_name: str,
+        callee_file: str | None = None,
+        bound_targets: Collection[tuple[str, int]] | None = None,
+    ) -> list[dict[str, Any]] | None:
+        """#1706: the sites behind :meth:`count_unresolved_callers`; ``None`` if unreadable."""
+        try:
+            from .graph.edge_store import EdgeStore
+
+            return EdgeStore(
+                self._get_conn(), ensure_schema=False
+            ).unresolved_caller_sites(callee_name, callee_file, bound_targets)
         except sqlite3.OperationalError:
             return None
 
@@ -266,9 +288,37 @@ class ASTCacheGraphMixin(ASTCacheSurface):
             return None
         return tuple(str(row[0]) for row in rows if row[0])
 
+    def symbol_definitions(self, name: str) -> list[tuple[str, int]] | None:
+        """RFC-0038：名为 ``name`` 的函数 / 方法定义（文件、行）；读取失败为 None。"""
+        try:
+            rows = (
+                self._get_conn()
+                .execute(
+                    "SELECT file_path, line FROM ast_symbol_rows WHERE name = ? "
+                    "AND kind IN ('function', 'method')",
+                    (name,),
+                )
+                .fetchall()
+            )
+        except sqlite3.OperationalError:
+            return None
+        return [(str(row[0]), int(row[1] or 0)) for row in rows if row[0]]
+
     def call_graph_built(self) -> bool:
-        """Return whether a completed call-graph build is recorded."""
-        return _call_graph_built(self._get_conn())
+        """Return whether a completed call-graph build is recorded.
+
+        #1710: the check scans every call edge; its result is reused while the
+        stat evidence of the database file the connection reads is unchanged.
+        """
+        from .cache import call_graph_built_memo
+
+        conn = self._get_conn()
+        try:
+            row = conn.execute("PRAGMA database_list").fetchone()
+        except sqlite3.Error:
+            row = None
+        database = str(row[2]) if row is not None and len(row) > 2 and row[2] else None
+        return call_graph_built_memo.memoized(database, lambda: _call_graph_built(conn))
 
     def get_cross_file_resolver(self) -> Any:
         """Return the lazily built import-aware resolver."""

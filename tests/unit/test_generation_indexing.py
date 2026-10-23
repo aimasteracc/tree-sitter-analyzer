@@ -7,6 +7,12 @@ from pathlib import Path
 
 import pytest
 
+# root 绕过 0444 权限位，属 RFC-0032 已声明的边界外情形。
+_ROOT_BYPASSES_MODE_BITS = pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0,
+    reason="tracked: RFC-0032 boundary, root bypasses read-only file bits",
+)
+
 
 @pytest.fixture
 def project_root(tmp_path):
@@ -369,6 +375,81 @@ async def test_post_publication_error_reports_actual_visibility(
     assert result["phase"] == "generation_publication"
 
 
+async def _publish_full_index(project_root, arguments=None):
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    result = await CodeGraphFullIndexTool(project_root).execute(
+        arguments or {"mode": "full"}
+    )
+    assert result["published"] is True
+
+
+@_ROOT_BYPASSES_MODE_BITS
+@pytest.mark.asyncio
+async def test_public_read_connection_cannot_attach_published_generation_rw(
+    project_root,
+):
+    # rfcs/evidence/0032-feasibility E5（2026-10-13）：公共只读连接经
+    # ATTACH mode=rw 删光已发布版本，新读者随后看到空索引。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    await _publish_full_index(project_root)
+    cache = ASTCache(project_root)
+    try:
+        connection = cache.get_conn()
+        connection.execute(
+            "ATTACH DATABASE ? AS w", (Path(cache.db_path).as_uri() + "?mode=rw",)
+        )
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            connection.execute("DELETE FROM w.ast_index")
+        connection.commit()
+    finally:
+        cache.close()
+    fresh = ASTCache(project_root)
+    try:
+        assert fresh.get_stats()["total_files"] == 1
+    finally:
+        fresh.close()
+
+
+@pytest.mark.asyncio
+async def test_next_publication_copies_from_read_only_parent(project_root):
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+
+    await _publish_full_index(project_root)
+    parent = resolve_index_path(project_root)
+    (Path(project_root) / "src" / "extra.py").write_text(
+        "def added(): return 2\n", encoding="utf-8"
+    )
+    await _publish_full_index(project_root, {"mode": "incremental"})
+    assert resolve_index_path(project_root) != parent
+    cache = ASTCache(project_root)
+    try:
+        assert sorted(row["name"] for row in cache.get_functions()) == [
+            "added",
+            "goodbye",
+            "hello",
+        ]
+    finally:
+        cache.close()
+
+
+def test_seal_rejects_leftover_sidecar_beside_read_only_database(project_root):
+    # rfcs/evidence/0032-feasibility E5b（2026-10-13）：只读主库旁的残留日志或
+    # 共享内存文件会让读者走旁路，密封必须拒绝而不是带着它发布。
+    from tree_sitter_analyzer.cache.generation_indexing import project_store
+    from tree_sitter_analyzer.index_source_scope import make_source_scope_descriptor
+
+    store = project_store(project_root, make_source_scope_descriptor())
+    selector = store.begin(store.capture())
+    database = store.database(selector)
+    database.with_name("index.db-shm").write_bytes(b"")
+    with pytest.raises(RuntimeError, match="INDEX_GENERATION_SIDECAR_PRESENT"):
+        store.seal(selector)
+    assert store.active_selector() is None
+
+
 def test_derived_mutation_rejects_nondefault_legacy_path(project_root):
     from tree_sitter_analyzer.cache.generation_indexing import mutate_index_path
 
@@ -376,3 +457,76 @@ def test_derived_mutation_rejects_nondefault_legacy_path(project_root):
     with pytest.raises(ValueError, match="INDEX_GENERATION_PATH_MISMATCH"):
         mutate_index_path(project_root, path, lambda _: pytest.fail("不得运行写入"))
     assert path.exists() is False
+
+
+def _without_swift_grammar(monkeypatch):
+    """让 Swift 语法表现为未安装；直接改类方法，绕过进程内的可用性缓存。"""
+    import tree_sitter_analyzer.core.parser as parser_module
+    from tree_sitter_analyzer.language_loader import LanguageLoader
+
+    installed = parser_module.is_grammar_installed
+    monkeypatch.setattr(
+        parser_module,
+        "is_grammar_installed",
+        lambda language: language != "swift" and installed(language),
+    )
+    available = LanguageLoader.is_language_available
+    load = LanguageLoader.load_language
+    monkeypatch.setattr(
+        LanguageLoader,
+        "is_language_available",
+        lambda self, language: language != "swift" and available(self, language),
+    )
+    monkeypatch.setattr(
+        LanguageLoader,
+        "load_language",
+        lambda self, language: None if language == "swift" else load(self, language),
+    )
+
+
+@pytest.mark.asyncio
+async def test_full_index_publishes_beside_a_missing_optional_grammar(
+    project_root, monkeypatch
+):
+    # Issue #1562: `index action=full` indexed 218/2415 files and did not publish
+    # because the optional swift grammar was missing; a stable per-file failure
+    # must not withhold the rest of the index (#1554 publication policy).
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    (Path(project_root) / "src" / "greet.swift").write_text(
+        'func greet() -> String { return "hi" }\n', encoding="utf-8"
+    )
+    _without_swift_grammar(monkeypatch)
+    result = await CodeGraphFullIndexTool(project_root).execute({})
+    cache = ASTCache(project_root)
+    try:
+        files = cache.get_stats()["total_files"]
+    finally:
+        cache.close()
+    assert (result["published"], result["completeness"], files) == (
+        True,
+        "incomplete",
+        1,
+    )
+
+
+@pytest.mark.asyncio
+async def test_full_index_with_missing_grammar_names_the_files_to_install_for(
+    project_root, monkeypatch
+):
+    # Issue #1562: the published-but-incomplete result says what is missing.
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    (Path(project_root) / "src" / "greet.swift").write_text(
+        'func greet() -> String { return "hi" }\n', encoding="utf-8"
+    )
+    _without_swift_grammar(monkeypatch)
+    result = await CodeGraphFullIndexTool(project_root).execute({})
+    assert result["agent_summary"]["next_step"] == (
+        "Published without 1 file(s) whose optional grammar is not installed "
+        "(src/greet.swift: Swift grammar not installed — pip install "
+        '"tree-sitter-analyzer[swift]"). Install the extra and re-run '
+        "index action=full; graph answers about those files stay incomplete "
+        "until then."
+    )

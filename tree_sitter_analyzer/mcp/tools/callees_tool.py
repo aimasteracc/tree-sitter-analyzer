@@ -20,10 +20,17 @@ from .codegraph_relation_tool import (
     CodeGraphRelationToolMixin,
     _is_stale_resolution,
     classify_callee_resolution,
+    label_graph_relations,
 )
 from .index_rebuild_signal import (
     is_index_rebuilding,
     rebuild_in_progress_next_step,
+)
+from .relation_freshness import (
+    apply_source_evidence,
+    not_in_index_hint,
+    relation_files,
+    relation_source_evidence,
 )
 
 logger = setup_logger(__name__)
@@ -158,6 +165,11 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
             return apply_output_format_to_response(result, output_format)
 
         cache = bound_cache if bound_cache is not None else self._try_get_cache()
+        refusal = self._parse_fallback_refusal(cache, "callees", function=func_name)
+        if refusal is not None:
+            from ..utils.format_helper import apply_output_format_to_response
+
+            return apply_output_format_to_response(refusal, output_format)
         call_graph_built = (
             self._cache_call_graph_built(cache) if cache is not None else False
         )
@@ -175,8 +187,12 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
             if bound_cache is not None:
                 from ...call_graph import CachedCallGraph
 
+                # #1675：边解析结果落盘，冷进程的首个 callees 不再重新解析。
                 graph = CachedCallGraph(
-                    self.project_root or ".", cache=bound_cache, fallback=False
+                    self.project_root or ".",
+                    cache=bound_cache,
+                    fallback=False,
+                    persist=True,
                 )
                 data_source = "cache"
             else:
@@ -185,7 +201,9 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
             callees = graph.callees_of(func_name, file_path)
             if include_activation:
                 self._enrich_graph_callees_with_activation(callees)
-            self._enrich_callees_with_resolution(callees)
+            callees = label_graph_relations(
+                graph, func_name, file_path, callees, inbound=False
+            )
             # #981 defense-in-depth: the built marker can be a false-negative
             # (e.g. cleared while the index actually holds 125K call edges).
             # Trust an actual edge probe in addition to the marker so a missing
@@ -194,8 +212,16 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 cache is not None and cache.has_call_edges()
             )
 
+        # dogfood 2026-10-14：答案必须声明它所依据的索引是否已落后于源码。
+        evidence, stale_files = relation_source_evidence(
+            cache,
+            self.project_root,
+            relation_files(cache, func_name, callees),
+            absence=not callees,
+        )
+
         warnings_list: list[str] = []
-        if _is_stale_resolution(callees):
+        if _is_stale_resolution(callees, cache):
             warnings_list.append(_STALE_CACHE_WARNING)
 
         # Honest-truncation cap: record total before slicing so agents know
@@ -239,13 +265,11 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
             if not has_any_call_edges:
                 index_hint = (
                     "Call-graph index is empty or has not been built yet. "
-                    "Run `tree-sitter-analyzer --full-index` first, then retry."
+                    "Build it with MCP `index action=full` (CLI: "
+                    "`tree-sitter-analyzer --full-index`), then retry."
                 )
             else:
-                index_hint = (
-                    f"Symbol {func_name!r} not in the index. "
-                    "Check spelling or run --codegraph-navigate to browse."
-                )
+                index_hint = not_in_index_hint(func_name, evidence)
             next_step = f"{index_hint} {next_step}" if next_step else index_hint
         if next_step:
             result["next_step"] = next_step
@@ -256,7 +280,8 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
             as_summary_line = f"callees: {func_name!r} calls 0 function(s)"
             as_next_step = result.get("next_step") or (
                 f"No callees found for '{func_name}'. "
-                "Check spelling or run --full-index to build the call graph."
+                "Check spelling, or build the call graph with MCP "
+                "`index action=full` (CLI: --full-index)."
             )
         else:
             as_summary_line = (
@@ -271,6 +296,7 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
             "verdict": verdict,
             "next_step": as_next_step,
         }
+        apply_source_evidence(result, evidence, stale_files)
 
         from ..utils.format_helper import apply_output_format_to_response
 
@@ -366,18 +392,6 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 activation_map if include_activation else {},
             )
         return results
-
-    def _enrich_callees_with_resolution(self, callees: list[dict[str, Any]]) -> None:
-        """Add callee_resolution and callee_resolved_file to graph-fallback results."""
-        for entry in callees:
-            callee_file = entry.get("file", "")
-            callee_name = entry.get("name", "")
-            if "callee_resolution" not in entry or "callee_resolved_file" not in entry:
-                resolution, resolved_file = classify_callee_resolution(
-                    callee_name, callee_file, ""
-                )
-                entry.setdefault("callee_resolution", resolution)
-                entry.setdefault("callee_resolved_file", resolved_file)
 
     def _resolve_via_enhanced(
         self,

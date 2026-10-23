@@ -11,12 +11,14 @@ Key classes:
 
 import hashlib
 import os
+import threading
 from collections import defaultdict, deque
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from ._bounded_read import read_at_most
 from .constants import (
     EXCLUDE_DIRS,
     GRAPH_SOURCE_EXTS,
@@ -249,6 +251,45 @@ def _resolve_python_import(
     return None
 
 
+def python_submodule_import_targets(
+    module: str,
+    names: Iterable[str],
+    source_rel: str,
+    nodes: set[str],
+    is_relative: bool,
+) -> list[str]:
+    """返回 ``from pkg import name`` 中真实存在的子模块文件。
+
+    CPython 执行 ``from pkg import sub`` 时会导入 ``pkg/sub.py``，因此该语句同时依赖
+    包与子模块（Issue #1557）。只接受精确的 ``pkg/name.py`` 或 ``pkg/name/__init__.py``
+    图节点，不使用相对导入的祖先 ``__init__.py`` 回退：普通符号导入不会多出边。
+    仅含点的相对模块（``from . import x``）由既有解析处理；点分名与 ``*`` 不是候选。
+    """
+    if not module or set(module) == {"."}:
+        return []
+    last_segment = module.rsplit(".", 1)[-1]
+    targets: list[str] = []
+    for name in dict.fromkeys(names):
+        if not name or name == "*" or "." in name:
+            continue
+        # 解析图把 ``from . import x`` 记作模块 ``.x``、名称 ``x``，避免重复拼接。
+        if is_relative and name == last_segment:
+            continue
+        dotted = f"{module}.{name}"
+        candidates = (
+            (
+                _relative_init_candidate(dotted, source_rel),
+                _resolve_relative_import(dotted, source_rel),
+            )
+            if is_relative
+            else (_resolve_python_import(dotted, source_rel, nodes, False),)
+        )
+        target = next((path for path in candidates if path in nodes), None)
+        if target is not None and target != source_rel:
+            targets.append(target)
+    return targets
+
+
 def _resolve_js_ts_import(
     module: str, source_rel: str, nodes: set[str], is_relative: bool
 ) -> str | None:
@@ -336,6 +377,24 @@ _IMPORT_RESOLVERS: dict[str, Callable[[str, str, set[str], bool], str | None]] =
 }
 
 
+def iter_graph_source_files(
+    project_root: Path, supported_exts: set[str], exclude_dirs: Iterable[str]
+) -> list[Path]:
+    """依赖图节点的唯一遍历规则；索引复用路径共用它以保证节点集一致（Issue #1591）。"""
+    excluded = set(exclude_dirs)
+    files: list[Path] = []
+    for root, dirs, names in os.walk(project_root):
+        dirs[:] = [
+            name for name in dirs if name not in excluded and not name.startswith(".")
+        ]
+        for name in names:
+            if name.startswith("."):
+                continue
+            if Path(name).suffix.lower() in supported_exts:
+                files.append(Path(root) / name)
+    return files
+
+
 # ============================================================
 # DependencyGraph
 # ============================================================
@@ -358,6 +417,7 @@ class DependencyGraph:
     """
 
     _global_cache: dict[str, "DependencyGraph"] = {}
+    _built: threading.Event
 
     def __new__(cls, project_root: str) -> "DependencyGraph":
         # 完整内容与项目路径决定复用；无法读取时仅构建，不复用。
@@ -366,11 +426,14 @@ class DependencyGraph:
             return cls._global_cache[key]
 
         instance = super().__new__(cls)
+        # 实例在构建前即入缓存；并发调用者须等构建完成，不能读到半成品（#1602）。
+        instance._built = threading.Event()
         cls._global_cache[key or project_root] = instance
         return instance
 
     def __init__(self, project_root: str) -> None:
         if hasattr(self, "_initialized") and self._initialized:  # type: ignore[has-type]
+            self._built.wait()
             return
 
         self.project_root = Path(project_root).resolve()
@@ -394,8 +457,10 @@ class DependencyGraph:
         )
 
         self._initialized = True
-
-        self._build()
+        try:
+            self._build()
+        finally:
+            self._built.set()
 
     @staticmethod
     def _cache_key_for(project_root: str) -> str | None:
@@ -422,7 +487,7 @@ class DependencyGraph:
                     path = Path(directory) / name
                     with path.open("rb") as stream:
                         before = os.fstat(stream.fileno())
-                        content = stream.read(64 * 1024 * 1024 + 1)
+                        content = read_at_most(stream, 64 * 1024 * 1024)
                         after = os.fstat(stream.fileno())
                     if len(content) > 64 * 1024 * 1024 or (
                         before.st_dev,
@@ -461,19 +526,9 @@ class DependencyGraph:
 
     def _iter_source_files(self, supported_exts: set[str]) -> list[Path]:
         """Return source files while pruning generated and hidden work dirs."""
-        files: list[Path] = []
-        for root, dirs, names in os.walk(self.project_root):
-            dirs[:] = [
-                name
-                for name in dirs
-                if name not in self._EXCLUDE_DIRS and not name.startswith(".")
-            ]
-            for name in names:
-                if name.startswith("."):
-                    continue
-                if Path(name).suffix.lower() in supported_exts:
-                    files.append(Path(root) / name)
-        return files
+        return iter_graph_source_files(
+            self.project_root, supported_exts, self._EXCLUDE_DIRS
+        )
 
     def _build(self) -> None:
         """Scan project directory and build the dependency graph."""
@@ -534,6 +589,22 @@ class DependencyGraph:
                             continue
                         self._symbol_importers[name].add(rel_path)
                         self._symbol_importer_targets[(name, rel_path)].add(resolved)
+                self._add_python_submodule_edges(imp, rel_path)
+
+    def _add_python_submodule_edges(self, imp: dict[str, Any], source_rel: str) -> None:
+        """为 ``from pkg import sub`` 补上指向 ``pkg/sub.py`` 的文件边（Issue #1557）。"""
+        if imp.get("language") != "python":
+            return
+        for target in python_submodule_import_targets(
+            imp.get("module_name", ""),
+            imp.get("names", ()) or (),
+            source_rel,
+            self._nodes,
+            bool(imp.get("is_relative", False)),
+        ):
+            self._edges.add((source_rel, target))
+            self._deps[source_rel].add(target)
+            self._dependents[target].add(source_rel)
 
     def _resolve_to_project_file(
         self,

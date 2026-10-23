@@ -12,6 +12,7 @@ import time
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.embeddings.pipeline import (
     EmbeddingModelUnavailableError,
     _decode_embedding,
@@ -485,7 +486,6 @@ def test_pipeline_uses_exact_indexed_signature_and_docstring(
     tmp_path, mock_embed_models
 ):
     # PR #1352：使用真实索引中的定义身份，模型边界以外不 mock。
-    from tree_sitter_analyzer.ast_cache import ASTCache
 
     source = tmp_path / "a.py"
     source.write_text(
@@ -493,7 +493,7 @@ def test_pipeline_uses_exact_indexed_signature_and_docstring(
         'def run(y: str) -> int:\n    """second doc"""\n    return len(y)\n',
         encoding="utf-8",
     )
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     openai, _ = mock_embed_models
     openai.side_effect = lambda texts: [[1.0, 0.0] for _ in texts]
     try:

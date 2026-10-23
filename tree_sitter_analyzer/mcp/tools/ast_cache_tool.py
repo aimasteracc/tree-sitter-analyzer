@@ -21,6 +21,11 @@ from ...incremental_sync import IncrementalSync
 from ...indexing_limits import normalize_index_max_files
 from ...utils import setup_logger
 from ._validators import invalid_enum_error
+from .ast_cache_index_view import (
+    project_index_files,
+    project_publication,
+    project_removed_files,
+)
 from .base_tool import BaseMCPTool, _canonicalize_verdict, mirror_summary_line
 
 logger = setup_logger(__name__)
@@ -32,6 +37,8 @@ logger = setup_logger(__name__)
 # user has an older DB and avoids forcing a full re-index for a quirk
 # that would otherwise confuse FTS callers.
 _IMPORT_NAME_LIMIT = 100
+# 会写入索引的模式；其失败以类型化答复返回（RFC-0032 slice 4）。
+_WRITE_MODES = frozenset({"index", "sync", "invalidate"})
 _BOUND_NAME_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
@@ -438,6 +445,16 @@ class ASTCacheTool(BaseMCPTool):
                     ),
                     "default": False,
                 },
+                "include_details": {
+                    "type": "boolean",
+                    "description": (
+                        "index (project): list every per-file detail, including "
+                        "unchanged cached files. Default false returns counts plus "
+                        "at most 50 changed/errored files with files_total / "
+                        "files_listed / files_truncated / unchanged_omitted (#1582)."
+                    ),
+                    "default": False,
+                },
                 "poll_interval": {
                     "type": "number",
                     "description": (
@@ -504,6 +521,8 @@ class ASTCacheTool(BaseMCPTool):
             raise ValueError(f"file_path is required for mode '{mode}'")
         if mode in ("search", "fts_search") and not arguments.get("query"):
             raise ValueError(f"query is required for {mode} mode")
+        if not isinstance(arguments.get("include_details", False), bool):
+            raise ValueError("include_details must be a boolean")
         arguments["max_files"] = normalize_index_max_files(arguments.get("max_files"))
         return True
 
@@ -534,23 +553,48 @@ class ASTCacheTool(BaseMCPTool):
         if mode == "watch_status":
             return self._handle_watch_status()
 
-        cache = self._get_cache()
+        if mode in _WRITE_MODES:
+            return self._execute_write(mode, arguments)
 
-        if mode == "index":
-            return self._handle_index(arguments, cache)
+        cache = self._get_cache()
         if mode == "lookup":
             return self._handle_lookup(arguments, cache)
         if mode in ("search", "fts_search"):
             return self._handle_search(arguments, cache, mode)
         if mode == "stats":
             return self._handle_stats(cache)
-        if mode == "sync":
-            return self._handle_sync(arguments)
         if mode == "changes":
             return self._handle_changes()
-        if mode == "invalidate":
-            return self._handle_invalidate(arguments, cache)
         return _build_unknown_mode_response(mode)
+
+    def _execute_write(self, mode: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        """写入模式：失败以类型化答复越过 MCP 边界，绝不报 internal 错误。
+
+        #1562 源码摘要预算、#1595 源码变化，以及 RFC-0032 slice 4 的准入失败
+        （``INDEX_CANDIDATE_SUPERSEDED`` / ``INDEX_WRITER_BUSY`` /
+        ``INDEX_RECOVERY_REQUIRED``）；打开缓存本身失败（如选择器损坏）同样归类。
+        """
+        from ...cache.generation_indexing import source_hash_budget_failure
+        from ...cache.source_hash_budget import SourceHashBudgetExceeded
+        from ...cache.source_recheck import SourceChanged, source_changed_failure
+        from ..utils.admission_response import admission_error_response
+
+        try:
+            cache = self._get_cache()
+            if mode == "index":
+                return self._handle_index(arguments, cache)
+            if mode == "sync":
+                return self._handle_sync(arguments)
+            return self._handle_invalidate(arguments, cache)
+        except SourceHashBudgetExceeded as exc:
+            return source_hash_budget_failure(exc)
+        except SourceChanged as exc:
+            return source_changed_failure(exc)
+        except Exception as exc:
+            typed = admission_error_response(exc, self._project_root)
+            if typed is None:
+                raise
+            return typed
 
     def _handle_index(self, arguments: dict[str, Any], cache: Any) -> dict[str, Any]:
         """``mode=index``: per-file or whole-project AST cache build."""
@@ -588,6 +632,16 @@ class ASTCacheTool(BaseMCPTool):
                 f"symbols={symbols} force={bool(force)}"
             )
             next_step = "ast_cache mode=stats to confirm the index size"
+            # #1582：默认省略未变文件并限制明细条数，完整列表需显式 opt-in。
+            result = project_index_files(
+                result, include_details=bool(arguments.get("include_details", False))
+            )
+            result, summary_line, next_step = project_removed_files(
+                result, summary_line, next_step, force=bool(force)
+            )
+            result, summary_line, next_step = project_publication(
+                result, summary_line, next_step, symbols=symbols
+            )
         return _build_ast_cache_envelope("index", result, summary_line, next_step)
 
     def _handle_lookup(self, arguments: dict[str, Any], cache: Any) -> dict[str, Any]:

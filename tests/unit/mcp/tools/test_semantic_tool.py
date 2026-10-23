@@ -15,6 +15,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.mcp.tools.semantic_tool import SemanticNeighborsTool
 
 # ---------------------------------------------------------------------------
@@ -33,12 +34,11 @@ async def test_combined_score_rejects_unavailable_lazy_heat_before_provider(
     tmp_path, openai_transport, state
 ):
     """PR #1350/#1352：真实索引的热度未计算时，组合评分不得伪造分数或浪费 provider 请求。"""
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.embeddings import pipeline
 
     source = tmp_path / "a.py"
     source.write_text("def run():\n    pass\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_file(str(source))
         db = cache.get_conn()
@@ -69,12 +69,11 @@ async def test_semantic_store_damage_during_provider_request_is_failure(
     """PR #1352：外部请求期间真实数据库变化后，不得报成功空集或伪造热度。"""
     from types import SimpleNamespace
 
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.embeddings import pipeline
 
     source = tmp_path / "a.py"
     source.write_text("def alpha():\n    pass\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_file(str(source))
         db = cache.get_conn()
@@ -112,12 +111,11 @@ async def test_semantic_store_damage_during_provider_request_is_failure(
 
 async def test_zero_stored_vector_is_not_a_similarity_match(tmp_path, openai_transport):
     """PR #1352：零向量没有余弦方向，不能凭阈值为零挤入结果。"""
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.embeddings import pipeline
 
     source = tmp_path / "a.py"
     source.write_text("def alpha():\n    pass\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_file(str(source))
         db = cache.get_conn()
@@ -140,12 +138,11 @@ async def test_nonfinite_stored_vector_is_corruption_not_zero_matches(
     tmp_path, openai_transport
 ):
     """PR #1352：格式大小正确但数值损坏的持久化向量不能伪装成无匹配。"""
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.embeddings import pipeline
 
     source = tmp_path / "a.py"
     source.write_text("def alpha():\n    pass\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_file(str(source))
         db = cache.get_conn()
@@ -482,7 +479,6 @@ async def test_semantic_accepts_integral_top_k_without_mutating_request(
 
 async def test_search_semantic_disk_index_combined_ranking(tmp_path, monkeypatch):
     # PR #1352：只有模型边界替身；磁盘索引、真实调用边、元数据读取和评分均走生产链路。
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.embeddings import pipeline
     from tree_sitter_analyzer.mcp.tools.search_facade import build_search_facade
 
@@ -513,7 +509,7 @@ async def test_search_semantic_disk_index_combined_ranking(tmp_path, monkeypatch
     wrong_provider = MagicMock(side_effect=AssertionError("wrong model provider"))
     monkeypatch.setattr(pipeline, "_embed_with_openai", provider)
     monkeypatch.setattr(pipeline, "_embed_with_unixcoder", wrong_provider)
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         assert (
             cache.index_project(max_files=2, workers=0, include_activation=False)[

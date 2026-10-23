@@ -14,6 +14,7 @@ from unittest import mock
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.ast_cache import (
     ASTCache,
     _language_from_ext,
@@ -161,7 +162,7 @@ def _seed_partial_ast_cache_without_call_graph(root: Path) -> None:
     source_path = root / "solo.py"
     source_path.write_text(source, encoding="utf-8")
 
-    cache = ASTCache(str(root))
+    cache = legacy_cache(str(root))
     conn = cache.get_conn()
     conn.execute(
         "INSERT OR REPLACE INTO ast_index "
@@ -212,7 +213,7 @@ def _seed_call_edges_without_built_marker(root: Path) -> None:
         "def caller():\n    target()\n\ndef target():\n    return 1\n",
         encoding="utf-8",
     )
-    cache = ASTCache(str(root))
+    cache = legacy_cache(str(root))
     try:
         result = cache.index_file(str(source_path))
         assert result["status"] == "indexed"
@@ -241,7 +242,7 @@ def test_resolve_only_does_not_mark_call_graph_built_for_partial_cache(
 ) -> None:
     _seed_partial_ast_cache_without_call_graph(tmp_path)
 
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         assert cache.call_graph_built() is False
 
@@ -299,7 +300,7 @@ def test_single_file_reindex_backfill_failure_clears_existing_marker(
 ) -> None:
     source_path = tmp_path / "sample.py"
     source_path.write_text("def sample():\n    return 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
 
     try:
         cache.index_project(workers=0)
@@ -427,7 +428,7 @@ def _seed_call_edges_with_marker_table_dropped(root: Path) -> None:
         "def caller():\n    target()\n\ndef target():\n    return 1\n",
         encoding="utf-8",
     )
-    cache = ASTCache(str(root))
+    cache = legacy_cache(str(root))
     try:
         result = cache.index_file(str(source_path))
         assert result["status"] == "indexed"
@@ -585,7 +586,7 @@ def test_fully_cached_rerun_stamps_marker_when_index_complete(
     # nothing is re-indexed (indexed == 0, every file cached).
     (tmp_path / "a.py").write_text("def a():\n    return 1\n", encoding="utf-8")
     (tmp_path / "b.py").write_text("def b():\n    return 2\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         first = cache.index_project(workers=0)
         assert first["indexed"] == 2
@@ -610,7 +611,7 @@ def test_mixed_incremental_rerun_keeps_marker_true(
     # Mixed run: one file re-indexed, one cached, index still complete.
     (tmp_path / "a.py").write_text("def a():\n    return 1\n", encoding="utf-8")
     (tmp_path / "b.py").write_text("def b():\n    return 2\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         first = cache.index_project(workers=0)
         assert first["indexed"] == 2
@@ -682,7 +683,7 @@ def test_errored_file_does_not_stamp_marker_when_incomplete(
     (tmp_path / "a.py").write_text("def a():\n    return 1\n", encoding="utf-8")
     bad = tmp_path / "b.py"
     bad.write_text("def b():\n    return 2\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
 
     real_stat = os.stat
 
@@ -787,7 +788,7 @@ def test_mark_single_file_complete_no_marker_when_index_incomplete(
 
 
 def test_single_file_backfill_exception_keeps_marker_incomplete(tmp_path) -> None:
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         with mock.patch.object(
             cache,
@@ -806,7 +807,7 @@ def test_single_file_backfill_exception_keeps_marker_incomplete(tmp_path) -> Non
 
 
 def test_single_file_backfill_error_keeps_marker_incomplete(tmp_path) -> None:
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         with mock.patch.object(
             cache,
@@ -825,7 +826,7 @@ def test_single_file_backfill_error_keeps_marker_incomplete(tmp_path) -> None:
 
 
 def test_single_file_indeterminate_backfill_keeps_marker_incomplete(tmp_path) -> None:
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         with mock.patch.object(cache, "_run_synapse_backfill", return_value=None):
             cache._mark_single_file_index_complete_if_needed(
@@ -901,7 +902,7 @@ def test_deleted_stale_row_cannot_certify_candidate_less_cached_run(
     deleted_source = tmp_path / "deleted.py"
     first_source.write_text("def a():\n    return 1\n", encoding="utf-8")
     deleted_source.write_text("def deleted():\n    return 2\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         initial = cache.index_project(workers=0)
         assert initial["indexed"] == 2
@@ -934,7 +935,7 @@ def test_descendant_walk_error_cannot_certify_matching_candidate_less_paths(
     descendant.mkdir()
     source.write_text("def a():\n    return 1\n", encoding="utf-8")
     (descendant / "ignored.txt").write_text("ignored\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         initial = cache.index_project(workers=0)
         assert (initial["indexed"], cache.call_graph_built()) == (1, True)

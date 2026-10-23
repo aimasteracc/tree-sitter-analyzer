@@ -1,6 +1,7 @@
 """Unit tests for change-impact MCP execute integration and test-file mapping."""
 
 import asyncio
+import json
 import os
 
 import pytest
@@ -42,9 +43,10 @@ def test_execute_exposes_verification_fields_for_agents(
     (tmp_path / "README.md").write_text("# Example\n", encoding="utf-8")
     db_path = tmp_path / ".ast-cache" / "index.db"
     if index_present:
-        from tree_sitter_analyzer.ast_cache import ASTCache
+        from tests.unit._ast_cache_helpers import legacy_cache
 
-        cache = ASTCache(str(tmp_path))
+        # #1554：只读构造不再新建旧库；“已有空索引”须显式建出旧库。
+        cache = legacy_cache(tmp_path)
         try:
             assert (
                 cache.get_conn()
@@ -339,6 +341,8 @@ def test_change_impact_result_uses_complete_mapped_tests_for_verification(monkey
     assert len(result["tests_to_run"]) == 30
     assert result["tests_to_run_count"] == 32
     assert result["tests_to_run_omitted_count"] == 2
+    # Issue #1557：展示列表被截断时必须显式标记，不能把部分集合当作完整集合。
+    assert result["tests_to_run_truncated"] is True
     assert "tests/unit/test_feature_30.py" not in result["tests_to_run"]
     assert "tests/unit/test_feature_30.py" in result["verification_command"]
     assert "tests/unit/test_feature_31.py" in result["verification_command"]
@@ -347,6 +351,87 @@ def test_change_impact_result_uses_complete_mapped_tests_for_verification(monkey
     )
     assert result["agent_summary"]["verification_strategy"] == "single_command"
     assert result["agent_summary"]["tests_to_run_count"] == 32
+
+
+def _write_fixture_file(root, rel_path: str, text: str) -> None:
+    """在临时项目里写入一个 UTF-8 源文件，自动创建父目录。"""
+    path = root / rel_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def test_execute_selects_tests_that_import_changed_module(monkeypatch, tmp_path):
+    """Issue #1557：直接导入被改模块的测试必须入选，不能只靠 stem 家族规则。
+
+    覆盖 ``from pkg.mod import X``、``from pkg import mod`` 与函数内局部导入三种形式；
+    既有的 ``cache/`` → ``ast_cache`` 家族映射仍保留，不相关测试不得入选。
+    """
+    changed = "tree_sitter_analyzer/cache/generation_routing.py"
+    _write_fixture_file(tmp_path, "tree_sitter_analyzer/__init__.py", "")
+    _write_fixture_file(tmp_path, "tree_sitter_analyzer/cache/__init__.py", "")
+    _write_fixture_file(tmp_path, changed, "def resolve_index_path():\n    return 1\n")
+    _write_fixture_file(
+        tmp_path, "tree_sitter_analyzer/cache/_win_fileops.py", "X = 1\n"
+    )
+    _write_fixture_file(tmp_path, "tree_sitter_analyzer/other.py", "Y = 2\n")
+    _write_fixture_file(tmp_path, "tests/unit/test_ast_cache.py", "X = 0\n")
+    _write_fixture_file(
+        tmp_path,
+        "tests/unit/test_generation_store.py",
+        "from tree_sitter_analyzer.cache.generation_routing import "
+        "resolve_index_path\n",
+    )
+    _write_fixture_file(
+        tmp_path,
+        "tests/unit/test_win_fileops.py",
+        "from tree_sitter_analyzer.cache import _win_fileops, generation_routing\n",
+    )
+    _write_fixture_file(
+        tmp_path,
+        "tests/unit/test_file_watcher.py",
+        "def test_x():\n"
+        "    from tree_sitter_analyzer.cache.generation_routing import (\n"
+        "        resolve_index_path,\n"
+        "    )\n"
+        "    assert resolve_index_path() == 1\n",
+    )
+    _write_fixture_file(
+        tmp_path,
+        "tests/unit/test_unrelated.py",
+        "from tree_sitter_analyzer.other import Y\n",
+    )
+    monkeypatch.setattr(
+        tool_module,
+        "_get_changed_files",
+        lambda mode, project_root, scope_paths=None: [changed],
+    )
+    monkeypatch.setattr(
+        tool_module,
+        "_get_diff_stat",
+        lambda mode, project_root, scope_paths=None: f"{changed} | 1 +",
+    )
+    # 只隔离索引补全与调用图；依赖图走真实解析，证据来自真实导入。
+    monkeypatch.setattr(
+        change_impact_tool, "compute_call_graph_impact", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(change_impact_tool, "_ensure_ast_cache", lambda *args: None)
+
+    tool = tool_module.ChangeImpactTool(project_root=str(tmp_path))
+    result = asyncio.run(
+        tool.execute(
+            {"output_format": "json", "mode": "diff", "resource_profile": "default"}
+        )
+    )
+
+    assert result["tests_to_run"] == [
+        "tests/unit/test_ast_cache.py",
+        "tests/unit/test_file_watcher.py",
+        "tests/unit/test_generation_store.py",
+        "tests/unit/test_win_fileops.py",
+    ]
+    assert result["tests_to_run_count"] == 4
+    assert result["tests_to_run_omitted_count"] == 0
+    assert result["tests_to_run_truncated"] is False
 
 
 def test_agent_summary_warns_for_unscoped_large_dirty_worktree():
@@ -2634,4 +2719,175 @@ def test_strict_scope_rename_into_cache_keeps_visible_source_record(
     ] == [("R", "old.py", ".ast-cache/new.py")]
     registry.close_route_lease(
         str(result["diff_snapshot_id"]), str(result["route_lease_id"])
+    )
+
+
+# ── #1617: edit action=impact 默认摘要保留决策字段，include_details 恢复全量 ──
+
+from tests.unit._impact_summary_support import (  # noqa: E402
+    IMPACT_CHANGED,
+    impact_full_result,
+    run_impact_tool,
+)
+
+# 驱动决策、绝不能被摘要裁剪的顶层字段（#1617）。
+_IMPACT_DECISION_KEYS = (
+    "verdict",
+    "risk_level",
+    "verification_command",
+    "ci_verification_command",
+    "verification_steps",
+    "risk_factors",
+    "constraint_violations",
+    "activation_diagnostic",
+    "queue_ledger",
+    "queue_ledger_absent_reason",
+    "scope_paths_invalid",
+    "agent_summary",
+    "changed_count",
+    "affected_count",
+    "tests_to_run_count",
+    "tests_to_run_truncated",
+    "changed_symbol_count",
+)
+
+# call_graph_impact 中的计数与过近似信号（#1559 / #1568）。
+_CALL_GRAPH_DECISION_KEYS = (
+    "functions_analyzed",
+    "total_upstream_callers",
+    "possible_upstream_callers",
+    "total_downstream_callees",
+    "high_risk_functions",
+    "high_risk_functions_total",
+)
+
+
+def test_impact_summary_keeps_decision_fields(tmp_path, monkeypatch) -> None:
+    """#1617：默认摘要中每个决策字段与 include_details 响应逐字相同。"""
+    summary = run_impact_tool(tmp_path, monkeypatch)
+    details = run_impact_tool(tmp_path, monkeypatch, include_details=True)
+
+    assert {k: summary.get(k) for k in _IMPACT_DECISION_KEYS} == {
+        k: details.get(k) for k in _IMPACT_DECISION_KEYS
+    }
+    graph, full_graph = summary["call_graph_impact"], details["call_graph_impact"]
+    assert {k: graph[k] for k in _CALL_GRAPH_DECISION_KEYS} == {
+        k: full_graph[k] for k in _CALL_GRAPH_DECISION_KEYS
+    }
+    assert (graph["possible_upstream_callers"], graph["total_upstream_callers"]) == (
+        90,
+        360,
+    )
+
+
+def test_impact_summary_lists_top_functions_with_honest_totals(
+    tmp_path, monkeypatch
+) -> None:
+    """#1617：默认只列 fan_in 最高的 10 个函数，逐函数保留 name_only 计数与总数。"""
+    graph = run_impact_tool(tmp_path, monkeypatch)["call_graph_impact"]
+
+    assert (
+        graph["function_impacts_total"],
+        graph["function_impacts_listed"],
+        graph["function_impacts_truncated"],
+    ) == (30, 5, True)
+    fan_ins = [item["fan_in"] for item in graph["function_impacts"]]
+    assert fan_ins == sorted(fan_ins, reverse=True)
+    # fan_in = 12 + (i * 7) % 30 在 i=17 时取最大值 41（mod_5 的第 3 个函数）。
+    assert graph["function_impacts"][0] == {
+        "name": "func_17",
+        "file": "src/pkg/mod_5.py",
+        "line": 61,
+        "fan_in": 41,
+        "fan_out": 8,
+        "upstream_callers_total": 12,
+        "possible_upstream_callers": 3,
+        "downstream_callees_total": 8,
+    }
+    assert graph["cross_file_callers_by_file"] == dict.fromkeys(IMPACT_CHANGED, 30)
+    assert (
+        graph["affected_function_files_total"],
+        graph["affected_functions_total"],
+        graph["affected_function_files_truncated"],
+    ) == (12, 360, True)
+    assert "cross_file_callers" not in graph
+    assert "affected_functions_by_file" not in graph
+
+
+def test_impact_summary_caps_symbol_lists_and_aliases_commands(
+    tmp_path, monkeypatch
+) -> None:
+    """#1617：符号清单截断并如实计数；与 verification_command 相同的命令只留一份。"""
+    summary = run_impact_tool(tmp_path, monkeypatch)
+
+    assert (
+        len(summary["affected_symbols"]),
+        summary["affected_symbols_total"],
+        summary["affected_symbols_truncated"],
+        summary["affected_symbols_scan_capped"],
+    ) == (10, 200, True, True)
+    # affected_files 的总数取 affected_count（上游列表已截到 50 个）。
+    assert (
+        len(summary["affected_files"]),
+        summary["affected_files_total"],
+        summary["affected_files_truncated"],
+    ) == (10, 12, True)
+    assert "changed_symbols" not in summary
+    assert summary["changed_symbols_omitted"] is True
+    assert summary["command_aliases"] == {
+        "pytest_command": "verification_command",
+        "test_command": "verification_command",
+        "local_verification_command": "verification_command",
+    }
+    assert "pytest_command" not in summary
+    assert "local_verification_command" not in summary
+    text = json.dumps(summary, ensure_ascii=False)
+    # #1676：顶层 verification 1 处 + verification_steps[0] 1 处（步骤列表是另一
+    # 决策字段）；摘要按字段名引用。include_details 时另有 local / pytest / test /
+    # low_impact_focused 4 处。
+    assert text.count(summary["verification_command"]) == 2
+    # 未被文案引用的 focused 子集命令省略并如实列出。
+    assert summary["command_fields_omitted"] == [
+        "focused_test_command",
+        "low_impact_focused_test_command",
+    ]
+    assert (summary["details_included"], summary["details_truncated"]) == (False, True)
+    assert summary["details_next_step"].startswith("pass include_details=true")
+
+
+def test_impact_include_details_restores_full_lists(tmp_path, monkeypatch) -> None:
+    """#1617：include_details=true 是显式 opt-in，返回完整明细与全部命令字段。"""
+    details = run_impact_tool(tmp_path, monkeypatch, include_details=True)
+    full = impact_full_result()
+
+    assert details["call_graph_impact"] == full["call_graph_impact"]
+    assert details["affected_symbols"] == full["affected_symbols"]
+    assert details["changed_symbols"] == full["changed_symbols"]
+    assert details["affected_files"] == full["affected_files"]
+    assert details["pytest_command"] == details["verification_command"]
+    assert details["details_included"] is True
+    assert "command_aliases" not in details
+    assert "details_next_step" not in details
+
+
+def test_impact_include_details_validation_and_cli_twin() -> None:
+    """#1617：include_details 必须是布尔值；CLI --change-impact-include-details 透传。"""
+    import argparse
+
+    import pytest
+
+    from tree_sitter_analyzer.cli.commands.mcp_commands._specs_core import (
+        _CORE_SPECS,
+    )
+    from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
+
+    with pytest.raises(ValueError, match="include_details must be a boolean"):
+        ChangeImpactTool().validate_arguments({"include_details": "yes"})
+    spec = next(s for s in _CORE_SPECS if s.flag_name == "change_impact")
+    args = argparse.Namespace(change_impact_include_details=True)
+    tool_args = spec.build_tool_args(args, "json")
+    # 明细只存在于完整响应，因此 CLI 开关同时关闭 agent_summary_only。
+    assert (tool_args["include_details"], tool_args["agent_summary_only"]) == (
+        True,
+        False,
     )

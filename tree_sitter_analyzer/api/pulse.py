@@ -34,6 +34,9 @@ from ._pulse_models import (
     CommentRef as CommentRef,
 )
 from ._pulse_models import (
+    FieldTruncation as FieldTruncation,
+)
+from ._pulse_models import (
     GitHeat as GitHeat,
 )
 from ._pulse_models import (
@@ -199,7 +202,7 @@ def _query_pulse_snapshot(
             )
 
     # 主查询失败不是符号缺失；仅可选 LSP 富化允许降级。
-    row = conn.execute(_PULSE_SQL, params).fetchone()
+    row = conn.execute(_PULSE_SQL, _probe_params(params)).fetchone()
 
     # 固定 SELECT 总会返回一行；内置 JSON 聚合生成合法 JSON，对象子查询可为 NULL。
     # 按固定列序读取，兼容 tuple 与 sqlite3.Row；索引 7 是原始文档文本，不参与解码。
@@ -241,6 +244,12 @@ def _query_pulse_snapshot(
         docstring=docstring,
     )
 
+    callers_raw, callers_cap = _cap("callers", callers_raw, params, "name")
+    callees_raw, callees_cap = _cap("callees", callees_raw, params, "name")
+    imports_raw, imports_cap = _cap("imports", imports_raw, params, "module")
+    siblings_raw, siblings_cap = _cap("siblings", siblings_raw, params, "name")
+    comments_raw, comments_cap = _cap("comments", comments_raw, params, None)
+
     callers = tuple(
         CallerRef(
             name=c.get("name", ""),
@@ -249,7 +258,6 @@ def _query_pulse_snapshot(
             hot30=c.get("hot30", 0) or 0,
         )
         for c in callers_raw
-        if c.get("name")
     )
 
     callees = tuple(
@@ -260,7 +268,6 @@ def _query_pulse_snapshot(
             resolution=c.get("resolution") or "unresolved",
         )
         for c in callees_raw
-        if c.get("name")
     )
 
     git_heat: GitHeat | None = None
@@ -278,21 +285,34 @@ def _query_pulse_snapshot(
         )
 
     imports = tuple(
-        ImportRef(module=i.get("module", ""), file=i.get("file"))
-        for i in imports_raw
-        if i.get("module")
+        ImportRef(module=i.get("module", ""), file=i.get("file")) for i in imports_raw
     )
 
-    imported_by = tuple(str(f) for f in imported_by_raw if f)
+    importer_rows = [str(f) for f in imported_by_raw if f]
+    imported_by, imported_by_cap = _cap_rows(
+        "imported_by", importer_rows, len(imported_by_raw), _IMPORTED_BY_CAP
+    )
     imports_degraded = False
     if language == "python":
         # 富化走内容戳缓存（审计 P2-2）：同一索引版本内重复查询不再全量扫描。
         imports_degraded, importers_map = _python_importers_snapshot(conn)
         if not imports_degraded:
-            merged_importers = set(imported_by) | importers_map.get(
-                file_path, frozenset()
+            merged = sorted(
+                set(importer_rows) | importers_map.get(file_path, frozenset())
             )
-            imported_by = tuple(sorted(merged_importers)[:20])
+            imported_by = tuple(merged[:_IMPORTED_BY_CAP])
+            # SQL 侧已触顶时并集仍可能缺项，总数未知；否则并集即精确总数。
+            sql_capped = imported_by_cap is not None
+            imported_by_cap = (
+                FieldTruncation(
+                    "imported_by",
+                    len(imported_by),
+                    None if sql_capped else len(merged),
+                    len(merged),
+                )
+                if sql_capped or len(merged) > _IMPORTED_BY_CAP
+                else None
+            )
 
     siblings = tuple(
         SiblingRef(
@@ -301,7 +321,6 @@ def _query_pulse_snapshot(
             line=s.get("line", 0) or 0,
         )
         for s in siblings_raw
-        if s.get("name")
     )
 
     comments = tuple(
@@ -315,12 +334,21 @@ def _query_pulse_snapshot(
 
     # 保留 SQL 返回的边身份，不能按文件和名字重新猜测调用点。
     callees = _enrich_callees_with_lsp(
-        conn, callees, tuple(c["edge_id"] for c in callees_raw if c.get("name"))
+        conn, callees, tuple(c["edge_id"] for c in callees_raw)
     )
 
     if not call_graph_available:
         callers = ()
         callees = ()
+        callers_cap = callees_cap = None
+    caps = (
+        callers_cap,
+        callees_cap,
+        imports_cap,
+        imported_by_cap,
+        siblings_cap,
+        comments_cap,
+    )
 
     return PulseResponse(
         symbol=sym_info,
@@ -336,7 +364,49 @@ def _query_pulse_snapshot(
         comments=comments,
         # Python 富化降级时向消费者声明该字段被截断（issue #1445）。
         truncated_fields=(("imported_by",) if imports_degraded else ()),
+        field_truncation=tuple(cap for cap in caps if cap is not None),
     )
+
+
+# 反向导入的固定上限；SQL 多取一行用于判断是否触顶（审计 P3-2）。
+_IMPORTED_BY_CAP = 20
+
+
+def _probe_params(params: dict[str, Any]) -> dict[str, Any]:
+    """各上限多取一行以证明触顶；上限 0 表示调用方不要该字段，保持不取。"""
+    probes = {
+        name: params[name] + 1 if params[name] else 0
+        for name in (
+            "max_callers",
+            "max_callees",
+            "max_siblings",
+            "max_imports",
+            "max_comments",
+        )
+    }
+    return {**params, **probes, "imported_by_probe": _IMPORTED_BY_CAP + 1}
+
+
+def _cap(
+    field_name: str,
+    rows: list[dict[str, Any]],
+    params: dict[str, Any],
+    required_key: str | None,
+) -> tuple[list[dict[str, Any]], FieldTruncation | None]:
+    """过滤无效行后按请求上限截取 SQL 结果。"""
+    valid = [r for r in rows if required_key is None or r.get(required_key)]
+    kept, cap = _cap_rows(field_name, valid, len(rows), params[f"max_{field_name}"])
+    return list(kept), cap
+
+
+def _cap_rows(
+    field_name: str, valid: list[Any], fetched: int, limit: int
+) -> tuple[tuple[Any, ...], FieldTruncation | None]:
+    """取前 limit 条；SQL 返回行数超过 limit 即触顶，真实总数未知，只报已见下界。"""
+    kept = tuple(valid[:limit])
+    if fetched <= limit:
+        return kept, None
+    return kept, FieldTruncation(field_name, len(kept), None, len(valid))
 
 
 # ---------------------------------------------------------------------------
@@ -538,4 +608,26 @@ def apply_budget(pulse: PulseResponse, token_budget: int) -> PulseResponse:
         comments=field_values["comments"],
         token_estimate=total_estimate,
         truncated_fields=tuple(merged_truncated),
+        field_truncation=_budget_field_truncation(pulse, field_values, truncated),
     )
+
+
+def _budget_field_truncation(
+    pulse: PulseResponse, field_values: dict[str, Any], dropped: list[str]
+) -> tuple[FieldTruncation, ...]:
+    """合并查询侧触顶声明与 top-N 裁剪；整字段删除只记入 truncated_fields。
+
+    源已触顶时沿用其未知总数与下界，绝不把截断后的条数当作精确总数。
+    """
+    prior = {t.field: t for t in pulse.field_truncation}
+    result: list[FieldTruncation] = []
+    for name in _FIELD_TOP_N:
+        source = getattr(pulse, name)
+        kept = len(field_values[name])
+        if name in dropped or (name not in prior and kept == len(source)):
+            continue
+        known = prior.get(name)
+        total = known.total if known else len(source)
+        at_least = known.at_least if known else len(source)
+        result.append(FieldTruncation(name, kept, total, at_least))
+    return tuple(result)

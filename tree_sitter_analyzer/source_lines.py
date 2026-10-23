@@ -163,7 +163,11 @@ def scan_symbol_lines(
                 raise OSError("SOURCE_FILE_CHANGED")
             if info.st_size > _MAX_FILE_BYTES:
                 raise TimeoutError("SOURCE_FILE_BUDGET_EXCEEDED")
-            raw = stream.read(_MAX_FILE_BYTES + 1)
+            # #1592：按文件大小读取，避免每个文件都预分配 10 MiB 缓冲；延迟导入以免增加
+            # MCP initialize 时加载的模块集合。
+            from ._bounded_read import read_at_most
+
+            raw = read_at_most(stream, _MAX_FILE_BYTES)
         total_bytes += len(raw)
         if (
             len(raw) > _MAX_FILE_BYTES

@@ -68,14 +68,14 @@ number; if two RFCs collide on a number in flight, the later-merged one renames.
 | [0009](0009-nav-context-self-sufficiency.md) | nav context self-sufficiency — answer in one call | accepted (A/B/C implemented #330/#331/#333; measured turn-drop pending) |
 | [0010](0010-resolver-language-registry.md) | Resolver language registry — scale the correctness moat to N languages | implemented (foundation #345; first wave go/js/ts/cpp/rust #346-#350) |
 | [0011](0011-miswire-audit.md) | Mis-Wire Audit — the run-on-your-repo correctness demo | accepted (console entrypoint shipped; CLI subcommand + pre-seed + README surgery tracked) |
-| [0012](0012-toon-json-dedup.md) | Eliminate TOON/JSON metadata duplication in MCP responses | accepted (Phase 1 implemented; Phase 2 deferred) |
+| 0012 | Eliminate TOON/JSON metadata duplication in MCP responses | removed (97274bdd) |
 | [0013](0013-facade-dropped-param-visibility.md) | Facade dropped-parameter visibility — `ignored_params` surface | superseded by RFC-0036 |
 | [0014](0014-instant-edit-safety.md) | Instant edit safety — test-noise partition, test-map, and co-change | accepted (Phase A #461; Phase B #463; Phase C #466; integration test + DF-16 dogfood deferred) |
 | [0015](0015-instant-uml-family.md) | Instant UML family — scoping fixes + activity/state diagrams | implemented (Phase 1 #462; P2-A #472; P2-B #475; v1.23.0) |
 | [0016](0016-semantic-symbol-search.md) | Semantic symbol search via sqlite-vec in `.ast-cache` | rejected (data-driven; pilot NO-GO at deployment scale, #517) |
 | [0017](0017-test-effectiveness-mutation-and-value-invariants.md) | Test effectiveness — mutation scoring, value invariants, outside-the-loop authorship | accepted (owner 2026-06-14; phase 1 = mutation baseline) |
-| [0018](0018-response-envelope-normalization-and-adaptive-toon.md) | Correct TOON wire + envelope normalization — the real token win | accepted (PR 1 scalar quoting + decoder + round-trip oracle #1063; raw wire + envelope normalization outstanding) |
-| [0019](0019-complexity-single-source-of-truth.md) | Cyclomatic complexity — one source of truth | implemented (#1099, #1101, #1102) |
+| 0018 | Correct TOON wire + envelope normalization — the real token win | removed (97274bdd) |
+| [0019](0019-complexity-single-source-of-truth.md) | Cyclomatic complexity — one source of truth | accepted (#1099, #1101, #1102 shipped via the extractor; RFC dispatcher/shared-definition criteria open) |
 | [0020](0020-sqlite-canonical-knowledge-graph.md) | SQLite-canonical knowledge graph | draft |
 | [0021](0021-real-world-competitive-benchmark.md) | Real-world competitive benchmark | draft |
 | [0022](0022-task-outcome-apis.md) | Static task outcomes by primitive orchestration | draft |
@@ -85,16 +85,17 @@ number; if two RFCs collide on a number in flight, the later-merged one renames.
 | [0026](0026-no1-010b-agent-change-outcome-benchmark.md) | NO1-010B agent change-outcome benchmark (VCSR) | draft |
 | [0027](0027-agent-secretary-and-calibration.md) | Secretary layer — instant answers, comprehension, calibrated learning | draft |
 | [0028](0028-measuring-claimed-properties.md) | Measuring the properties we already claim (honesty invariants) | draft |
-| [0029](0029-does-this-test-constrain-this-code.md) | "Does this test constrain this code?" — interactive mutation query | draft |
-
-| [0030](0030-pulse-source-evidence.md) | Pulse source-version evidence | draft |
-| [0031](0031-bounded-verification-execution.md) | Bounded verification command and plan replay | draft |
-| [0032](0032-index-writer-ownership.md) | Index writer ownership and obsolete-candidate fencing | draft |
+| [0029](0029-does-this-test-constrain-this-code.md) | "Does this test constrain this code?" — interactive mutation query | draft (impl merged #1327; 11/18 AC verified 2026-10-13) |
+| [0030](0030-pulse-source-evidence.md) | Pulse source-version evidence | draft (impl merged #1404; 2/7 AC verified 2026-10-13) |
+| [0031](0031-bounded-verification-execution.md) | Bounded verification command and plan replay | draft (impl merged #1407; 2/7 AC verified 2026-10-13) |
+| [0032](0032-index-writer-ownership.md) | Index writer ownership and obsolete-candidate fencing | accepted (revision 1, 2026-10-14; tracked #1554) |
 | [0033](0033-native-search-independence.md) | Native search independence | accepted |
 | [0034](0034-optional-search-backend-qualification.md) | Optional search backend qualification | draft |
-| [0035](0035-trusted-reactive-feedback.md) | Trusted reactive feedback | draft |
+| [0035](0035-trusted-reactive-feedback.md) | Trusted reactive feedback | implemented (#1492) |
 | [0036](0036-agent-native-core-workflow.md) | Agent-native core workflow | draft |
-| [0037](0037-live-text-search-action.md) | Live text search action | accepted |
+| [0037](0037-live-text-search-action.md) | Live text search action | implemented (#1531, v2.2.0) |
+| [0038](0038-annotated-receiver-resolution.md) | Annotated receiver resolution | draft (#1618) |
+| [0039](0039-incremental-index-certification.md) | Incremental index certification | accepted (owner 2026-10-20; tracked #1718) |
 
 ## Roadmap
 

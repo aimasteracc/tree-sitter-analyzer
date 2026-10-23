@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 import stat
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 if TYPE_CHECKING:
     from ..ast_cache import ASTCache
@@ -17,6 +17,16 @@ from ..incremental_sync_support import SyncResult
 from ..index_source_scope import SourceScopeDescriptor, make_source_scope_descriptor
 from ..indexing_candidate_materialization import release_index_candidate_snapshot
 from ..indexing_snapshot import IndexCandidateSnapshot
+from . import stat_evidence
+from .admission import CandidateUnbound, admission_failure_of, admission_fields
+from .generation_noop import (
+    NOT_PUBLISHABLE_REASON,
+    index_run_unchanged,
+    not_publishable_result,
+    same_certified_content,
+    unpublished_result,
+)
+from .generation_noop_precheck import bound_digests, unchanged_before_build
 from .generation_routing import (
     generation_storage_path,
     logical_index_path,
@@ -27,8 +37,33 @@ from .generation_store import (
     PreparedGeneration,
     permanent_rejections_only,
 )
+from .publication_policy import publishable_result, publishable_sync
+from .source_hash_budget import (
+    SOURCE_HASH_BUDGET_EXCEEDED,
+    SourceHashBudgetExceeded,
+    source_hash_budget_next_step,
+)
+from .source_recheck import SourceChanged, source_changed_failure
 
 _T = TypeVar("_T")
+
+_PUBLISH_STATE_UNKNOWN_NEXT_STEP = (
+    "The publish step failed after the new index may have become active "
+    "(see `published`). Run index action=status to confirm which generation "
+    "is active, then re-run index action=full mode=full if it is not the "
+    "expected one."
+)
+_SOURCE_CHANGED_KEYS = (
+    "error_code",
+    "cause_code",
+    "retryable",
+    "retry_after_ms",
+    "next_action",
+    "changes",
+    "changes_total",
+    "changes_truncated",
+    "next_step",
+)
 
 
 def project_store(root: str, scope: SourceScopeDescriptor) -> GenerationStore:
@@ -49,54 +84,181 @@ def project_store(root: str, scope: SourceScopeDescriptor) -> GenerationStore:
     )
 
 
+def _unchanged(
+    store: GenerationStore, candidate: Any, selector: Any, run_unchanged: bool
+) -> bool:
+    """#1631：运行零写入且控制表与已认证父版本相同，才可放弃发布。"""
+    return (
+        run_unchanged
+        and candidate.parent is not None
+        and same_certified_content(
+            store.database(candidate.parent), store.database(selector)
+        )
+    )
+
+
+def _require_bound_candidate(snapshot: IndexCandidateSnapshot | None) -> None:
+    """默认定位符只接受绑定了发布选择器的候选；未绑定者不能授权写入（#1664）。
+
+    ``build_index_candidate_snapshot`` 产出的候选都已绑定；手工构造或来自旧开发
+    接口的候选在取得租约、开始私有构建之前即被拒绝，什么都不写。重新捕获同样
+    方式构造的候选不会成功，因此它不是可重试的 ``INDEX_CANDIDATE_SUPERSEDED``。
+    """
+    if snapshot is not None and not snapshot.publication_bound:
+        raise CandidateUnbound()
+
+
+def _first_publication(candidate: Any) -> bool:
+    """首次发布前旧路由原地保留部分结果（如缺少可选语法时的其余文件）。
+
+    无父版本可保护时，带单文件失败的结果照常发布，否则这类项目的自动索引
+    永远为空（#1554）；已发布项目只接受稳定单文件失败（见 publication_policy）。
+    """
+    return candidate.parent is None
+
+
 def mutate_published_cache(
     cache: Any,
-    operation: Callable[[ASTCache], _T],
+    operation: Callable[[ASTCache], _T] | None,
     *,
     scope: SourceScopeDescriptor | None = None,
     candidate_snapshot: IndexCandidateSnapshot | None = None,
     expected_path: Path | None = None,
+    snapshot_operation: Callable[[ASTCache, IndexCandidateSnapshot], _T] | None = None,
+    report_publication: bool = False,
+    precheck_unchanged: bool = False,
 ) -> _T:
-    """已切换项目的显式单文件、重建和失效操作仍只能写私有副本。"""
+    """见 :func:`_mutate_published_cache`；发布后（写锁已释放）预构图（#1708）。"""
+    from .. import call_graph_warm
+
+    published: list[bool] = []
+    result = _mutate_published_cache(
+        cache,
+        operation,
+        scope=scope,
+        candidate_snapshot=candidate_snapshot,
+        expected_path=expected_path,
+        snapshot_operation=snapshot_operation,
+        report_publication=report_publication,
+        precheck_unchanged=precheck_unchanged,
+        published=published,
+    )
+    if published:
+        warm = call_graph_warm.after_publish(cache.project_root)
+        if warm is not None and isinstance(result, Mapping) and "published" in result:
+            result = cast(_T, {**result, "call_graph_warm": warm})
+    return result
+
+
+def _mutate_published_cache(
+    cache: Any,
+    operation: Callable[[ASTCache], _T] | None,
+    *,
+    scope: SourceScopeDescriptor | None,
+    candidate_snapshot: IndexCandidateSnapshot | None,
+    expected_path: Path | None,
+    snapshot_operation: Callable[[ASTCache, IndexCandidateSnapshot], _T] | None,
+    report_publication: bool,
+    precheck_unchanged: bool,
+    published: list[bool],
+) -> _T:
+    """默认库的显式单文件、重建和失效操作只写私有副本，首次发布前亦然（#1554）。
+
+    给出 ``snapshot_operation`` 时以它代替 ``operation``，并额外传入本次捕获的
+    候选快照：增量项目索引据此清除已从磁盘删除的文件并重新认证，与发布复核
+    使用同一份快照（#1625）。
+
+    项目索引（``snapshot_operation`` 或 ``report_publication=True``）的结果总带
+    ``published``；未发布时另带 ``publication_reason``（#1631、#1635）。
+
+    ``precheck_unchanged``（仅增量项目索引）：建库前以内容摘要比较候选与父版本，
+    证明零变化时直接返回未发布结果（#1671，见 ``generation_noop_precheck``）。
+    """
     from ..ast_cache import ASTCache
     from .generation_store import Superseded
 
+    _require_bound_candidate(candidate_snapshot)
     store = project_store(cache.project_root, scope or make_source_scope_descriptor())
     with cache._index_lock:
+        # #1707：竞争窗口以捕获开始（读取字节之前）为准；调用方给出的候选可能更早读取，
+        # 不据此记录 stat 证据。
+        captured_at = stat_evidence.now_ns() if candidate_snapshot is None else None
         candidate = store.capture(
             (lambda: candidate_snapshot) if candidate_snapshot is not None else None
         )
         try:
-            if expected_path is not None and (
-                candidate.parent is None
-                or store.database(candidate.parent) != expected_path
+            # 调用方读到的库必须仍是父版本；首次发布前即旧定位符本身（#1554）。
+            if expected_path is not None and expected_path != (
+                store.database(candidate.parent)
+                if candidate.parent is not None
+                else logical_index_path(cache.project_root)
             ):
                 raise Superseded("INDEX_GENERATION_SUPERSEDED")
-            if candidate_snapshot is not None and (
-                not candidate_snapshot.publication_bound
-                or candidate_snapshot.publication_parent != candidate.parent
+            if (
+                candidate_snapshot is not None
+                and candidate_snapshot.publication_parent != candidate.parent
             ):
                 raise Superseded("INDEX_GENERATION_SUPERSEDED")
+            if precheck_unchanged and snapshot_operation is not None:
+                # #1671：内容摘要证明零变化时不复制父版本、不建库、不发布。
+                evidence = unchanged_before_build(store, candidate)
+                if evidence is not None:
+                    # #1707：只有 mtime 变化的文件，新戳记写入 stat 证据。
+                    if captured_at is not None:
+                        stat_evidence.record(
+                            cache.project_root,
+                            dict(evidence.restamped),
+                            captured_at_ns=captured_at,
+                        )
+                    return cast(_T, evidence.index_result(candidate.snapshot))
             selector = store.begin(candidate)
-            writable = ASTCache(cache.project_root, str(store.database(selector)))
-            try:
-                result = operation(writable)
-            finally:
-                writable.close()
-            failed = isinstance(result, dict) and (
-                result.get("status") == "error"
-                or result.get("errors")
-                or result.get("backfill_errors")
-            )
-            if not failed:
-                store.seal(selector)
-                store.publish(PreparedGeneration(candidate, selector, SyncResult()))
-                cache._adopt_published_generation()
+            with store.abandoning(selector):  # #1595：未发布即回收
+                writable = ASTCache(cache.project_root, str(store.database(selector)))
+                # #1673：本次捕获绑定的内容摘要交给运行本身（不重读文件）。
+                writable._bound_source_digests = bound_digests(candidate)
+                # #1737：本路由在发布租约内复核源码，盖章可与候选行比较。
+                writable._publication_rechecks_sources = True
+                try:
+                    if snapshot_operation is not None:
+                        result = snapshot_operation(writable, candidate.snapshot)
+                    else:
+                        if operation is None:
+                            raise ValueError("operation is required")
+                        result = operation(writable)
+                finally:
+                    writable.close()
+                if snapshot_operation is not None and _unchanged(
+                    store, candidate, selector, index_run_unchanged(result)
+                ):
+                    # #1631：零变化的增量项目索引不发布，私有副本随 abandoning 回收。
+                    return cast(_T, unpublished_result(cast(Mapping[str, Any], result)))
+                report = report_publication or snapshot_operation is not None
+                if publishable_result(result) or _first_publication(candidate):
+                    store.seal(selector)
+                    store.publish(PreparedGeneration(candidate, selector, SyncResult()))
+                    cache._adopt_published_generation()
+                    if snapshot_operation is not None:
+                        # #1707：项目索引已把漂移的戳记写进新版本的行。
+                        stat_evidence.clear(cache.project_root)
+                    published.append(True)
+                    if report and isinstance(result, Mapping):
+                        result = cast(_T, {**result, "published": True})
+                elif report and isinstance(result, Mapping):
+                    # #1635：私有副本被放弃，活动版本不变；如实报告，不让摘要中的
+                    # 计数看起来像是本次刷新的结果。
+                    result = cast(_T, not_publishable_result(result))
             return result
 
         finally:
             if candidate_snapshot is None:
                 release_index_candidate_snapshot(candidate.snapshot)
+
+
+def _report_sync_publication(result: Any, published: bool, reason: str | None) -> None:
+    """同步结果如实携带是否发布（#1671）；自定义工厂的结果对象可能没有这些字段。"""
+    if isinstance(result, SyncResult):
+        result.published = published
+        result.publication_reason = reason
 
 
 def run_incremental_sync(
@@ -108,44 +270,76 @@ def run_incremental_sync(
     from .generation_store import Superseded
 
     scope = arguments["source_scope"]
-    store = project_store(cache.project_root, scope)
     supplied = arguments.get("candidate_snapshot")
+    _require_bound_candidate(supplied)
+    store = project_store(cache.project_root, scope)
+    captured_at = stat_evidence.now_ns() if supplied is None else None
     candidate = store.capture((lambda: supplied) if supplied is not None else None)
+    synced = False
     try:
-        if supplied is not None and (
-            not supplied.publication_bound
-            or supplied.publication_parent != candidate.parent
-        ):
+        if supplied is not None and supplied.publication_parent != candidate.parent:
             raise Superseded("INDEX_GENERATION_SUPERSEDED")
+        # 只用于默认同步路由（watcher、``IncrementalSync.sync``）；显式给出同步
+        # 工厂的调用方（``codegraph_incremental_sync`` 工具）始终运行该工厂。
+        if arguments.get("certify_manifest", True) and sync_factory is None:
+            # #1671：内容摘要证明零变化时不复制父版本、不建库、不发布。
+            evidence = unchanged_before_build(store, candidate)
+            if evidence is not None:
+                # #1707：只有 mtime 变化的文件，新戳记写入 stat 证据。
+                if captured_at is not None:
+                    stat_evidence.record(
+                        cache.project_root,
+                        dict(evidence.restamped),
+                        captured_at_ns=captured_at,
+                    )
+                unchanged: SyncResult = evidence.sync_result()
+                callback = arguments.get("callback")
+                if callback:
+                    for detail in unchanged.details:
+                        callback(detail)
+                return unchanged
         selector = store.begin(candidate)
-        writable = ASTCache(cache.project_root, str(store.database(selector)))
-        try:
-            arguments["candidate_snapshot"] = candidate.snapshot
-            result = (sync_factory or IncrementalSync)(writable).sync(**arguments)
-        finally:
-            writable.close()
-        permanent_cleanup = permanent_rejections_only(candidate.snapshot)
-        if (
-            (result.scope_complete or permanent_cleanup)
-            and not result.errors
-            and not result.backfill_errors
-            and not result.manifest_certification_failed
-        ):
-            store.seal(selector)
-            store.publish(
-                PreparedGeneration(
-                    candidate,
-                    selector,
-                    result,
-                    allow_permanent_rejections=permanent_cleanup,
+        with store.abandoning(selector):  # #1595：未发布即回收
+            writable = ASTCache(cache.project_root, str(store.database(selector)))
+            writable._publishes_project_index = True
+            # #1673：本次捕获绑定的内容摘要交给同步本身（不为比较重读每个文件）。
+            writable._bound_source_digests = bound_digests(candidate)
+            # #1737：本路由在发布租约内复核源码，盖章可与候选行比较。
+            writable._publication_rechecks_sources = True
+            try:
+                arguments["candidate_snapshot"] = candidate.snapshot
+                result = (sync_factory or IncrementalSync)(writable).sync(**arguments)
+            finally:
+                writable.close()
+            permanent_cleanup = permanent_rejections_only(candidate.snapshot)
+            if _first_publication(candidate) or publishable_sync(
+                result, permanent_cleanup=permanent_cleanup
+            ):
+                store.seal(selector)
+                store.publish(
+                    PreparedGeneration(
+                        candidate,
+                        selector,
+                        result,
+                        allow_permanent_rejections=permanent_cleanup,
+                    )
                 )
-            )
-            cache._adopt_published_generation()
-        return result
-
+                cache._adopt_published_generation()
+                # #1707：同步已把漂移的戳记写进新版本的行。
+                stat_evidence.clear(cache.project_root)
+                _report_sync_publication(result, True, None)
+                synced = True
+            else:
+                _report_sync_publication(result, False, NOT_PUBLISHABLE_REASON)
     finally:
         if supplied is None:
             release_index_candidate_snapshot(candidate.snapshot)
+    if synced:
+        from .. import call_graph_warm
+
+        # #1708：发布之后为新版本构图，长驻进程的第一次调用不再逐边解析。
+        call_graph_warm.after_publish(cache.project_root)
+    return result
 
 
 async def run_full_index(
@@ -174,6 +368,8 @@ async def run_full_index(
             scope.certification_max_files, scope.effective_excludes
         )
 
+    from ..mcp.tools.full_index_outcome import published_result, unpublished_result
+
     try:
         store = project_store(root, scope)
         candidate = store.capture(capture)
@@ -185,28 +381,48 @@ async def run_full_index(
             selector = store.begin(candidate)
         except (OSError, ValueError, RuntimeError) as exc:
             return _publication_error(exc, root, "generation_publication")
-        with private_index(
-            root, store.database(selector), verify=store._verify_directories
-        ):
-            entered = True
-            result = await tool._execute_in_place(
-                arguments, candidate.snapshot, started_at=started_at
-            )
-        if not result.get("success") or not result.get("scope_complete"):
-            result["success"] = False
-            result["published"] = False
-            return result
-        try:
-            store.seal(selector)
-            store.publish(PreparedGeneration(candidate, selector, SyncResult()))
-        except (OSError, ValueError, RuntimeError) as exc:
-            failure = _publication_error(exc, root, "generation_publication")
+        with store.abandoning(selector):  # #1595：未发布即回收
+            with private_index(
+                root, store.database(selector), verify=store._verify_directories
+            ):
+                entered = True
+                result = await tool._execute_in_place(
+                    arguments, candidate.snapshot, started_at=started_at
+                )
+            # #1562：只有稳定单文件失败（如缺少可选语法）时照常发布，完整性如实标为
+            # incomplete；与 publication_policy 对 index_project/sync 的规则一致。
+            stable_only = result.get("stable_failures_only") is True
+            # #1684：其余全部干净、只有认证盖戳超时的运行发布为未认证，不丢弃整份
+            # 版本（之后一次刷新即可认证，并复用这份索引）。
+            deadline_only = result.get("certification_deadline_only") is True
+            if not (stable_only or deadline_only) and (
+                not result.get("success") or not result.get("scope_complete")
+            ):
+                # #1674：未发布即失败，并给出类型化的 error / error_code / next_step。
+                return unpublished_result(result)
             try:
-                failure["published"] = store.active_selector() == selector
-            except (OSError, ValueError):
-                failure["published"] = None
-            return failure
-        result["published"] = True
+                store.seal(selector)
+                store.publish(PreparedGeneration(candidate, selector, SyncResult()))
+            except (OSError, ValueError, RuntimeError) as exc:
+                failure = _publication_error(exc, root, "generation_publication")
+                try:
+                    failure["published"] = store.active_selector() == selector
+                except (OSError, ValueError):
+                    failure["published"] = None
+                if failure["published"] is not False:
+                    # 发布步骤失败时新版本可能已可见：不能声称"什么都没发布"。
+                    failure["next_step"] = _PUBLISH_STATE_UNKNOWN_NEXT_STEP
+                    failure["agent_summary"]["next_step"] = failure["next_step"]
+                return failure
+        # #1674：已发布即成功；只缺可选语法时完整性如实为 incomplete（未认证，
+        # scope_complete 仍为 False），跳过的文件列在 skipped_files。
+        result = published_result(result, stable_only=stable_only)
+        from .. import call_graph_warm
+
+        # #1708：发布之后为新版本构图（长驻进程）。
+        warm = call_graph_warm.after_publish(root)
+        if warm is not None:
+            result["call_graph_warm"] = warm
         result["generation_id"] = selector.generation_id
         result["elapsed_seconds"] = round(time.monotonic() - started_at, 3)
         return result
@@ -215,13 +431,38 @@ async def run_full_index(
             release_index_candidate_snapshot(candidate.snapshot)
 
 
+def source_hash_budget_failure(exc: SourceHashBudgetExceeded) -> dict[str, Any]:
+    """``index action=cache`` 等直接写入口的类型化失败答复（#1562）。"""
+    next_step = source_hash_budget_next_step(exc)
+    summary_line = (
+        f"index not published: source-hash budget exhausted after "
+        f"{exc.bound}/{exc.selected} files"
+    )
+    return {
+        "success": False,
+        "verdict": "ERROR",
+        "published": False,
+        "error_code": SOURCE_HASH_BUDGET_EXCEEDED,
+        "error": SOURCE_HASH_BUDGET_EXCEEDED,
+        "files_selected": exc.selected,
+        "files_bound": exc.bound,
+        "next_step": next_step,
+        "summary_line": summary_line,
+        "agent_summary": {
+            "verdict": "ERROR",
+            "summary_line": summary_line,
+            "next_step": next_step,
+        },
+    }
+
+
 def _publication_error(exc: Exception, root: str, phase: str) -> dict[str, Any]:
     from ..mcp.utils.error_sanitizer import bounded_safe_error_message
 
     error, truncated = bounded_safe_error_message(exc, root)
     if phase == "candidate_discovery":
         error = "Candidate discovery failed: " + error
-    return {
+    failure: dict[str, Any] = {
         "success": False,
         "verdict": "ERROR",
         "published": False,
@@ -229,10 +470,54 @@ def _publication_error(exc: Exception, root: str, phase: str) -> dict[str, Any]:
         "error": error,
         "error_truncated": truncated,
     }
+    if isinstance(exc, SourceHashBudgetExceeded):
+        # #1562：预算耗尽是可重试的类型化失败，而不是一条裸异常文本。
+        failure["error_code"] = SOURCE_HASH_BUDGET_EXCEEDED
+        failure["next_step"] = source_hash_budget_next_step(exc)
+    elif isinstance(exc, SourceChanged):
+        # #1595：源码变化/复核未完成可直接重试，并给出有界差异清单。
+        typed = source_changed_failure(exc)
+        failure.update(
+            {key: typed[key] for key in _SOURCE_CHANGED_KEYS if key in typed}
+        )
+    elif (admission := admission_failure_of(exc)) is not None:
+        # RFC-0032 slice 4：准入失败与 CLI/MCP/watcher 使用同一组机器字段。
+        failure.update(admission_fields(admission))
+    return _typed_publication_failure(failure)
+
+
+def _typed_publication_failure(failure: dict[str, Any]) -> dict[str, Any]:
+    """#1674：未发布的答复总带 error_code 与 next_step，摘要指向错误码。
+
+    已归类的失败（预算、源码变化、准入码）标为 ``index_not_published``；
+    未预料的异常不预设 error_type，仍由中央信封按异常文本归类。
+    """
+    from ..mcp.tools.full_index_outcome import (
+        INDEX_NOT_PUBLISHED,
+        INDEX_RUN_FAILED,
+        RUN_FAILED_NEXT_STEP,
+    )
+
+    typed = "error_code" in failure
+    shaped = {
+        **failure,
+        "error_code": failure.get("error_code") or INDEX_RUN_FAILED,
+        "next_step": failure.get("next_step") or RUN_FAILED_NEXT_STEP,
+    }
+    if typed:
+        shaped["error_type"] = INDEX_NOT_PUBLISHED
+    summary_line = f"codegraph_full_index: failed ({shaped['error_code']})"
+    shaped["summary_line"] = summary_line
+    shaped["agent_summary"] = {
+        "verdict": "ERROR",
+        "summary_line": summary_line,
+        "next_step": shaped["next_step"],
+    }
+    return shaped
 
 
 def mutate_index_path(root: str, path: Path, operation: Callable[[Path], _T]) -> _T:
-    """派生数据持久化也只能修改私有副本，旧布局保留原调用语义。"""
+    """派生数据持久化也只能修改私有副本；首次发布前的旧库先被采纳再写（#1554）。"""
     from ..ast_cache import ASTCache
     from .generation_routing import resolve_index_location
 
@@ -240,7 +525,9 @@ def mutate_index_path(root: str, path: Path, operation: Callable[[Path], _T]) ->
     if not location.published:
         if location.path != path:
             raise ValueError("INDEX_GENERATION_PATH_MISMATCH")
-        return operation(path)
+        if path != logical_index_path(root):
+            # 索引操作内绑定的私有构建库，由外层操作负责发布。
+            return operation(path)
     cache = ASTCache(root)
     try:
         return mutate_published_cache(

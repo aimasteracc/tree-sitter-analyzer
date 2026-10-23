@@ -16,6 +16,7 @@ from typing import Any
 
 import pytest
 
+from tests.unit._ast_cache_helpers import engine_cache, write_legacy_index
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache.unresolved import (
     index_resolution_fingerprint,
@@ -123,7 +124,8 @@ def test_ensure_indexed_resolves_when_not_converged(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _project(tmp_path)
-    cache = ASTCache(str(tmp_path))
+    # #1554：默认库已只读发布，旧缓存状态改由引擎库复制到旧位置构造。
+    cache = engine_cache(tmp_path)
     try:
         cache.index_project(max_files=10, workers=0)
         # Wipe the convergence marker to simulate an index built without the
@@ -131,6 +133,7 @@ def test_ensure_indexed_resolves_when_not_converged(
         cache.get_conn().execute("DROP TABLE IF EXISTS ast_resolve_state")
         cache.get_conn().commit()
         assert resolution_converged(cache.get_conn()) is False
+        write_legacy_index(cache)
     finally:
         cache.close()
 
@@ -208,11 +211,13 @@ def test_ensure_indexed_does_not_mark_converged_on_resolve_failure(
 ) -> None:
     """If _resolve_pending_unresolved_refs fails, convergence must NOT be persisted."""
     _project(tmp_path)
-    cache = ASTCache(str(tmp_path))
+    # #1554：默认库已只读发布，旧缓存状态改由引擎库复制到旧位置构造。
+    cache = engine_cache(tmp_path)
     try:
         cache.index_project(max_files=10, workers=0)
         cache.get_conn().execute("DROP TABLE IF EXISTS ast_resolve_state")
         cache.get_conn().commit()
+        write_legacy_index(cache)
     finally:
         cache.close()
 

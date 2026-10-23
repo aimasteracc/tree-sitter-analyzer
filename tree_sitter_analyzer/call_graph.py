@@ -12,14 +12,31 @@ Key classes:
 - FunctionRef: Qualified function reference (file, name, line, language)
 """
 
+import gc
 import os
 import sqlite3
+import time
 from collections import defaultdict, deque
+from collections.abc import Collection, Iterable, Iterator
 from collections.abc import Set as AbstractSet
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from . import (
+    call_graph_incremental,
+    call_graph_memo,
+    call_graph_snapshot_inputs,
+    call_graph_store,
+)
+from .cache import graph_input_rows, index_file_facts
+from .cached_edge_resolution import CachedEdgeResolver
+from .cached_reexport_binding import PackageReexportBinder
+from .call_graph_binding import RefIdentity, pick_caller_ref, ref_identity
+from .call_graph_possible import PossibleEdgesMixin
+from .call_graph_self_dispatch import SubclassIndex
 from .callee_resolution import CalleeResolver
+from .class_mro import Hierarchy, load_hierarchy, load_hierarchy_update
 from .constants import EXCLUDE_DIRS as _EXCLUDE_DIRS
 from .constants import JS_TS_MODULE_EXTS
 from .core.parser import Parser, ParseResult
@@ -29,6 +46,7 @@ from .function_extraction import (
 )
 from .import_extractors import walk_imports
 from .languages.lang_extension_map import EXT_TO_LANG
+from .module_scope_caller import MODULE_SCOPE, is_module_caller, module_caller_ref
 from .project_graph import _language_from_ext
 
 # Derived (not hardcoded) from EXT_TO_LANG — the project's single source
@@ -50,7 +68,15 @@ SUPPORTED_EXTS: frozenset[str] = frozenset(
 class FunctionRef:
     """A qualified reference to a function/method in the project."""
 
-    __slots__ = ("file_path", "name", "start_line", "end_line", "language", "receiver")
+    __slots__ = (
+        "file_path",
+        "name",
+        "start_line",
+        "end_line",
+        "language",
+        "receiver",
+        "_hash",
+    )
 
     def __init__(
         self,
@@ -67,6 +93,8 @@ class FunctionRef:
         self.end_line = end_line if end_line is not None else start_line
         self.language = language
         self.receiver = receiver
+        # #1723：身份字段创建后不再改写；构图对每个引用要哈希上百万次，只算一次。
+        self._hash = hash((file_path, name, start_line))
 
     def qualified_name(self) -> str:
         if self.receiver:
@@ -83,7 +111,21 @@ class FunctionRef:
         )
 
     def __hash__(self) -> int:
-        return hash((self.file_path, self.name, self.start_line))
+        return self._hash
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        # 字符串哈希按进程随机化：反序列化时重新计算缓存的哈希。
+        return (
+            FunctionRef,
+            (
+                self.file_path,
+                self.name,
+                self.start_line,
+                self.language,
+                self.receiver,
+                self.end_line,
+            ),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -95,10 +137,12 @@ class FunctionRef:
         }
         if self.receiver:
             d["receiver"] = self.receiver
+        if is_module_caller(self.name):
+            d["scope"] = MODULE_SCOPE  # #1622：模块作用域伪调用方
         return d
 
 
-class CallGraph:
+class CallGraph(PossibleEdgesMixin):
     """
     Project-level function call graph.
 
@@ -118,7 +162,12 @@ class CallGraph:
         self._func_by_file: dict[str, list[FunctionRef]] = defaultdict(list)
         self._callees: dict[FunctionRef, list[FunctionRef]] = defaultdict(list)
         self._callers: dict[FunctionRef, list[FunctionRef]] = defaultdict(list)
+        # #1559/#1560：无法区分的同名候选不成为边，只供安全类消费者过近似。
+        self._init_possible_edges()
         self._call_edges: list[tuple[FunctionRef, FunctionRef, int]] = []
+        # RFC-0038：仅经注解绑定的边的来源，键为 (调用方身份, 被调方身份)。
+        self._edge_bindings: dict[tuple[RefIdentity, RefIdentity], dict[str, Any]] = {}
+        self._plain_edges: set[tuple[RefIdentity, RefIdentity]] = set()
         self._built = False
         self._file_imports: dict[str, dict[str, str]] = {}
         self._file_module_map: dict[str, str] = {}
@@ -187,8 +236,7 @@ class CallGraph:
                 self._functions.append(ref)
                 self._func_by_name[defn["name"]].append(ref)
                 self._func_by_file[rel_path].append(ref)
-                qname = ref.qualified_name()
-                self._func_by_qualified[qname] = ref
+                _register_qualified(self._func_by_qualified, ref)
                 # Key by name AND start line: same-named methods in different
                 # classes (two ``execute`` defs) must keep BOTH spans for
                 # _find_enclosing_func, or calls inside the earlier one get
@@ -204,11 +252,12 @@ class CallGraph:
         )
 
         # Pass 2: resolve calls against the fully-populated index.
-        for rel_path, _abs_path, _language, file_funcs, calls in per_file:
+        for rel_path, _abs_path, language, file_funcs, calls in per_file:
             for call in calls:
-                caller_ref = self._find_enclosing_func(file_funcs, call["line"])
-                if caller_ref is None:
-                    continue
+                # #1622：无外围函数的调用点归属 ``<module>`` 伪调用方，不再丢弃。
+                caller_ref = self._find_enclosing_func(
+                    file_funcs, call["line"]
+                ) or module_caller_ref(rel_path, call["line"], language)
 
                 callee_refs = self._resolve_callee(call, rel_path, rel_to_abs)
 
@@ -363,15 +412,36 @@ class CallGraph:
         """
         self.build()
         targets = self._resolve_targets(func_name, file_path)
-        seen: set[str] = set()
+        seen: set[RefIdentity] = set()
         result: list[dict[str, Any]] = []
         for target in targets:
             for caller in self._callers.get(target, []):
-                key = caller.qualified_name()
+                # #1596：按定义行区分同名调用方，qualified_name 无 receiver 时会合并。
+                key = ref_identity(caller)
                 if key not in seen:
                     seen.add(key)
                     result.append(caller.to_dict())
         return result
+
+    def _record_edge_binding(
+        self,
+        caller: FunctionRef,
+        callee: FunctionRef,
+        binding: dict[str, Any] | None,
+    ) -> None:
+        """RFC-0038：记录边是否只经注解绑定；同一对之间有普通边时不再标注。"""
+        key = (ref_identity(caller), ref_identity(callee))
+        if binding is None:
+            self._plain_edges.add(key)
+            self._edge_bindings.pop(key, None)
+        elif key not in self._plain_edges:
+            self._edge_bindings.setdefault(key, binding)
+
+    def edge_binding(
+        self, caller: FunctionRef, callee: FunctionRef
+    ) -> dict[str, Any] | None:
+        """``caller -> callee`` 仅经注解绑定时返回其 ``receiver_binding``。"""
+        return self._edge_bindings.get((ref_identity(caller), ref_identity(callee)))
 
     def callees_of(
         self, func_name: str, file_path: str | None = None
@@ -388,11 +458,11 @@ class CallGraph:
         """
         self.build()
         targets = self._resolve_targets(func_name, file_path)
-        seen: set[str] = set()
+        seen: set[RefIdentity] = set()
         result: list[dict[str, Any]] = []
         for target in targets:
             for callee in self._callees.get(target, []):
-                key = callee.qualified_name()
+                key = ref_identity(callee)
                 if key not in seen:
                     seen.add(key)
                     result.append(callee.to_dict())
@@ -415,7 +485,7 @@ class CallGraph:
         self.build()
         targets = self._resolve_targets(func_name, file_path)
         result: list[dict[str, Any]] = []
-        visited: set[str] = set()
+        visited: set[tuple[RefIdentity, RefIdentity]] = set()
         queue: deque[tuple[FunctionRef, int]] = deque((t, 0) for t in targets)
 
         while queue:
@@ -423,7 +493,7 @@ class CallGraph:
             if d >= depth:
                 continue
             for callee in self._callees.get(current, []):
-                key = f"{current.qualified_name()}->{callee.qualified_name()}"
+                key = (ref_identity(current), ref_identity(callee))  # #1619
                 if key not in visited:
                     visited.add(key)
                     result.append(
@@ -562,16 +632,16 @@ class CallGraph:
         funcs = self._func_by_file.get(file_path, [])
         upstream: list[dict[str, Any]] = []
         downstream: list[dict[str, Any]] = []
-        seen_up: set[str] = set()
-        seen_down: set[str] = set()
+        seen_up: set[RefIdentity] = set()  # #1619：按身份去重
+        seen_down: set[RefIdentity] = set()
         for func in funcs:
             for caller in self._callers.get(func, []):
-                key = caller.qualified_name()
+                key = ref_identity(caller)
                 if key not in seen_up:
                     seen_up.add(key)
                     upstream.append(caller.to_dict())
             for callee in self._callees.get(func, []):
-                key = callee.qualified_name()
+                key = ref_identity(callee)
                 if key not in seen_down:
                     seen_down.add(key)
                     downstream.append(callee.to_dict())
@@ -706,17 +776,29 @@ class CachedCallGraph(CallGraph):
         project_root: str,
         cache: Any | None = None,
         fallback: bool = True,
+        persist: bool = False,
     ) -> None:
         super().__init__(project_root)
         self._cache = cache
         self._fallback = fallback
+        # #1675：为真时把边解析结果落盘，供冷进程复用（只读 / 零写入路由保持 False）。
+        self._persist = persist
+        self._input_digest: str | None = None
+        # #1723：增量更新的对齐依据与上次增量的统计（`call_graph_incremental`）。
+        self._incremental: dict[str, Any] | None = None
+        self._incremental_stats: dict[str, Any] = {}
+        self._hierarchy_loader: _LazyHierarchy | None = None
 
     def build(self) -> None:
         if self._built:
             return
 
         if self._cache is not None:
-            self._build_from_cache()
+            # #1657：构图一次分配数百万个对象，循环 GC 会反复扫描进程里已有的大堆
+            # （长驻服务器还持有旧图与各类缓存）。构图期间暂停循环回收，实测省
+            # 1.1–1.4 s；结束后（含异常）恢复原状态，引用计数回收不受影响。
+            with _cyclic_gc_paused():
+                self._build_from_cache()
         if not self._built and self._fallback:
             super().build()
 
@@ -728,11 +810,25 @@ class CachedCallGraph(CallGraph):
         self.close()
 
     def _build_from_cache(self) -> None:
+        if self._cache is not None and self._adopt_published_warm():
+            return
+        # #1774：同一认证快照上已算过构图输入摘要时，不再读出全部调用边重算。
+        snapshot = call_graph_snapshot_inputs.snapshot_key(self._cache)
+        if self._adopt_snapshot_graph(snapshot):
+            return
         try:
             if self._cache is None:
                 return
-            edges = self._cache.get_call_edges()
-            functions = self._cache.get_functions()
+            # #1691：库文件 stat 证据未变时，上次算出的构图输入摘要与边数仍成立，
+            # 不必为算摘要而读出全部调用边（落盘的边解析结果按摘要取用）。
+            facts_stamp = _index_file_stamp(self._cache)
+            known_input = _known_graph_input(facts_stamp)
+            edge_source = (
+                None
+                if known_input is not None
+                else graph_input_rows.read_edge_source(self._cache)
+            )
+            function_source = graph_input_rows.read_function_source(self._cache)
             imports_raw = self._cache.get_imports()
         except sqlite3.Error:
             if getattr(self._cache, "strict_sql_errors", False):
@@ -741,12 +837,193 @@ class CachedCallGraph(CallGraph):
         except Exception:
             return
 
-        if not functions and not edges:
-            return
+        # #1657：包再导出与子类证据先于摘要加载（与惰性加载读同一批表，失败语义不变），
+        # 摘要覆盖本次构图消费的全部输入；内容相同则直接复用已建好的图。
+        reexport_binder = PackageReexportBinder(self._cache)
+        subclasses = SubclassIndex(self._cache)
+        root = str(self.project_root)
+        digest: str | None
+        if known_input is not None:
+            digest, edge_count = known_input
+        else:
+            digest = graph_input_digest(
+                edge_source, function_source, imports_raw, reexport_binder, subclasses
+            )
 
-        rel_files: set[str] = set()
-        for func in functions:
-            ref = FunctionRef(
+            edge_count = _row_count(edge_source)
+            if digest is not None:
+                index_file_facts.record(
+                    facts_stamp, _GRAPH_INPUT_FACT, [digest, edge_count]
+                )
+        self._input_digest = digest
+        call_graph_snapshot_inputs.remember(snapshot, digest)
+        owned = False
+        if digest is not None:
+            state = call_graph_memo.lookup(root, digest)
+            if state is not None:
+                self._adopt_state(state)
+                return
+            # #1708：同一输入的构建已在进行（发布后的后台预构图）时等它完成并复用，
+            # 不并行构建第二份；输入不同（另一个版本）的构建互不等待。
+            pending = call_graph_memo.claim(root, digest)
+            if pending is not None:
+                pending.wait(_INFLIGHT_WAIT_SECONDS)
+                state = call_graph_memo.lookup(root, digest)
+                if state is not None:
+                    self._adopt_state(state)
+                    return
+                pending = call_graph_memo.claim(root, digest)
+            owned = pending is None
+        # 原始行交给构图后由它释放（构图期间不在本帧多持有一份）。
+        sources = [edge_source, function_source]
+        del edge_source, function_source
+        try:
+            self._build_after_miss(
+                root,
+                digest,
+                edge_count,
+                sources,
+                imports_raw,
+                reexport_binder,
+                subclasses,
+            )
+        finally:
+            if owned and digest is not None:
+                call_graph_memo.release(root, digest)
+
+    def _adopt_snapshot_graph(self, snapshot: tuple[str, ...] | None) -> bool:
+        """#1774：采用同一不可变认证快照此前构出的图（按其输入摘要取用）。
+
+        取不到（未见过该快照，或记忆已换成别的输入）返回 False，照常读行构图。
+        """
+        digest = call_graph_snapshot_inputs.digest_for(snapshot)
+        if digest is None:
+            return False
+        state = call_graph_memo.lookup(str(self.project_root), digest)
+        if state is None:
+            return False
+        self._adopt_state(state)
+        self._input_digest = digest
+        return True
+
+    def _adopt_published_warm(self) -> bool:
+        """#1708：采用发布后后台预构图的结果（同一索引库、身份未变时），不再读行。
+
+        同一库的预构图在途时先等它结束；身份与 ``index_bound_graph`` 保留内存图的
+        规则相同（#1564）。不满足任一条件即返回 False，照常读行并按输入摘要判定。
+        """
+        from . import call_graph_warm
+
+        root = str(self.project_root)
+        digest = call_graph_warm.adopt(root, getattr(self._cache, "db_path", None))
+        if digest is None:
+            return False
+        state = call_graph_memo.lookup(root, digest)
+        if state is None:
+            return False
+        self._adopt_state(state)
+        return True
+
+    def _build_after_miss(
+        self,
+        root: str,
+        digest: str | None,
+        edge_count: int,
+        sources: list[Any],
+        imports_raw: Any,
+        reexport_binder: PackageReexportBinder,
+        subclasses: SubclassIndex,
+    ) -> None:
+        """内存记忆未命中后的构图：落盘结果重放或现场解析（#1675）。"""
+        edge_source, function_source = sources
+        sources.clear()
+        # 输入已变：先释放本根的旧状态，构图期间内存里不同时保留两张图。
+        call_graph_memo.discard(root)
+
+        try:
+            functions = graph_input_rows.materialize_functions(function_source)
+        except Exception:
+            return
+        # #1675：冷进程先找同代码、同输入摘要下已存的边解析结果。
+        stored = (
+            call_graph_store.load(
+                root,
+                digest,
+                functions=len(functions),
+                edges=edge_count,
+            )
+            if digest is not None
+            else None
+        )
+        # #1723：边 rowid 与被调名留作下一次刷新后增量更新的对齐依据。
+        alignment = call_graph_incremental.alignment(edge_source)
+        records = (
+            self._build_from_inputs(
+                [], functions, imports_raw, reexport_binder, subclasses, stored=stored
+            )
+            if stored is not None
+            else None
+        )
+        if records is not None:
+            del edge_source, function_source
+        else:
+            self._reset_graph_state()
+            try:
+                if edge_source is None:
+                    # 摘要已知但没有可用的落盘结果：照常读边并现场解析。
+                    edge_source = graph_input_rows.read_edge_source(self._cache)
+                edges = graph_input_rows.materialize_edges(edge_source)
+            except Exception:
+                return
+            # 原始行已转换完毕：构图期间不再同时持有两份边数据。
+            del edge_source, function_source
+            records = self._build_from_inputs(
+                edges, functions, imports_raw, reexport_binder, subclasses
+            )
+            if self._built and self._persist and digest is not None and records:
+                call_graph_store.save(root, digest, self._functions, records)
+        if self._built:
+            if alignment is None:
+                # #1726：摘要已知、未读边行时，只在长驻进程里补读对齐依据。
+                alignment = call_graph_incremental.alignment_from_index(self._cache)
+            call_graph_incremental.remember(
+                self, alignment, records, reexport_binder, subclasses
+            )
+        if self._built and digest is not None:
+            call_graph_memo.store(root, digest, self._export_state())
+
+    def _export_state(self) -> dict[str, Any]:
+        """构图完成后的全部状态（不含缓存句柄与项目根），供内容相同的图复用。"""
+        return {
+            name: value
+            for name, value in vars(self).items()
+            if name not in _UNSHARED_STATE
+        }
+
+    def _adopt_state(self, state: dict[str, Any]) -> None:
+        """采用内容相同的输入构建出的状态；构建完成后状态只读，可以共享。"""
+        for name, value in state.items():
+            setattr(self, name, value)
+
+    def _build_from_inputs(
+        self,
+        edges: list[dict[str, Any]],
+        functions: list[dict[str, Any]],
+        imports_raw: dict[str, Any],
+        reexport_binder: PackageReexportBinder,
+        subclasses: SubclassIndex,
+        stored: list[Any] | None = None,
+    ) -> list[call_graph_store.EdgeRecord] | None:
+        """构图；返回应用的边解析结果。
+
+        ``stored`` 为已存的编码结果（#1675）时不再解析 ``edges``，解码失败返回
+        None（图状态未完成，调用方须重置后照常构建）。
+        """
+        if not functions and not edges and stored is None:
+            return None
+
+        self._index_function_refs(
+            FunctionRef(
                 file_path=func["file"],
                 name=func["name"],
                 start_line=func["line"],
@@ -754,13 +1031,49 @@ class CachedCallGraph(CallGraph):
                 end_line=func.get("end_line", func["line"]),
                 receiver=func.get("class"),
             )
-            self._functions.append(ref)
-            self._func_by_name[func["name"]].append(ref)
-            self._func_by_file[func["file"]].append(ref)
-            qname = ref.qualified_name()
-            self._func_by_qualified[qname] = ref
-            rel_files.add(func["file"])
+            for func in functions
+        )
+        edge_resolver = self._make_edge_resolver(
+            imports_raw, reexport_binder, subclasses
+        )
+        if stored is not None:
+            try:
+                records = call_graph_store.decode(stored, self._functions, FunctionRef)
+            except (ValueError, TypeError):
+                return None
+        else:
+            records = [
+                _resolve_edge(self._func_by_name, edge_resolver, e) for e in edges
+            ]
+        # 现场解析与已存结果走同一个应用函数，两条路径构出的图状态相同。
+        self._apply_edge_records(records)
 
+        # #1657：构图内记忆只服务这一次构建；保留下来的裸名解析器不再带着它。
+        edge_resolver.release_memos()
+        self._built = True
+        return records
+
+    def _index_function_refs(self, refs: Iterable[FunctionRef]) -> None:
+        """按读取顺序登记函数定义（#1723：增量更新复用同一登记）。"""
+        for ref in refs:
+            self._functions.append(ref)
+            self._func_by_name[ref.name].append(ref)
+            self._func_by_file[ref.file_path].append(ref)
+            _register_qualified(self._func_by_qualified, ref)
+
+    def _make_edge_resolver(
+        self,
+        imports_raw: dict[str, Any],
+        reexport_binder: PackageReexportBinder,
+        subclasses: SubclassIndex,
+        hierarchy_base: Hierarchy | None = None,
+        hierarchy_files: Collection[str] = (),
+    ) -> CachedEdgeResolver:
+        """函数索引登记完毕后，构造本次构图的边解析器（全量与增量共用）。"""
+        self._hierarchy_loader = _LazyHierarchy(
+            self._cache, hierarchy_base, hierarchy_files
+        )
+        rel_files = {path for path, refs in self._func_by_file.items() if refs}
         module_to_file: dict[str, str] = {}
         for rel in rel_files:
             p = Path(rel)
@@ -792,39 +1105,252 @@ class CachedCallGraph(CallGraph):
             if name_map:
                 file_import_map[file_path] = name_map
 
-        for edge in edges:
-            caller_file = edge["caller_file"]
-            caller_candidates = self._func_by_name.get(edge["caller_name"], [])
-            caller_ref = None
-            for c in caller_candidates:
-                if c.file_path == caller_file:
-                    caller_ref = c
-                    break
-            if caller_ref is None and caller_candidates:
-                caller_ref = caller_candidates[0]
-            if caller_ref is None:
+        from .jsts_import_targets import jsts_import_map
+
+        edge_resolver = CachedEdgeResolver(
+            functions_by_name=self._func_by_name,
+            functions_by_file=self._func_by_file,
+            file_import_map=file_import_map,
+            external_imports=_package_imported_names(imports_raw),
+            jsts_imports=jsts_import_map(imports_raw, rel_files | set(imports_raw)),
+            reexport_binder=reexport_binder,
+            subclasses=subclasses,
+            # #1657：函数与 import 索引此时已完整且不再变化，相同输入只解析一次。
+            memoize=True,
+            # #1677：继承调用的 MRO 只读取一次，且只在需要时读取。
+            hierarchy=self._hierarchy_loader,
+        )
+        if self._callee_resolver is None:
+            self._callee_resolver = edge_resolver.callee_resolver
+        return edge_resolver
+
+    def _apply_edge_records(self, records: list[call_graph_store.EdgeRecord]) -> None:
+        """按边的读取顺序把解析结果写入调用图（#1675：现场与已存结果共用）。
+
+        #1723：增量更新每次都重放全部结果，这里把属性查找提到循环之外（效果与逐条
+        调用 ``_add_possible_edges`` 相同）。
+        """
+        callees, callers, call_edges = self._callees, self._callers, self._call_edges
+        possible_callees, possible_callers = (
+            self._possible_callees,
+            self._possible_callers,
+        )
+        record_binding = self._record_edge_binding
+        for record in records:
+            if record is None:
                 continue
+            caller_ref, certain, possible, binding, line = record
+            if possible:
+                possible_callees[caller_ref].extend(possible)
+                for candidate in possible:
+                    possible_callers[candidate].append(caller_ref)
+            for callee_ref in certain:
+                callees[caller_ref].append(callee_ref)
+                callers[callee_ref].append(caller_ref)
+                call_edges.append((caller_ref, callee_ref, line))
+                record_binding(caller_ref, callee_ref, binding)
 
-            if self._callee_resolver is None:
-                self._callee_resolver = CalleeResolver(
-                    functions_by_name=self._func_by_name,
-                    functions_by_file=self._func_by_file,
-                    name_to_source=file_import_map,
+    def _reset_graph_state(self) -> None:
+        """丢弃未完成的构图状态（已存结果解码失败后照常重建前）。"""
+        CallGraph.__init__(self, str(self.project_root))
+
+
+#: #1708：等待同一输入的在途构建（发布后的后台预构图）的上限；超时后自行构建。
+_INFLIGHT_WAIT_SECONDS = 600.0
+#: 不随复用的图状态共享的属性：缓存句柄属于各自的图对象，项目根由构造参数给出。
+_UNSHARED_STATE = frozenset(
+    {"_cache", "_fallback", "_persist", "project_root", "_hierarchy_loader"}
+)
+
+
+def graph_input_digest(
+    edge_source: Any,
+    function_source: Any,
+    imports_raw: Any,
+    reexport_binder: PackageReexportBinder,
+    subclasses: SubclassIndex,
+) -> str | None:
+    """构图全部输入的内容摘要（#1657）；#1723 的增量结果补算同一摘要。"""
+    return call_graph_memo.input_digest(
+        *graph_input_rows.source_digest_parts(edge_source),
+        *graph_input_rows.source_digest_parts(function_source),
+        imports_raw,
+        # #1675：集合按值排序后再摘要，摘要跨进程稳定（落盘结果按它取用）。
+        call_graph_memo.stable_form(reexport_binder.evidence()),
+        call_graph_memo.stable_form(subclasses.evidence()),
+    )
+
+
+#: ``index_file_facts`` 中构图输入事实的名字：``[#1663 输入摘要, 调用边行数]``。
+_GRAPH_INPUT_FACT = "call_graph_input"
+
+
+def _index_file_stamp(cache: Any) -> tuple[Any, ...] | None:
+    """缓存所读库文件的 stat 证据；缓存没有磁盘库连接（测试替身、内存快照）时为 None。"""
+    getter = getattr(cache, "get_conn", None)
+    if not callable(getter):
+        return None
+    try:
+        return index_file_facts.evidence(index_file_facts.database_of(getter()))
+    except Exception:  # noqa: BLE001 — 取不到证据只是不复用
+        return None
+
+
+def _known_graph_input(stamp: tuple[Any, ...] | None) -> tuple[str, int] | None:
+    """库文件证据未变时记下的 ``(输入摘要, 边数)``；没有或格式不符为 None。"""
+    value = index_file_facts.lookup(stamp, _GRAPH_INPUT_FACT)
+    if (
+        isinstance(value, list)
+        and len(value) == 2
+        and isinstance(value[0], str)
+        and value[0]
+        and isinstance(value[1], int)
+        and not isinstance(value[1], bool)
+        and value[1] >= 0
+    ):
+        return value[0], value[1]
+    return None
+
+
+def _row_count(source: Any) -> int:
+    rows = getattr(source, "rows", source)
+    return len(rows)
+
+
+def _register_qualified(index: dict[str, FunctionRef], ref: FunctionRef) -> None:
+    """登记 ``file:name``；后登记者覆盖先登记者，嵌套在先登记者之内的除外。
+
+    #1763：``export const cors = () => { return function cors() {} }`` 中，
+    ``file:cors`` 指的是模块级的外层定义，而不是只在其内部可见的同名内层函数。
+    """
+    qname = ref.qualified_name()
+    existing = index.get(qname)
+    if existing is not None and _encloses(existing, ref):
+        return
+    index[qname] = ref
+
+
+def _encloses(outer: FunctionRef, inner: FunctionRef) -> bool:
+    outer_end = outer.end_line or outer.start_line
+    inner_end = inner.end_line or inner.start_line
+    return (
+        outer.start_line <= inner.start_line
+        and inner_end <= outer_end
+        and (outer.start_line, outer_end) != (inner.start_line, inner_end)
+    )
+
+
+def _resolve_edge(
+    func_by_name: dict[str, list[FunctionRef]],
+    edge_resolver: CachedEdgeResolver,
+    edge: dict[str, Any],
+) -> call_graph_store.EdgeRecord:
+    """一条边的解析结果；无法确定调用方时为 None（与修复前一样跳过）。"""
+    caller_file = edge["caller_file"]
+    caller_ref = _edge_caller_ref(func_by_name, edge, caller_file)
+    if caller_ref is None:
+        return None
+    # #1559/#1560：优先采用持久化解析，模糊的裸名匹配不再扇出成边。
+    targets = edge_resolver.resolve(edge, caller_file, caller_ref.receiver)
+    return (
+        caller_ref,
+        targets.certain,
+        targets.possible,
+        targets.binding,
+        edge.get("callee_line", 0),
+    )
+
+
+def _package_imported_names(imports_raw: dict[str, Any]) -> dict[str, frozenset[str]]:
+    """#1764：JS/TS 文件从包（非相对说明符）导入的本地名——它们不是项目定义的调用。"""
+    from .synapse_resolver._typescript_imports import parse_typescript_imports
+
+    out: dict[str, frozenset[str]] = {}
+    for file_path, import_texts in imports_raw.items():
+        if not file_path.endswith(_JSTS_SOURCE_SUFFIXES):
+            continue
+        names = {
+            entry.local_name
+            for imp in import_texts
+            for entry in parse_typescript_imports(
+                imp["text"] if isinstance(imp, dict) else str(imp),
+                "typescript",
+                file_path,
+            )
+            if entry.local_name and not entry.is_relative
+        }
+        if names:
+            out[file_path] = frozenset(names)
+    return out
+
+
+#: JS/TS 源文件后缀。
+_JSTS_SOURCE_SUFFIXES = (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs")
+
+
+class _LazyHierarchy:
+    """#1677：首次需要时从索引读取类层级；读取失败为空层级（没有 MRO 证据）。
+
+    #1723：给出上一张图的层级 ``base`` 与解析范围内的文件时，只重读这些文件。
+    """
+
+    def __init__(
+        self,
+        cache: Any,
+        base: Hierarchy | None = None,
+        files: Collection[str] = (),
+    ) -> None:
+        self._cache = cache
+        self._base = base
+        self._files = files
+        self.value: Hierarchy | None = None
+        #: #1723：读取层级花费的秒数（增量统计用）。
+        self.seconds = 0.0
+
+    def __call__(self) -> Hierarchy:
+        if self.value is None:
+            started = time.perf_counter()
+            try:
+                conn = self._cache.get_conn()
+                self.value = (
+                    load_hierarchy_update(conn, self._base, self._files)
+                    if self._base is not None
+                    else load_hierarchy(conn)
                 )
+            except Exception:  # nosec B110 — 没有连接：没有 MRO 证据。
+                self.value = Hierarchy()
+            self.seconds = time.perf_counter() - started
+        return self.value
 
-            resolved = [
-                ref
-                for ref, _confidence in self._callee_resolver.resolve_items(
-                    edge["callee_name"],
-                    caller_file,
-                )
-            ]
 
-            for callee_ref in resolved:
-                self._callees[caller_ref].append(callee_ref)
-                self._callers[callee_ref].append(caller_ref)
-                self._call_edges.append(
-                    (caller_ref, callee_ref, edge.get("callee_line", 0))
-                )
+@contextmanager
+def _cyclic_gc_paused() -> Iterator[None]:
+    """暂停循环垃圾回收；只在进入时处于开启状态才在退出时重新开启。"""
+    was_enabled = gc.isenabled()
+    if was_enabled:
+        gc.disable()
+    try:
+        yield
+    finally:
+        if was_enabled:
+            gc.enable()
 
-        self._built = True
+
+def _edge_caller_ref(
+    func_by_name: dict[str, list[FunctionRef]], edge: dict[str, Any], caller_file: str
+) -> FunctionRef | None:
+    """调用边的调用方：模块作用域调用点（#1622）为 ``<module>``，否则按 #1596 绑定。
+
+    缺调用行的模块作用域边无法给出坐标，返回 None（与修复前一致地跳过）。
+    """
+    if not edge.get("caller_name"):
+        call_line = int(edge.get("callee_line") or 0)
+        if call_line < 1:
+            return None
+        return module_caller_ref(caller_file, call_line, edge.get("language") or "")
+    # #1596：同文件同名的调用方按定义行区分，不再取第一个同名函数。
+    return pick_caller_ref(
+        func_by_name.get(edge["caller_name"], []),
+        caller_file,
+        int(edge.get("caller_line") or 0),
+    )

@@ -91,7 +91,7 @@ def _build_plan_for_func(
             f"1. Create {helper_module} with extracted helpers",
             f"2. In {Path(file_path).name}, add: {helper_import}",
             f"3. Replace lines in '{func_name}' with calls to extracted helpers",
-            f"4. Re-run refactoring_suggestions(file_path='{file_path}') to verify",
+            f"4. Re-run edit action=refactor file_path='{file_path}' to verify",
         ],
     }
 

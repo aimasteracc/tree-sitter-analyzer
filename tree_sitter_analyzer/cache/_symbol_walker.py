@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..jsts_function_names import function_value_name
 from . import node_taxonomy as _taxonomy
 from . import unhandled_nodes as _unhandled_nodes
 from ._symbol_declarations import (
@@ -28,6 +29,7 @@ from ._symbol_syntax import (
     _find_parent_class,
     _node_text,
     _scala_symbol_from_node,
+    jsts_class_expression_name,
 )
 
 _CPP_MODULE_IMPORT_RE = re.compile(
@@ -380,6 +382,7 @@ _JSTS_NAME_NODES = frozenset(
     }
 )
 _JSTS_MEMBER_NODES = frozenset({"member_expression", "subscript_expression"})
+_JSTS_LANGUAGES = frozenset({"javascript", "typescript", "tsx"})
 _JSTS_ACCESSOR_NODES = frozenset(
     {
         "identifier",
@@ -829,9 +832,18 @@ class _SymbolWalker:
         if node.type not in self.rules.get("function_like", ()):
             return None
         if name_node is not None:
+            if name_node.type == "string" and self.language in _JSTS_LANGUAGES:
+                # #1762：`"~validate"(data) {...}` 以去掉引号的成员名记录，与
+                # `this["~validate"](data)` 归一后的被调名一致。
+                literal = _jsts_static_accessor_name(name_node, self.source)
+                if literal is not None:
+                    return literal
             return _node_text(name_node, self.source)
         if node.type == "function_definition" and self.language in ("c", "cpp"):
             return _c_function_def_name(node, self.source)
+        if self.language in ("javascript", "typescript"):
+            # #1763：`const f = (...) => {}` 以常量名索引为函数。
+            return function_value_name(node)
         return None
 
     def _append_function(self, node: Any, name: str) -> None:
@@ -876,9 +888,11 @@ class _SymbolWalker:
 
     def _append_class(self, node: Any, name_node: Any) -> None:
         effective_name = self._class_name_node(node, name_node)
-        if effective_name is None:
-            return
-        name = _node_text(effective_name, self.source)
+        if effective_name is not None:
+            name = _node_text(effective_name, self.source)
+        else:
+            # #1765：`const X = class extends B {...}` 以常量名索引为类。
+            name = jsts_class_expression_name(node, self.source) or ""
         if not name:
             return
         symbol: dict[str, Any] = {

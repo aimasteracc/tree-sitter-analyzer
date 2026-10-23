@@ -93,7 +93,7 @@ Runtime discovery: call a facade with `action=help` for its business action list
 | `classify` | `access_mode`, `diff_snapshot_id`, `file_path`, `hunk_cap`, `include_ast_nodes`, `language`, `mode`, `new_ref`, `new_source`, `old_ref`, `old_source`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--semantic-classify` |
 | `constraints` | `access_mode`, `diff_snapshot_id`, `output_format`, `path_filter`, `persist`, `scope_paths`, `severity_min`, `snapshot_id`, `source_generation` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--check-constraints` |
 | `guard` | `modification_type`*, `symbol`*, `file_path` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--modification-guard` |
-| `impact` | `access_mode`, `agent_summary_only`, `capture_diff_snapshot`, `include_tests`, `mode`, `output_format`, `pr_url`, `resource_profile`, `scope_mode`, `scope_paths` — `capture_diff_snapshot` is an explicit legacy producer available only to same-process POSIX consumers and is forbidden whenever `access_mode` is present | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--change-impact` |
+| `impact` | `access_mode`, `agent_summary_only`, `capture_diff_snapshot`, `include_details`, `include_tests`, `mode`, `output_format`, `pr_url`, `resource_profile`, `scope_mode`, `scope_paths` — `capture_diff_snapshot` is an explicit legacy producer available only to same-process POSIX consumers and is forbidden whenever `access_mode` is present | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--change-impact` |
 | `mutation_probe` | `code_location`*, `test_node_id`*, `output_format`, `timeout` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--mutation-probe` |
 | `plan_rename` | `new_name`*, `symbol`*, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--plan-rename` |
 | `pr` | `include_call_graph`, `mode`, `output_format`, `pr_url` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--pr-review` |
@@ -123,7 +123,7 @@ Runtime discovery: call a facade with `action=help` for its business action list
 | --- | --- | --- | --- |
 | `auto` | `max_files`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--autoindex` |
 | `build` | `add_notes`, `roots` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--build-project-index` |
-| `cache` | `backend`, `file_path`, `force`, `include_activation`, `language`, `limit`, `max_files`, `mode`, `poll_interval`, `query`, `symbol` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--ast-cache` |
+| `cache` | `backend`, `file_path`, `force`, `include_activation`, `include_details`, `language`, `limit`, `max_files`, `mode`, `poll_interval`, `query`, `symbol` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--ast-cache` |
 | `full` | `exclude_patterns`, `include_activation`, `max_files`, `mode`, `no_default_excludes`, `output_format`, `resolve_synapse` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--full-index` |
 | `knowledge` | `backend`, `include_docs`, `max_edges`, `max_files`, `max_nodes`, `mode`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--knowledge-graph-index` |
 | `schema` | (none) | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--project-schema` |

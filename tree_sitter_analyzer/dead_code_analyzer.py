@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from .call_graph import CachedCallGraph, CallGraph, FunctionRef
+from .call_graph_binding import ref_identity
 from .constants import EXCLUDE_DIRS
 from .core.parser import Parser
 from .import_extractors import walk_imports
@@ -190,7 +191,8 @@ def find_transitive_dead_code(
         func, depth = queue.popleft()
         if depth >= max_depth:
             continue
-        for callee in graph.callee_refs_of(func):
+        # #1559/#1560：模糊的同名候选也算可达，不能把它们判为死代码。
+        for callee in graph.reachable_callee_refs_of(func):
             if callee not in alive and callee in all_funcs:
                 alive.add(callee)
                 queue.append((callee, depth + 1))
@@ -198,12 +200,13 @@ def find_transitive_dead_code(
     dead_funcs = all_funcs - alive
     results: list[DeadFunction] = []
 
-    dead_by_qname = {f.qualified_name() for f in dead_funcs}
+    # #1619：按身份判断被调方是否已死；qualified_name 会让活的同名函数被误判。
+    dead_ids = {ref_identity(f) for f in dead_funcs}
 
     for func in dead_funcs:
         dead_callee_names = []
         for callee in graph.callee_refs_of(func):
-            if callee.qualified_name() in dead_by_qname:
+            if ref_identity(callee) in dead_ids:
                 dead_callee_names.append(callee.name)
 
         callers = graph.caller_refs_of(func)

@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling>=1.27,<1.32"]
+requires = ["hatchling==1.31.0"]
 build-backend = "hatchling.build"
 
 [project]
 name = "tree-sitter-analyzer"
-version = "2.2.0"
+version = "3.0.0"
 description = "MCP code-intelligence server for AI agents — a more complete and more correct call graph with classified, cross-file edges. 8 facade MCP tools, 13 curated skills, structured JSON output, 100% local."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -107,12 +107,12 @@ cpp = ["tree-sitter-cpp>=0.23.4,<0.25.0"]
 rust = ["tree-sitter-rust>=0.20.0,<0.25.0"]
 go = ["tree-sitter-go>=0.20.0,<0.25.0"]
 markdown = ["tree-sitter-markdown>=0.3.1"]
-graph = ["ladybug>=0.17.1,<0.21.0"]
+graph = ["ladybug>=0.17.1,<0.22.0"]
 html = ["tree-sitter-html>=0.23.0,<0.25.0"]  # HTML DOM analysis with element classification
 css = ["tree-sitter-css>=0.23.0,<0.25.0"]   # CSS selector and property analysis with specificity calculation
 sql = ["tree-sitter-sql>=0.3.11,<0.4.0"]   # SQL language support for database schema analysis
 csharp = ["tree-sitter-c-sharp>=0.23.1"]  # C# language support for .NET applications
-php = ["tree-sitter-php>=0.23.0,<0.25.0"]  # PHP language support for web applications
+php = ["tree-sitter-php>=0.23.0,<0.26.0"]  # PHP language support for web applications
 ruby = ["tree-sitter-ruby>=0.23.0,<0.25.0"]  # Ruby language support for Rails and scripting
 yaml = ["tree-sitter-yaml>=0.7.2"]  # YAML 配置文件语言支持
 kotlin = [
@@ -129,7 +129,7 @@ web = [
     "tree-sitter-typescript>=0.20.0,<0.25.0",
     "tree-sitter-html>=0.23.0,<0.25.0",      # Complete HTML5 support with semantic analysis
     "tree-sitter-css>=0.23.0,<0.25.0",       # Complete CSS3 support with advanced property categorization
-    "tree-sitter-php>=0.23.0,<0.25.0",       # PHP for WordPress, Laravel, Symfony
+    "tree-sitter-php>=0.23.0,<0.26.0",       # PHP for WordPress, Laravel, Symfony
     "tree-sitter-ruby>=0.23.0,<0.25.0"       # Ruby for Rails applications
 ]
 systems = [
@@ -160,7 +160,7 @@ all-languages = [
     "tree-sitter-css>=0.23.0,<0.25.0",
     "tree-sitter-sql>=0.3.11,<0.4.0",  # SQL language support for database schema analysis
     "tree-sitter-c-sharp>=0.23.1",  # C# language support for .NET applications
-    "tree-sitter-php>=0.23.0,<0.25.0",  # PHP language support for web applications
+    "tree-sitter-php>=0.23.0,<0.26.0",  # PHP language support for web applications
     "tree-sitter-ruby>=0.23.0,<0.25.0",  # Ruby language support for Rails and scripting
     "tree-sitter-yaml>=0.7.2",  # YAML 配置文件语言支持
     "tree-sitter-bash>=0.23.0,<0.26.0",  # Bash/shell script support
@@ -189,7 +189,7 @@ dev = [
     "hypothesis>=6.0.0",
     "black>=24.0.0",
     "ruff>=0.5.0",
-    "mypy==2.3.1",
+    "mypy==2.4.0",
     "isort>=8.0.1",
     "types-psutil>=5.9.0",
     "memory-profiler>=0.61.0",
@@ -211,7 +211,7 @@ test = [
     "tree-sitter-javascript>=0.23.1",
     "tree-sitter-cpp>=0.23.4",
     "tree-sitter-sql>=0.3.11,<0.4.0",
-    "tree-sitter-php>=0.23.0,<0.25.0",
+    "tree-sitter-php>=0.23.0,<0.26.0",
     "tree-sitter-ruby>=0.23.0,<0.25.0",
     "tree-sitter-c-sharp>=0.23.1",
 ]
@@ -261,7 +261,7 @@ full = [
     "pytest-timeout>=2.4.0",
     "black>=24.0.0",
     "ruff>=0.5.0",
-    "mypy==2.3.1",
+    "mypy==2.4.0",
     "isort>=8.0.1",
     "types-psutil>=5.9.0",
     "memory-profiler>=0.61.0",
@@ -297,7 +297,7 @@ all = [
     "pytest-timeout>=2.4.0",
     "black>=24.0.0",
     "ruff>=0.5.0",
-    "mypy==2.3.1",
+    "mypy==2.4.0",
     "isort>=8.0.1",
     "types-psutil>=5.9.0",
     "memory-profiler>=0.61.0",
@@ -616,7 +616,7 @@ directory = "htmlcov"
 # MCP server configuration
 [tool.mcp]
 server_name = "tree-sitter-analyzer"
-server_version = "2.2.0"
+server_version = "3.0.0"
 description = "AI-era enterprise-grade code analysis MCP server with comprehensive HTML/CSS support and multi-language capabilities"
 capabilities = [
     "check_code_scale",
@@ -710,7 +710,7 @@ required-version = ">=0.11.0"
 # Exact, independently exportable toolchain for the NO1-006B collector.
 # These packages are not part of the measured subject runtime closure.
 no1-006b-collector-tool = [
-    "hatchling==1.32.0",
+    "hatchling==1.32.4",
     "jsonschema==4.26.0",
     "packaging==25.0",
 ]
@@ -734,7 +734,7 @@ dev = [
     "types-jsonschema",
     "types-PyYAML",
     "types-cachetools",
-    "mypy==2.3.1",
+    "mypy==2.4.0",
     "hypothesis>=6.0.0",
     "pytest-xdist>=3.8.0",
     "pytest-timeout>=2.4.0",

@@ -465,6 +465,32 @@ async def test_test_map_edge_count_vs_unique_function_count_divergence() -> None
 
 
 @pytest.mark.asyncio
+async def test_test_map_edge_count_keeps_same_name_targets_distinct() -> None:
+    """#1619：同一文件两个同名嵌套 ``inner``（无 receiver）被同一测试覆盖 → 2 条边。
+
+    按 qualified_name 去重时两个目标的键都是 ``src/mod.py:inner``，边数少算为 1。
+    """
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    inner_a = _make_func("inner", "src/mod.py", 5)
+    inner_b = _make_func("inner", "src/mod.py", 9)
+    shared_caller = _make_func("test_inner", "tests/test_mod.py", 3)
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [inner_a, inner_b]
+    mock_graph.caller_refs_of.return_value = [shared_caller]
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "inner", "output_format": "json"}
+    )
+
+    assert result["edge_count"] == 2
+
+
+@pytest.mark.asyncio
 async def test_test_map_shared_helper_edge_count_counts_both_targets() -> None:
     """Two targets share ONE helper called by ONE test → edge_count==2 (#967).
 
@@ -930,3 +956,39 @@ def test_is_collectible_caller_unknown_language_accepts() -> None:
     assert _is_collectible_caller("src/mod.rb", "anything", "ruby") is True
     # No language hint and an unrecognised extension also accepts.
     assert _is_collectible_caller("src/mod.xyz", "whatever", "") is True
+
+
+@pytest.mark.asyncio
+async def test_test_map_keeps_name_only_test_caller(tmp_path) -> None:
+    # #1559：测试经由 `store.publish()`（接收者未知）调用时，测试映射不能漏掉它。
+    from tests.unit._navigation_test_support import index_ambiguous_publish_project
+
+    root = await index_ambiguous_publish_project(tmp_path)
+    result = await build_nav_facade(project_root=root).execute(
+        {
+            "action": "test_map",
+            "symbol": "GenerationStore.publish",
+            "file_path": "gen_store.py",
+            "output_format": "json",
+        }
+    )
+    assert result["test_functions"] == ["tests/test_gen_store.py::test_publish_any"]
+
+
+@pytest.mark.asyncio
+async def test_test_map_marks_name_only_test_caller(tmp_path) -> None:
+    # #1559：仅凭同名匹配映射到的测试必须单独列出。
+    from tests.unit._navigation_test_support import index_ambiguous_publish_project
+
+    root = await index_ambiguous_publish_project(tmp_path)
+    result = await build_nav_facade(project_root=root).execute(
+        {
+            "action": "test_map",
+            "symbol": "GenerationStore.publish",
+            "file_path": "gen_store.py",
+            "output_format": "json",
+        }
+    )
+    assert result["name_only_test_functions"] == [
+        "tests/test_gen_store.py::test_publish_any"
+    ]

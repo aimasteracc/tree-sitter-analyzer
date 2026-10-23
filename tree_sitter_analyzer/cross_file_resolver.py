@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,7 @@ from .constants import (
     JS_TS_MODULE_EXTS_LONGEST_FIRST,
 )
 from .languages.lang_extension_map import EXT_TO_LANG
+from .receiver_proof import has_unproven_receiver, is_own_instance_call
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +137,10 @@ class ResolvedEdge:
         return d
 
 
+#: JS/TS 源文件后缀（包导入的名字不按项目同名定义绑定，#1764）。
+_JSTS_SUFFIXES = (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs")
+
+
 class CrossFileResolver:
     """Resolve cross-file symbol references using indexed AST cache data.
 
@@ -152,6 +158,7 @@ class CrossFileResolver:
         self._imports_by_file: dict[str, list[ImportEntry]] = {}
         self._name_to_source: dict[str, dict[str, str]] = {}
         self._callee_resolver: CalleeResolver | None = None
+        self._module_files: tuple[int, frozenset[str]] | None = None
         self._built = False
 
     def build(self) -> None:
@@ -214,12 +221,22 @@ class CrossFileResolver:
             return best.name, best.line
         return "", 0
 
-    def resolve_call_edges(self) -> list[ResolvedEdge]:
-        """Re-resolve all call edges with improved cross-file resolution."""
+    def resolve_call_edges(
+        self,
+        edge_filter: Callable[[dict[str, Any]], bool] | None = None,
+        edges: list[dict[str, Any]] | None = None,
+    ) -> list[ResolvedEdge]:
+        """Re-resolve all call edges with improved cross-file resolution.
+
+        #1696：``edge_filter`` 给出时只处理它接受的边（按依赖界定的回填范围）。
+        #1749：``edges`` 给出时不再读取全部调用边（调用方已按范围读出，rowid 顺序）。
+        """
         self.build()
-        raw_edges = self._cache.get_call_edges()
+        raw_edges = self._cache.get_call_edges() if edges is None else edges
         resolved: list[ResolvedEdge] = []
         for edge in raw_edges:
+            if edge_filter is not None and not edge_filter(edge):
+                continue
             caller_file = edge["caller_file"]
             caller_name = edge["caller_name"]
             caller_line = edge["caller_line"]
@@ -237,7 +254,18 @@ class CrossFileResolver:
                         caller_name = cn
                         caller_line = cl
 
-            callee_candidates = self.resolve_callee(callee_name, caller_file)
+            # #1669：这里只按裸名解析，看不到接收者；接收者未被证明的 `x.m()`
+            # （含同文件里的 `self._entries.append()`）不得因同名定义而写入文件。
+            # #1739：`self.m()` 只能经外围类的 MRO 确定，同名定义不是证据。
+            callee_candidates = (
+                []
+                if has_unproven_receiver(callee_full)
+                or (
+                    is_own_instance_call(callee_full)
+                    and caller_file.endswith((".py", ".pyi"))
+                )
+                else self.resolve_callee(callee_name, caller_file)
+            )
             # 低置信度全局同名回退只适用于唯一的裸调用；带接收者的调用交给
             # Synapse 的类型、内建对象和唯一方法规则，避免把 str.format
             # 之类的调用误连到项目中的同名定义。
@@ -247,6 +275,14 @@ class CrossFileResolver:
                 and ("." in callee_full or len(callee_candidates) != 1)
             ):
                 callee_candidates = []
+            if "." not in callee_full:
+                callee_candidates = self._bare_reachable(callee_name, callee_candidates)
+                if callee_candidates and self._imported_from_outside(
+                    caller_file, callee_name
+                ):
+                    # #1764：`import { f } from 'pkg'` 后的 `f()` 调用的是包里的 `f`，
+                    # 不能按名字绑定到项目里恰好同名的定义。
+                    callee_candidates = []
             callee_resolved = callee_candidates[0][0] if callee_candidates else ""
 
             confidence = 1.0
@@ -268,6 +304,37 @@ class CrossFileResolver:
                 )
             )
         return resolved
+
+    def _imported_from_outside(self, caller_file: str, name: str) -> bool:
+        """JS/TS 文件把 ``name`` 从解析不到项目文件的模块（包名）导入。"""
+        if not caller_file.endswith(_JSTS_SUFFIXES):
+            return False
+        local_target = self._name_to_source.get(caller_file, {}).get(name)
+        if local_target:
+            return False
+        return any(
+            name in entry.imported_names and not entry.is_relative
+            for entry in self._imports_by_file.get(caller_file, [])
+        )
+
+    def _bare_reachable(
+        self, callee_name: str, candidates: list[tuple[str, float]]
+    ) -> list[tuple[str, float]]:
+        """#1669：无接收者的调用到达不了方法。
+
+        本地（1.0）与全局（≤0.5）档按名字命中的文件里须有同名的非方法定义；
+        经 import 档（0.9 / 0.7）命中的文件由导入语句给出，原样保留。
+        """
+        functions = {
+            func.file
+            for func in self._functions_by_name.get(callee_name, [])
+            if func.parent_class is None
+        }
+        return [
+            (file_path, confidence)
+            for file_path, confidence in candidates
+            if file_path in functions or 0.5 < confidence < 1.0
+        ]
 
     def _build_module_map(self) -> None:
         conn = self._cache.get_conn()
@@ -481,12 +548,23 @@ class CrossFileResolver:
         if is_relative and source_file:
             source_dir = str(Path(source_file).parent)
             candidate = source_dir + "/" + module_path.lstrip("./").replace(".", "/")
+            # #1696：值集合只构建一次；原先每次探测都线性扫描全部模块（O(文件数)）。
+            indexed_files = self._indexed_files()
             for ext in _relative_probe_exts(source_file):
                 check = candidate + ext
                 if check in self._module_to_file:
                     return self._module_to_file[check]
-                for _key, val in self._module_to_file.items():
-                    if val == check:
-                        return val
+                if check in indexed_files:
+                    return check
 
         return ""
+
+    def _indexed_files(self) -> frozenset[str]:
+        cached = self._module_files
+        if cached is None or cached[0] != len(self._module_to_file):
+            cached = (
+                len(self._module_to_file),
+                frozenset(self._module_to_file.values()),
+            )
+            self._module_files = cached
+        return cached[1]

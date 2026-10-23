@@ -59,6 +59,9 @@ from .cache.schema import (
     apply_migration_v17 as _apply_migration_v17,
 )
 from .cache.schema import (
+    apply_migration_v18 as _apply_migration_v18,
+)
+from .cache.schema import (
     backfill_schema_version_row as _backfill_schema_version_row,
 )
 from .cache.schema import (
@@ -67,6 +70,8 @@ from .cache.schema import (
 from .cache.schema import (
     init_db as _schema_init_db,
 )
+from .cache.writer_state import FencedConnection, read_writer_revision
+from .cache.writer_state import WriterRevision as WriterRevision
 from .core.parser import Parser
 from .index_snapshot_schema import apply_snapshot_migration as _apply_migration_v13
 
@@ -124,6 +129,14 @@ class ASTCacheSurface:
         raise NotImplementedError
 
 
+def _release_thread_pin(local: Any) -> None:
+    """释放本线程连接所持的版本钉；连接换绑或关闭时调用。"""
+    pin = getattr(local, "pin", None)
+    local.pin = None
+    if pin is not None:
+        pin.release()
+
+
 class ASTCacheDatabaseMixin(ASTCacheSurface):
     """Thread-local connections, migrations, and schema verification."""
 
@@ -131,12 +144,14 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
         """按当前绑定版本复用线程本地连接；其他线程发布后重新打开。"""
         database_path = self.db_path
         read_only = getattr(self, "_read_only", False)
+        scoped = False
         if getattr(self, "_default_locator", False):
             from .cache.generation_reads import current_read_location
 
             location = current_read_location(self.project_root)
             if location is not None:
                 read_only = location.published
+                scoped = True
         conn = getattr(self._local, "conn", None)
         if (
             conn is not None
@@ -145,13 +160,37 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
             conn.close()
             self._local.conn = None
             conn = None
+            _release_thread_pin(self._local)
+        unindexed_uri = getattr(self, "_unindexed_uri", None)
         if conn is None:
-            if read_only:
+            if unindexed_uri is not None and database_path == getattr(
+                self, "_db_path", None
+            ):
+                # 首次发布前且无旧库：空库只在进程内，不在项目里落盘（#1554）。
+                conn = sqlite3.connect(unindexed_uri, uri=True, timeout=10)
+                if getattr(self, "_unindexed_sealed", False):
+                    conn.execute("PRAGMA query_only=ON")
+            elif read_only:
+                # 连接存续期间钉住所读版本，回收者不得删除（RFC-0032 slice 6）。
+                from .cache.generation_pins import pin_database
+
+                _release_thread_pin(self._local)
+                self._local.pin = pin_database(Path(database_path))
                 conn = sqlite3.connect(
                     Path(database_path).as_uri() + "?mode=ro", uri=True, timeout=10
                 )
+                if scoped:
+                    # #1631：调用之间空闲时可被提前释放，不再无限期钉住旧版本。
+                    from .cache.generation_reader_release import track_scoped_reader
+
+                    track_scoped_reader(self)
             else:
-                conn = sqlite3.connect(database_path, timeout=10)
+                # RFC-0032 slice 5：原地写入的每次提交经修订号 CAS（schema 18）。
+                fenced = sqlite3.connect(
+                    database_path, timeout=10, factory=FencedConnection
+                )
+                fenced.tsa_fence = getattr(self, "_writer_fence", None)
+                conn = fenced
                 conn.execute("PRAGMA journal_mode=WAL")
                 conn.execute("PRAGMA synchronous=NORMAL")
             conn.execute("PRAGMA cache_size=-65536")
@@ -196,7 +235,9 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
             (15, _apply_migration_v15),
             (16, _apply_migration_v16),
             (17, _apply_migration_v17),
+            (18, _apply_migration_v18),
         ]
+        versions_before = _schema_versions(conn)
         self._fts5_available = _schema_init_db(
             conn,
             self._fts5_available,
@@ -204,6 +245,31 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
             migrations,
         )
         self._verify_schema_integrity(conn)
+        from .cache import certification_tracking
+
+        # RFC-0039 slice 2：记下初始化完成时的写入计数；执行过迁移则本连接不做增量认证。
+        certification_tracking.note_initialized(
+            conn, migrated=_schema_versions(conn) != versions_before
+        )
+        fence = getattr(self, "_writer_fence", None)
+        if fence is not None:
+            # 迁移提交不推进修订号；此后每次写入提交都经 CAS（RFC-0032 slice 5）。
+            fence.armed = True
+
+    def writer_revision(self) -> WriterRevision | None:
+        """自定义路径缓存的当前写入修订，供保留的候选在捕获前绑定。
+
+        先调用本方法、再构建候选（``build_index_candidate_snapshot(...,
+        writer_revision=...)``）：重放时若期间有任何写入提交，同步在写入前以
+        ``INDEX_CANDIDATE_SUPERSEDED`` 拒绝（RFC-0032 slice 5）。默认定位符返回
+        ``None``，由版本选择器 CAS 防护。
+        """
+        fence = getattr(self, "_writer_fence", None)
+        if getattr(self, "_default_locator", False) or fence is None:
+            return None
+        if not fence.armed:
+            return None
+        return read_writer_revision(self.get_conn())
 
     @staticmethod
     def _ensure_large_repo_indexes(conn: sqlite3.Connection) -> None:
@@ -232,12 +298,17 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
             f"AST cache schema is incomplete. Missing: {missing_text}. {remediation}"
         )
 
+    def release_thread_connection(self) -> None:
+        """关闭本线程连接并释放其版本钉；下次 ``get_conn`` 按当前绑定重新打开。"""
+        conn = getattr(self._local, "conn", None)
+        if conn is not None:
+            conn.close()
+            self._local.conn = None
+        _release_thread_pin(self._local)
+
     def close(self) -> None:
         try:
-            conn = getattr(self._local, "conn", None)
-            if conn is not None:
-                conn.close()
-                self._local.conn = None
+            ASTCacheDatabaseMixin.release_thread_connection(self)
         finally:
             cache_dir_fd = getattr(self, "_cache_dir_fd", None)
             if cache_dir_fd is not None:
@@ -245,3 +316,14 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
                     os.close(cache_dir_fd)
                 finally:
                     self._cache_dir_fd = None
+
+
+def _schema_versions(conn: Any) -> frozenset[int] | None:
+    """已记录的 schema 版本；表还不存在时为 None。"""
+    try:
+        return frozenset(
+            int(row[0])
+            for row in conn.execute("SELECT version FROM ast_schema_version")
+        )
+    except Exception:  # nosec B110 — 新库：表尚未创建。
+        return None

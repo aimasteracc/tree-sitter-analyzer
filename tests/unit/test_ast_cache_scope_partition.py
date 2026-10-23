@@ -76,7 +76,7 @@ def test_force_with_root_scandir_error_preserves_every_persisted_generation(
     # GH-1253：不完整的发现结果不能授权破坏性的 force clear。
     source = tmp_path / "app.py"
     source.write_text("def answer():\n    return 42\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.legacy_cache(tmp_path)
     cache.index_file(str(source))
     stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
     conn = cache.get_conn()
@@ -146,7 +146,7 @@ def test_force_with_renamed_directory_swap_preserves_persisted_rows(
     package.mkdir()
     source = package / "app.py"
     source.write_text("def answer():\n    return 42\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.legacy_cache(tmp_path)
     cache.index_file(str(source))
     stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
     conn = cache.get_conn()

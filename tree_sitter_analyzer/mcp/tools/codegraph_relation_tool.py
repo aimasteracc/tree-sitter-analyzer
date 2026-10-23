@@ -4,9 +4,14 @@
 from __future__ import annotations
 
 import re
+import sqlite3
 from typing import Any
 
 from ...call_graph import CachedCallGraph, CallGraph
+from ...graph.edge_store import _RESOLVED_CALLEE_RESOLUTIONS
+from .callers_annotated import annotated_provenance
+from .parse_fallback_budget import index_missing_response
+from .relation_freshness import index_identity
 
 _STDLIB_TOP_LEVELS = frozenset(
     {
@@ -84,20 +89,59 @@ _STDLIB_TOP_LEVELS = frozenset(
 _STALE_CACHE_UNKNOWN_RATIO = 0.8
 
 _STALE_CACHE_WARNING = (
-    "stale_cache: most edges have callee_resolution='unknown'. "
+    "stale_cache: this index holds call edges but none was ever resolved "
+    "(callee_resolution='unknown' everywhere; built before Synapse resolution "
+    "or the resolution pass never ran). "
     "Run `uv run tree-sitter-analyzer --ast-cache --ast-cache-mode index "
     "--ast-cache-force` to rebuild the index and populate Synapse "
     "resolution columns."
 )
 
+# 已解析标记集合与 EdgeStore 完整性计数共用同一来源，避免两处判定漂移。
+_RESOLVED_MARKER_SQL = ", ".join(
+    f"'{marker}'" for marker in sorted(_RESOLVED_CALLEE_RESOLUTIONS)
+)
+_RESOLVED_EDGE_PROBE = (
+    "SELECT 1 FROM edges WHERE kind = 'calls' AND ("  # nosec B608
+    f"callee_resolution IN ({_RESOLVED_MARKER_SQL}) "
+    "OR callee_resolved_file <> '' "
+    f"OR json_extract(metadata, '$.callee_resolution') IN ({_RESOLVED_MARKER_SQL})"
+    ") LIMIT 1"
+)
 
-def _is_stale_resolution(entries: list[dict[str, Any]]) -> bool:
-    """Return True when a relation response mostly has unknown callee resolution."""
+
+def index_never_resolved(cache: Any) -> bool:
+    """#1580：索引有调用边，但没有任何一条边带已解析标记。
+
+    这才是 ``stale_cache`` 警告要发现的情形——缓存建于解析列出现之前，或
+    解析阶段从未运行。解析过的新索引里本就存在合理的未解析边（接收者未知的
+    方法调用等），不能据此建议强制重建。读不到证据时返回 False：警告只在
+    有正面证据时出现，单次答复的完整性由 RFC-0028 的 completeness 字段声明。
+    """
+    if cache is None:
+        return False
+    try:
+        conn = cache.get_conn()
+        if (
+            conn.execute("SELECT 1 FROM edges WHERE kind = 'calls' LIMIT 1").fetchone()
+            is None
+        ):
+            return False
+        return conn.execute(_RESOLVED_EDGE_PROBE).fetchone() is None
+    except (sqlite3.Error, AttributeError, TypeError):
+        return False
+
+
+def _is_stale_resolution(entries: list[dict[str, Any]], cache: Any) -> bool:
+    """答复多数条目未解析，且其所依据的索引从未做过解析时返回 True（#1580）。
+
+    旧实现只看单次答复的条目占比，分母是答复而非索引，新建索引上同样触发。
+    """
     if not entries:
         return False
     unknown = sum(1 for e in entries if e.get("callee_resolution") == "unknown")
     threshold = max(1, int(_STALE_CACHE_UNKNOWN_RATIO * len(entries)))
-    return unknown >= threshold
+    return unknown >= threshold and index_never_resolved(cache)
 
 
 def classify_callee_resolution(
@@ -132,20 +176,71 @@ def classify_callee_resolution(
     return "unknown", callee_resolved_file
 
 
+def label_graph_relations(
+    graph: Any,
+    func_name: str,
+    file_path: str | None,
+    entries: list[dict[str, Any]],
+    *,
+    inbound: bool,
+) -> list[dict[str, Any]]:
+    """#1586：按内存调用图中的真实边为回退结果标注 ``callee_resolution``。
+
+    内存图只保存确定的边（#1568：模糊候选只进入 ``possible_*``），每条边都已
+    绑定到一个项目内函数，所以被调用方的定义文件就是边的解析文件，交给
+    :func:`classify_callee_resolution` 判定 local / project，与 SQL 路径同一口径。
+    ``inbound`` 为真时 ``entries`` 是调用方（被调用方为查询目标），否则是被调用方。
+    找不到对应边的条目如实标为 ``unknown``，不猜解析文件。返回新列表。
+    """
+    edges: dict[tuple[str, str, int], tuple[str, str, str]] = {}
+    bindings: dict[tuple[str, str, int], dict[str, Any] | None] = {}
+    edge_binding = getattr(graph, "edge_binding", None)
+    for target in graph.resolve_targets(func_name, file_path):
+        neighbours = (
+            graph.caller_refs_of(target) if inbound else graph.callee_refs_of(target)
+        )
+        for ref in neighbours:
+            callee, caller = (target, ref) if inbound else (ref, target)
+            key = (ref.file_path, ref.name, ref.start_line)
+            edges.setdefault(key, (callee.name, callee.file_path, caller.file_path))
+            binding = edge_binding(caller, callee) if callable(edge_binding) else None
+            # 任一目标经普通边到达即不再标注为注解绑定。
+            bindings[key] = binding if bindings.get(key, binding) else None
+    labelled: list[dict[str, Any]] = []
+    for entry in entries:
+        key = (entry.get("file", ""), entry.get("name", ""), entry.get("line", 0))
+        edge = edges.get(key)
+        resolution, resolved_file = (
+            classify_callee_resolution(*edge) if edge else ("unknown", "")
+        )
+        labelled.append(
+            {
+                **entry,
+                "callee_resolution": resolution,
+                "callee_resolved_file": resolved_file,
+                **annotated_provenance(bindings.get(key)),
+            }
+        )
+    return labelled
+
+
 class CodeGraphRelationToolMixin:
     """Shared cache and graph bootstrap for caller/callee compatibility tools."""
 
     project_root: str | None
     _call_graph: CallGraph | None
     _data_source: str
+    _graph_index_identity: tuple[Any, ...] | None
 
     def _init_relation_state(self) -> None:
         self._call_graph = None
         self._data_source = "unknown"
+        self._graph_index_identity = None
 
     def _reset_relation_state(self) -> None:
         self._call_graph = None
         self._data_source = "unknown"
+        self._graph_index_identity = None
 
     def _try_get_cache(self) -> Any:
         try:
@@ -171,13 +266,33 @@ class CodeGraphRelationToolMixin:
         except Exception:
             return False
 
+    def _parse_fallback_refusal(
+        self, cache: Any, tool_label: str, **subject: Any
+    ) -> dict[str, Any] | None:
+        """#1562：无索引且仓库超出现场解析预算时返回 INDEX_MISSING 答复。
+
+        有缓存（哪怕没有调用边）时走 ``CachedCallGraph``，不会现场解析，
+        因此返回 ``None``；只有 ``cache is None`` 才会触发整仓解析。
+        """
+        if cache is not None:
+            return None
+        return index_missing_response(self.project_root, tool_label, **subject)
+
     def _get_call_graph(self) -> CallGraph:
-        if self._call_graph is None:
-            if not self.project_root:
-                raise ValueError("Project root not set. Call set_project_path first.")
+        if not self.project_root:
+            raise ValueError("Project root not set. Call set_project_path first.")
+        # dogfood 2026-10-14：内存调用图绑定索引身份，重建索引或 generation
+        # 切换后立即失效；身份检查只做几条聚合 SQL，不遍历源码树。
+        # 身份在构建前记录：构建期间若有写入，下一次调用最多多重建一次。
+        identity = index_identity(self.project_root)
+        if self._call_graph is None or identity != self._graph_index_identity:
+            self._graph_index_identity = identity
             cache = self._try_get_cache()
             if cache is not None:
-                self._call_graph = CachedCallGraph(self.project_root, cache=cache)
+                # #1675：nav 关系查询的图落盘边解析结果，供冷进程复用。
+                self._call_graph = CachedCallGraph(
+                    self.project_root, cache=cache, persist=True
+                )
                 self._data_source = "cache"
             else:
                 self._call_graph = CallGraph(self.project_root)

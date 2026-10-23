@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, cast
 if TYPE_CHECKING:
     pass
 
+from .._bounded_read import read_at_most
 from ..indexing_limits import normalize_index_max_files
 from ..indexing_snapshot import (
     _INDEX_SOURCE_BYTE_LIMIT,
@@ -53,7 +54,8 @@ def check_cache_or_read(
             if stat.st_size > _INDEX_SOURCE_BYTE_LIMIT:
                 raise OSError("source exceeds indexing byte limit")
             with open(abs_path, "rb") as f:
-                data = f.read(_INDEX_SOURCE_BYTE_LIMIT + 1)
+                # #1592：按文件大小读取，避免每个文件都预分配 64 MiB 缓冲。
+                data = read_at_most(f, _INDEX_SOURCE_BYTE_LIMIT)
             if len(data) > _INDEX_SOURCE_BYTE_LIMIT:
                 raise OSError("source exceeds indexing byte limit")
             source_code = decode_index_source(data)
@@ -103,11 +105,12 @@ def parse_and_write(
     # 即使不是冻结文件，也不能重新走路径/mtime 缓存，取回与当前摘要不符的旧树。
     result = cache.parser.parse_code(source_code, language, filename=abs_path)
     if not result.success:
-        return {
-            "file": rel_path,
-            "status": "error",
-            "reason": result.error_message or "parse failed",
-        }
+        # 解析器拒绝这份字节（如缺语法）属稳定失败，不冻结其余文件的发布（#1554）。
+        from .publication_policy import stable_failure
+
+        return stable_failure(
+            rel_path, result.error_message or "parse failed", content_hash
+        )
     symbols = _extract_symbols(result.tree, source_code, language)
     imports = _extract_imports(symbols)
     structure = _extract_structure(symbols)
@@ -146,7 +149,12 @@ def parse_and_write(
         conn, rel_path, language, symbols, cache.fts5_available
     )
     cache._write_imports_for_file(conn, rel_path, language, imports)  # noqa: SLF001
-    cache._write_activation_for_file(conn, rel_path, inserted)  # noqa: SLF001
+    if getattr(cache, "_project_activation_enabled", None) is False:
+        # #1697：项目范围的同步遵循项目索引的 activation 策略（默认关闭）：
+        # 只清除旧行，不排入单文件路径的 pending 队列行。
+        _clear_activation_for_file_fn(conn, rel_path)
+    else:
+        cache._write_activation_for_file(conn, rel_path, inserted)  # noqa: SLF001
     # CALLS rows live in the unified ``edges`` table (B1.3 — no ast_call_edges).
     # Write the edges first so synapse resolution can UPDATE them in place.
     if not _write.write_graph_edges_for_file(
@@ -174,6 +182,16 @@ def parse_and_write(
     }
 
 
+def _unreadable_reason(entry: Any) -> str | None:
+    """Reason a selected entry could not be read when its source was bound (#1654)."""
+    from ..index_source_stream import unreadable_source_reason
+
+    fingerprint = entry.fingerprint
+    if fingerprint is None:
+        return None
+    return unreadable_source_reason(fingerprint.content_hash)
+
+
 def walk_and_partition(
     cache: Any,
     conn: sqlite3.Connection,
@@ -187,6 +205,8 @@ def walk_and_partition(
     language_filter: str | None = None,
     exclude_patterns: frozenset[str] | None = None,
     candidate_snapshot: IndexCandidateSnapshot | None = None,
+    *,
+    snapshot_validated: bool = False,
 ) -> tuple[dict[str, Any], list[tuple[str, str]], int]:
     """Walk source files and partition into (stats, candidates, count).
 
@@ -194,6 +214,12 @@ def walk_and_partition(
     equals it are considered; non-matching files are skipped BEFORE any parse
     attempt, so a Python-scoped run never tries to load an optional grammar
     (e.g. Swift) and never surfaces a "grammar not installed" error.
+
+    ``snapshot_validated`` (#1673): the caller already ran
+    ``validate_index_candidate_snapshot`` on this very snapshot at the start of
+    the same operation, so the per-entry ``realpath`` / ``stat`` pass is not
+    repeated (on Windows each ``realpath`` opens a handle; 2.5k files cost 2–4 s).
+    Per-entry change detection (``changed_since_snapshot``) still runs.
     """
     max_files = normalize_index_max_files(max_files)
     candidates: list[tuple[str, str]] = []
@@ -238,9 +264,13 @@ def walk_and_partition(
         }
 
     if candidate_snapshot is not None:
-        validate_index_candidate_snapshot(
-            cache.project_root, max_files, candidate_snapshot
-        )
+        restamped = 0
+        supplied = getattr(cache, "_bound_source_digests", None)
+        bound_digests: dict[str, str] = supplied if isinstance(supplied, dict) else {}
+        if not snapshot_validated:
+            validate_index_candidate_snapshot(
+                cache.project_root, max_files, candidate_snapshot
+            )
         stats["truncated_by_max_files"] = candidate_snapshot.truncated_by_max_files
         stats["snapshot_metrics"] = candidate_snapshot.metrics()
         count = len(candidate_snapshot.entries)
@@ -264,6 +294,12 @@ def walk_and_partition(
                     make_error_entry(entry.rel_path, entry.reason or "stat failed")
                 )
                 continue
+            unreadable = _unreadable_reason(entry)
+            if unreadable is not None:
+                # #1654：发布绑定时读不到（如被锁定）：非稳定的单文件失败，不复用旧行。
+                stats["errors"] += 1
+                stats["files"].append(make_error_entry(entry.rel_path, unreadable))
+                continue
 
             change_reason = (
                 None if entry.frozen_path is not None else changed_since_snapshot(entry)
@@ -285,12 +321,16 @@ def walk_and_partition(
             fingerprint = cast(IndexFileFingerprint, entry.fingerprint)
             language = cast(str, entry.language)
             row = indexed_map.get(entry.rel_path)
+            # #1673：路径平台的候选快照不带摘要（只带不可读标记）；发布侧捕获时
+            # 绑定的摘要随私有构建传入，缓存行必须与它相同（RFC-0030：内容证据，
+            # 不只看 mtime 与大小）。
+            digest = bound_digests.get(entry.rel_path) or fingerprint.content_hash
             if (
                 row is not None
                 and row[0] == fingerprint.mtime_ns
                 and row[1] == fingerprint.file_size
                 and row[2] >= extractor_version
-                and (not fingerprint.content_hash or row[3] == fingerprint.content_hash)
+                and (not digest or row[3] == digest)
             ):
                 already_cached.append(
                     {
@@ -300,8 +340,27 @@ def walk_and_partition(
                     }
                 )
                 continue
+            if _content_unchanged(row, fingerprint, digest, extractor_version):
+                # #1707：只有 mtime 不同、当前字节的摘要与行相同：只刷新戳记，不重新
+                # 提取（重新提取会让回填与发布都以为内容变了）。
+                conn.execute(
+                    "UPDATE ast_index SET mtime_ns = ? WHERE file_path = ?",
+                    (fingerprint.mtime_ns, entry.rel_path),
+                )
+                restamped += 1
+                already_cached.append(
+                    {
+                        "file": entry.rel_path,
+                        "status": "cached",
+                        "reason": "content unchanged",
+                    }
+                )
+                continue
             candidates.append((entry.abs_path, language))
 
+        if restamped:
+            conn.commit()
+            stats["stat_refreshed"] = restamped
         stats["cached"] += len(already_cached)
         stats["files"].extend(already_cached)
         stats["processed"] = len(candidates) + len(already_cached)
@@ -354,6 +413,28 @@ def walk_and_partition(
     stats["files"].extend(already_cached)
     stats["processed"] = len(candidates) + len(already_cached)
     return stats, candidates, count
+
+
+def _content_unchanged(
+    row: tuple[Any, ...] | None,
+    fingerprint: IndexFileFingerprint,
+    digest: str | None,
+    extractor_version: int,
+) -> bool:
+    """行与本次捕获的当前字节摘要、大小都相同，只有 mtime 不同（#1707）。
+
+    摘要必须来自本次读取（捕获绑定的摘要或快照摘要，RFC-0030）；没有摘要时
+    不能证明内容未变，照常重新提取。大小不同（归一化摘要相同的换行符变化）
+    也照常重新提取，读者以大小不同判定为变更。
+    """
+    return bool(
+        row is not None
+        and digest
+        and len(row) >= 4
+        and row[3] == digest
+        and row[1] == fingerprint.file_size
+        and row[2] >= extractor_version
+    )
 
 
 def _clear_full_rebuild_rows(cache: Any, conn: sqlite3.Connection) -> None:
@@ -473,5 +554,10 @@ def index_parallel(
         )
         for path, language in candidates
     ]
-    with ctx.Pool(processes=workers, initializer=_init_worker_parser) as pool:
-        return list(pool.imap_unordered(_worker_index_file, args_iter, chunksize=8))
+    # #1724：工作进程不继承 MCP 的 stdin 管道（否则在解释器初始化时死锁）；
+    # 结果等待有上限，停滞时终止进程池并抛出类型化错误，而不是永远挂起。
+    from .worker_pool import run_pool
+
+    return run_pool(
+        ctx, workers, _init_worker_parser, _worker_index_file, args_iter, chunksize=8
+    )

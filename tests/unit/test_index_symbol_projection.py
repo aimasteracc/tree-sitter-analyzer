@@ -8,6 +8,8 @@ import sqlite3
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
+
 requires_posix_fd = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
 
 
@@ -228,12 +230,11 @@ def test_symbol_upgrade_detects_extra_ordinary_rows_after_comparison():
 
 def test_projection_digest_rejects_same_count_payload_forgery(tmp_path):
     # PR #1253 thread 3757429365: counts cannot certify changed query payloads.
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
 
     source = tmp_path / "app.py"
     source.write_text("def target():\n    return 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     cache.index_file(str(source))
     conn = cache.get_conn()
     before = symbol_projection_is_exact(conn)
@@ -586,12 +587,11 @@ def test_symbol_projection_rejects_malformed_symbol_scalar() -> None:
 
 def test_missing_fts_row_forces_full_projection_reindex(tmp_path):
     # PR #1253 thread 3759606810: removed FTS evidence cannot retain an exact stamp.
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
 
     source = tmp_path / "app.py"
     source.write_text("def target():\n    return 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     cache.index_file(str(source))
     conn = cache.get_conn()
     row = conn.execute(
@@ -615,12 +615,11 @@ def test_missing_fts_row_forces_full_projection_reindex(tmp_path):
 
 def test_extra_fts_rowid_rejects_exact_projection(tmp_path):
     # PR #1253 thread 3759606810: an FTS-only rowid is stale projection evidence.
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
 
     source = tmp_path / "app.py"
     source.write_text("def target():\n    return 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     cache.index_file(str(source))
     conn = cache.get_conn()
     conn.execute(
@@ -669,7 +668,6 @@ def test_projection_preflights_lengths_before_payload_fetch(tmp_path, monkeypatc
 
 def test_stale_external_fts_terms_force_rebuild(tmp_path):
     # PR #1253 thread 3760178960: external payload columns are not indexed terms.
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_symbol_projection import (
         symbol_projection_is_exact,
         upsert_symbol_projection_state,
@@ -677,7 +675,7 @@ def test_stale_external_fts_terms_force_rebuild(tmp_path):
 
     source = tmp_path / "app.py"
     source.write_text("def alpha():\n    return 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     cache.index_file(str(source))
     conn = cache.get_conn()
     conn.execute("UPDATE ast_symbol_rows SET name='beta' WHERE name='alpha'")
@@ -758,12 +756,11 @@ def test_delete_projection_state_tolerates_missing_legacy_table() -> None:
 
 def test_projection_rejects_state_generation_mismatch(tmp_path) -> None:
     # PR #1253: authoritative certification binds state to the index generation.
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
 
     source = tmp_path / "app.py"
     source.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     cache.index_file(str(source))
     conn = cache.get_conn()
     conn.execute("UPDATE ast_index SET content_hash='different'")

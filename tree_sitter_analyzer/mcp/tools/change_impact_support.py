@@ -15,6 +15,7 @@ from ...git_path_codec import path_from_wire
 from ...read_existing_access import validate_read_existing_paths
 from ..utils.format_helper import apply_output_format_to_response
 from .base_tool import _canonicalize_verdict, mirror_summary_line
+from .utils.change_impact_detail_view import project_impact_details
 from .utils.change_impact_response import (
     apply_scope_validation,
     attach_queue_ledger,
@@ -249,6 +250,19 @@ TOOL_SCHEMA: dict[str, Any] = {
             "default": False,
             "description": "Return only the compact agent decision surface instead of full impact details",
         },
+        "include_details": {
+            "type": "boolean",
+            "default": False,
+            "description": (
+                "#1617: return the full call_graph_impact / affected_symbols / "
+                "changed_symbols lists and every duplicated command field. The "
+                "default summarizes them to counts plus the top most-impacted "
+                "items with honest *_total / *_truncated fields; decision fields "
+                "(verdict, verification_command, risk_factors, possible_* / "
+                "name_only signals, queue_ledger) are never summarized. Ignored "
+                "when agent_summary_only=true."
+            ),
+        },
         "capture_diff_snapshot": {
             "type": "boolean",
             "default": False,
@@ -315,6 +329,7 @@ def _finalize_pr_result(
     agent_summary_only: bool,
     output_format: str,
     scope_mode: str = "report",
+    include_details: bool = False,
 ) -> dict[str, Any]:
     """Attach shared PR metadata, queue/scope controls, summary, and format."""
     result["pr_url"] = parsed.url
@@ -331,6 +346,9 @@ def _finalize_pr_result(
     result = apply_scope_validation(result, scope_paths_invalid)
     if agent_summary_only:
         result = build_agent_summary_only_response(result)
+    else:
+        # #1617：与 diff 路径一致，完整响应默认摘要明细列表。
+        result = project_impact_details(result, include_details=include_details)
     result["output_format"] = output_format
     # RFC-0022 P0.5: PR route success fragment echoes the wire owner.
     from ...wire_owner import EDIT_IMPACT_ACTION_VERSION
@@ -338,6 +356,4 @@ def _finalize_pr_result(
     result["action_version"] = EDIT_IMPACT_ACTION_VERSION
     _canonicalize_change_impact_verdict(result)
     result = mirror_summary_line(result)
-    return apply_output_format_to_response(
-        result, output_format
-    )
+    return apply_output_format_to_response(result, output_format)

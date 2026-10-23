@@ -20,6 +20,7 @@ from typing import Any
 
 from ...api.pulse_evidence import PulseSourceError, certified_pulse_connection
 from ...api.serialization import COMPACT_LEGEND
+from ...index_grammar_exclusions import with_exclusions
 from .base_tool import BaseMCPTool
 
 
@@ -34,11 +35,19 @@ class PulseTool(BaseMCPTool):
             "description": (
                 "Get source-certified context for one symbol: callers, "
                 "callees, git heat, imports, siblings, comments. "
+                "Certification re-hashes every indexed source within a 60 s "
+                "per-call bound; above it the call fails with "
+                "INDEX_SNAPSHOT_DEADLINE and a next_step. "
                 f"Compact key legend: {COMPACT_LEGEND}. "
                 "Formats: skeletal (~200 tok, scan), compact (default ~500 tok), "
                 "verbose (~2000 tok, deep review). "
                 "Token budget exceeded: drops fields lowest-priority first: "
                 "comments→siblings→imported_by→imports→git_heat→callees→callers. "
+                "trunc lists budget-dropped fields, plus imported_by when Python "
+                "import enrichment degraded (the SQL-backed ib list is kept and "
+                "still usable); ftr reports fields cut to fewer "
+                "items (kept/total/at_least; total=null means the source limit was "
+                "hit and the true count is unknown, at least at_least). "
                 "call_graph=false for Bash/CSS/HTML/JSON/YAML/SQL/Markdown files. "
                 "iga=false (imports_graph_available) for languages without import "
                 "edges (e.g. Go/Rust/Java/C#): imported_by is empty by design then. "
@@ -163,7 +172,8 @@ class PulseTool(BaseMCPTool):
                     max_comments=max_comments,
                 )
         except PulseSourceError as exc:
-            return exc.to_response()
+            # #1581：缺少可选语法导致的未认证，下一步写明安装什么而非重跑索引。
+            return with_exclusions(exc.to_response(), self.project_root)
         except Exception as exc:
             return {"success": False, "error": f"pulse query failed: {exc}"}
 
@@ -321,7 +331,8 @@ class PulseBatchTool(BaseMCPTool):
                         )
 
         except PulseSourceError as exc:
-            return exc.to_response()
+            # #1581：缺少可选语法导致的未认证，下一步写明安装什么而非重跑索引。
+            return with_exclusions(exc.to_response(), self.project_root)
 
         if truncated_count > 0:
             results.append({"warning": f"{truncated_count} targets truncated"})

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -28,9 +29,26 @@ class SyncResult:
     synapse_resolved: int = 0
     manifest_certification_failed: bool = False
     details: list[dict[str, Any]] = field(default_factory=list)
+    #: 默认库的同步是否发布了新版本；``None`` 表示原地同步（无发布概念）。
+    published: bool | None = None
+    #: 未发布的原因码（如 ``INDEX_UNCHANGED``，#1671）。
+    publication_reason: str | None = None
+    #: #1696：本轮回填是按依赖界定的范围还是全量，以及原因与规模。
+    backfill_scope: dict[str, Any] | None = None
+    certification: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        publication: dict[str, Any] = {}
+        if self.backfill_scope is not None:
+            publication["backfill_scope"] = self.backfill_scope
+        if self.certification is not None:
+            publication["certification"] = self.certification
+        if self.published is not None:
+            publication["published"] = self.published
+        if self.publication_reason is not None:
+            publication["publication_reason"] = self.publication_reason
         return {
+            **publication,
             "mode_used": "incremental",
             "scanned": self.scanned,
             "new_files": self.new_files,
@@ -52,10 +70,11 @@ class SyncResult:
 
 def file_content_hash(path: str) -> str:
     """使用与索引写入端相同的编码检测及换行归一化。"""
+    from ._bounded_read import read_at_most
     from .indexing_snapshot import _INDEX_SOURCE_BYTE_LIMIT, decode_index_source
 
     with open(path, "rb") as source:
-        data = source.read(_INDEX_SOURCE_BYTE_LIMIT + 1)
+        data = read_at_most(source, _INDEX_SOURCE_BYTE_LIMIT)
     if len(data) > _INDEX_SOURCE_BYTE_LIMIT:
         raise OSError("source exceeds indexing byte limit")
     return hashlib.sha256(decode_index_source(data).encode("utf-8")).hexdigest()
@@ -119,3 +138,54 @@ def get_changes(
         if changed_fn(disk_files[rel], indexed_rows[rel], rel):
             changes["modified"].append(rel)
     return changes
+
+
+#: 本轮成功处理、应带认证时间的动作。
+_CERTIFIED_ACTIONS = ("new", "updated", "unchanged")
+
+
+def stamp_certified_at(
+    conn: Any, action_by_file: Mapping[str, str], epoch: int
+) -> None:
+    """为本轮成功处理的文件盖认证时间（Phase B-3，#1718 / RFC-0039 step 0）。
+
+    新增与更新的文件盖上 ``epoch``；未变文件只在尚未认证（NULL）时补盖，已有的
+    值保持不变。读者只检查 ``certified_at`` 是否为 NULL，时间值本身没有读者；
+    给未变文件重写时间会让每次 1 文件刷新改写全部 ``ast_index`` 行。仍是单条
+    语句（与原先相同的写入形态），写入失败向上抛出，由调用方走既有的失败闭合路径。
+    """
+    paths = [p for p, a in action_by_file.items() if a in _CERTIFIED_ACTIONS]
+    if not paths:
+        return
+    changed = [p for p in paths if action_by_file[p] != "unchanged"]
+    conn.execute(
+        "UPDATE ast_index SET certified_at = ? "  # nosec B608 — 只拼接占位符
+        f"WHERE file_path IN ({','.join('?' * len(paths))}) "
+        "AND (certified_at IS NULL OR file_path IN (SELECT value FROM json_each(?)))",
+        [epoch, *paths, json.dumps(changed, ensure_ascii=False)],
+    )
+
+
+def publication_candidate_rows(
+    cache: Any, snapshot: Any
+) -> frozenset[tuple[str, str, str]] | None:
+    """#1737：发布前会复核源码的版本路由里，盖章用的候选源码行。
+
+    只有 ``GenerationStore`` 的发布路由（``_publication_rechecks_sources``）且捕获
+    时为每个选中文件绑定了内容摘要，才返回 ``(路径, 摘要, 语言)`` 集合；否则返回
+    ``None``，盖章照常现场捕获源码。
+    """
+    if snapshot is None or not getattr(cache, "_publication_rechecks_sources", False):
+        return None
+    bound = getattr(cache, "_bound_source_digests", None)
+    if not isinstance(bound, dict):
+        return None
+    rows: set[tuple[str, str, str]] = set()
+    for entry in snapshot.selected_entries:
+        digest = bound.get(entry.rel_path) or getattr(
+            entry.fingerprint, "content_hash", None
+        )
+        if not digest or not entry.language:
+            return None
+        rows.add((entry.rel_path, str(digest), str(entry.language)))
+    return frozenset(rows)

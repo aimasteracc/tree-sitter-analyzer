@@ -18,6 +18,8 @@ from ..index_symbol_projection import (
 from ..index_symbol_projection import (
     upsert_symbol_projection_state,
 )
+from .backfill_scope import record_file_write
+from .symbol_comments import delete_file_symbol_comments as _delete_symbol_comments
 
 logger = logging.getLogger(__name__)
 _COMMIT_MSG_CACHE: OrderedDict[tuple[str, str], tuple[float, str | None]] = (
@@ -35,17 +37,6 @@ def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
     )
 
 
-def _delete_symbol_comments(conn: sqlite3.Connection, rel_path: str) -> None:
-    """显式清除旧定义的注释；不能依赖所有 SQLite 调用方都启用外键级联。"""
-    if _table_exists(conn, "ast_symbol_comments"):
-        conn.execute(
-            "DELETE FROM ast_symbol_comments WHERE symbol_id IN "
-            "(SELECT id FROM ast_symbol_rows WHERE file_path=?) "
-            "OR NOT EXISTS (SELECT 1 FROM ast_symbol_rows s WHERE s.id=ast_symbol_comments.symbol_id)",
-            (rel_path,),
-        )
-
-
 def _delete_file_rows_if_table_present(
     conn: sqlite3.Connection,
     table: str,
@@ -58,37 +49,74 @@ def _delete_file_rows_if_table_present(
         )
 
 
-def _reset_incoming_edge_resolutions(
-    conn: sqlite3.Connection,
-    rel_path: str,
-) -> None:
-    """撤销指向旧代际或受该文件符号唯一性影响的调用解析。"""
-    rows = conn.execute(
-        "SELECT id, metadata FROM edges "
-        "WHERE kind = 'calls' AND (callee_resolved_file = ? OR callee_name IN ("
-        "SELECT name FROM ast_symbol_rows WHERE file_path = ?))",
-        (rel_path, rel_path),
-    ).fetchall()
+#: 受某文件影响的调用边：解析到该文件，或调用名属于该文件声明的符号（#1562）。
+#: `+kind` 让 kind 条件不可走索引：小表上规划器会改选低选择性的 idx_edges_kind
+#: （CI 的 SQLite 实测如此），这里强制两支分别走 resolved / callee_name 索引。
+INCOMING_RESOLUTION_ROWS_SQL = (
+    "SELECT id, metadata FROM edges "
+    "WHERE +kind = 'calls' AND callee_resolved_file = ? "
+    "UNION SELECT id, metadata FROM edges "
+    "WHERE +kind = 'calls' AND callee_name IN ("
+    "SELECT name FROM ast_symbol_rows WHERE file_path = ?)"
+)
+
+
+#: 解析写入 metadata 的键（Synapse ``_update_params``）；新提取的边没有它们。
+_RESOLUTION_METADATA_KEYS = ("callee_symbol_id", "receiver_binding", "import_alias")
+
+
+def reset_call_edge_rows(conn: sqlite3.Connection, rows: list[Any]) -> None:
+    """把调用边恢复为新提取时的未解析形态（列与 metadata 都与全新重建相同）。
+
+    #1696：解析写入的 ``receiver_binding`` / ``import_alias`` 也一并移除，否则重新
+    解析为未知或别的目标时，旧来源会留在 metadata 里，与全新重建不同。
+    """
     for row in rows:
         metadata = json.loads(row["metadata"] or "{}")
-        metadata.update(
-            {
-                "callee_resolution": "unknown",
-                "callee_resolved_file": "",
-                "callee_symbol_id": None,
-            }
-        )
+        metadata.update({"callee_resolution": "unknown", "callee_resolved_file": ""})
+        # 与新提取的未解析边同形（无此键）：增量删除后的索引须与全新重建逐字节
+        # 相同（#1671 等价门）；读者以缺键与 null 同义。
+        for key in _RESOLUTION_METADATA_KEYS:
+            metadata.pop(key, None)
         conn.execute(
             "UPDATE edges SET callee_resolution = 'unknown', "
             "callee_resolved_file = '', callee_symbol_id = NULL, metadata = ? "
             "WHERE id = ?",
             (json.dumps(metadata, ensure_ascii=False, sort_keys=True), row["id"]),
         )
+
+
+def _reset_incoming_edge_resolutions(
+    conn: sqlite3.Connection,
+    rel_path: str,
+) -> None:
+    """撤销指向旧代际或受该文件符号唯一性影响的调用解析。
+
+    #1562：两个条件分成 UNION 两支，各走 ``idx_edges_resolved`` 与
+    ``idx_edges_callee_name``。原先的 ``OR`` 让规划器退回 ``idx_edges_kind``，
+    每个文件都扫描全部调用边，首次索引因此随边数二次增长（62,263 条边时
+    每次查询 252 ms，UNION 为 0.55 ms，结果集逐行一致）。
+    """
+    rows = conn.execute(INCOMING_RESOLUTION_ROWS_SQL, (rel_path, rel_path)).fetchall()
     target_prefix = f"{rel_path}:"
+    target_range = (target_prefix, target_prefix + "\U0010ffff")
+    # #1696：继承这些类的文件须在本轮回填中重新解析基类，删除前记下它们；被重置的
+    # 边在重置前记下原解析，范围回填据解析面差异决定恢复还是重新解析。
+    extends_edges = [
+        (str(row[0]), str(row[1]), str(row[2]))
+        for row in conn.execute(
+            "SELECT file_path, source_node_id, target_node_id FROM edges "
+            "WHERE kind IN ('extends', 'implements') "
+            "AND target_node_id >= ? AND target_node_id < ?",
+            target_range,
+        )
+    ]
+    record_file_write(conn, rel_path, [row["id"] for row in rows], extends_edges)
+    reset_call_edge_rows(conn, rows)
     conn.execute(
         "DELETE FROM edges WHERE kind IN ('extends', 'implements') "
         "AND target_node_id >= ? AND target_node_id < ?",
-        (target_prefix, target_prefix + "\U0010ffff"),
+        target_range,
     )
 
 
@@ -102,6 +130,12 @@ def discard_file_rows(
     # of SQLite transactions.  Clear them before the first mutation so the
     # ensuing pipeline cannot resurrect a deleted/replaced generation.
     _clear_symbol_resolver_context()
+    has_edges = _table_exists(conn, "edges")
+    if has_edges:
+        # 先撤销受影响的入边解析，再删除符号行：按名称匹配的分支读取本文件的
+        # 符号名，删除之后再执行就什么也匹配不到（#1673 等价门在本仓库发现：
+        # 清除 corpus 文件后，18 条 ``create`` 调用停留在错误的解析上）。
+        _reset_incoming_edge_resolutions(conn, rel_path)
     if fts5_available:
         _delete_fts_rows(conn, rel_path)
     _delete_symbol_comments(conn, rel_path)
@@ -109,11 +143,10 @@ def discard_file_rows(
     _delete_file_rows_if_table_present(conn, "ast_symbol_projection_state", rel_path)
     for table in ("ast_imports", "ast_symbol_activation"):
         _delete_file_rows_if_table_present(conn, table, rel_path)
-    if _table_exists(conn, "edges"):
+    if has_edges:
         from ..graph.edge_store import EdgeStore
 
         EdgeStore(conn, ensure_schema=False).replace_edges_for_file(rel_path, [])
-        _reset_incoming_edge_resolutions(conn, rel_path)
     cursor = conn.execute(
         "DELETE FROM ast_index WHERE file_path = ?",
         (rel_path,),
@@ -647,6 +680,9 @@ def write_graph_edges_for_file(
         branch_ctx = edge.get("branch")
         if branch_ctx is not None:
             edge_metadata["branch"] = branch_ctx
+        receiver_hint = edge.get("receiver_hint")
+        if receiver_hint is not None:
+            edge_metadata["receiver_hint"] = receiver_hint
         edges.append(
             Edge(
                 source,

@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache.extraction import _extract_call_edges
 from tree_sitter_analyzer.core.parser import Parser
@@ -82,7 +83,7 @@ def test_comments_follow_symbol_replacement_and_deletion(tmp_path):
         "def outer():\n    # outer note\n    def inner():\n        # inner note\n        pass\n",
         encoding="utf-8",
     )
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_file(str(source))
         conn = cache.get_conn()
@@ -115,7 +116,7 @@ def test_worker_payload_persists_comments_without_reparsing_source(tmp_path):
     source = tmp_path / "worker.py"
     source.write_text("def run():\n    # worker note\n    pass\n", encoding="utf-8")
     payload = _worker_index_file((str(source), str(tmp_path), "python"))
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         conn = cache.get_conn()
         insert_index_row(

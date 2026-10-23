@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from tests.unit import _navigation_test_support as nav_support
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.mcp.tools.symbol_search_tool import CodeGraphSymbolSearchTool
 
@@ -54,12 +55,13 @@ class TestCodeGraphSymbolSearchExecution:
         self, tmp_path
     ):
         # PR #1350/#1352：v17 操作平面仍不依赖快照认证；这不是 Windows 原生模拟验收。
+        # RFC-0032 slice 5：当前 schema 为 18（写入修订控制表）。
         from tree_sitter_analyzer.cache.schema_extensions import CURRENT_SCHEMA_VERSION
         from tree_sitter_analyzer.incremental_sync import IncrementalSync
 
         source = tmp_path / "app.py"
         source.write_text("def original(): return 1\n", encoding="utf-8")
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         tool = CodeGraphSymbolSearchTool(str(tmp_path))
         try:
             assert cache.index_file(str(source))["status"] == "indexed"
@@ -69,7 +71,7 @@ class TestCodeGraphSymbolSearchExecution:
                     0
                 ]
                 == CURRENT_SCHEMA_VERSION
-                == 17
+                == 18
             )
             assert (
                 conn.execute(
@@ -387,6 +389,38 @@ class TestCodeGraphSymbolSearchExecution:
 
         nav_support.assert_source_failure(
             result, "Symbol search", "INDEX_SNAPSHOT_DEADLINE", "unknown"
+        )
+        symbol._cache.close()
+
+    async def test_certification_deadline_degrades_to_uncertified_coordinates(
+        self, tmp_path, monkeypatch
+    ):
+        # Issue #1561：整仓认证超出捕获期限时不能每次硬失败；返回未认证坐标与下一步。
+        from tree_sitter_analyzer import index_snapshot
+        from tree_sitter_analyzer.api.pulse_evidence import (
+            CERTIFICATION_BOUND_NEXT_STEP,
+        )
+
+        _source, facade, symbol = await nav_support.published_search(tmp_path)
+        monkeypatch.setattr(index_snapshot, "_CERTIFICATION_DEADLINE_SECONDS", -1.0)
+
+        result = await facade.execute(
+            {"action": "symbol", "query": "target", "output_format": "json"}
+        )
+
+        assert (
+            result["success"],
+            result["verdict"],
+            [row["name"] for row in result["results"]],
+        ) == (True, "WARN", ["target"])
+        assert result["source_evidence"] == {
+            "freshness": "unknown",
+            "snapshot_id": None,
+            "source_generation": None,
+            "reason": "INDEX_SNAPSHOT_DEADLINE",
+        }
+        assert result["next_step"] == CERTIFICATION_BOUND_NEXT_STEP.format(
+            reason="INDEX_SNAPSHOT_DEADLINE"
         )
         symbol._cache.close()
 
@@ -747,7 +781,7 @@ async def test_empty_index_does_not_claim_symbol_absence(tmp_path, indexed):
     source.write_text(
         "def authenticate_user(token): return bool(token)\n", encoding="utf-8"
     )
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     tool = CodeGraphSymbolSearchTool(str(tmp_path))
     try:
         if indexed:
@@ -785,12 +819,14 @@ async def test_indexed_zero_symbols_can_report_not_found(tmp_path, empty_project
         result = await tool.execute(
             {"query": "authenticate_user", "output_format": "json"}
         )
+        # #1625：增量运行现在会认证清单，已完成的零符号索引可如实报告 NOT_FOUND
+        # （此前未认证只能是 WARN/unknown），重新钉为 NOT_FOUND/fresh。
         assert (result["success"], result["verdict"], result["results"]) == (
             True,
-            "WARN",
+            "NOT_FOUND",
             [],
         )
-        assert result["source_evidence"]["freshness"] == "unknown"
+        assert result["source_evidence"]["freshness"] == "fresh"
     finally:
         cache.close()
         if tool._cache is not None:

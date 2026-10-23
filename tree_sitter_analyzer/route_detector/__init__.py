@@ -21,11 +21,13 @@ from types import MappingProxyType
 from typing import Any
 
 from ..core.parser import Parser
+from ..encoding_utils import read_file_safe
 from ..languages.lang_extension_map import EXT_TO_LANG
 from ..project_graph import _language_from_ext
 from ..registry.route_cache import RouteCache
 from .go import scan_go_routes
 from .scanners import (
+    python_source_may_declare_routes,
     scan_django_urls,
     scan_express_routes,
     scan_fastapi_decorators,
@@ -414,6 +416,15 @@ class RouteDetector:
     # ------------------------------------------------------------------
 
     def _detect_python_routes(self, file_path: str) -> list[RouteInfo]:
+        # #1638: skip the parse when no Python scanner could match; an
+        # unreadable file falls through to the parser's own error handling.
+        try:
+            text, _encoding = read_file_safe(file_path)
+        except (OSError, UnicodeError) as exc:
+            logger.debug("route prefilter could not read %s: %s", file_path, exc)
+        else:
+            if not python_source_may_declare_routes(text):
+                return []
         tree = self._parse_tree(file_path, "python")
         if not tree:
             return []

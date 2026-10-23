@@ -15,6 +15,7 @@ CodeGraph parity: equivalent to CodeGraph's file-dependency-graph feature.
 
 from typing import Any
 
+from ...import_dependents import group_dependents_by_file
 from ...import_graph import ImportGraph
 from ...utils import setup_logger
 from ._validators import invalid_enum_error
@@ -166,13 +167,16 @@ class CodeGraphImportGraphTool(BaseMCPTool):
         elif mode == "dependents":
             file_path = arguments["file_path"]
             resolved = self.resolve_and_validate_file_path(file_path)
-            dependents = graph.dependents_of(resolved)
+            statements = graph.dependents_of(resolved)
+            # #1596：每个依赖文件一条；语句与行号放在 statements 明细里。
+            dependents = group_dependents_by_file(statements)
             result = {
                 "success": True,
                 "verdict": "INFO" if dependents else "NOT_FOUND",
                 "mode": "dependents",
                 "file": file_path,
                 "dependent_count": len(dependents),
+                "import_statement_count": len(statements),
                 "dependents": dependents,
             }
 
@@ -259,7 +263,11 @@ def _imports_agent_summary(
     elif mode == "dependents":
         file_path = result.get("file", "?")
         count = result.get("dependent_count", 0)
-        summary_line = f"imports dependents: {file_path!r} ← {count} dependent(s)"
+        statements = result.get("import_statement_count", count)
+        summary_line = (
+            f"imports dependents: {file_path!r} ← {count} dependent file(s) "
+            f"({statements} import statement(s))"
+        )
         next_step = "Dependents above must be retested when this file changes."
     elif mode == "blast_radius":
         affected = len(result.get("affected_files", []))

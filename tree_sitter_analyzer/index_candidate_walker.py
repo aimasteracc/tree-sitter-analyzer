@@ -8,6 +8,7 @@ import time
 from collections.abc import Iterable
 from typing import Any
 
+from .discovery_budget import discovery_deadline
 from .ignore_rules import IgnoreRules
 from .ignore_rules import is_gitignored as _is_gitignored
 from .ignore_rules import load_ignore_rules as _load_ignore_rules
@@ -30,12 +31,18 @@ def walk_candidate_entries(
     excluded_dir_names: frozenset[str],
     entry_budget: int,
     path_byte_budget: int,
-    discovery_seconds: float,
+    discovery_seconds: float | None,
     budget_error: str,
     start_relative: str = "",
+    visited_dirs: list[str] | None = None,
 ) -> Iterable[str]:
-    """Yield non-directories while charging every entry before filtering."""
-    deadline = time.monotonic() + discovery_seconds
+    """Yield non-directories while charging every entry before filtering.
+
+    ``visited_dirs`` (when given) receives the relative path of every directory
+    actually listed, root first, so a caller can bind a memoized result to the
+    exact set of directory listings it was derived from.
+    """
+    started = time.monotonic()
     entry_count = 0
     path_bytes = 0
     scan_relative, ignore_rules, scope_ignored = _scope_ignore_rules(
@@ -55,8 +62,9 @@ def walk_candidate_entries(
             excluded_dir_names,
             entry_budget,
             path_byte_budget,
-            deadline,
+            (started, discovery_seconds),
             budget_error,
+            visited_dirs,
         )
         return
 
@@ -79,6 +87,8 @@ def walk_candidate_entries(
                 getattr(root_info, "st_mode", 0),
             )
             scanners.append((os.scandir(root_fd), root_fd, scan_relative))
+            if visited_dirs is not None:
+                visited_dirs.append(scan_relative)
             root_fd = None  # the scanner frame owns it now
         except OSError as exc:
             raise CandidateDiscoveryError(_DISCOVERY_ERROR) from exc
@@ -106,7 +116,8 @@ def walk_candidate_entries(
             if (
                 entry_count > entry_budget
                 or path_bytes > path_byte_budget
-                or time.monotonic() > deadline
+                or time.monotonic()
+                > discovery_deadline(started, entry_count, discovery_seconds)
             ):
                 raise CandidateDiscoveryBudgetExceeded(budget_error)
             try:
@@ -154,6 +165,8 @@ def walk_candidate_entries(
                 project_root, rel_path, ignore_rules.get(parent_rel, [])
             )
             scanners.append((child_scanner, child_fd, rel_path))
+            if visited_dirs is not None:
+                visited_dirs.append(rel_path)
         # Enumeration through the pinned descriptor is authoritative only while
         # the caller-visible pathname still names that exact directory.  A
         # rename/replacement must not let an old empty root certify a new tree.
@@ -225,8 +238,9 @@ def _walk_path_entries(
     excluded_dir_names: frozenset[str],
     entry_budget: int,
     path_byte_budget: int,
-    deadline: float,
+    budget: tuple[float, float | None],
     budget_error: str,
+    visited_dirs: list[str] | None = None,
 ) -> Iterable[str]:
     """Non-POSIX fallback; secure snapshot capture is unsupported on this path."""
     entry_count = 0
@@ -235,6 +249,8 @@ def _walk_path_entries(
     try:
         try:
             scanners.append((os.scandir(scan_root), scan_relative))
+            if visited_dirs is not None:
+                visited_dirs.append(scan_relative)
         except OSError as exc:
             raise CandidateDiscoveryError(_DISCOVERY_ERROR) from exc
         while scanners:
@@ -259,7 +275,8 @@ def _walk_path_entries(
             if (
                 entry_count > entry_budget
                 or path_bytes > path_byte_budget
-                or time.monotonic() > deadline
+                or time.monotonic()
+                > discovery_deadline(budget[0], entry_count, budget[1])
             ):
                 raise CandidateDiscoveryBudgetExceeded(budget_error)
             try:
@@ -286,6 +303,8 @@ def _walk_path_entries(
                     project_root, rel_path, ignore_rules.get(parent_rel, [])
                 )
                 scanners.append((child_scanner, rel_path))
+                if visited_dirs is not None:
+                    visited_dirs.append(rel_path)
     finally:
         for scanner, _rel in reversed(scanners):
             scanner.close()

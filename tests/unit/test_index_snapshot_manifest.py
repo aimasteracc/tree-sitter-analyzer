@@ -7,6 +7,9 @@ import sqlite3
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
+from tree_sitter_analyzer.index_certification_tree import CertificationTree
+
 requires_posix_snapshot = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
 requires_posix_fd = requires_posix_snapshot
 
@@ -344,12 +347,11 @@ def test_backup_expiring_during_copy_returns_deadline(tmp_path, monkeypatch):
     import time
 
     import tree_sitter_analyzer.index_snapshot as snapshot
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_snapshot_schema import stamp_full_index_manifest
 
     source = tmp_path / "sample.py"
     source.write_text("value = 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(tmp_path)
     cache.index_file(str(source))
     stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
     cache.close()
@@ -435,8 +437,11 @@ def test_manifest_writer_uses_portable_source_certifier(
     conn.execute("INSERT INTO ast_index VALUES ('sample.py', 'hash', 'python')")
     monkeypatch.setattr(schema, "os", PortableOS())
     monkeypatch.setattr(schema, "strict_call_graph_marker", lambda _conn: True)
+    # RFC-0039：盖章的承诺接缝（认证根与认证树）。
     monkeypatch.setattr(
-        schema, "index_fingerprint", lambda *_args: "sha256:" + "a" * 64
+        schema,
+        "stamp_commitment",
+        lambda *_args, **_kwargs: ("merkle:" + "a" * 64, CertificationTree(())),
     )
     monkeypatch.setattr(
         schema, "source_fingerprint", lambda *_args: "sha256:" + "b" * 64
@@ -479,6 +484,59 @@ def test_manifest_writer_uses_portable_source_certifier(
         "SELECT canonical_root, file_count, manifest_version "
         "FROM ast_index_snapshot_manifest"
     ).fetchone()
-    assert tuple(row) == (schema.os.path.realpath(str(tmp_path)), 1, 2)
+    assert tuple(row) == (schema.os.path.realpath(str(tmp_path)), 1, 3)
     assert len(observed) == 1
+    conn.close()
+
+
+def test_manifest_writer_shares_one_stamp_deadline(tmp_path, monkeypatch) -> None:
+    # Issue #1561：旧的 5 秒指纹上限使 ~700 文件以上的索引永远无法盖戳认证；
+    # 索引指纹与源码捕获共用一个绝对期限，不得各自续借预算。
+    import time
+    from types import SimpleNamespace
+
+    import tree_sitter_analyzer.index_snapshot_schema as schema
+    import tree_sitter_analyzer.portable_source_snapshot as portable
+
+    class PortableOS:
+        name = "nt"
+        path = schema.os.path
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        schema.SCHEMA_V13_INDEX_SNAPSHOT
+        + "CREATE TABLE ast_index(file_path TEXT, content_hash TEXT, language TEXT);"
+    )
+    rows = frozenset({("sample.py", "hash", "python")})
+    conn.execute("INSERT INTO ast_index VALUES ('sample.py', 'hash', 'python')")
+    deadlines: list[float] = []
+    monkeypatch.delenv("TSA_FINGERPRINT_DEADLINE_SECONDS", raising=False)
+    monkeypatch.setattr(schema, "os", PortableOS())
+    monkeypatch.setattr(schema, "strict_call_graph_marker", lambda _conn: True)
+    monkeypatch.setattr(
+        schema,
+        "stamp_commitment",
+        lambda _conn, _root, *, deadline: (
+            deadlines.append(deadline) or ("merkle:" + "a" * 64, CertificationTree(()))
+        ),
+    )
+    monkeypatch.setattr(
+        schema, "source_fingerprint", lambda *_args: "sha256:" + "b" * 64
+    )
+    monkeypatch.setattr(schema, "recorded_source_rows", lambda _conn: rows)
+    monkeypatch.setattr(
+        portable,
+        "capture_portable_source_snapshot",
+        lambda _root, _scope, *, deadline: (
+            deadlines.append(deadline)
+            or SimpleNamespace(state="exact", rows=rows, reason=None)
+        ),
+    )
+    started = time.monotonic()
+
+    schema.stamp_full_index_manifest(conn, str(tmp_path))
+
+    assert (len(deadlines), deadlines[0] == deadlines[1]) == (2, True)
+    assert round(deadlines[0] - started) == 120
     conn.close()

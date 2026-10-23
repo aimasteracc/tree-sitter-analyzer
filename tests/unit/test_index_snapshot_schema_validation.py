@@ -7,6 +7,8 @@ import sqlite3
 
 import pytest
 
+from tests.unit._ast_cache_helpers import engine_cache, legacy_cache
+
 requires_posix_fd = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
 # 纯 SQLite 校验跨平台执行；需要 POSIX 描述符的用例保留各自的标记。
 
@@ -95,11 +97,10 @@ def _legacy_cache_layout(tmp_path, layout):
 @pytest.mark.parametrize("layout", ["v13", "canonical15", "experimental15"])
 def test_legacy_layout_upgrade_preserves_data_and_is_idempotent(tmp_path, layout):
     """PR #1350/#1352：三种真实旧布局统一升级，不因相同版本号漏列或丢失用户投影。"""
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_snapshot_schema import validate_snapshot_schema
 
     root, path = _legacy_cache_layout(tmp_path, layout)
-    cache = ASTCache(str(root), db_path=str(path))
+    cache = legacy_cache(str(root), db_path=str(path))
     try:
         db = cache.get_conn()
         assert [
@@ -107,7 +108,7 @@ def test_legacy_layout_upgrade_preserves_data_and_is_idempotent(tmp_path, layout
             for r in db.execute(
                 "SELECT version FROM ast_schema_version WHERE version>=13 ORDER BY version"
             )
-        ] == [13, 14, 15, 16, 17]
+        ] == [13, 14, 15, 16, 17, 18]
         assert validate_snapshot_schema(db) is None
         assert db.execute("SELECT certified_at FROM ast_index").fetchone()[0] == (
             456 if layout == "canonical15" else None
@@ -153,7 +154,7 @@ def test_legacy_layout_upgrade_preserves_data_and_is_idempotent(tmp_path, layout
         before = tuple(db.iterdump())
     finally:
         cache.close()
-    reopened = ASTCache(str(root), db_path=str(path))
+    reopened = legacy_cache(str(root), db_path=str(path))
     try:
         assert tuple(reopened.get_conn().iterdump()) == before
     finally:
@@ -173,20 +174,19 @@ def test_entire_extension_upgrade_rolls_back_and_retries(tmp_path, layout, fault
     _, path = _legacy_cache_layout(tmp_path, layout)
     db = sqlite3.connect(path)
     migrations = [(13, apply_snapshot_migration)] + [
-        (v, getattr(schema, f"apply_migration_v{v}")) for v in range(14, 18)
+        (v, getattr(schema, f"apply_migration_v{v}")) for v in range(14, 19)
     ]
     try:
         if fault == "record":
             db.execute(
-                "CREATE TEMP TRIGGER deny_record BEFORE INSERT ON ast_schema_version WHEN NEW.version=17 BEGIN SELECT RAISE(ABORT,'record denied'); END"
+                "CREATE TEMP TRIGGER deny_record BEFORE INSERT ON ast_schema_version WHEN NEW.version=18 BEGIN SELECT RAISE(ABORT,'record denied'); END"
             )
         elif fault == "interrupt":
 
             def interrupt(sql):
-                if (
-                    sql.startswith("INSERT OR IGNORE INTO ast_schema_version")
-                    and "LSP resolution cache" in sql
-                ):
+                # RFC-0032 slice 5：中断末次迁移 v18 的数据写入（写入状态行）。中断标志
+                # 由下一条语句消费；v18 版本凭证 INSERT 之后已没有检查它的语句。
+                if sql.startswith("INSERT OR IGNORE INTO ast_writer_state"):
                     db.interrupt()
 
             db.set_trace_callback(interrupt)
@@ -222,16 +222,15 @@ def test_entire_extension_upgrade_rolls_back_and_retries(tmp_path, layout, fault
 
 
 def test_future_schema_is_rejected_without_mutating_cache(tmp_path):
-    """PR #1350/#1352：未来 v18 在任何迁移写入之前被拒绝，原库保持可由新版处理。"""
-    from tree_sitter_analyzer.ast_cache import ASTCache
+    """PR #1350/#1352：未来 v19 在任何迁移写入之前被拒绝，原库保持可由新版处理。"""
 
     root, path = _legacy_cache_layout(tmp_path, "experimental15")
     with sqlite3.connect(path) as db:
-        db.execute("INSERT INTO ast_schema_version VALUES (18,0,'future')")
+        db.execute("INSERT INTO ast_schema_version VALUES (19,0,'future')")
     with sqlite3.connect(path) as db:
         before = tuple(db.iterdump())
     with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
-        ASTCache(str(root), db_path=str(path))
+        legacy_cache(str(root), db_path=str(path))
     with sqlite3.connect(path) as db:
         assert tuple(db.iterdump()) == before
 
@@ -242,14 +241,13 @@ def test_future_schema_is_rejected_without_mutating_cache(tmp_path):
 )
 def test_unrecognized_experimental_shape_is_not_certified(tmp_path, table, column):
     """PR #1350/#1352：超出已知旧布局的缺列不能因 CREATE IF NOT EXISTS 被当成升级成功。"""
-    from tree_sitter_analyzer.ast_cache import ASTCache
 
     root, path = _legacy_cache_layout(tmp_path, "experimental15")
     with sqlite3.connect(path) as db:
         db.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
         before = tuple(db.iterdump())
     with pytest.raises(sqlite3.OperationalError, match=column):
-        ASTCache(str(root), db_path=str(path))
+        legacy_cache(str(root), db_path=str(path))
     with sqlite3.connect(path) as db:
         assert tuple(db.iterdump()) == before
 
@@ -259,11 +257,10 @@ def test_unrecognized_experimental_shape_is_not_certified(tmp_path, table, colum
 )
 def test_failed_optional_migration_does_not_certify_schema(tmp_path, version, table):
     """PR #1352：只读存储上的迁移失败不能写入版本凭证，snapshot 校验必须拒绝残缺 schema。"""
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.cache import schema
     from tree_sitter_analyzer.index_snapshot_schema import validate_snapshot_schema
 
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         db = cache.get_conn()
         db.execute(f"DROP TABLE {table}")
@@ -289,6 +286,8 @@ def test_failed_optional_migration_does_not_certify_schema(tmp_path, version, ta
 
 def test_schema_version_rejects_unknown_row_immediately():
     # PR #1352：未来版本测试必须相对当前版本，不能用已支持的 14。
+    # RFC-0032 slice 5：读者要求 17、接受至 CURRENT（18）；未来版本相对 CURRENT。
+    from tree_sitter_analyzer.cache.schema import CURRENT_SCHEMA_VERSION
     from tree_sitter_analyzer.index_snapshot_schema import (
         SNAPSHOT_SCHEMA_VERSION,
         validate_snapshot_schema,
@@ -298,23 +297,24 @@ def test_schema_version_rejects_unknown_row_immediately():
     conn.execute("CREATE TABLE ast_schema_version(version)")
     conn.executemany(
         "INSERT INTO ast_schema_version VALUES(?)",
-        [(SNAPSHOT_SCHEMA_VERSION + 1,), (SNAPSHOT_SCHEMA_VERSION,)],
+        [(CURRENT_SCHEMA_VERSION + 1,), (SNAPSHOT_SCHEMA_VERSION,)],
     )
     with pytest.raises(ValueError, match="INCOMPATIBLE_SCHEMA"):
         validate_snapshot_schema(conn)
     conn.close()
 
 
-@pytest.mark.parametrize("future_version", [None, 18])
+@pytest.mark.parametrize("future_version", [None, 19])
 def test_snapshot_reader_matches_latest_real_migration(tmp_path, future_version):
-    # PR #1350/#1352：canonical 14/15 与新 16/17 必须同时存在，未来 18 不可接受。
-    from tree_sitter_analyzer.ast_cache import ASTCache
+    # PR #1350/#1352：canonical 14/15 与新 16/17 必须同时存在，未来 19 不可接受。
+    # RFC-0032 slice 5：18 只增加写入修订控制表，读者仍要求 17（不随 18 提升）。
+    from tree_sitter_analyzer.cache.schema import CURRENT_SCHEMA_VERSION
     from tree_sitter_analyzer.index_snapshot_schema import (
         SNAPSHOT_SCHEMA_VERSION,
         validate_snapshot_schema,
     )
 
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         conn = cache.get_conn()
         versions = [
@@ -323,8 +323,8 @@ def test_snapshot_reader_matches_latest_real_migration(tmp_path, future_version)
                 "SELECT version FROM ast_schema_version WHERE version >= 13 ORDER BY version"
             )
         ]
-        assert versions == [13, 14, 15, 16, 17]
-        assert SNAPSHOT_SCHEMA_VERSION == max(versions) == 17
+        assert versions == [13, 14, 15, 16, 17, 18]
+        assert (SNAPSHOT_SCHEMA_VERSION, CURRENT_SCHEMA_VERSION) == (17, max(versions))
         assert "certified_at" in {
             row[1] for row in conn.execute("PRAGMA table_info(ast_index)")
         }
@@ -394,12 +394,11 @@ def test_schema_column_cap_is_checked_per_required_table(monkeypatch):
 
 def test_stamp_rejects_new_source_and_preserves_old_manifest(tmp_path):
     # PR #1253 review thread 2083: post-build additions prevent certification.
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_snapshot_schema import stamp_full_index_manifest
 
     source = tmp_path / "sample.py"
     source.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_file(str(source))
     stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
     (tmp_path / "late.py").write_text("late = True\n")
@@ -643,12 +642,11 @@ def test_schema_column_name_is_bounded_inside_sqlite_before_materialization():
 
 
 def test_manifest_stamp_rejects_old_call_graph_pipeline_marker(tmp_path):
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_snapshot_schema import stamp_full_index_manifest
 
     source = tmp_path / "sample.py"
     source.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_file(str(source))
     conn = cache.get_conn()
     conn.execute("UPDATE ast_call_graph_state SET pipeline_version = 1 WHERE id = 1")
@@ -692,6 +690,14 @@ def test_read_existing_forces_memory_temp_store_before_fingerprint(
         return real_fingerprint(connection, root)
 
     monkeypatch.setattr(owner, "index_fingerprint", fingerprint_with_temp_store_check)
+    # RFC-0039：manifest v3 的读者重算认证根，同样须在内存临时存储上运行。
+    real_root = owner.certification_root
+
+    def root_with_temp_store_check(connection, root, **kwargs):
+        observed.append(connection.execute("PRAGMA temp_store").fetchone()[0])
+        return real_root(connection, root, **kwargs)
+
+    monkeypatch.setattr(owner, "certification_root", root_with_temp_store_check)
     try:
         snapshot = owner.read_existing_snapshot(str(tmp_path))
         with owner.acquire_index_snapshot(

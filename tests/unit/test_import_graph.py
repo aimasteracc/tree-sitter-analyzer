@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.import_graph import (
     ImportEdge,
@@ -16,6 +18,9 @@ from tree_sitter_analyzer.import_graph import (
     ImportGraphResult,
     _resolve_js_import,
     _resolve_python_import,
+)
+from tree_sitter_analyzer.import_graph_submodules import (
+    python_submodule_targets_from_text,
 )
 
 ROOT = os.path.normpath("/proj")
@@ -199,6 +204,34 @@ class TestImportGraphQueries:
         g = _graph([("a.py", "b.py")])
         assert g.dependents_of("nope.py") == []
 
+    def test_dependents_of_matches_backslash_relative_path(self) -> None:
+        # #1558 (dogfood 2026-10-14)：Windows 风格路径查询 "/" 缓存键曾静默返回 0。
+        g = _graph([("pkg/a.py", "pkg/c.py"), ("pkg/b.py", "pkg/c.py")])
+        sources = {d["source"] for d in g.dependents_of("pkg\\c.py")}
+        assert sources == {"pkg/a.py", "pkg/b.py"}
+
+    def test_dependents_of_matches_absolute_path(self) -> None:
+        # #1558：MCP 工具解析为绝对路径后，Windows 上 relpath 产生 "\\" 分隔符。
+        g = _graph([("pkg/a.py", "pkg/c.py")])
+        absolute = os.path.join(ROOT, "pkg", "c.py")
+        assert [d["source"] for d in g.dependents_of(absolute)] == ["pkg/a.py"]
+
+    def test_dependents_of_matches_drive_qualified_absolute_path(self) -> None:
+        # develop windows 3.13 CI (2026-10-16)：带盘符的真实绝对路径同样命中 "/" 缓存键。
+        g = _graph([("pkg/a.py", "pkg/c.py")])
+        absolute = os.path.abspath(os.path.join(ROOT, "pkg", "c.py"))
+        assert [d["source"] for d in g.dependents_of(absolute)] == ["pkg/a.py"]
+
+    def test_dependencies_of_matches_backslash_relative_path(self) -> None:
+        # #1558：正向依赖同样按分隔符无关的键查找。
+        g = _graph([("pkg/a.py", "pkg/b.py")])
+        assert [d["target"] for d in g.dependencies_of("pkg\\a.py")] == ["pkg/b.py"]
+
+    def test_blast_radius_matches_backslash_relative_path(self) -> None:
+        # #1558：影响面计算的起点键也必须命中 "/" 缓存键。
+        g = _graph([("pkg/b.py", "pkg/c.py"), ("pkg/a.py", "pkg/b.py")])
+        assert g.blast_radius("pkg\\c.py")["transitive_dependents"] == 2
+
     def test_blast_radius_transitive(self) -> None:
         # c <- b <- a  (changing c affects b and a)
         g = _graph([("b.py", "c.py"), ("a.py", "b.py")])
@@ -265,6 +298,22 @@ class TestImportGraphBuild:
         assert result.edge_count == 1
         assert result.edges[0].source_file == "a.py"
         assert result.edges[0].target_file == "b.py"
+
+    def test_dependents_of_builds_graph_lazily(self, monkeypatch) -> None:
+        # 未先调用 build() 时，dependents_of 必须自行从缓存构图再查询。
+        class _FakeCache:
+            def __init__(self, root: str) -> None:
+                pass
+
+            def get_imports(self) -> dict[str, list[str]]:
+                return {"a.py": ["import b"], "b.py": []}
+
+            def close(self) -> None:
+                pass
+
+        monkeypatch.setattr("tree_sitter_analyzer.ast_cache.ASTCache", _FakeCache)
+        graph = ImportGraph(ROOT)
+        assert [d["source"] for d in graph.dependents_of("b.py")] == ["a.py"]
 
     def test_build_resolves_esm_import_from_mts_file(self, monkeypatch) -> None:
         """PUBLIC API: an ESM import in a .mts file must produce an edge.
@@ -402,3 +451,61 @@ class TestImportGraphBuild:
         result = ImportGraph(ROOT).build()
         assert result.edge_count == 0
         assert result.edges == []
+
+
+def _index_python_tree(root, files: dict[str, str]) -> None:
+    for rel, text in files.items():
+        target = root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+    cache = ASTCache(str(root))
+    cache.index_project(max_files=50)
+    cache.close()
+
+
+class TestSubmoduleImportEdges:
+    """#1579：``from pkg import sub`` 同时依赖包与子模块（规则同 #1566）。"""
+
+    def test_package_init_importing_its_submodule_has_no_self_edge(
+        self, tmp_path
+    ) -> None:
+        # #1579：包自身解析回 __init__.py 不成边，只保留指向子模块的边。
+        _index_python_tree(
+            tmp_path,
+            {"pkg/__init__.py": "from pkg import mod\n", "pkg/mod.py": "X = 1\n"},
+        )
+        result = ImportGraph(str(tmp_path)).build()
+        assert [(e.source_file, e.target_file) for e in result.edges] == [
+            ("pkg/__init__.py", "pkg/mod.py")
+        ]
+
+    def test_unparseable_statement_adds_no_submodule_target(self) -> None:
+        # #1579：截断 / 非 Python 文本只会少加边，不会凭空造边。
+        assert (
+            python_submodule_targets_from_text(
+                "from pkg import (", "a.py", {"pkg/mod.py"}
+            )
+            == []
+        )
+
+    def test_dependents_match_realpath_file_under_symlinked_root(
+        self, tmp_path
+    ) -> None:
+        # #1579（macOS CI）：根目录经符号链接而调用方路径已 realpath 时仍须命中。
+        real = tmp_path / "real"
+        link = tmp_path / "link"
+        _index_python_tree(
+            real,
+            {
+                "pkg/__init__.py": "",
+                "pkg/mod.py": "X = 1\n",
+                "app.py": "from pkg import mod\n",
+            },
+        )
+        try:
+            link.symlink_to(real, target_is_directory=True)
+        except OSError as exc:  # Windows 无 symlink 权限（WinError 1314）
+            pytest.skip(f"symlink unavailable: {exc}")
+        graph = ImportGraph(str(link))
+        dependents = graph.dependents_of(str((real / "pkg" / "mod.py").resolve()))
+        assert [d["source"] for d in dependents] == ["app.py"]

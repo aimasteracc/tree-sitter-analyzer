@@ -1,16 +1,16 @@
 # RFC-0030: Pulse 的源码版本证据
 
-- **Status**: draft
+- **Status**: draft — source-certified Pulse merged in #1404 (2026-09-08); 2/7 acceptance criteria verified 2026-10-13
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-09-08
-- **Last updated**: 2026-09-08
+- **Last updated**: 2026-10-13
 - **Tracking issue**: TRUST-C1 / TRUST-I1，见 `ROADMAP-no1-agent-trust.md`
 - **Affected source paths**:
   - `tree_sitter_analyzer/api/pulse.py`
   - `tree_sitter_analyzer/api/pulse_evidence.py`
   - `tree_sitter_analyzer/mcp/tools/pulse_tool.py`
   - `tree_sitter_analyzer/cli/commands/mcp_commands/_specs_pulse.py`
-  - `tests/unit/api/test_pulse.py`
+  - `tests/unit/api/test_pulse_read_consistency.py`
   - `tests/unit/mcp/tools/test_pulse_tool.py`
   - `tests/unit/cli/test_mcp_commands.py`
 
@@ -149,8 +149,8 @@ RFC-0025 定义常驻认证及后备认证；RFC-0022 定义 snapshot truth。
 
 ## Acceptance criteria
 
-- [ ] 单条与批量默认读取绑定认证连接，查询后源码验证不可绕过
-- [ ] stale/missing/unknown 与 fresh not-found 可区分，预算不移除证据
+- [x] 单条与批量默认读取绑定认证连接，查询后源码验证不可绕过
+- [x] stale/missing/unknown 与 fresh not-found 可区分，预算不移除证据
 - [ ] 旧名、新名、增改删调用者、读期间保存的真实测试通过
 - [ ] 三平台缺失/不完整/完整索引路径验证，失败不洗白为通过
 - [ ] CLI↔MCP parity 与真实 CLI smoke 通过

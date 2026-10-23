@@ -474,7 +474,8 @@ class TestDefinitionBodyInlining:
             encoding="utf-8",
         )
         cache = ASTCache(str(tmp_path))
-        cache.index_project(max_files=100)
+        # #1625：增量运行现在会认证清单；本组用例需要显式未认证的索引。
+        cache.index_project(max_files=100, certify_manifest=False)
         cache.close()
         return str(tmp_path)
 
@@ -759,3 +760,23 @@ class TestBodyInliningDegrades:
         definition = result["definition"]
         assert "bodied_count" not in definition
         assert "body_cap" not in definition
+
+
+@pytest.mark.slow_ok  # 两次真实索引（首建 + 刷新）即被测行为
+@pytest.mark.asyncio
+async def test_navigate_hierarchy_sees_new_caller_after_in_server_refresh(tmp_path):
+    # Issue #1611：references 已含新调用者，但 hierarchy 仍来自旧调用图。
+    from tests.unit._index_refresh_support import (
+        add_caller_and_refresh,
+        make_indexed_project,
+    )
+
+    project = await make_indexed_project(tmp_path)
+    tool = CodeGraphNavigateTool(str(project))
+    await tool.execute({"symbol": "target"})
+    await add_caller_and_refresh(project)
+    result = await tool.execute({"symbol": "target"})
+    assert sorted(c["name"] for c in result["hierarchy"]["callers"]) == [
+        "new_caller",
+        "old_caller",
+    ]

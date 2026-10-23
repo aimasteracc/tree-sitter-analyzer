@@ -24,6 +24,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from .ast_cache import _EXT_TO_LANG
+from .cache.admission import (
+    AdmissionFailure,
+    admission_failure_of,
+    admission_failure_payload,
+)
 from .file_watcher_polling import PollingScanner
 from .incremental_sync import IncrementalSync
 
@@ -54,6 +59,8 @@ class WatcherStats:
     last_sync_at: float = 0.0
     errors: int = 0
     uptime_seconds: float = 0.0
+    # RFC-0032 slice 4：最近一次准入失败的答复；成功的完整同步后清空。
+    last_admission_error: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -62,6 +69,11 @@ class WatcherStats:
             "last_sync_at": self.last_sync_at,
             "errors": self.errors,
             "uptime_seconds": round(self.uptime_seconds, 1),
+            "last_admission_error": (
+                dict(self.last_admission_error)
+                if self.last_admission_error is not None
+                else None
+            ),
         }
 
 
@@ -179,6 +191,7 @@ class FileWatcherDaemon:
                 syncs_triggered=self._stats.syncs_triggered,
                 last_sync_at=self._stats.last_sync_at,
                 errors=self._stats.errors,
+                last_admission_error=self._stats.last_admission_error,
             )
         if self._started_at:
             stats.uptime_seconds = time.monotonic() - self._started_at
@@ -262,8 +275,14 @@ class FileWatcherDaemon:
 
         self._request_sync()
 
-    def _request_sync(self, *, retry: bool = False) -> None:
-        """合并通知与重试，临时故障指数退避且不推迟已排队的文件通知。"""
+    def _request_sync(
+        self, *, retry: bool = False, base_delay: float | None = None
+    ) -> None:
+        """合并通知与重试，临时故障指数退避且不推迟已排队的文件通知。
+
+        ``base_delay`` 给出重试退避的起点（准入失败为 ``retry_after_ms``）；
+        缺省时沿用轮询间隔。
+        """
         if retry and not self.is_running():
             return
         with self._pending_lock:
@@ -273,7 +292,8 @@ class FileWatcherDaemon:
                 return
             delay = self._debounce
             if retry:
-                delay = min(60.0, self._poll_interval * 2**self._retry_attempt)
+                base = self._poll_interval if base_delay is None else base_delay
+                delay = min(60.0, base * 2**self._retry_attempt)
                 self._retry_attempt = min(6, self._retry_attempt + 1)
             else:
                 self._retry_attempt = 0
@@ -289,6 +309,12 @@ class FileWatcherDaemon:
 
     def _flush_pending(self) -> None:
         with self._pending_lock:
+            if self._stop_event.is_set():
+                # #1667：stop() 已取消防抖计时器；退出路径（轮询循环的 finally、
+                # 已醒来的计时器回调）不得再把它变成一次完整同步——那会让停止
+                # 等待一整次索引写入，负载下超过 stop() 的期限。请求与排队的路径
+                # 保留，重新 start 时由启动对齐（#1405）兑现。
+                return
             pending = bool(self._pending) or self._sync_requested
             self._pending.clear()
             self._sync_requested = False
@@ -310,6 +336,7 @@ class FileWatcherDaemon:
 
     def _perform_sync(self) -> dict[str, Any]:
         try:
+            from .cache.writer_state import bind_writer_revision
             from .constants import EXCLUDE_DIRS
             from .index_source_scope import make_source_scope_descriptor
             from .indexing_candidate_materialization import (
@@ -324,6 +351,8 @@ class FileWatcherDaemon:
 
             # 与手动同步使用相同默认范围和冻结候选，自动刷新也必须重建认证。
             scope = make_source_scope_descriptor()
+            # RFC-0032 slice 5：自定义路径缓存先绑定写入修订再捕获；默认定位符为 None。
+            writer_revision = bind_writer_revision(self._cache)
             candidate = build_index_candidate_snapshot(
                 self._cache.project_root,
                 max_files=scope.certification_max_files,
@@ -332,14 +361,19 @@ class FileWatcherDaemon:
                     root, excluded_dir_names=frozenset(EXCLUDE_DIRS)
                 ),
                 language_fn=_language_from_ext,
+                writer_revision=writer_revision,
             )
+            from .call_graph_warm import watcher_refresh
+
             try:
-                result = self._sync.sync(
-                    max_files=scope.certification_max_files,
-                    exclude_patterns=scope.effective_excludes,
-                    candidate_snapshot=candidate,
-                    source_scope=scope,
-                )
+                # #1708：监视器驱动的刷新发布后在后台为新版本构图（显式刷新不构图）。
+                with watcher_refresh():
+                    result = self._sync.sync(
+                        max_files=scope.certification_max_files,
+                        exclude_patterns=scope.effective_excludes,
+                        candidate_snapshot=candidate,
+                        source_scope=scope,
+                    )
             finally:
                 release_index_candidate_snapshot(candidate)
             with self._stats_lock:
@@ -348,7 +382,7 @@ class FileWatcherDaemon:
             if (
                 candidate.discovery_error
                 or candidate.frozen_error
-                or result.errors
+                or _transient_errors(result)
                 or result.backfill_errors
                 or result.manifest_certification_failed
                 or any(
@@ -361,13 +395,51 @@ class FileWatcherDaemon:
             elif result.scope_complete:
                 with self._pending_lock:
                     self._retry_attempt = 0
+                with self._stats_lock:
+                    # RFC-0032：成功的完整同步清除准入诊断。
+                    self._stats.last_admission_error = None
             return result.to_dict()
         except Exception as exc:
             with self._stats_lock:
                 self._stats.errors += 1
             logger.error("sync failed: %s", exc)
-            self._request_sync(retry=True)
-            return {"error": str(exc)}
+            failure = admission_failure_of(exc)
+            if failure is None:
+                self._request_sync(retry=True)
+                return {"error": str(exc)}
+            return self._admission_failed(failure, str(exc))
+
+    def _admission_failed(
+        self, failure: AdmissionFailure, error: str
+    ) -> dict[str, Any]:
+        """返回与 CLI/MCP 相同的类型化答复，记录诊断，只为可重试码安排重试。
+
+        RFC-0032 slice 4：重试间隔 5、10、20、40 秒，之后封顶 60 秒，每次重新捕获
+        候选；需要恢复的存储不会自动重放。
+        """
+        payload = admission_failure_payload(failure, error)
+        with self._stats_lock:
+            self._stats.last_admission_error = payload
+        if failure.contract.retryable:
+            self._request_sync(
+                retry=True, base_delay=failure.contract.retry_after_ms / 1000
+            )
+        return dict(payload)
+
+
+def _transient_errors(result: Any) -> bool:
+    """#1730：同步结果里有值得重试的错误；只有稳定的单文件失败时不重试。
+
+    稳定失败（缺少可选语法、同一字节解析失败，#1554 / #1671）的重试只会得到同一
+    失败：把它当作临时错误会让一次编辑引发 1、2、4……秒的退避重试，之后每 60 秒
+    一次同步，永不停止。读写失败等临时错误（不带稳定标记）照旧重试。
+    """
+    from .cache.publication_policy import stable_failures_only
+
+    errors = int(getattr(result, "errors", 0) or 0)
+    if not errors:
+        return False
+    return not stable_failures_only(getattr(result, "details", ()) or (), errors)
 
 
 class _WatchdogHandler:

@@ -8,6 +8,7 @@ import sqlite3
 from typing import Any
 
 from ._ast_cache_database_mixin import ASTCacheSurface
+from .cache.graph_input_rows import FunctionRows, read_function_rows
 from .cache.helpers import _build_function_entry
 from .cache.query import fts_search as _fts_search
 from .cache.query import fts_search_ranked as _fts_search_ranked
@@ -88,12 +89,15 @@ class ASTCacheQueryMixin(ASTCacheSurface):
             return mutate_published_cache(
                 self, lambda writable: writable.invalidate(file_path)
             )
-        removed = _invalidate(
-            self._get_conn(),
-            file_path,
-            self.project_root,
-            self._fts5_available,
-        )
+        from .cache.writer_state import writer_operation
+
+        with writer_operation(self):  # RFC-0032 slice 5：原地写入的修订号绑定
+            removed = _invalidate(
+                self._get_conn(),
+                file_path,
+                self.project_root,
+                self._fts5_available,
+            )
         if removed:
             try:
                 from .knowledge_graph.stores import LadybugKnowledgeGraphStore
@@ -105,17 +109,11 @@ class ASTCacheQueryMixin(ASTCacheSurface):
 
     def get_functions(self) -> list[dict[str, Any]]:
         """Return every indexed function and method definition."""
-        rows = (
-            self._get_conn()
-            .execute("SELECT file_path, symbols_json, language FROM ast_index")
-            .fetchall()
-        )
-        return [
-            _build_function_entry(symbol, row["file_path"], row["language"])
-            for row in rows
-            for symbol in json.loads(row["symbols_json"]).get("symbols", [])
-            if symbol.get("kind") in ("function", "method")
-        ]
+        return read_function_rows(self._get_conn()).to_functions()
+
+    def get_function_rows(self) -> FunctionRows:
+        """#1657：``get_functions`` 解析前的原始行（供构图输入摘要）。"""
+        return read_function_rows(self._get_conn())
 
     def get_functions_by_file(self, file_path: str) -> list[dict[str, Any]]:
         """Return indexed function definitions for one file."""
@@ -153,6 +151,24 @@ class ASTCacheQueryMixin(ASTCacheSurface):
                 for entry in json.loads(row["imports_json"])
             ]
             result[row["file_path"]] = [entry for entry in entries if entry]
+        return result
+
+    def get_import_entries(self) -> dict[str, list[dict[str, Any]]]:
+        """#1596：每个文件的 import 条目 ``{"text", "line"}``；旧格式行号为 0。"""
+        rows = (
+            self._get_conn()
+            .execute("SELECT file_path, imports_json FROM ast_index")
+            .fetchall()
+        )
+        result: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            entries = [
+                {"text": entry.get("text", ""), "line": int(entry.get("line") or 0)}
+                if isinstance(entry, dict)
+                else {"text": entry, "line": 0}
+                for entry in json.loads(row["imports_json"])
+            ]
+            result[row["file_path"]] = [entry for entry in entries if entry["text"]]
         return result
 
     def get_symbols_by_kind(

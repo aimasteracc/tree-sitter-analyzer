@@ -46,8 +46,16 @@ from __future__ import annotations
 from typing import Any
 
 from ... import read_existing_access as read_access
+from ...call_graph_binding import RefIdentity, ref_identity
 from ...constants import JS_TS_MODULE_EXTS
+from ...module_scope_caller import is_module_caller
 from .facade_tool import FacadeTool
+from .nav_facade_help import (
+    CONTEXT_KEYS,
+    GRAPH_RELATION_KEYS,
+    POINT_RELATION_KEYS,
+    register_nav_help_schemas,
+)
 
 # RFC-0014 Phase B: cap for test_map test_functions list (matches _MAX_LISTED).
 _MAX_TEST_MAP = 50
@@ -151,7 +159,12 @@ def _is_collectible_caller(file_path: str, name: str, language: str = "") -> boo
     A caller that does NOT match its language convention is treated as a
     non-collectible helper, so the caller code applies the SAME 1-hop walk-up
     used for Python helpers to find the convention-matching test above it.
+
+    #1622：``<module>`` 伪调用方是测试文件的模块作用域调用点，导入（收集）该
+    文件时就会执行，因此运行该文件的任何测试都覆盖它——视为可收集的入口。
     """
+    if is_module_caller(name):
+        return True
     if _is_python_file(file_path):
         return _is_pytest_collectible(name)
     lang = (language or "").lower()
@@ -342,16 +355,8 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         """
         # Build the projected args set that context inner accepts.
         # RFC-0006: include_graph added for progressive disclosure opt-in.
-        inner_keys = (
-            "task",
-            "max_nodes",
-            "max_code_blocks",
-            "output_format",
-            "include_graph",
-            *("access_mode", "snapshot_id", "source_generation"),
-        )
         context_args: dict[str, Any] = {
-            k: v for k, v in args.items() if k in inner_keys
+            k: v for k, v in args.items() if k in CONTEXT_KEYS
         }
         # Normalize: if ``task`` not provided, fall back to ``symbol`` or ``query``.
         if not context_args.get("task"):
@@ -365,53 +370,23 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         scope = args.pop("scope", "point")
         if scope == "graph":
             # Inject mode=callers for the call-graph inner; project to its schema.
-            graph_args = {
-                k: v
-                for k, v in args.items()
-                if k in ("function_name", "file_path", "depth", "output_format")
-            }
+            graph_args = {k: v for k, v in args.items() if k in GRAPH_RELATION_KEYS}
             graph_args["mode"] = "callers"
             return await callers_graph.execute(graph_args)
         # scope=point (default): use the dedicated callers tool.
         # limit is forwarded so callers=point honours the budget cap.
-        point_args = {
-            k: v
-            for k, v in args.items()
-            if k
-            in (
-                "function_name",
-                "file_path",
-                "limit",
-                "include_bodies",
-                "output_format",
-            )
-        }
+        point_args = {k: v for k, v in args.items() if k in POINT_RELATION_KEYS}
         return await callers_point.execute(point_args)
 
     async def _callees_route(args: dict[str, Any]) -> Any:
         """R4: scope=point → direct callees; scope=graph → call-graph traversal."""
         scope = args.pop("scope", "point")
         if scope == "graph":
-            graph_args = {
-                k: v
-                for k, v in args.items()
-                if k in ("function_name", "file_path", "depth", "output_format")
-            }
+            graph_args = {k: v for k, v in args.items() if k in GRAPH_RELATION_KEYS}
             graph_args["mode"] = "callees"
             return await callees_graph.execute(graph_args)
         # limit is forwarded so callees=point honours the budget cap.
-        point_args = {
-            k: v
-            for k, v in args.items()
-            if k
-            in (
-                "function_name",
-                "file_path",
-                "limit",
-                "include_bodies",
-                "output_format",
-            )
-        }
+        point_args = {k: v for k, v in args.items() if k in POINT_RELATION_KEYS}
         return await callees_point.execute(point_args)
 
     async def _test_map_route(args: dict[str, Any]) -> Any:
@@ -463,11 +438,12 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         # both a direct caller AND (via a helper) a walk-up parent of the SAME
         # target is not double-counted — while a DIFFERENT target sharing the
         # same test still counts its own genuine coverage edge (P2 undercount).
-        counted_edges: set[tuple[str, str]] = set()
+        # #1619：目标按身份（文件、名字、定义行）区分，同名嵌套函数不合并。
+        counted_edges: set[tuple[RefIdentity, str]] = set()
         # Non-collectible helpers (Python ``_run``, Go ``setupServer``, …) in
         # test files, paired with the target they were reached from, for a
         # deferred one-hop walk-up after all direct callers are known (#807).
-        helper_refs: list[tuple[Any, Any]] = []
+        helper_refs: list[tuple[Any, Any, bool]] = []
 
         def _add_to_set(file_path: str, name: str) -> None:
             key = f"{file_path}::{name}"
@@ -476,26 +452,38 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
                 test_funcs.append(key)
                 test_file_set.add(file_path)
 
-        def _record_edge(target: Any, file_path: str, name: str) -> None:
+        # #1559：测试选择过近似——仅凭同名匹配到达的测试也收录，并单独列出。
+        certain_keys: set[str] = set()
+        name_only_keys: set[str] = set()
+
+        def _record_edge(
+            target: Any, file_path: str, name: str, name_only: bool = False
+        ) -> None:
             """Count one (target → test) coverage edge, deduped per target."""
             nonlocal total_edge_count
-            edge_key = (target.qualified_name(), f"{file_path}::{name}")
+            (name_only_keys if name_only else certain_keys).add(f"{file_path}::{name}")
+            edge_key = (ref_identity(target), f"{file_path}::{name}")
             if edge_key in counted_edges:
                 return
             counted_edges.add(edge_key)
             total_edge_count += 1
             _add_to_set(file_path, name)
 
+        def _test_callers(ref: Any) -> list[tuple[Any, bool]]:
+            possible = list(graph.possible_caller_refs_of(ref))
+            certain = [(c, False) for c in graph.caller_refs_of(ref)]
+            return [*certain, *((c, True) for c in possible)]
+
         for target in targets:
-            for ref in graph.caller_refs_of(target):
+            for ref, ref_name_only in _test_callers(target):
                 if not is_test_file(ref.file_path):
                     continue
                 if _is_collectible_caller(
                     ref.file_path, ref.name, getattr(ref, "language", "")
                 ):
-                    _record_edge(target, ref.file_path, ref.name)
+                    _record_edge(target, ref.file_path, ref.name, ref_name_only)
                 else:
-                    helper_refs.append((target, ref))
+                    helper_refs.append((target, ref, ref_name_only))
 
         # Bug #807: a direct caller in a test file whose name does not match the
         # language test convention (e.g. a Python ``_run`` helper or a Go
@@ -509,15 +497,20 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         # though the test appears once in test_functions. _record_edge dedupes
         # only per (target, test) — mirroring the direct-caller path which counts
         # a raw edge per (target, caller) pair before deduping the function set.
-        for target, helper in helper_refs:
-            for parent in graph.caller_refs_of(helper):
+        for target, helper, helper_name_only in helper_refs:
+            for parent, parent_name_only in _test_callers(helper):
                 if not is_test_file(parent.file_path):
                     continue
                 if not _is_collectible_caller(
                     parent.file_path, parent.name, getattr(parent, "language", "")
                 ):
                     continue
-                _record_edge(target, parent.file_path, parent.name)
+                _record_edge(
+                    target,
+                    parent.file_path,
+                    parent.name,
+                    helper_name_only or parent_name_only,
+                )
 
         test_funcs_sorted = sorted(test_funcs)
         test_files_sorted = sorted(test_file_set)
@@ -533,6 +526,9 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             "test_files": test_files_sorted,
             "test_functions": capped,
             "edge_count": total_edge_count,
+            "name_only_test_functions": sorted(name_only_keys - certain_keys)[
+                :_MAX_TEST_MAP
+            ],
             "unique_function_count": unique_function_count,
             "truncated": truncated,
             "agent_summary": {
@@ -659,5 +655,6 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
     facade.register_bespoke_inner(callees_graph)
     # RFC-0014 Phase B: impact_inner holds the shared CachedCallGraph.
     facade.register_bespoke_inner(impact_inner)
+    register_nav_help_schemas(facade, callers_point, callees_point, context_inner)
 
     return facade

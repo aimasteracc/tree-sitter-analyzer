@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -175,6 +177,34 @@ class TestChangeImpactToolPRUrlValidation:
             tool.validate_arguments({"mode": "invalid"})
 
 
+_PR_IDENTITY = {"head": "a" * 40, "base": "b" * 40}
+
+
+@pytest.fixture
+def pr_boundary(monkeypatch):
+    """#1754：PR 身份查询（``gh pr view`` + ``git rev-parse/status``）走桩，任何真实子进程都让测试失败。
+
+    原先 ``verification_plan.pr_identity`` 在测试里真的调用 ``gh``（每次 30 秒超时），
+    Windows CI 上时而超出单测预算、时而失败。这里记录桩被调用的参数供断言。
+    """
+    from tree_sitter_analyzer import verification_plan
+
+    calls: list[tuple[str, str]] = []
+
+    def identity(root: str, url: str) -> dict[str, str]:
+        calls.append((root, url))
+        return dict(_PR_IDENTITY)
+
+    class _NoSubprocess:
+        def __init__(self, args, *_rest, **_kwargs):
+            raise AssertionError(f"unexpected subprocess in PR-URL test: {args!r}")
+
+    monkeypatch.setattr(verification_plan, "pr_identity", identity)
+    monkeypatch.setattr(subprocess, "Popen", _NoSubprocess)
+    return calls
+
+
+@pytest.mark.usefixtures("pr_boundary")
 class TestChangeImpactToolPRUrlExecute:
     @patch(
         "tree_sitter_analyzer.mcp.tools.change_impact_tool.check_gh_available",
@@ -189,7 +219,7 @@ class TestChangeImpactToolPRUrlExecute:
         return_value=["src/a.py", "src/b.py"],
     )
     def test_pr_url_analysis_returns_pr_metadata(
-        self, mock_files, mock_stat, mock_gh, tmp_path
+        self, mock_files, mock_stat, mock_gh, tmp_path, pr_boundary
     ):
         # Perf note (2026-05-23): project_root="/tmp" used to scan the entire
         # /tmp tree during dependency-graph construction (~22s on CI boxes
@@ -210,6 +240,9 @@ class TestChangeImpactToolPRUrlExecute:
         assert result["pr_url"] == "https://github.com/owner/repo/pull/42"
         assert result["pr_number"] == 42
         assert result["repo"] == "owner/repo"
+        assert pr_boundary == [
+            (str(Path(tmp_path).resolve()), "https://github.com/owner/repo/pull/42")
+        ]
 
     @patch(
         "tree_sitter_analyzer.mcp.tools.change_impact_tool.check_gh_available",
@@ -224,7 +257,7 @@ class TestChangeImpactToolPRUrlExecute:
         return_value=["src/a.py"],
     )
     def test_pr_url_with_scope_filters_files(
-        self, mock_files, mock_stat, mock_gh, tmp_path
+        self, mock_files, mock_stat, mock_gh, tmp_path, pr_boundary
     ):
         # Perf note (2026-05-23): project_root="/tmp" used to scan the entire
         # /tmp tree during dependency-graph construction (~22s on CI boxes
@@ -243,6 +276,9 @@ class TestChangeImpactToolPRUrlExecute:
             )
         )
         assert result["success"] is True
+        assert [url for _root, url in pr_boundary] == [
+            "https://github.com/owner/repo/pull/42"
+        ]
 
     def test_pr_url_invalid_url(self, tmp_path):
         # Perf note (2026-05-23): project_root="/tmp" used to scan the entire

@@ -20,8 +20,8 @@ Tests:
 1. RED (bug repro, inference-provable builtin): ``result = {}; result.get()`` in
    a file that does NOT import SearchCache → must NOT bind to SearchCache.get.
 2. Counter-case: explicit SearchCache import + sc.get() → DOES bind.
-3. NEW: untyped param receiver ``store.get()`` with unique DataStore.get →
-   MUST bind (restores P1-regressed case).
+3. #1669: untyped param receiver ``store.get()`` with unique DataStore.get →
+   stays unresolved (a unique name does not prove the receiver).
 4. NEW: self._store.get() where DataStore.get is unique → MUST bind.
 5. NEW: module-level singleton CACHE.get() where CacheStore.get is unique →
    MUST bind (the CACHE singleton case is P3).
@@ -32,7 +32,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from tree_sitter_analyzer.ast_cache import ASTCache
+from tests.unit._ast_cache_helpers import legacy_cache
 
 
 def _index(tmp_path: Path, files: dict[str, str]) -> str:
@@ -42,7 +42,7 @@ def _index(tmp_path: Path, files: dict[str, str]) -> str:
     (proj / "__init__.py").write_text("# pkg\n")
     for name, body in files.items():
         (proj / name).write_text(body)
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_project()
     finally:
@@ -155,14 +155,13 @@ def test_imported_search_cache_get_still_binds(tmp_path: Path) -> None:
     )
 
 
-def test_untyped_param_receiver_unique_method_binds(tmp_path: Path) -> None:
-    """P1 adversarial regression: untyped param ``store`` calling ``store.get()``
-    where DataStore.get is the ONLY project ``get`` method must bind to DataStore.get.
+def test_untyped_param_receiver_is_not_bound_by_unique_name(tmp_path: Path) -> None:
+    """#1669: untyped param ``store`` calling ``store.get()`` where DataStore.get is
+    the ONLY project ``get`` method must NOT be persisted as a ``project`` edge.
 
-    The OLD gate (STDLIB_METHODS_PY match on any receiver) blocked this — lost a
-    correct edge. The new inverted gate only fires when the receiver is positively
-    inferred as a builtin type. ``store`` is a param name, not in
-    BUILTIN_TYPE_NAMES_PY, so it passes through to unique-method binding.
+    A unique method name is not evidence about the receiver: ``xs.append()``
+    bound this way made ``HealthHistory.append`` show 1,079 "resolved" callers.
+    The edge stays unresolved, so readers keep it as a name-only possible caller.
     """
     db = _index(
         tmp_path,
@@ -178,18 +177,10 @@ def test_untyped_param_receiver_unique_method_binds(tmp_path: Path) -> None:
 
     edges = _edges_for(db, "get")
     proc_edges = [e for e in edges if "processor" in e["file_path"]]
-    assert proc_edges, "expected get() edges in processor.py"
 
-    project_edges = [
-        e
-        for e in proc_edges
-        if e["callee_resolution"] == "project"
-        and "data_store" in (e["callee_resolved_file"] or "")
-    ]
-    assert project_edges, (
-        f"store.get() with unique DataStore.get must bind to DataStore.get "
-        f"(inverted gate must not over-block untyped params); got {proc_edges}"
-    )
+    assert [
+        (e["callee_resolution"], e["callee_resolved_file"]) for e in proc_edges
+    ] == [("unknown", "")]
 
 
 def test_self_attr_receiver_unique_method_binds(tmp_path: Path) -> None:
@@ -221,7 +212,9 @@ def test_self_attr_receiver_unique_method_binds(tmp_path: Path) -> None:
     project_edges = [
         e
         for e in svc_edges
-        if e["callee_resolution"] == "project"
+        # RFC-0038：注解 / 构造器给出的接收者类型绑定到同一方法，来源为
+        # annotated_receiver（比按唯一方法名绑定更具体）。
+        if e["callee_resolution"] in ("project", "annotated_receiver")
         and "data_store" in (e["callee_resolved_file"] or "")
     ]
     assert project_edges, (
@@ -256,7 +249,9 @@ def test_singleton_receiver_unique_method_binds(tmp_path: Path) -> None:
     project_edges = [
         e
         for e in client_edges
-        if e["callee_resolution"] == "project"
+        # RFC-0038：注解 / 构造器给出的接收者类型绑定到同一方法，来源为
+        # annotated_receiver（比按唯一方法名绑定更具体）。
+        if e["callee_resolution"] in ("project", "annotated_receiver")
         and "cache_store" in (e["callee_resolved_file"] or "")
     ]
     assert project_edges, (

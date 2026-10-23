@@ -26,6 +26,8 @@ from .constants import (
     JS_TS_LANGUAGES,
     JS_TS_MODULE_EXTS,
 )
+from .import_dependents import import_entries
+from .import_graph_submodules import python_submodule_targets_from_text
 from .languages.lang_extension_map import EXT_TO_LANG
 
 logger = logging.getLogger(__name__)
@@ -201,6 +203,15 @@ def _file_lookup(project_files: set[str]) -> dict[str, str]:
     return {path.replace("\\", "/"): path for path in project_files}
 
 
+def _is_rooted(path: str) -> bool:
+    """判断路径是否从根目录起算（含 Windows 上无盘符的 ``\\proj\\x.py``）。
+
+    Python 3.13 起 Windows 的 ``os.path.isabs`` 不再把无盘符的根路径视为绝对路径，
+    这类路径若按相对路径查表会静默返回 0 个依赖（develop windows 3.13 CI, 2026-10-16）。
+    """
+    return os.path.isabs(path) or os.path.splitdrive(path)[1][:1] in ("/", "\\")
+
+
 def _match_file(candidate: str, lookup: dict[str, str]) -> str | None:
     """Return the project file matching ``candidate``, ignoring separator style."""
     return lookup.get(os.path.normpath(candidate).replace("\\", "/"))
@@ -318,11 +329,14 @@ class ImportGraph:
             return ImportGraphResult()
 
         try:
-            imports_by_file = cache.get_imports()
+            # #1596：带行号读取，依赖条目不再一律报告 line 0。
+            imports_by_file = import_entries(cache)
         finally:
             cache.close()
 
         self._project_files = set(imports_by_file.keys())
+        lookup = _file_lookup(self._project_files)
+        nodes = set(lookup)
 
         for source_file, imports in imports_by_file.items():
             if not isinstance(imports, list):
@@ -332,20 +346,34 @@ class ImportGraph:
                 if not isinstance(imp_text, str):
                     continue
                 resolved = self._resolve_import(imp_text, source_file)
-                if resolved is None or resolved == source_file:
-                    continue
-                edge = ImportEdge(
-                    source_file=source_file,
-                    target_file=resolved,
-                    import_text=imp_text,
-                    line=0,
-                )
-                self._edges.append(edge)
-                self._forward.setdefault(source_file, []).append(edge)
-                self._reverse.setdefault(resolved, []).append(edge)
+                targets = [] if resolved is None else [resolved]
+                targets += self._submodule_targets(imp_text, source_file, lookup, nodes)
+                line = int(imp.get("line") or 0) if isinstance(imp, dict) else 0
+                for target in dict.fromkeys(targets):
+                    if target != source_file:
+                        self._add_edge(source_file, target, imp_text, line)
 
         self._built = True
         return self._make_result()
+
+    def _add_edge(
+        self, source_file: str, target: str, import_text: str, line: int = 0
+    ) -> None:
+        edge = ImportEdge(source_file, target, import_text, line=line)
+        self._edges.append(edge)
+        self._forward.setdefault(source_file, []).append(edge)
+        self._reverse.setdefault(target, []).append(edge)
+
+    @staticmethod
+    def _submodule_targets(
+        import_text: str, source_file: str, lookup: dict[str, str], nodes: set[str]
+    ) -> list[str]:
+        """``from pkg import sub`` 同时依赖 ``pkg/sub.py``（#1579，规则同 #1566）。"""
+        if EXT_TO_LANG.get(os.path.splitext(source_file)[1].lower()) != "python":
+            return []
+        source_rel = source_file.replace("\\", "/")
+        hits = python_submodule_targets_from_text(import_text, source_rel, nodes)
+        return [lookup[hit] for hit in hits]
 
     def _resolve_import(self, import_text: str, source_file: str) -> str | None:
         """Route an import statement to the resolver for its SOURCE language.
@@ -393,39 +421,46 @@ class ImportGraph:
             cycles=self._detect_cycles(),
         )
 
+    def _graph_key(self, file_path: str) -> str:
+        """把调用方路径映射为图中实际使用的缓存键（忽略分隔符风格）。
+
+        缓存键使用 ``/``；Windows 上绝对路径经 ``relpath`` 或调用方传入的相对路径
+        会带 ``\\``，直接查表必然落空并静默返回 0 个依赖（#1558, dogfood 2026-10-14）。
+        未命中任何已知文件时原样返回，保持"未知文件 → 空结果"的既有语义。
+        """
+        rel = (
+            os.path.relpath(os.path.abspath(file_path), self.project_root)
+            if _is_rooted(file_path)
+            else file_path
+        )
+        if rel.startswith(".."):
+            # macOS 的 /var → /private/var：调用方传入的路径已 realpath 而根目录没有，
+            # relpath 会落到根目录之外并静默返回空依赖（#1579 macOS CI）。
+            rel = os.path.relpath(
+                os.path.realpath(file_path), os.path.realpath(self.project_root)
+            )
+        known = self._project_files | self._forward.keys() | self._reverse.keys()
+        return _match_file(rel, _file_lookup(known)) or rel
+
     def dependents_of(self, file_path: str) -> list[dict[str, Any]]:
         """Find all files that import the given file (reverse deps)."""
         if not self._built:
             self.build()
-        rel = (
-            os.path.relpath(os.path.abspath(file_path), self.project_root)
-            if os.path.isabs(file_path)
-            else file_path
-        )
-        edges = self._reverse.get(rel, [])
+        edges = self._reverse.get(self._graph_key(file_path), [])
         return [e.to_dict() for e in edges]
 
     def dependencies_of(self, file_path: str) -> list[dict[str, Any]]:
         """Find all files that the given file imports (forward deps)."""
         if not self._built:
             self.build()
-        rel = (
-            os.path.relpath(os.path.abspath(file_path), self.project_root)
-            if os.path.isabs(file_path)
-            else file_path
-        )
-        edges = self._forward.get(rel, [])
+        edges = self._forward.get(self._graph_key(file_path), [])
         return [e.to_dict() for e in edges]
 
     def blast_radius(self, file_path: str, max_depth: int = 10) -> dict[str, Any]:
         """Compute transitive reverse deps — all files affected by changing this file."""
         if not self._built:
             self.build()
-        rel = (
-            os.path.relpath(os.path.abspath(file_path), self.project_root)
-            if os.path.isabs(file_path)
-            else file_path
-        )
+        rel = self._graph_key(file_path)
         visited: set[str] = set()
         frontier = [rel]
         depth_map: dict[str, int] = {rel: 0}

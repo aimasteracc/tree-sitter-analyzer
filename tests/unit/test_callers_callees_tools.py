@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from tests.unit import _navigation_test_support as nav_support
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache import build_state
 from tree_sitter_analyzer.mcp.tools.callees_tool import CodeGraphCalleesTool
@@ -431,35 +432,8 @@ class TestHonestTruncationCallees:
 
 
 class TestStaleCacheWarning:
-    def test_helper_is_false_for_empty(self) -> None:
-        from tree_sitter_analyzer.mcp.tools.callees_tool import _is_stale_resolution
-
-        assert _is_stale_resolution([]) is False
-
-    def test_helper_is_true_when_all_unknown(self) -> None:
-        from tree_sitter_analyzer.mcp.tools.callees_tool import _is_stale_resolution
-
-        entries = [{"callee_resolution": "unknown"} for _ in range(10)]
-        assert _is_stale_resolution(entries) is True
-
-    def test_helper_is_false_when_majority_resolved(self) -> None:
-        from tree_sitter_analyzer.mcp.tools.callees_tool import _is_stale_resolution
-
-        # 30% unknown / 70% project → below the 80% threshold.
-        entries = [{"callee_resolution": "unknown"} for _ in range(3)] + [
-            {"callee_resolution": "project"} for _ in range(7)
-        ]
-        assert _is_stale_resolution(entries) is False
-
-    def test_helper_trips_at_exactly_80_percent(self) -> None:
-        from tree_sitter_analyzer.mcp.tools.callees_tool import _is_stale_resolution
-
-        # 8 unknown out of 10 = 80% → at threshold (inclusive).
-        entries = [{"callee_resolution": "unknown"} for _ in range(8)] + [
-            {"callee_resolution": "project"} for _ in range(2)
-        ]
-        assert _is_stale_resolution(entries) is True
-
+    # #1580：判定助手的单元测试已移至
+    # tests/unit/mcp/tools/test_codegraph_relation_tool.py（需要索引证据）。
     def test_warning_message_recommends_valid_rebuild_command(self) -> None:
         from tree_sitter_analyzer.mcp.tools.callees_tool import _STALE_CACHE_WARNING
 
@@ -548,7 +522,7 @@ class TestEmptyIndexHint:
             "def foo():\n    bar()\n\ndef bar():\n    return 1\n",
             encoding="utf-8",
         )
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         try:
             cache.index_project(workers=0)
             build_state.mark_build_in_progress(cache.get_conn())
@@ -577,7 +551,7 @@ class TestEmptyIndexHint:
             "def foo():\n    bar()\n\ndef bar():\n    return 1\n",
             encoding="utf-8",
         )
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(str(tmp_path))
         try:
             cache.index_project(workers=0)
             build_state.mark_build_in_progress(cache.get_conn())

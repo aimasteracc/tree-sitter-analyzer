@@ -15,6 +15,7 @@ from tree_sitter_analyzer.cache.write import invalidate_file_rows
 
 tmp_project = _fixtures.tmp_project
 cache = _fixtures.cache
+engine = _fixtures.engine
 method_project = _fixtures.method_project
 
 
@@ -69,11 +70,11 @@ def test_no_fts_upgrade_backfills_legacy_symbols_for_cached_consumers(
     assert definitions == [("legacy", "legacy.py", "python")]
 
 
-def test_fully_cached_missing_marker_reruns_every_backfill(cache, monkeypatch):
+def test_fully_cached_missing_marker_reruns_every_backfill(engine, monkeypatch):
     # PR #1253: 缺少持久 marker 的边行不能证明收敛。
-    first = cache.index_project(workers=0)
+    first = engine.index_project(workers=0)
     assert first["indexed"] == 2
-    conn = cache.get_conn()
+    conn = engine.get_conn()
     conn.execute("DELETE FROM ast_call_graph_state")
     conn.commit()
     calls = {name: 0 for name, _key in _BACKFILL_ROUTES}
@@ -84,27 +85,27 @@ def test_fully_cached_missing_marker_reruns_every_backfill(cache, monkeypatch):
             calls[name] += 1
             return {"errors": 0}
 
-        monkeypatch.setattr(cache, name, clean)
-    second = cache.index_project(workers=0)
+        monkeypatch.setattr(engine, name, clean)
+    second = engine.index_project(workers=0)
 
-    assert (second["indexed"], calls, cache.call_graph_built()) == (
+    assert (second["indexed"], calls, engine.call_graph_built()) == (
         0,
         {name: 1 for name, _key in _BACKFILL_ROUTES},
         True,
     )
 
 
-def test_fully_cached_failed_retry_keeps_marker_clear(cache, monkeypatch):
+def test_fully_cached_failed_retry_keeps_marker_clear(engine, monkeypatch):
     # PR #1253: 缓存 backfill 重试失败必须保持可见的不完整状态。
-    cache.index_project(workers=0)
-    conn = cache.get_conn()
+    engine.index_project(workers=0)
+    conn = engine.get_conn()
     conn.execute("DELETE FROM ast_call_graph_state")
     conn.commit()
     for name, _key in _BACKFILL_ROUTES:
-        monkeypatch.setattr(cache, name, lambda: {"errors": 0})
-    monkeypatch.setattr(cache, "_run_synapse_backfill", lambda: {"errors": 1})
+        monkeypatch.setattr(engine, name, lambda: {"errors": 0})
+    monkeypatch.setattr(engine, "_run_synapse_backfill", lambda: {"errors": 1})
 
-    result = cache.index_project(workers=0)
+    result = engine.index_project(workers=0)
     marker = conn.execute(
         "SELECT built FROM ast_call_graph_state WHERE id = 1"
     ).fetchone()
@@ -166,11 +167,10 @@ def test_projection_state_tracks_file_update(tmp_path):
 
 def test_projection_state_is_deleted_with_file_generation(tmp_path):
     # PR #1253 review thread 3756380009: 失效操作必须删除投影证据。
-    from tree_sitter_analyzer.ast_cache import ASTCache
 
     source = tmp_path / "state_delete.py"
     source.write_text("value = 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.engine_cache(tmp_path)
     try:
         cache.index_file(str(source))
         invalidate_file_rows(cache.get_conn(), "state_delete.py", cache.fts5_available)
@@ -192,7 +192,7 @@ def test_projection_repair_without_fts_skips_fts_rebuild(tmp_path):
     # PR #1253: 普通投影修复必须支持没有 FTS5 的 SQLite。
     source = tmp_path / "app.py"
     source.write_text("value = 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.engine_cache(tmp_path)
     cache.index_project(workers=0)
     conn = cache.get_conn()
     conn.execute("DELETE FROM ast_cache_metadata WHERE key='symbol_rows_projection_v1'")
@@ -214,7 +214,7 @@ def test_projection_repair_signals_incomplete_epoch_before_batch_write(tmp_path)
 
     source = tmp_path / "app.py"
     source.write_text("def target():\n    return 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.engine_cache(tmp_path)
     cache.index_project(workers=0)
     conn = cache.get_conn()
     conn.execute(
@@ -253,7 +253,7 @@ def test_projection_repair_records_failed_projection_certification(tmp_path):
     # PR #1253 thread 3757429352: 修复认证失败必须保持可见。
     source = tmp_path / "app.py"
     source.write_text("value = 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.engine_cache(tmp_path)
     cache.index_project(workers=0)
     conn = cache.get_conn()
     conn.execute(
@@ -338,10 +338,9 @@ def test_reopen_revokes_certification_when_projection_backfill_is_incomplete(
     # PR #1253 thread 3761703241: 不完整的迁移不能保留之前的
     # 调用图或权威 manifest 完整性信号。
     import tree_sitter_analyzer.cache.schema as cache_schema
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.cache.callgraph_state import mark_call_graph_built_strict
 
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.engine_cache(tmp_path)
     conn = cache.get_conn()
     mark_call_graph_built_strict(conn)
     conn.execute(
@@ -357,7 +356,7 @@ def test_reopen_revokes_certification_when_projection_backfill_is_incomplete(
     monkeypatch.setattr(
         cache_schema, "ensure_symbol_rows_backfilled", lambda *_args, **_kwargs: False
     )
-    reopened = ASTCache(str(tmp_path))
+    reopened = _fixtures.engine_cache(tmp_path)
     try:
         reopened_conn = reopened.get_conn()
         marker = reopened.call_graph_built()

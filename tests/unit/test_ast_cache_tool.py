@@ -237,7 +237,34 @@ async def test_already_running_rejects_token_revoked_before_tool_rebind(tmp_path
 async def test_late_pending_checker_cannot_clear_replacement_watcher(
     tmp_path, monkeypatch
 ):
-    """两个 checker 交错时，迟到者不能清掉先到者之后启动的新 daemon。"""
+    """两个 checker 交错时，迟到者不能清掉先到者之后启动的新 daemon。
+
+    #1667：替换 daemon 是注入的桩。被测的是工具的所有权簿记，不是 daemon 的后台
+    线程；真实 daemon 的停止时长取决于负载（见 test_file_watcher_shutdown），曾让
+    最后一次 watch_stop 在 Windows CI 上偶发超时。
+    """
+    from tests.unit._thread_waits import wait_or_dump
+    from tree_sitter_analyzer.mcp.tools import ast_cache_tool
+
+    class InjectedDaemon:
+        def __init__(self, _cache, *, poll_interval=5.0, backend="poll", **_kw):
+            self.poll_interval = poll_interval
+            self.backend = backend
+            self.running = False
+
+        def start(self):
+            self.running = True
+
+        def stop(self, timeout=5.0):
+            self.running = False
+
+        def is_running(self):
+            return self.running
+
+        def get_stats(self):
+            return {}
+
+    monkeypatch.setattr(ast_cache_tool, "FileWatcherDaemon", InjectedDaemon)
     tool = ASTCacheTool(str(tmp_path))
     tool.get_cache()
 
@@ -265,14 +292,14 @@ async def test_late_pending_checker_cannot_clear_replacement_watcher(
         calls += 1
         if calls == 1:
             entered.set()
-            assert release.wait(3)
+            wait_or_dump(release, 3, "the replacement watcher to start")
         return False
 
     monkeypatch.setattr(old, "is_running", paused_first_check)
     late = asyncio.create_task(
         asyncio.to_thread(asyncio.run, tool.execute({"mode": "stats"}))
     )
-    assert await asyncio.to_thread(entered.wait, 3)
+    await asyncio.to_thread(wait_or_dump, entered, 3, "the late checker")
     assert (await tool.execute({"mode": "stats"}))["success"] is True
     assert (await tool.execute({"mode": "watch_start"}))["status"] == "started"
     replacement = tool._watcher
@@ -689,3 +716,75 @@ class TestAstCacheSearchTruncated:
             # limit=2 — raw_results has 1 row < 2, so truncated must be False
             result = await tool.execute({"mode": "search", "query": "a", "limit": 2})
         assert result["truncated"] is False
+
+
+def test_index_mode_returns_typed_error_when_source_hash_budget_runs_out(
+    tmp_path, monkeypatch
+):
+    # Issue #1562: a raw TimeoutError escaped `index action=cache mode=index`
+    # on a 2400-file Windows checkout; the tool must answer with a typed error.
+    import tree_sitter_analyzer.cache.generation_store as owner
+    import tree_sitter_analyzer.index_source_stream as stream
+    import tree_sitter_analyzer.portable_source_snapshot  # noqa: F401 先于补丁导入
+
+    (tmp_path / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+
+    def exhausted(*_args):
+        raise TimeoutError
+
+    monkeypatch.setattr(owner, "_PATH_ONLY_SOURCE", True)
+    monkeypatch.setattr(stream, "hash_source_at", exhausted)
+    result = asyncio.run(ASTCacheTool(str(tmp_path)).execute({"mode": "index"}))
+    assert (
+        result["success"],
+        result["error_code"],
+        result["published"],
+        result["files_bound"],
+    ) == (False, "INDEX_GENERATION_SOURCE_HASH_BUDGET_EXCEEDED", False, 0)
+
+
+def _index_while_editing(tmp_path, monkeypatch):
+    """构建期间改写源码，使发布复核见到真实变化。"""
+    import tree_sitter_analyzer.cache.indexer as indexer
+
+    source = tmp_path / "a.py"
+    source.write_text("def f():\n    return 1\n", encoding="utf-8")
+    original = indexer.run_index_project
+
+    def edit_then_index(*args, **kwargs):
+        source.write_text("def f():\n    return 12345\n", encoding="utf-8")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(indexer, "run_index_project", edit_then_index)
+    return asyncio.run(ASTCacheTool(str(tmp_path)).execute({"mode": "index"}))
+
+
+def test_index_mode_returns_typed_retryable_error_when_source_changes(
+    tmp_path, monkeypatch
+):
+    # Issue #1595: INDEX_GENERATION_SOURCE_CHANGED escaped as error_type=internal
+    # with "Review the error message"; it is retryable and names the change.
+    # RFC-0032 slice 4: the admission code is INDEX_CANDIDATE_SUPERSEDED.
+    result = _index_while_editing(tmp_path, monkeypatch)
+    assert (
+        result["success"],
+        result["error_code"],
+        result["cause_code"],
+        result["retryable"],
+        result["published"],
+        result["changes"],
+    ) == (
+        False,
+        "INDEX_CANDIDATE_SUPERSEDED",
+        "INDEX_GENERATION_SOURCE_CHANGED",
+        True,
+        False,
+        ["modified: a.py"],
+    )
+
+
+def test_index_mode_source_change_leaves_no_orphan_generation(tmp_path, monkeypatch):
+    # Issue #1595: the failed build left a 336 MB generation behind.
+    _index_while_editing(tmp_path, monkeypatch)
+    generations = tmp_path / ".ast-cache" / "index-generations" / "generations"
+    assert list(generations.iterdir()) == []

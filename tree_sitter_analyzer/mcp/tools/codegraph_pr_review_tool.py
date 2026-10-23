@@ -29,11 +29,13 @@ from tree_sitter_analyzer.languages.language_family import (
 
 from ...ast_diff import ASTDiffer
 from ...call_graph import CachedCallGraph, CallGraph
+from ...call_graph_binding import RefIdentity, ref_identity
 from ...pr_url import check_gh_available, fetch_pr_diff, parse_pr_url
 from ...project_graph import _language_from_ext
 from ...semantic_change_classifier import SemanticChangeClassifier
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
+from .index_bound_graph import index_bound_graph, reset_index_bound_graph
 
 logger = setup_logger(__name__)
 
@@ -374,7 +376,7 @@ class CodeGraphPRReviewTool(BaseMCPTool):
         super().__init__(project_root)
 
     def _on_project_root_changed(self, project_root: str | None) -> None:
-        self._call_graph = None
+        reset_index_bound_graph(self)
 
     def _try_get_cache(self) -> Any:
         try:
@@ -392,15 +394,16 @@ class CodeGraphPRReviewTool(BaseMCPTool):
         return None
 
     def _get_call_graph(self) -> CallGraph:
-        if self._call_graph is None:
-            if not self.project_root:
-                raise ValueError("Project root not set. Call set_project_path first.")
-            cache = self._try_get_cache()
-            if cache is not None:
-                self._call_graph = CachedCallGraph(self.project_root, cache=cache)
-            else:
-                self._call_graph = CallGraph(self.project_root)
-        return self._call_graph
+        # #1611：调用图绑定索引身份，同一服务器内刷新索引后即重建。
+        return index_bound_graph(self, self.project_root, self._build_call_graph)
+
+    def _build_call_graph(self) -> CallGraph:
+        if not self.project_root:
+            raise ValueError("Project root not set. Call set_project_path first.")
+        cache = self._try_get_cache()
+        if cache is not None:
+            return CachedCallGraph(self.project_root, cache=cache)
+        return CallGraph(self.project_root)
 
     def get_call_graph(self) -> CallGraph:
         """Public alias for _get_call_graph() — use this instead of accessing _call_graph."""
@@ -697,7 +700,7 @@ class CodeGraphPRReviewTool(BaseMCPTool):
         # defined in the changed file (e.g. determine_visibility: defined in 5+
         # files — callers of this function are unreliable bare-name binds).
         candidates: list[dict[str, Any]] = []
-        seen: set[str] = set()
+        seen: set[RefIdentity] = set()  # #1619：按身份去重，同名不合并
         ambiguous_anchor_dropped = 0
 
         for fp in changed_files:
@@ -711,28 +714,30 @@ class CodeGraphPRReviewTool(BaseMCPTool):
                     or name_file_count.get(anchor_name, 0)
                     >= _AMBIGUOUS_NAME_FILE_THRESHOLD
                 )
+                # #1559：受影响范围过近似——仅同名匹配的调用方也列出并标记。
+                name_only = list(graph.possible_caller_refs_of(anchor_ref))
+                upstream = [*graph.caller_refs_of(anchor_ref), *name_only]
                 if not anchor_is_generic:
-                    for caller in graph.caller_refs_of(anchor_ref):
-                        key = caller.qualified_name()
+                    for caller in upstream:
+                        key = ref_identity(caller)
                         if key not in seen:
                             seen.add(key)
-                            candidates.append(
-                                {
-                                    "function": caller.name,
-                                    "file": caller.file_path,
-                                    "language": caller.language,
-                                    "direction": "upstream",
-                                    "line": caller.start_line,
-                                }
-                            )
+                            entry = {
+                                "function": caller.name,
+                                "file": caller.file_path,
+                                "language": caller.language,
+                                "direction": "upstream",
+                                "line": caller.start_line,
+                            }
+                            if caller in name_only:
+                                entry["match"] = "name_only"
+                            candidates.append(entry)
                 else:
-                    ambiguous_anchor_dropped += graph.caller_refs_of(
-                        anchor_ref
-                    ).__len__()
+                    ambiguous_anchor_dropped += len(upstream)
 
                 # Downstream callees: filter by anchor being called from the changed file
                 for callee in graph.callee_refs_of(anchor_ref):
-                    key = callee.qualified_name()
+                    key = ref_identity(callee)
                     if key not in seen:
                         seen.add(key)
                         candidates.append(

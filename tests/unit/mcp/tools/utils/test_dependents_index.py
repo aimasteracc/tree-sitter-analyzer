@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from tree_sitter_analyzer.ast_cache import ASTCache
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.mcp.tools.utils import dependents_index
 from tree_sitter_analyzer.mcp.tools.utils.dependents_index import (
     DELTA_READ_CAP,
@@ -55,7 +55,7 @@ def project(tmp_path: Path) -> Path:
 
 
 def _index(root: Path) -> None:
-    ASTCache(str(root)).index_project()
+    legacy_cache(str(root)).index_project()
 
 
 def test_index_derived_answer_is_exact_for_relative_and_absolute_imports(

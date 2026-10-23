@@ -3,7 +3,18 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, cast
+from dataclasses import dataclass, field
+from typing import Any, Protocol, cast
+
+from .jsts_function_names import FUNCTION_VALUE_TYPES, function_value_name
+from .python_own_receiver import mark_unbound_own_receiver
+from .receiver_hints import (
+    Hint,
+    call_receiver_hint,
+    class_attribute_hints,
+    function_scope_hints,
+)
+from .receiver_module_hints import ModuleHints, module_call_hint, module_hints
 
 _COMMENT_NODE_TYPES: dict[str, frozenset[str]] = {
     "python": frozenset(["comment"]),
@@ -134,8 +145,18 @@ _CALL_NODE_TYPES = {
 
 _FUNC_DEF_TYPES = {
     "python": {"function_definition"},
-    "javascript": {"function_declaration", "method_definition", "arrow_function"},
-    "typescript": {"function_declaration", "method_definition", "arrow_function"},
+    "javascript": {
+        "function_declaration",
+        "method_definition",
+        "arrow_function",
+        "function_expression",
+    },
+    "typescript": {
+        "function_declaration",
+        "method_definition",
+        "arrow_function",
+        "function_expression",
+    },
     "java": {"method_declaration", "constructor_declaration"},
     "go": {"function_declaration", "method_declaration"},
     "c": {"function_definition"},
@@ -177,7 +198,21 @@ def _func_name_identifier(node: Any) -> str | None:
 
 
 def _func_name_js(node: Any) -> str | None:
-    """JavaScript / TypeScript: identifier or property_identifier child."""
+    """JavaScript / TypeScript: identifier or property_identifier child.
+
+    #1762：方法名是字符串字面量（``"~validate"(data) {...}``）时取引号内的名字。
+    只看 ``method_definition`` 的 ``name`` 字段：箭头函数的函数体可以是字符串。
+
+    #1763：箭头函数 / 函数表达式按自身名字或所属常量声明命名
+    （``const f = () => {}``）；匿名回调没有名字。
+    """
+    if node.type in FUNCTION_VALUE_TYPES:
+        return function_value_name(node)
+    if node.type == "method_definition":
+        name_node = node.child_by_field_name("name")
+        literal = _js_string_literal(name_node)
+        if literal is not None:
+            return literal
     for child in node.children:
         if child.type in _IDENT_TYPES_JS:
             return _node_text_value(child)
@@ -255,7 +290,39 @@ def _call_info_field(node: Any, source: str) -> dict[str, Any] | None:
     func_node = node.child_by_field_name("function")
     if func_node is None:
         return None
+    if func_node.type == "subscript_expression":
+        member = _literal_subscript_member(func_node, source)
+        if member is not None:
+            return member | {
+                "line": node.start_point[0] + 1,
+                "col": node.start_point[1],
+            }
     return _call_from_text(_node_text(func_node, source), node)
+
+
+def _js_string_literal(node: Any) -> str | None:
+    """JS/TS 字符串字面量节点（``"x"`` / ``'x'``，无插值）的内容；其余为 None。"""
+    if node is None or node.type != "string":
+        return None
+    text = _node_text_value(node)
+    if text is None or len(text) < 2 or text[0] not in "'\"" or text[-1] != text[0]:
+        return None
+    inner = text[1:-1]
+    return inner if inner and "\\" not in inner and text[0] not in inner else None
+
+
+def _literal_subscript_member(func_node: Any, source: str) -> dict[str, Any] | None:
+    """#1762：``obj["m"](...)`` 与 ``obj.m(...)`` 同义：接收者 ``obj``，被调名 ``m``。
+
+    下标不是字符串字面量（``obj[name]()``）时返回 None：调用点保留原文，作为计算式
+    分发由声明文件门计入（RFC-0028 §1.2，与 Python 的 ``getattr`` 相同）。
+    """
+    obj = func_node.child_by_field_name("object")
+    member = _js_string_literal(func_node.child_by_field_name("index"))
+    if obj is None or member is None:
+        return None
+    receiver = _node_text(obj, source)
+    return {"name": member, "full_name": f"{receiver}.{member}", "receiver": receiver}
 
 
 def _call_info_java(node: Any, source: str) -> dict[str, Any] | None:
@@ -529,10 +596,72 @@ def walk_tree(node: Any, source: str, language: str) -> tuple[list[dict], list[d
     definitions: list[dict[str, Any]] = []
     calls: list[dict[str, Any]] = []
     fixture_types = _collect_fixture_types(node, source, language)
+    hint_scope: _HintScope | None = None
+    if language == "python":
+        hint_scope = _ReceiverHintScope(
+            attributes=class_attribute_hints(node), module=module_hints(node)
+        )
+    elif language == "java":
+        # #1743：Java 的接收者声明类型（形参 / 局部 / 字段）。
+        from .java_receiver_hints import JavaReceiverHintScope
+
+        hint_scope = JavaReceiverHintScope()
     _extract_recursive(
-        node, source, language, definitions, calls, None, None, fixture_types
+        node,
+        source,
+        language,
+        definitions,
+        calls,
+        None,
+        None,
+        fixture_types,
+        hint_scope,
     )
     return definitions, calls
+
+
+class _HintScope(Protocol):
+    """接收者线索作用域：Python（RFC-0038）与 Java（#1743）各有实现。"""
+
+    def for_function(self, func_node: Any) -> _HintScope: ...
+
+    def hint_for(
+        self, receiver: str | None, enclosing_class: str | None
+    ) -> dict[str, Any] | None: ...
+
+
+@dataclass(frozen=True)
+class _ReceiverHintScope:
+    """RFC-0038: receiver hints visible to the calls of one Python function."""
+
+    attributes: dict[str, dict[str, Hint]]
+    module: ModuleHints | None = None
+    function: dict[str, Hint] = field(default_factory=dict)
+    #: Names bound by the enclosing function scopes: they shadow module names.
+    shadowed: frozenset[str] = frozenset()
+
+    def for_function(self, func_node: Any) -> _ReceiverHintScope:
+        hints, bound, local_imports = function_scope_hints(func_node)
+        module = self.module
+        if module is not None and local_imports:
+            # 函数内的 `import pkg.mod as alias` 同样是模块别名（RFC-0038）。
+            module = ModuleHints(module.variables, {**module.imports, **local_imports})
+        return _ReceiverHintScope(
+            self.attributes,
+            module,
+            hints,
+            (self.shadowed - set(local_imports)) | bound,
+        )
+
+    def hint_for(
+        self, receiver: str | None, enclosing_class: str | None
+    ) -> Hint | None:
+        hint = call_receiver_hint(
+            receiver, self.function, self.attributes, enclosing_class
+        )
+        if hint is None and receiver:
+            hint = module_call_hint(receiver, self.module, self.shadowed)
+        return hint
 
 
 # Python tree-sitter right-hand-side node types that indicate a builtin
@@ -562,7 +691,7 @@ def _collect_local_var_types(
     Handles two patterns:
     1. ``var = ClassName(...)`` (uppercase) — project class receiver inference.
     2. ``var = builtin_literal_or_constructor`` — builtin receiver inference,
-       enabling the inverted gate in ``_try_unique_method`` / ``_is_obvious_external``
+       enabling the builtin-receiver gate in ``_is_obvious_external``
        (issue #447 adversarial P1). Recognises ``{}``/``[]``/``()`` literals,
        comprehensions, and lowercase constructor calls ``dict()``/``list()``/…
 
@@ -601,6 +730,39 @@ def _collect_local_var_types(
 
     _walk(func_node)
     return types
+
+
+def _bound_names(func_node: Any, source: str) -> set[str]:
+    """#1699：函数（含其内层）中会重新绑定的名字：参数、赋值 / 增量赋值目标、
+    for / with / except 目标、``nonlocal`` / ``global`` 声明。只会更保守。"""
+    names = set(_func_param_names(func_node, source))
+    target_fields = {
+        "assignment": "left",
+        "augmented_assignment": "left",
+        "for_statement": "left",
+        "for_in_clause": "left",
+    }
+
+    def _identifiers(n: Any) -> None:
+        if n.type == "identifier":
+            names.add(_node_text(n, source))
+        for c in n.children:
+            _identifiers(c)
+
+    def _walk(n: Any) -> None:
+        field = target_fields.get(n.type)
+        if field is not None:
+            for target in filter(None, [n.child_by_field_name(field)]):
+                _identifiers(target)
+        elif n.type in ("as_pattern_target", "nonlocal_statement", "global_statement"):
+            _identifiers(n)
+        elif n.type in ("lambda_parameters", "parameters"):
+            _identifiers(n)
+        for c in n.children:
+            _walk(c)
+
+    _walk(func_node)
+    return names
 
 
 def _func_param_names(func_node: Any, source: str) -> list[str]:
@@ -700,6 +862,7 @@ def _extract_recursive(
     enclosing_class: str | None,
     local_types: dict[str, tuple[str, int]] | None,
     fixture_types: dict[str, str] | None = None,
+    hint_scope: _HintScope | None = None,
 ) -> None:
     if not hasattr(node, "type"):
         return
@@ -727,6 +890,15 @@ def _extract_recursive(
                 }
             )
             func_types = _collect_local_var_types(node, source, language)
+            if local_types and language == "python":
+                # #1699：嵌套函数读取外层函数的局部变量（闭包）。外层的
+                # ``x = T(...)`` 对没有在嵌套函数里重新绑定（参数、赋值、循环 / with
+                # 目标、nonlocal / global）的名字同样成立。
+                rebound = _bound_names(node, source)
+                func_types = {
+                    **{k: v for k, v in local_types.items() if k not in rebound},
+                    **func_types,
+                }
             # pytest-fixture typing: a parameter named after a fixture function
             # that returns a class gets that class's type. line 0 = valid for the
             # whole function body (a parameter is bound on entry).
@@ -734,6 +906,9 @@ def _extract_recursive(
                 for pname in _func_param_names(node, source):
                     if pname in fixture_types:
                         func_types[pname] = (fixture_types[pname], 0)
+            func_hints = (
+                hint_scope.for_function(node) if hint_scope is not None else None
+            )
             for child in node.children:
                 _extract_recursive(
                     child,
@@ -744,12 +919,16 @@ def _extract_recursive(
                     parent_class,
                     func_types,
                     fixture_types,
+                    func_hints,
                 )
             return
 
     if node_type in _CALL_NODE_TYPES.get(language, set()):
         call_info = extract_call(node, source, language)
         if call_info:
+            if language == "python":
+                # #1739：lambda / 非方法函数参数里的 `self` 不是方法接收者。
+                mark_unbound_own_receiver(node, call_info)
             recv = call_info.get("receiver")
             if local_types and recv in local_types:
                 cls, bind_line = local_types[recv]
@@ -757,6 +936,11 @@ def _extract_recursive(
                 if (node.start_point[0] + 1) >= bind_line:
                     call_info["receiver_type"] = cls
                     call_info["full_name"] = f"{cls}.{call_info['name']}"
+            if hint_scope is not None and "receiver_type" not in call_info:
+                # RFC-0038：注解给出的接收者类型，交给 Synapse 解析。
+                hint = hint_scope.hint_for(recv, enclosing_class)
+                if hint is not None:
+                    call_info["receiver_hint"] = hint
             # Embed branch context in the call dict so edge metadata can carry it.
             call_info["branch"] = extract_branch_context(node, language)
             calls.append(call_info)
@@ -771,6 +955,7 @@ def _extract_recursive(
             enclosing_class,
             local_types,
             fixture_types,
+            hint_scope,
         )
 
 

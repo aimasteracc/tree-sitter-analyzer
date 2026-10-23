@@ -49,9 +49,23 @@ only after certification succeeds. The `active.json` selector binds default read
 to one immutable generation. Failed or superseded builds leave the prior generation
 unchanged. `sync` and watcher updates use the same publication boundary.
 
+Every other write to the default cache (`auto`, `ast_cache` index/invalidate,
+persisted constraint checks, Python `index_file`/`index_project`/`IncrementalSync`)
+also publishes a generation, including the first write on a never-published project
+(RFC-0032 slice 1, #1554). No write creates or updates the legacy
+`.ast-cache/index.db`. If a legacy file already exists, the first write copies it
+into the first generation; read-only calls never create or copy one.
+A write still publishes when the only failures are stable per-file failures
+(`failure_kind: stable`: missing grammar or a parse failure on the captured bytes).
+Those files stay unindexed and uncertified, so completeness stays partial or
+unknown. Any transient failure keeps the previous generation active.
+
 Legacy `.ast-cache/index.db` remains separate, so old writers cannot modify the
-published generation. Existing read sessions retain their version; generations are
-currently retained without automatic garbage collection. Use the status response
+published generation. TSA read connections and in-progress builds pin their
+generation (`index-generations/pins/`, RFC-0032 slice 6). Each publication then retires,
+within 1 s, every unpinned inactive generation except the 2 newest sealed ones under
+24 h old, including builds of killed writers. Unverified directories (wrong name, link
+or reparse point) are never touched. Use the status response
 `cache_path` or `cache.generation_routing.resolve_index_path()` for direct reads.
 
 **Use when:** after a `git pull`, rebase, or large refactor — any time many
@@ -76,7 +90,64 @@ are skipped with a `changed_during_run` reason and produce a `WARN` verdict;
 files created afterward wait for the next operation. Snapshot and phase
 reconciliation counters are returned in `candidate_snapshot`.
 
-CLI equivalent:
+An incremental refresh re-resolves only the call edges whose resolution inputs
+changed (#1696). The scope is:
+- the changed files' own edges;
+- edges bound into the changed files;
+- edges named after a definition, signature, base class, return annotation,
+  module singleton or import binding that changed;
+- edges named after a module-level name whose rebinding changed: a `global`
+  statement in any function, or a module-level `del` (#1721). Such a rebinding
+  creates no symbol, but it decides whether `owner._f()` resolves through the
+  module's re-export (#1705);
+- for JavaScript, the importers of a file whose export shape changed: the
+  default export object's members and spreads, or its named exports
+  (#1741). `utils.findKey()` resolves through that shape without naming a
+  symbol of the importer;
+- the call edges of files that depend on those names, through imports,
+  aliases, star imports, module aliases, subclasses and typed exports.
+
+A body-only edit therefore re-resolves only the changed file and the edges
+bound into it. The decision is reported as `backfill_scope`, both in the sync
+result and in the `stats` returned by `index_project`:
+- `mode` is `scoped` or `full`;
+- `reason` says why;
+- the remaining fields count the scope's files, names and edges.
+
+The refresh falls back to the full backfill when it cannot bound the scope:
+- the previous backfill did not converge (`COLLECTOR_NOT_ARMED`). A previous
+  run that converged except for recorded stable failures (an optional grammar
+  that is not installed, #1671) counts as converged (#1735): its call-graph
+  marker stays revoked by design, but its converged-refresh record, read from
+  the published parent generation, proves the edges converged;
+- a write was not recorded (`CHANGED_FILE_NOT_RECORDED`);
+- the changed set is unknown (`CHANGED_FILES_UNKNOWN`);
+- computing the scope failed (`SCOPE_COMPUTATION_FAILED`);
+- the scope exceeds half of all call edges (`SCOPE_TOO_LARGE`).
+
+Either way the result is the same index as a fresh full build.
+
+The certification manifest commits to the exact query-visible rows (RFC-0039).
+Manifest version 3 records a `merkle:` root:
+- each `(table, file_path)` group of rows is hashed into a leaf;
+- the root is folded over the sorted leaves.
+
+The leaves are stored in the control table `ast_certification_leaves`, outside
+the root. The FTS5 search index is certified through the per-file projection
+digest instead of being hashed into the root.
+
+Readers always recompute the root from the rows they read, and accept version
+2 (flat fingerprint) manifests as before.
+
+A refresh re-hashes only the groups it wrote and folds them from the parent's
+stored leaves, provided it can show that nothing else wrote to the index (see
+the CHANGELOG entry for #1718). Otherwise it recomputes in full and reports why
+in `certification.reason`.
+
+Every 20th incremental stamp, and any stamp more than 24 h after the last full
+one, recomputes in full and compares the two roots. With
+`TSA_CERTIFICATION_VERIFY=full`, every stamp does. A mismatch fails closed: no
+manifest is written.CLI equivalent:
 ```bash
 # Guaranteed full rebuild (recommended after pull/rebase):
 uv run python -m tree_sitter_analyzer --full-index --full-index-mode full

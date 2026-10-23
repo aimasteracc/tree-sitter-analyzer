@@ -64,7 +64,7 @@ def test_force_rebuild_rejects_cache_dir_probe_error_before_clear(
 
     source = tmp_path / "app.py"
     source.write_text("value = 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.legacy_cache(tmp_path)
     cache.index_file(str(source))
     snapshot = build_index_candidate_snapshot(
         str(tmp_path),
@@ -105,7 +105,7 @@ def test_force_rebuild_rejects_replaced_cache_dir_before_clear(tmp_path):
 
     source = tmp_path / "app.py"
     source.write_text("value = 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.legacy_cache(tmp_path)
     cache.index_file(str(source))
     snapshot = build_index_candidate_snapshot(
         str(tmp_path),
@@ -150,7 +150,7 @@ def test_force_rebuild_cache_dir_swap_keeps_replacement_mirror_isolated(
 
     source = tmp_path / "app.py"
     source.write_text("value = 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.legacy_cache(tmp_path)
     cache.index_file(str(source))
     cache_dir = tmp_path / ".ast-cache"
     displaced = tmp_path / ".ast-cache-displaced"
@@ -254,7 +254,7 @@ def test_nonmaterialized_candidate_rejects_replacement_cache_before_write(
     root.mkdir()
     source = root / "app.py"
     source.write_text("value = 1\n", encoding="utf-8")
-    cache = ASTCache(str(root))
+    cache = _fixtures.legacy_cache(root)
     cache.index_file(str(source))
     snapshot = build_index_candidate_snapshot(
         str(root),

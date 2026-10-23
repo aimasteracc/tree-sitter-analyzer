@@ -22,6 +22,7 @@ from ..index_candidate_walker import (
     CandidateDiscoveryBudgetExceeded,
     CandidateDiscoveryError,
 )
+from ..index_source_scope import default_exclude_patterns as _default_exclude_patterns
 from ..index_source_snapshot import (
     SourceScopeDescriptor,
     canonical_source_scope_descriptor,
@@ -102,11 +103,8 @@ def _invalidate_ladybug(cache: Any, root_fd: int | None) -> bool:
 
 # Corpus-directory patterns excluded from full-index (REQ-E-016).
 # Uses fnmatch syntax relative to the project root (forward-slash normalised).
-_DEFAULT_EXCLUDE_PATTERNS: frozenset[str] = frozenset(
-    {
-        "tests/golden/corpus_*",
-    }
-)
+# #1697：与同步路由共用 ``index_source_scope`` 的唯一来源。
+_DEFAULT_EXCLUDE_PATTERNS: frozenset[str] = _default_exclude_patterns()
 
 # Extensions that have a plugin but are NOT wired for full-index
 # (REQ-E-020).  When a file with one of these extensions is encountered and
@@ -128,7 +126,23 @@ _warned_extensions: set[str] = set()
 
 # 提取版本与 ast_cache.py 保持一致，同时保留依赖加载投影的失效契约。
 # v39：按语言分类驱动提取，修复成员作用域与 C++ 函数名称恢复。
-_AST_CACHE_EXTRACTOR_VERSION = 39
+# v40：Python 调用边携带接收者类型线索（RFC-0038 receiver_hint）。
+# v41：接收者未被证明的调用不再按项目唯一方法名绑定为 project（#1669）。
+# v42：改名导入的调用解析到真实目标，并在 metadata 中记录 import_alias（#1670）。
+# v43：继承方法的 self.m() 调用按 MRO 解析到最近的定义（#1677）。
+# v44：继承方法经单例 / 构造 / 注解 / super() 接收者按 C3 MRO 解析，闭包继承外层构造类型（#1699）。
+# v45：经模块属性调用的再导出名（`owner._f()`）解析到真实定义（#1705）。
+# v46：symbols_json 记录 `global` / 模块级 `del` 重新绑定的名字，进入范围回填的解析面（#1721）。
+# v47：JS 经默认导出对象 / 命名空间导入的 `obj.m()` 解析到定义，symbols_json 记录 JS 导出形状（#1741）。
+# v48：lambda / 非方法函数参数 `self` 的调用写作 `(self).m`，不按方法接收者解析（#1739）。
+# v50：JS/TS 字符串字面量成员名去掉引号记录，`obj["m"]()` 按成员 `m` 记为调用（#1762）。
+# v51：JS/TS 以常量定义的箭头函数 / 函数表达式按常量名索引为函数，函数体内调用归属于它（#1763）。
+# v52：TS 调用经 ES 模块导入 / 再导出 / 项目包说明符解析到定义，symbols_json 记录 TS 导出形状与再导出（#1764 / #1768）。
+# v53：TS 类的 `extends` 基类写入 parents；`const X = class extends B {...}` 以常量名索引为类（#1765）。
+_AST_CACHE_EXTRACTOR_VERSION = 53
+# #1673：写入方核验符号投影的期限（秒）。未核完会被当作不精确并重写全部投影，
+# 因此写入方不使用读者的 5 秒期限；与认证盖戳的期限（120 秒）一致。
+_WRITER_PROJECTION_SECONDS = 120.0
 
 
 def _walk_source_files(project_root: str) -> Iterator[str]:
@@ -322,10 +336,13 @@ def run_index_project(
 
 
 def _call_graph_marker_is_built(conn: sqlite3.Connection) -> bool:
-    """Require the shared exact current-pipeline marker predicate."""
-    from .callgraph_state import call_graph_marker_is_current
+    """Require the shared exact current-pipeline marker predicate.
 
-    return call_graph_marker_is_current(conn)
+    Writer-side deadline (#1684): a timed-out check is not "not built".
+    """
+    from .callgraph_state import writer_marker_is_current
+
+    return writer_marker_is_current(conn)
 
 
 def _prune_to_selected_scope(
@@ -334,8 +351,8 @@ def _prune_to_selected_scope(
     candidate: IndexCandidateSnapshot,
     *,
     root_fd: int | None = None,
-) -> int:
-    """Transactionally remove primary and graph generations outside the scope."""
+) -> list[str]:
+    """在事务内移除范围外（含已从磁盘删除，#1625）文件的主行与图行，返回其路径。"""
     selected = {entry.rel_path for entry in candidate.selected_entries}
     stale = {
         _normalize_relative_path(str(row[0]))
@@ -343,7 +360,7 @@ def _prune_to_selected_scope(
         if _normalize_relative_path(str(row[0])) not in selected
     }
     if not stale:
-        return 0
+        return []
     try:
         for rel_path in stale:
             _discard_with_root_lease(cache, conn, rel_path, root_fd)
@@ -351,7 +368,7 @@ def _prune_to_selected_scope(
     except Exception:
         conn.rollback()
         raise
-    return len(stale)
+    return sorted(stale)
 
 
 def _candidate_paths_are_exact(
@@ -399,8 +416,12 @@ def _update_authoritative_manifest(
     candidate_snapshot: IndexCandidateSnapshot | None,
     stats: dict[str, Any],
     source_scope: SourceScopeDescriptor,
-) -> None:
-    """Certify only an exact, successful full-index inventory."""
+) -> bool:
+    """Certify only an exact, successful full-index inventory.
+
+    Returns whether this call stamped a manifest (#1671: only a run that stamped
+    may issue the converged-refresh record for a failure-free index).
+    """
     conn = cache._get_conn()
     selected_paths = (
         {entry.rel_path for entry in candidate_snapshot.selected_entries}
@@ -420,12 +441,26 @@ def _update_authoritative_manifest(
         }
         == selected_paths
     )
+    from . import certification_tracking
+
+    if not (exact_paths and _call_graph_marker_is_built(conn)):
+        # 不盖章：撤销本轮的增量认证武装（TEMP 触发器不留到之后的写入）。
+        certification_tracking.disarm(conn)
     if exact_paths and _call_graph_marker_is_built(conn):
         from ..index_snapshot_schema import stamp_full_index_manifest
 
         try:
-            stamp_full_index_manifest(conn, cache.project_root, source_scope)
-            return
+            from ..incremental_sync_support import publication_candidate_rows
+
+            stamp_full_index_manifest(
+                conn,
+                cache.project_root,
+                source_scope,
+                candidate_rows=publication_candidate_rows(cache, candidate_snapshot),
+            )
+            # RFC-0039：这次盖章是增量还是完整重算，以及原因。
+            stats["certification"] = certification_tracking.last_decision(conn)
+            return True
         except Exception:
             # The stamper rolls back its transaction, preserving the prior
             # manifest. Revoke the prerequisite marker in a separate committed
@@ -442,11 +477,12 @@ def _update_authoritative_manifest(
             stats["certification_errors"] = stats.get("certification_errors", 0) + 1
             stats["scope_complete"] = False
             stats["verdict"] = "WARN"
-            return
+            return False
     if exact_paths and not _call_graph_marker_is_built(conn):
         stats["manifest_warning"] = "CALL_GRAPH_INCOMPLETE"
     # Do not delete a manifest epoch this operation did not publish. Status
     # compares source/index/marker fingerprints and classifies it as stale.
+    return False
 
 
 def _record_backfill_result(stats: dict[str, Any], key: str, result: Any) -> None:
@@ -462,8 +498,42 @@ def post_index_backfill(
     *,
     root_fd: int | None = None,
 ) -> None:
-    """Run backfills, recording suppressed failures for certification gates."""
+    """Run backfills, recording suppressed failures for certification gates.
+
+    #1696：能界定依赖时只重新解析受影响的边，否则全量；决定写入 ``stats``。
+    """
+    from . import backfill_scope
+
+    conn = cache._get_conn()
+    changed = None
+    if not stats.get("changed_during_run"):
+        changed = int(stats.get("indexed", 0) or 0) + int(stats.get("pruned", 0) or 0)
+    decision = backfill_scope.decide(cache, conn, changed)
+    stats["backfill_scope"] = decision.to_dict()
+    # #1723：发布后内存调用图按同一范围增量更新。
+    from .. import call_graph_incremental
+
+    call_graph_incremental.note_scope(cache, decision)
+    with backfill_scope.active(conn, decision.scope):
+        _post_index_backfill(cache, stats, root_fd=root_fd)
+
+
+def _post_index_backfill(
+    cache: Any,
+    stats: dict[str, Any],
+    *,
+    root_fd: int | None = None,
+) -> None:
     stats.setdefault("backfill_errors", 0)
+    try:
+        # #1746：相对导入说明符按最终文件集合解析（与索引顺序无关），先于其他回填。
+        # 不单列统计（响应体积不变）；失败照常计入 ``backfill_errors``。
+        from .import_specifier_edges import resolve_import_specifier_edges
+
+        resolve_import_specifier_edges(cache.get_conn())
+    except Exception:
+        stats["backfill_errors"] += 1
+        logger.debug("import specifier backfill failed", exc_info=True)
     try:
         _record_backfill_result(
             stats, "cross_file_backfill", cache.backfill_cross_file_edges()

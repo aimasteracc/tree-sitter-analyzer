@@ -47,9 +47,7 @@ def register_tools(server: Any, server_instance: Any) -> None:
     async def handle_list_tools() -> list[Any]:
         """List all available tools."""
         logger.info("Client requesting tools list")
-        tools = [
-            Tool(**t.get_tool_definition()) for _, t in server_instance.tool_instances
-        ]
+        tools = [Tool(**d) for d in _facade_definitions(server_instance)]
         tools.append(Tool(**_SET_PROJECT_PATH_TOOL))
         logger.info(f"Returning {len(tools)} tools: {[t.name for t in tools]}")
         return tools
@@ -97,6 +95,26 @@ def register_tools(server: Any, server_instance: Any) -> None:
             ]
 
 
+def _facade_definitions(server_instance: Any) -> list[dict[str, Any]]:
+    """Facade definitions for ``tools/list``.
+
+    The real server serves them from the source-fingerprint cache without
+    building the ~100 inner tools (#1675); stand-ins that only expose
+    ``tool_instances`` keep the original path.
+    """
+    if callable(getattr(type(server_instance), "tool_definitions", None)):
+        definitions: list[dict[str, Any]] = server_instance.tool_definitions()
+        return definitions
+    return [t.get_tool_definition() for _, t in server_instance.tool_instances]
+
+
+def _single_facade(server_instance: Any, name: str) -> Any | None:
+    """The facade ``name`` built on its own (#1675), or None to fall through."""
+    if callable(getattr(type(server_instance), "facade", None)):
+        return server_instance.facade(name)
+    return None
+
+
 async def _dispatch_tool(
     server_instance: Any, name: str, arguments: dict[str, Any]
 ) -> Any:
@@ -121,6 +139,9 @@ async def _dispatch_tool(
             name, schema if isinstance(schema, dict) else None, arguments
         )
         return server_instance.handle_set_project_path(arguments)
+    facade = _single_facade(server_instance, name)
+    if facade is not None:
+        return await facade.execute(arguments)
     if name in server_instance.tools:
         return await server_instance.tools[name].execute(arguments)
     if is_legacy_name(name):

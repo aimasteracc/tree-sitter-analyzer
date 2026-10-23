@@ -4,8 +4,11 @@
 # change impact, then runs the claim invariant suite (unit/smoke subset).
 # Posts a dogfood-report comment so reviewers can see the claim status.
 #
-# Does NOT block merge — provides signal, not gate.
-# The claim invariants themselves (if they assert exact values) are the gate.
+# Change impact is signal, not gate. The claim invariant suite IS a gate: a
+# failing claim fails the claim-invariants job (after the report and comment
+# are still produced). #1600: while the suite was informational-only, the
+# RFC-0028 §1.2 honesty ratchet failed on develop for a day without blocking
+# a single PR.
 #
 # Model: read-only analysis + comment only. Never commits or pushes.
 
@@ -153,7 +156,7 @@ jobs:
 
       - name: Upload claims report
         if: always()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: dogfood-claims-${{ github.run_id }}
           path: |
@@ -162,6 +165,13 @@ jobs:
             dogfood-artifacts/change-impact.json
             dogfood-artifacts/change-impact.txt
           retention-days: 14
+
+      # 先上传报告，再按 claims 结果判定作业成败；状态缺失同样判失败（失败即关闭，#1600）。
+      - name: Fail the job when a claim invariant fails
+        if: always() && steps.claims.outputs.status != 'passed'
+        run: |
+          echo "::error::Claim Invariant Suite failed (status='${{ steps.claims.outputs.status }}'); see claims-output.txt"
+          exit 1
 
   post-dogfood-comment:
     name: Post Dogfood Report
@@ -174,7 +184,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Download claims artifact
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8.0.2
         with:
           name: dogfood-claims-${{ github.run_id }}
           path: ./dogfood-artifacts

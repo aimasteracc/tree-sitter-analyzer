@@ -21,7 +21,11 @@ from ...index_snapshot_capability import (
     exact_call_graph_marker,
     require_memory_temp_store,
 )
-from ...index_snapshot_schema import index_fingerprint, validate_snapshot_schema
+from ...index_snapshot_schema import (
+    MANIFEST_VERSIONS,
+    index_commitment,
+    validate_snapshot_schema,
+)
 from ...index_snapshot_symbols import has_ordinary_symbol_projection
 from ...index_source_snapshot import (
     capture_current_source_snapshot,
@@ -200,14 +204,17 @@ def _certify_private_copy(
             "partial", current.reason or "SOURCE_SCOPE_UNKNOWN", source_scope
         )
     recorded = recorded_source_rows(conn, deadline=deadline)
-    index = index_fingerprint(conn, root, deadline=deadline)
+    # RFC-0039：按 manifest 版本重算对应的承诺（v2 扁平指纹 / v3 认证根）。
+    index = index_commitment(
+        conn, root, int(manifest["manifest_version"]), deadline=deadline
+    )
     exact = (
         recorded == current.rows
         and manifest["canonical_root"] == root
         and manifest["source_fingerprint"] == current.fingerprint
         and manifest["index_fingerprint"] == index
         and manifest["file_count"] == len(recorded)
-        and manifest["manifest_version"] == 2
+        and manifest["manifest_version"] in MANIFEST_VERSIONS
         and exact_call_graph_marker(conn, deadline=deadline)
     )
     tables = {

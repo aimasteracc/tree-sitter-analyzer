@@ -115,16 +115,22 @@ def test_the_harvest_is_not_vacuous() -> None:
 
     2026-09-19 实测：171 个常量、16 个路由名标记。合法改变词汇或文案时必须
     明确更新计数；宽松下界会让采集范围大幅缩水后仍然通过。
+    #1562（2026-10-14）：next_step 改用 `edit action=refactor` 门面写法，
+    旧工具名 `refactoring_suggestions` 标记消失，计数 16 → 15。
+    #1635：未发布刷新的 next_step 新增 2 个字符串常量，计数 171 → 173。
+    #1672：callers 把同名入边的调用点并入 next_step（``f"{step} {next_step}"``），
+    多出 1 个分隔常量，计数 173 → 174。
+    #1706：已列出调用方时主因证据并入 next_step，多出 1 个分隔常量，计数 174 → 175。
     """
     harvest = _next_step_strings()
-    assert len(harvest) == 171, (
-        f"expected 171 next_step string constants, harvested {len(harvest)}; "
+    assert len(harvest) == 175, (
+        f"expected 175 next_step string constants, harvested {len(harvest)}; "
         "update this constant if the phrasing changed, otherwise the AST walk is "
         "no longer matching how next_step is assigned"
     )
     tokens = _vocabulary_tokens(harvest)
-    assert len(tokens) == 16, (
-        f"expected 16 route-name tokens across {len(harvest)} strings, found "
+    assert len(tokens) == 15, (
+        f"expected 15 route-name tokens across {len(harvest)} strings, found "
         f"{len(tokens)}; update this constant if the vocabulary changed, "
         "otherwise the tokenizer has drifted and the invariant below no longer "
         "constrains anything"

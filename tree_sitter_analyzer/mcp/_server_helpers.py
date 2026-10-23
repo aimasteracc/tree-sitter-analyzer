@@ -6,6 +6,7 @@ import contextlib
 import os
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 
@@ -196,6 +197,62 @@ def attach_tool_aliases(
         target.file_health_tool,
         target.dependency_analysis_tool,
     ]
+
+
+# 旧版 ``*_tool`` 直连属性：首次访问时才由 attach_tool_aliases 整组构建（冷启动优化）。
+LEGACY_ALIAS_ATTRS = frozenset(
+    {
+        "analyze_scale_tool",
+        "analyze_code_structure_tool",
+        "table_format_tool",
+        "read_partial_tool",
+        "query_tool",
+        "agent_skills_tool",
+        "agent_workflow_tool",
+        "parser_readiness_tool",
+        "project_overview_tool",
+        "file_health_tool",
+        "dependency_analysis_tool",
+        "_legacy_alias_tools",
+    }
+)
+
+
+def get_analysis_engine(project_root: str | None = None) -> Any:
+    """延迟导入分析引擎，避免 MCP ``initialize`` 之前加载 core 解析栈。
+
+    server 模块以同名重新导出，测试仍可 patch
+    ``tree_sitter_analyzer.mcp.server.get_analysis_engine``。
+    """
+    from ..core.analysis_engine import get_analysis_engine as _get_engine
+
+    return _get_engine(project_root)
+
+
+def materialize_deferred_attribute(target: Any, name: str, root: str | None) -> Any:
+    """为 MCP 服务器按需构建资源对象或旧版 ``*_tool`` 别名，并写入 ``target``。
+
+    已显式赋值（含测试注入的 mock）的属性不会被覆盖；未知名称抛出 AttributeError。
+    """
+    if name == "code_file_resource":
+        from .resources import CodeFileResource
+
+        target.code_file_resource = CodeFileResource()
+        return target.code_file_resource
+    if name == "project_stats_resource":
+        from .resources import ProjectStatsResource
+
+        stats = ProjectStatsResource()
+        stats.project_root = root
+        target.project_stats_resource = stats
+        return stats
+    if name in LEGACY_ALIAS_ATTRS:
+        built = SimpleNamespace()
+        attach_tool_aliases(built, {}, root)
+        for attr, value in vars(built).items():
+            target.__dict__.setdefault(attr, value)
+        return target.__dict__[name]
+    raise AttributeError(f"{type(target).__name__!r} object has no attribute {name!r}")
 
 
 def detect_server_version(

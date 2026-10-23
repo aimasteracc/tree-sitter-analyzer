@@ -1,6 +1,9 @@
 """跨请求刷新、请求内固定与派生数据隔离契约。"""
 
+import os
 import sqlite3
+import subprocess
+import sys
 
 import pytest
 
@@ -93,6 +96,54 @@ async def test_constraint_persistence_does_not_mutate_published_parent(tmp_path,
         ).fetchone() == (0,)
     with pytest.raises(Superseded):
         mutate_index_path(root, previous, lambda path: pytest.fail("不得写入旧版本"))
+
+
+@pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0,
+    reason="tracked: RFC-0032 boundary, root bypasses read-only file bits",
+)
+@pytest.mark.asyncio
+async def test_sealed_generation_is_single_read_only_file_for_fresh_process(
+    tmp_path,
+):
+    # rfcs/evidence/0032-feasibility E5b（2026-10-13）：密封后只剩主库文件且
+    # 文件级只读；新进程只读打开时不得遗留可写的 WAL/共享内存旁路文件。
+    (tmp_path / "a.py").write_text("def original(): return 1\n", encoding="utf-8")
+    root = str(tmp_path)
+    assert (await CodeGraphFullIndexTool(root).execute({"mode": "full"}))["published"]
+    database = resolve_index_path(root)
+    reader = (
+        "import sys\n"
+        "from tree_sitter_analyzer.ast_cache import ASTCache\n"
+        "cache = ASTCache(sys.argv[1])\n"
+        "print(cache.get_stats()['total_files'])\n"
+        "cache.close()\n"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", reader, root],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert (completed.returncode, completed.stdout.strip()) == (0, "1")
+    assert sorted(os.listdir(database.parent)) == ["index.db"]
+    assert os.access(database, os.W_OK) is False
+
+
+@pytest.mark.asyncio
+async def test_sealed_generation_still_serves_reads_and_fts(tmp_path):
+    (tmp_path / "a.py").write_text("def original(): return 1\n", encoding="utf-8")
+    assert (await CodeGraphFullIndexTool(str(tmp_path)).execute({"mode": "full"}))[
+        "published"
+    ] is True
+    cache = ASTCache(str(tmp_path))
+    try:
+        assert isinstance(cache.get_conn(), sqlite3.Connection)
+        assert cache.fts5_available is True
+        assert [row["name"] for row in cache.fts_search("original")] == ["original"]
+    finally:
+        cache.close()
 
 
 @pytest.mark.asyncio

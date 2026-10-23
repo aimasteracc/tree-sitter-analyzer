@@ -6,6 +6,7 @@ ASTCache delegates to these via thin wrapper methods.
 
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 from typing import TYPE_CHECKING, Any
@@ -22,31 +23,160 @@ def _resolve_indexed_callee(
     """利用持久化定义行补足 self/cls 的类身份，不把同名调用者交给名字猜测。"""
     caller_file = row["caller_file"]
     name = row["callee_name"]
-    if ctx.file_languages.get(caller_file) == "python" and row["callee_full"] in (
-        f"self.{name}",
-        f"cls.{name}",
-    ):
-        callers = conn.execute(
-            "SELECT id FROM ast_symbol_rows WHERE file_path=? AND name=? AND line=? "
-            "AND kind IN ('function','method') LIMIT 2",
-            (caller_file, row["caller_name"], row["caller_line"]),
-        ).fetchall()
-        if len(callers) == 1:
-            owners = [
-                methods
-                for methods in ctx.file_class_methods.get(caller_file, {}).values()
-                if methods.get(row["caller_name"]) == callers[0][0]
-            ]
-            if len(owners) == 1:
-                from ..synapse_resolver import ResolvedCallee
+    annotated = _resolve_annotated(row, ctx)
+    if annotated is not None:
+        return annotated
+    is_python = ctx.file_languages.get(caller_file) == "python"
+    if is_python:
+        attribute = _resolve_module_attribute(row, ctx)
+        if attribute is not None:
+            return attribute
+    if is_python and row["callee_full"] in (f"self.{name}", f"cls.{name}"):
+        owner = _owner_class(conn, row, ctx)
+        if owner is not None:
+            from ..synapse_resolver import ResolvedCallee
 
-                target = owners[0].get(name)
-                return (
-                    ResolvedCallee(target, "local", caller_file)
-                    if target is not None
-                    else ResolvedCallee(None, "unknown", "")
-                )
+            target = ctx.file_class_methods.get(caller_file, {})[owner].get(name)
+            return (
+                ResolvedCallee(target, "local", caller_file)
+                if target is not None
+                else ResolvedCallee(None, "unknown", "")
+            )
+    if is_python and row["callee_full"] == f"super().{name}":
+        inherited = _resolve_super(conn, row, ctx)
+        if inherited is not None:
+            return inherited
     return resolve(name, caller_file, ctx, row["callee_full"], row["caller_name"])
+
+
+def _owner_class(conn: sqlite3.Connection, row: Any, ctx: Any) -> str | None:
+    """调用方方法所属的类名（按持久化定义行确认）；无法唯一确定时为 None。"""
+    caller_file = row["caller_file"]
+    callers = conn.execute(
+        "SELECT id FROM ast_symbol_rows WHERE file_path=? AND name=? AND line=? "
+        "AND kind IN ('function','method') LIMIT 2",
+        (caller_file, row["caller_name"], row["caller_line"]),
+    ).fetchall()
+    if len(callers) != 1:
+        return None
+    owners = [
+        class_name
+        for class_name, methods in ctx.file_class_methods.get(caller_file, {}).items()
+        if methods.get(row["caller_name"]) == callers[0][0]
+    ]
+    return owners[0] if len(owners) == 1 else None
+
+
+def _resolve_super(conn: sqlite3.Connection, row: Any, ctx: Any) -> Any:
+    """#1699：``super().m()`` 解析到外围类 C3 MRO 中、外围类之后最近的 ``m``。"""
+    owner = _owner_class(conn, row, ctx)
+    if owner is None:
+        return None
+    from ..synapse_resolver import ResolvedCallee
+    from ..synapse_resolver._annotated import linearize
+
+    order = linearize((row["caller_file"], owner), ctx)
+    if order is None:
+        return None
+    for file_path, class_name in order[1:]:
+        target = ctx.file_class_methods.get(file_path, {}).get(class_name, {})
+        if row["callee_name"] in target:
+            return ResolvedCallee(target[row["callee_name"]], "project", file_path)
+    return None
+
+
+def _resolve_module_attribute(row: Any, ctx: Any) -> Any:
+    """#1705：`owner._f()` 经模块 `owner` 的再导出绑定解析到真实定义。"""
+    callee_full = str(_row_value(row, "callee_full") or "")
+    if "." not in callee_full:
+        return None
+    from ..synapse_resolver import ResolvedCallee
+    from ..synapse_resolver._module_attrs import resolve_module_attribute
+
+    found = resolve_module_attribute(
+        callee_full,
+        row["caller_file"],
+        int(_row_value(row, "caller_line") or 0),
+        int(_row_value(row, "line") or 0),
+        ctx,
+    )
+    if found is None:
+        return None
+    symbol, defining_file, alias = found
+    return ResolvedCallee(symbol, "project", defining_file, alias=alias)
+
+
+def _resolve_annotated(row: Any, ctx: Any) -> Any:
+    """RFC-0038：调用点带接收者类型线索时，先按注解所指的类解析。
+
+    #1743：Java 的线索是接收者的声明类型（形参 / 局部 / 字段）。
+    """
+    language = ctx.file_languages.get(row["caller_file"])
+    if language not in ("python", "java"):
+        return None
+    from ..synapse_resolver._annotated import (
+        receiver_hint_from_metadata,
+        resolve_annotated_receiver,
+    )
+
+    hint = receiver_hint_from_metadata(_row_value(row, "metadata"))
+    if hint is None:
+        return None
+    if language == "java":
+        from ..synapse_resolver._java_typed import resolve_java_typed_receiver
+
+        return resolve_java_typed_receiver(
+            hint, row["callee_name"], row["caller_file"], ctx
+        )
+    return resolve_annotated_receiver(
+        hint, row["callee_name"], row["caller_file"], row["caller_name"] or "", ctx
+    )
+
+
+def _row_value(row: Any, key: str) -> Any:
+    try:
+        return row[key]
+    except (IndexError, KeyError):
+        return None
+
+
+def _update_params(resolved: Any, row: Any) -> tuple[Any, ...]:
+    """UPDATE 参数：带绑定的解析同时把 ``receiver_binding`` 写入 metadata。
+
+    #1670：经改名导入的解析同样把 ``import_alias`` 写入 metadata。
+    """
+    metadata = None  # COALESCE keeps the stored metadata
+    binding = getattr(resolved, "binding", None)
+    alias = getattr(resolved, "alias", None)
+    if binding or alias:
+        stored = _row_value(row, "metadata")
+        try:
+            parsed = json.loads(stored) if stored else {}
+        except (TypeError, ValueError):
+            parsed = {}
+        if not isinstance(parsed, dict):
+            parsed = {}
+        if binding:
+            parsed["receiver_binding"] = binding
+        if alias:
+            parsed["import_alias"] = alias
+        parsed["callee_resolution"] = resolved.resolution
+        parsed["callee_resolved_file"] = resolved.resolved_file
+        metadata = json.dumps(parsed, sort_keys=True)
+    return (
+        resolved.callee_symbol_id,
+        resolved.resolution,
+        resolved.resolved_file,
+        metadata,
+        row["id"],
+    )
+
+
+_UPDATE_RESOLUTION_SQL = (
+    "UPDATE edges "
+    "SET callee_symbol_id = ?, callee_resolution = ?, "
+    "callee_resolved_file = ?, metadata = COALESCE(?, metadata) WHERE id = ?"
+)
 
 
 def resolve_call_edges_for_file(
@@ -73,8 +203,8 @@ def resolve_call_edges_for_file(
         return
     try:
         rows = conn.execute(
-            "SELECT id, caller_name, caller_line, file_path AS caller_file, callee_name, "
-            "callee_full FROM edges WHERE kind = 'calls' AND file_path = ?",
+            "SELECT id, line, caller_name, caller_line, file_path AS caller_file, callee_name, "
+            "callee_full, metadata FROM edges WHERE kind = 'calls' AND file_path = ?",
             (rel_path,),
         ).fetchall()
     except sqlite3.OperationalError as exc:
@@ -87,17 +217,7 @@ def resolve_call_edges_for_file(
             logger.debug("resolve_callee crashed on %s: %s", row["callee_name"], exc)
             continue
         try:
-            conn.execute(
-                "UPDATE edges "
-                "SET callee_symbol_id = ?, callee_resolution = ?, "
-                "callee_resolved_file = ? WHERE id = ?",
-                (
-                    resolved.callee_symbol_id,
-                    resolved.resolution,
-                    resolved.resolved_file,
-                    row["id"],
-                ),
-            )
+            conn.execute(_UPDATE_RESOLUTION_SQL, _update_params(resolved, row))
         except sqlite3.OperationalError as exc:
             logger.debug("call_edge update failed for id=%s: %s", row["id"], exc)
             return
@@ -123,8 +243,8 @@ def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int]
         # project, no resolved_file by design) — re-selecting them on every
         # backfill is the unknown-> rescan loop B3 is meant to break.
         rows = conn.execute(
-            "SELECT id, caller_name, caller_line, file_path AS caller_file, callee_name, "
-            "callee_full FROM edges "
+            "SELECT id, line, caller_name, caller_line, file_path AS caller_file, callee_name, "
+            "callee_full, metadata FROM edges "
             "WHERE kind = 'calls' AND ("
             "callee_resolution = 'unknown' "
             "OR (callee_resolved_file = '' "
@@ -133,6 +253,18 @@ def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int]
     except sqlite3.OperationalError as exc:
         logger.debug("synapse backfill select failed: %s", exc)
         return None
+    from .backfill_scope import current
+
+    scope = current(conn)
+    if scope is not None:
+        # #1696：只重新解析依赖范围内的未解析边；范围外的边输入未变，结果不变。
+        rows = [
+            row
+            for row in rows
+            if scope.covers(
+                str(row["caller_file"]), str(row["callee_name"] or ""), None
+            )
+        ]
     if not rows:
         return empty_stats
     try:
@@ -142,7 +274,7 @@ def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int]
         return None
     total = len(rows)
     resolved = unchanged = errors = 0
-    updates: list[tuple[Any, str, str, int]] = []
+    updates: list[tuple[Any, ...]] = []
     for row in rows:
         try:
             result = _resolve_indexed_callee(conn, row, ctx, resolve_callee)
@@ -153,22 +285,10 @@ def run_synapse_backfill(cache: Any, conn: sqlite3.Connection) -> dict[str, int]
         if result.resolution == "unknown" and not result.resolved_file:
             unchanged += 1
             continue
-        updates.append(
-            (
-                result.callee_symbol_id,
-                result.resolution,
-                result.resolved_file,
-                row["id"],
-            )
-        )
+        updates.append(_update_params(result, row))
     if updates:
         try:
-            conn.executemany(
-                "UPDATE edges "
-                "SET callee_symbol_id = ?, callee_resolution = ?, "
-                "callee_resolved_file = ? WHERE id = ?",
-                updates,
-            )
+            conn.executemany(_UPDATE_RESOLUTION_SQL, updates)
             resolved += len(updates)
         except sqlite3.OperationalError as exc:
             logger.debug("synapse backfill update failed: %s", exc)

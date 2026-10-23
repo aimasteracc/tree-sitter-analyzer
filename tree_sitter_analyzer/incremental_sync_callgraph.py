@@ -40,11 +40,65 @@ def _record_pipeline_warning(result: Any, stage_name: str, reason: str) -> None:
 
 
 def run_call_graph_pipeline(cache: Any, result: Any = None) -> tuple[bool, int]:
-    """Run all three backfills and publish every suppressed stage failure."""
+    """Run all three backfills and publish every suppressed stage failure.
+
+    #1696：能界定依赖时只重新解析受影响的边（``cache.backfill_scope``），否则全量。
+    """
+    from .cache import backfill_scope
+
+    conn = cache.get_conn()
+    decision = backfill_scope.decide(cache, conn, _changed_count(result))
+    if result is not None:
+        result.backfill_scope = decision.to_dict()
+    # #1723：发布后内存调用图按同一范围增量更新。
+    from . import call_graph_incremental
+
+    call_graph_incremental.note_scope(cache, decision)
+    with backfill_scope.active(conn, decision.scope):
+        return _run_stages(cache, result)
+
+
+def _changed_count(result: Any) -> int | None:
+    """本轮改动的文件数；不知道或运行中源码又变了时为 None（全量）。"""
+    if result is None or getattr(result, "changed_during_run", None):
+        return None
+    total = 0
+    for name in ("new_files", "updated_files", "deleted_files"):
+        count: object = getattr(result, name, None)
+        if type(count) is not int:
+            return None
+        total += count
+    # #1735：稳定失败（缺少可选语法等）的文件不写任何行，也就没有可记录的写入；
+    # 它们在全新重建中同样没有行，不属于需要界定的改动。
+    return total - _stable_failure_count(result)
+
+
+def _stable_failure_count(result: Any) -> int:
+    from .cache.publication_policy import FAILURE_KIND, STABLE
+
+    return sum(
+        1
+        for detail in getattr(result, "details", None) or ()
+        if isinstance(detail, Mapping)
+        and detail.get("status") == "error"
+        and detail.get(FAILURE_KIND) == STABLE
+        and detail.get("file")
+    )
+
+
+def _resolve_import_specifiers(cache: Any) -> Mapping[str, int]:
+    from .cache.import_specifier_edges import resolve_import_specifier_edges
+
+    return resolve_import_specifier_edges(cache.get_conn())
+
+
+def _run_stages(cache: Any, result: Any) -> tuple[bool, int]:
     clear_call_graph_built_strict(cache.get_conn())
     complete = True
     synapse_resolved = 0
     stages = (
+        # #1746：相对导入说明符按最终文件集合解析（与索引顺序无关），先于其他回填。
+        ("import_specifiers", lambda: _resolve_import_specifiers(cache)),
         ("cross_file", cache.backfill_cross_file_edges),
         ("synapse", cache._run_synapse_backfill),
         ("unresolved", cache._run_unresolved_refs_backfill),

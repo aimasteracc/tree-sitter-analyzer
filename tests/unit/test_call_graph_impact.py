@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from tree_sitter_analyzer.mcp.tools.utils.call_graph_impact import (
     CallGraphImpactResult,
     FunctionImpact,
@@ -199,3 +201,57 @@ class TestChangeImpactIntegration:
         )
         result = _build_change_impact_result(req)
         assert "call_graph_impact" not in result
+
+
+class TestNameOnlyCallersInChangeImpact:
+    """#1559：change-impact 的上游计数与测试选择不能因模糊调用被丢弃而缩水。"""
+
+    @pytest.mark.asyncio
+    async def test_upstream_count_keeps_name_only_caller(self, tmp_path):
+        # #1559：改动 gen_store.py 时，`x.publish()` 的调用方仍计入上游影响。
+        from tests.unit._navigation_test_support import (
+            index_ambiguous_publish_project,
+        )
+
+        root = await index_ambiguous_publish_project(tmp_path)
+        result = compute_call_graph_impact(root, ["gen_store.py"])
+        assert result is not None
+        assert result.affected_functions_by_file == {
+            "app.py": ["relay -> publish"],
+            "tests/test_gen_store.py": ["test_publish_any -> publish"],
+        }
+
+    @pytest.mark.asyncio
+    async def test_upstream_name_only_callers_are_marked(self, tmp_path):
+        # #1559：过近似得到的上游调用方在输出中单独计数。
+        from tests.unit._navigation_test_support import (
+            index_ambiguous_publish_project,
+        )
+
+        root = await index_ambiguous_publish_project(tmp_path)
+        result = compute_call_graph_impact(root, ["gen_store.py"])
+        assert result is not None
+        assert result.to_dict()["possible_upstream_callers"] == 2
+
+    @pytest.mark.asyncio
+    async def test_selected_tests_include_the_exercising_test(self, tmp_path):
+        # #1559：测试选择不能因模糊调用被丢弃而漏掉覆盖该调用点的测试。
+        from tests.unit._navigation_test_support import (
+            index_ambiguous_publish_project,
+        )
+        from tree_sitter_analyzer.mcp.tools.utils.change_impact_analysis import (
+            ChangeImpactRequest,
+            _build_change_impact_result,
+        )
+
+        root = await index_ambiguous_publish_project(tmp_path)
+        result = _build_change_impact_result(
+            ChangeImpactRequest(
+                mode="diff",
+                changed_files=["gen_store.py"],
+                diff_stat="",
+                project_root=root,
+                include_tests=True,
+            )
+        )
+        assert result["tests_to_run"] == ["tests/test_gen_store.py"]

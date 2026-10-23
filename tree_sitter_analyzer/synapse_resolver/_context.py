@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from collections import OrderedDict
+from collections.abc import Callable, Collection
 from typing import TYPE_CHECKING, Any
 
 from ..callee_resolution import CalleeResolver
+from ..project_graph import python_submodule_import_targets
 from ._constants import (
     BUILTIN_QUALIFIED_PY,
     BUILTINS_PY,
@@ -15,11 +18,62 @@ from ._constants import (
     STDLIB_METHODS_PY,
     STDLIB_NAMES_PY,
 )
+from ._context_inputs import (
+    ContextState,
+    Evidence,
+    patch_state,
+    read_state,
+    scoped_rows,
+)
 from ._imports import ImportEntry
 from ._java_constants import EXTERNAL_METHODS_JAVA, STDLIB_METHODS_JAVA
 
 if TYPE_CHECKING:
     from ..ast_cache import ASTCache
+
+
+class LazyLanguageContexts:
+    """语言 -> 解析上下文；第一次 ``get`` 某语言时才调用其构建函数（#1737）。
+
+    构建结果（含 ``None``）只计算一次。线程安全：并发的首次访问只构建一次。
+    """
+
+    def __init__(self, builders: dict[str, Callable[[], Any]]) -> None:
+        self._builders = dict(builders)
+        self._built: dict[str, Any] = {}
+        self._lock = threading.Lock()
+
+    def get(self, language: str, default: Any = None) -> Any:
+        if language in self._built:
+            value = self._built[language]
+            return default if value is None else value
+        builder = self._builders.get(language)
+        if builder is None:
+            return default
+        with self._lock:
+            if language not in self._built:
+                self._built[language] = builder()
+            value = self._built[language]
+        return default if value is None else value
+
+    def setdefault(self, language: str, value: Any) -> Any:
+        if self.get(language) is None:
+            with self._lock:
+                self._built[language] = value
+            return value
+        return self.get(language)
+
+    def __contains__(self, language: object) -> bool:
+        return isinstance(language, str) and self.get(language) is not None
+
+
+def _live_connection(cache: Any, conn: Any) -> Any:
+    """构建时的连接若已关闭，改用缓存当前的连接（上下文可能晚于构建它的连接存活）。"""
+    try:
+        conn.execute("SELECT 1")
+        return conn
+    except Exception:  # nosec B110 — 连接已关闭：取缓存的当前连接
+        return cache.get_conn() if cache is not None else conn
 
 
 class ResolverContext:
@@ -55,7 +109,8 @@ class ResolverContext:
         callee_resolver: CalleeResolver | None = None,
         file_languages: dict[str, str] | None = None,
         java_context: Any | None = None,
-        lang_contexts: dict[str, Any] | None = None,
+        lang_contexts: dict[str, Any] | LazyLanguageContexts | None = None,
+        module_to_file: dict[str, str] | None = None,
     ) -> None:
         self.project_root = project_root
         self.cache = cache
@@ -63,7 +118,11 @@ class ResolverContext:
         # RFC-0010: per-language resolver contexts keyed by language name. The
         # legacy ``java_context`` kwarg is folded in for back-compat with callers
         # that still pass it explicitly.
-        self._lang_contexts: dict[str, Any] = dict(lang_contexts or {})
+        self._lang_contexts: Any = (
+            lang_contexts
+            if isinstance(lang_contexts, LazyLanguageContexts)
+            else dict(lang_contexts or {})
+        )
         if java_context is not None:
             self._lang_contexts.setdefault("java", java_context)
         self._file_symbols = file_symbols or {}
@@ -73,6 +132,8 @@ class ResolverContext:
         self._method_indexes_loaded = False
         self._class_method_index: dict[tuple[str, str], tuple[str, int] | None] = {}
         self._unique_method_index: dict[str, tuple[str, int] | None] = {}
+        self._method_symbol_ids: frozenset[int] | None = None
+        self._project_class_names: frozenset[str] | None = None
         self._global_name_table = global_name_table or {}
         self._import_alias_target = import_alias_target or {}
         self._imports_by_file = imports_by_file or {}
@@ -82,6 +143,11 @@ class ResolverContext:
         self._external_methods = external_methods or {}
         self._builtin_methods = builtin_methods or {}
         self._callee_resolver = callee_resolver
+        #: #1705：模块点分名 -> 文件（解析 `import a.b as m` 的 `m`）。
+        self._module_to_file = module_to_file or {}
+        #: #1705：本次解析读取过的源码（相对路径 -> 文本；不可读为 None）。
+        self.text_memo: dict[str, str | None] = {}
+        self._indexed_module_files: set[str] | None = None
         self._loaded = any(
             value is not None
             for value in (
@@ -96,6 +162,7 @@ class ResolverContext:
                 callee_resolver,
                 file_languages,
                 java_context,
+                module_to_file,
             )
         )
 
@@ -117,6 +184,30 @@ class ResolverContext:
     def file_symbols(self) -> dict[str, list[tuple[str, str, int]]]:
         self._ensure_loaded()
         return self._file_symbols
+
+    @property
+    def method_symbol_ids(self) -> frozenset[int]:
+        """#1669：方法（类成员）的符号 id；无接收者的调用不能绑定到它们。"""
+        if self._method_symbol_ids is None:
+            self._method_symbol_ids = frozenset(
+                sym_id
+                for symbols in self.file_symbols.values()
+                for _name, kind, sym_id in symbols
+                if kind == "method"
+            )
+        return self._method_symbol_ids
+
+    @property
+    def project_class_names(self) -> frozenset[str]:
+        """#1669：项目里定义的类名（接收者为类名时的证据）。"""
+        if self._project_class_names is None:
+            self._project_class_names = frozenset(
+                name
+                for symbols in self.file_symbols.values()
+                for name, kind, _sym_id in symbols
+                if kind == "class"
+            )
+        return self._project_class_names
 
     @property
     def name_to_source(self) -> dict[str, dict[str, str]]:
@@ -207,6 +298,18 @@ class ResolverContext:
         self._ensure_loaded()
         return self._callee_resolver
 
+    @property
+    def module_to_file(self) -> dict[str, str]:
+        self._ensure_loaded()
+        return self._module_to_file
+
+    @property
+    def indexed_module_files(self) -> set[str]:
+        """`module_to_file` 的文件集合（只建一次，#1673 同理）。"""
+        if self._indexed_module_files is None:
+            self._indexed_module_files = set(self.module_to_file.values())
+        return self._indexed_module_files
+
     def _ensure_loaded(self) -> None:
         if self._loaded:
             return
@@ -229,6 +332,7 @@ class ResolverContext:
         self._callee_resolver = built.callee_resolver
         self._file_languages = built._file_languages  # noqa: SLF001
         self._lang_contexts = built._lang_contexts  # noqa: SLF001
+        self._module_to_file = built._module_to_file  # noqa: SLF001
         self._loaded = True
 
 
@@ -322,20 +426,39 @@ def _local_name_as_submodule(
     module_path: str,
     caller_file: str,
     module_to_file: dict[str, str],
+    indexed_files: set[str] | None = None,
 ) -> str:
     """For ``from <pkg> import <name>``, check if ``<name>`` is itself a
     submodule. Returns target file path or ``""``.
+
+    ``indexed_files`` is ``set(module_to_file.values())``; callers looping over
+    every import pass it once (#1673: rebuilding it per import entry made the
+    import-map pass quadratic, 27k imports x 2.5k files on this repository).
 
     Concrete cases:
     * ``from . import b``        — local_name='b',  alias_of=''   → caller_dir/b.py
     * ``from . import b as bb``  — local_name='bb', alias_of='b'  → caller_dir/b.py
     * ``from .pkg import b``     — local_name='b',  alias_of=''   → caller_dir/pkg/b.py
+    * ``from pkg import b as bb`` — local_name='bb', alias_of='b'  → pkg/b.py
 
     The lookup module name is ``alias_of`` when present, else ``local_name``.
     """
     if not local_name:
         return ""
     lookup_name = alias_of or local_name
+    by_path = (
+        indexed_files if indexed_files is not None else set(module_to_file.values())
+    )
+    if not module_path.startswith("."):
+        # 绝对导入按包路径定位，不能拼接调用方目录；复用 #1566 的子模块规则（#1579）。
+        targets = python_submodule_import_targets(
+            module_path,
+            (lookup_name,),
+            caller_file,
+            by_path,
+            False,
+        )
+        return targets[0] if targets else ""
     caller_dir = os.path.dirname(caller_file).replace(os.sep, "/")
     leading_dots = 0
     for ch in module_path:
@@ -357,7 +480,6 @@ def _local_name_as_submodule(
         f"{base}/{lookup_name}.py" if base else f"{lookup_name}.py",
         f"{base}/{lookup_name}/__init__.py" if base else f"{lookup_name}/__init__.py",
     )
-    by_path = set(module_to_file.values())
     for cand in candidates:
         if cand in by_path:
             return cand
@@ -365,16 +487,25 @@ def _local_name_as_submodule(
 
 
 def _build_file_class_methods(
-    conn: Any, line_idx: dict[tuple[str, str, int], int]
+    conn: Any,
+    line_idx: dict[tuple[str, str, int], int],
+    files: Collection[str] | None = None,
 ) -> dict[str, dict[str, dict[str, int]]]:
     """Pull class→method maps from ``symbols_json``.
 
     ``ast_symbol_rows`` does not store the parent class. We pull it from
     the per-file ``symbols_json`` blob (where ``class`` is captured), then
     cross-reference back to the symbol id via (file, name, line).
+
+    ``files``（#1749）只读取这些文件；每个文件的结果只取决于它自己的行。
     """
     out: dict[str, dict[str, dict[str, int]]] = {}
-    rows = conn.execute("SELECT file_path, symbols_json FROM ast_index").fetchall()
+    sql = "SELECT file_path, symbols_json FROM ast_index"
+    rows = (
+        conn.execute(sql).fetchall()
+        if files is None
+        else scoped_rows(conn, sql, files, "")
+    )
     for row in rows:
         fp = row["file_path"]
         try:
@@ -399,20 +530,30 @@ def _build_file_class_methods(
     return out
 
 
+_ALL_SYMBOL_LINES_SQL = "SELECT id, name, file_path, line FROM ast_symbol_rows"
+#: 覆盖索引 (file_path, name, kind, line) 的顺序：同键（同文件同名同行）时后读者胜出。
+_ALL_SYMBOL_LINES_ORDER = " ORDER BY file_path, name, kind, line, id"
+
+
 def _build_file_class_methods_from_cache(
     cache: ASTCache,
+    files: Collection[str] | None = None,
 ) -> dict[str, dict[str, dict[str, int]]]:
     conn = cache.get_conn()
     line_idx: dict[tuple[str, str, int], int] = {}
     try:
-        rows = conn.execute(
-            "SELECT id, name, file_path, line FROM ast_symbol_rows"
-        ).fetchall()
+        rows = (
+            conn.execute(_ALL_SYMBOL_LINES_SQL + _ALL_SYMBOL_LINES_ORDER).fetchall()
+            if files is None
+            else scoped_rows(
+                conn, _ALL_SYMBOL_LINES_SQL, files, _ALL_SYMBOL_LINES_ORDER
+            )
+        )
     except Exception:  # nosec B110
         rows = []
     for row in rows:
         line_idx[(row["file_path"], row["name"], row["line"])] = row["id"]
-    return _build_file_class_methods(conn, line_idx)
+    return _build_file_class_methods(conn, line_idx, files)
 
 
 def _build_import_maps(
@@ -431,6 +572,7 @@ def _build_import_maps(
     name_to_source: dict[str, dict[str, str]] = {}
     alias_target: dict[str, dict[str, str]] = {}
     star_imports: list[tuple[str, ImportEntry]] = []
+    indexed_files = set(module_to_file.values())
     for caller_file, entries in imports_by_file.items():
         name_map: dict[str, str] = {}
         alias_map: dict[str, str] = {}
@@ -452,6 +594,7 @@ def _build_import_maps(
                     entry.module_path,
                     caller_file,
                     module_to_file,
+                    indexed_files,
                 )
                 if submod:
                     alias_map[entry.local_name] = submod
@@ -498,122 +641,89 @@ def _cache_identity(cache: ASTCache) -> tuple[str, int, int]:
 
 
 def build_resolver_context(cache: ASTCache) -> ResolverContext:
-    """Return a loaded resolver context, reusing recent cache snapshots."""
+    """Return a loaded resolver context, reusing recent cache snapshots.
+
+    #1749：数据库标识未命中时，若同一项目上一份上下文的内容证据只差少数文件，
+    在它之上只替换这些文件（结果与全量构建相同）；否则全量构建。
+    """
     key = _cache_identity(cache)
     cached = _CONTEXT_CACHE.get(key)
     if cached is not None:
         _CONTEXT_CACHE.move_to_end(key)
         return cached
-    built = _build_resolver_context_uncached(cache)
+    from . import _context_reuse  # noqa: PLC0415 — 避免循环导入
+
+    built = _context_reuse.reuse(cache)
+    if built is None:
+        built = _build_resolver_context_uncached(cache)
     _CONTEXT_CACHE[key] = built
     if len(_CONTEXT_CACHE) > _CONTEXT_CACHE_MAX:
         _CONTEXT_CACHE.popitem(last=False)
     return built
 
 
+def read_context_state(conn: Any) -> ContextState:
+    """全量读取解析上下文的输入（#1749：拆出以便逐文件修补）。"""
+    return read_state(
+        conn, module_map=_build_module_to_file, import_maps=_build_import_maps
+    )
+
+
+def patch_context_state(
+    conn: Any,
+    old: ContextState,
+    evidence: Evidence,
+    ordered: list[tuple[str, str]],
+    changed: set[str],
+) -> ContextState | None:
+    """在上一份状态上只替换 ``changed`` 文件（#1749）。"""
+    return patch_state(
+        conn,
+        old,
+        evidence,
+        ordered,
+        changed,
+        module_map=_build_module_to_file,
+        import_maps=_build_import_maps,
+        star_target=lambda entry, caller, module_to_file: _resolve_module_to_file(
+            entry.module_path, entry.is_relative, caller, module_to_file
+        ),
+    )
+
+
 def _build_resolver_context_uncached(cache: ASTCache) -> ResolverContext:
     """One DB pass; populates every map the resolver needs."""
+    from . import _context_reuse  # noqa: PLC0415 — 避免循环导入
+
     conn = cache.get_conn()
+    state = read_context_state(conn)
+    ctx = context_from_state(cache, conn, state)
+    _context_reuse.remember(cache, state, ctx)
+    return ctx
 
-    file_symbols: dict[str, list[tuple[str, str, int]]] = {}
-    global_name_table: dict[str, list[tuple[str, int]]] = {}
-    line_idx: dict[tuple[str, str, int], int] = {}
-    try:
-        sym_rows = conn.execute(
-            "SELECT id, name, kind, file_path, line FROM ast_symbol_rows "
-            "WHERE kind IN ('function', 'method', 'class')"
-        ).fetchall()
-    except Exception:  # nosec B110 — fts5/table-missing tolerance.
-        sym_rows = []
-    for row in sym_rows:
-        sid = row["id"]
-        name = row["name"]
-        kind = row["kind"]
-        fp = row["file_path"]
-        file_symbols.setdefault(fp, []).append((name, kind, sid))
-        global_name_table.setdefault(name, []).append((fp, sid))
-        line_idx[(fp, name, row["line"])] = sid
 
-    imports_by_file: dict[str, list[ImportEntry]] = {}
-    try:
-        imp_rows = conn.execute(
-            "SELECT file_path, language, module_path, local_name, "
-            "is_relative, is_star, alias_of, line FROM ast_imports"
-        ).fetchall()
-    except Exception:  # nosec B110
-        imp_rows = []
-    for r in imp_rows:
-        entry = ImportEntry(
-            file_path=r["file_path"],
-            language=r["language"],
-            module_path=r["module_path"],
-            local_name=r["local_name"],
-            is_relative=bool(r["is_relative"]),
-            is_star=bool(r["is_star"]),
-            alias_of=r["alias_of"],
-            line=r["line"],
-        )
-        imports_by_file.setdefault(entry.file_path, []).append(entry)
-
-    file_paths: list[str] = []
-    file_languages: dict[str, str] = {}
-    try:
-        idx_rows = conn.execute("SELECT file_path, language FROM ast_index").fetchall()
-    except Exception:  # nosec B110
-        idx_rows = []
-    for r in idx_rows:
-        file_paths.append(r["file_path"])
-        file_languages[r["file_path"]] = r["language"]
-    module_to_file = _build_module_to_file(file_paths)
-    name_to_source, alias_target = _build_import_maps(
-        imports_by_file, module_to_file, file_symbols
+def context_from_state(
+    cache: ASTCache,
+    conn: Any,
+    state: ContextState,
+    *,
+    file_class_methods: dict[str, dict[str, dict[str, int]]] | None = None,
+) -> ResolverContext:
+    """由输入状态组装上下文（全量与修补两条路径共用）。"""
+    callee_resolver = CalleeResolver(
+        functions_by_name=state.functions_by_name,
+        functions_by_file=state.functions_by_file,
+        name_to_source=state.combined_sources,
     )
-    callee_resolver = _build_callee_resolver(
-        file_symbols=file_symbols,
-        global_name_table=global_name_table,
-        name_to_source=name_to_source,
-        alias_target=alias_target,
-    )
-
-    # RFC-0010: build each registered language's context via the registry. The
-    # class→method map is shared and somewhat costly, so it is computed lazily —
-    # a language that opts out (returns None before touching it) pays nothing,
-    # preserving the prior "zero cost for Python-only projects" property.
-    from . import languages as _languages  # noqa: F401, PLC0415 — triggers registration
-    from ._registry import get_language_resolver, registered_languages
-
-    _fcm_cache: dict[str, dict[str, dict[str, dict[str, int]]]] = {}
-
-    def _file_class_methods_thunk() -> dict[str, dict[str, dict[str, int]]]:
-        if "value" not in _fcm_cache:
-            _fcm_cache["value"] = _build_file_class_methods(conn, line_idx)
-        return _fcm_cache["value"]
-
-    lang_contexts: dict[str, Any] = {}
-    for _lang in registered_languages():
-        _resolver = get_language_resolver(_lang)
-        if _resolver is None:
-            continue
-        _built = _resolver.build_context(
-            imports_by_file=imports_by_file,
-            file_languages=file_languages,
-            file_symbols=file_symbols,
-            global_name_table=global_name_table,
-            file_class_methods=_file_class_methods_thunk,
-            conn=conn,
-            line_idx=line_idx,
-        )
-        if _built is not None:
-            lang_contexts[_lang] = _built
-
     return ResolverContext(
         project_root=cache.project_root,
         cache=cache,
-        file_symbols=file_symbols,
-        name_to_source=name_to_source,
-        global_name_table=global_name_table,
-        import_alias_target=alias_target,
-        imports_by_file=imports_by_file,
+        file_symbols=state.file_symbols,
+        name_to_source=state.name_to_source,
+        file_class_methods=file_class_methods,
+        global_name_table=state.global_name_table,
+        import_alias_target=state.alias_target,
+        imports_by_file=state.imports_by_file,
         builtins={"python": BUILTINS_PY},
         stdlib_modules={"python": STDLIB_NAMES_PY},
         stdlib_methods={
@@ -626,53 +736,54 @@ def _build_resolver_context_uncached(cache: ASTCache) -> ResolverContext:
         },
         builtin_methods={"python": BUILTIN_QUALIFIED_PY},
         callee_resolver=callee_resolver,
-        file_languages=file_languages,
-        lang_contexts=lang_contexts,
+        file_languages=state.file_languages,
+        lang_contexts=_language_contexts(cache, conn, state),
+        module_to_file=state.module_to_file,
     )
 
 
-def _build_callee_resolver(
-    *,
-    file_symbols: dict[str, list[tuple[str, str, int]]],
-    global_name_table: dict[str, list[tuple[str, int]]],
-    name_to_source: dict[str, dict[str, str]],
-    alias_target: dict[str, dict[str, str]],
-) -> CalleeResolver:
-    functions_by_file: dict[str, list[dict[str, Any]]] = {}
-    for file_path, symbols in file_symbols.items():
-        for name, kind, sym_id in symbols:
-            if kind not in ("function", "method", "class"):
-                continue
-            functions_by_file.setdefault(file_path, []).append(
-                {
-                    "name": name,
-                    "kind": kind,
-                    "file": file_path,
-                    "id": sym_id,
-                }
+def _language_contexts(
+    cache: ASTCache, conn: Any, state: ContextState
+) -> LazyLanguageContexts:
+    """RFC-0010 per-language contexts, built lazily (#1737).
+
+    The class→method map is shared and somewhat costly, so it is computed lazily —
+    a language that opts out (returns None before touching it) pays nothing.
+    """
+    from . import languages as _languages  # noqa: F401, PLC0415 — triggers registration
+    from ._registry import get_language_resolver, registered_languages
+
+    _fcm_cache: dict[str, dict[str, dict[str, dict[str, int]]]] = {}
+
+    def _file_class_methods_thunk() -> dict[str, dict[str, dict[str, int]]]:
+        if "value" not in _fcm_cache:
+            _fcm_cache["value"] = _build_file_class_methods(conn, state.line_idx)
+        return _fcm_cache["value"]
+
+    def _builder(resolver: Any) -> Callable[[], Any]:
+        def build() -> Any:
+            return resolver.build_context(
+                imports_by_file=state.imports_by_file,
+                file_languages=state.file_languages,
+                file_symbols=state.file_symbols,
+                global_name_table=state.global_name_table,
+                file_class_methods=_file_class_methods_thunk,
+                conn=_live_connection(cache, conn),
+                line_idx=state.line_idx,
+                # #1741：需要读源码的语言（JS 默认导出对象）从这里拿项目根。
+                project_root=getattr(cache, "project_root", None),
             )
 
-    functions_by_name: dict[str, list[dict[str, Any]]] = {}
-    for name, entries in global_name_table.items():
-        for file_path, sym_id in entries:
-            functions_by_name.setdefault(name, []).append(
-                {
-                    "name": name,
-                    "file": file_path,
-                    "id": sym_id,
-                }
-            )
+        return build
 
-    combined_sources: dict[str, dict[str, str]] = {}
-    for file_path, sources in name_to_source.items():
-        combined_sources.setdefault(file_path, {}).update(sources)
-    for file_path, aliases in alias_target.items():
-        combined_sources.setdefault(file_path, {}).update(aliases)
-
-    return CalleeResolver(
-        functions_by_name=functions_by_name,
-        functions_by_file=functions_by_file,
-        name_to_source=combined_sources,
+    # #1737：各语言的上下文在第一次需要时才构建（TypeScript 的影子局部变量要扫描
+    # 全部 TS 文件，只改了 Python 文件的刷新从不需要它）。
+    return LazyLanguageContexts(
+        {
+            language: _builder(resolver)
+            for language in registered_languages()
+            if (resolver := get_language_resolver(language)) is not None
+        }
     )
 
 

@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.unit._ast_cache_helpers import engine_cache
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.incremental_sync import IncrementalSync
 from tree_sitter_analyzer.index_source_snapshot import make_source_scope_descriptor
@@ -34,7 +35,7 @@ def project(tmp_path):
 
 @pytest.fixture
 def cache(project):
-    c = ASTCache(str(project))
+    c = engine_cache(project)
     yield c
     c.close()
 
@@ -193,7 +194,7 @@ def test_candidate_less_sync_is_operational_but_not_authoritative(tmp_path):
     # PR #1253 review 3762603012: a live walk cannot certify complete scope.
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     try:
         result = IncrementalSync(cache).sync()
         indexed = cache.lookup(str(path)) is not None
@@ -235,7 +236,7 @@ def test_noop_sync_repairs_incomplete_backfill_state(tmp_path):
 def test_fully_cached_legacy_marker_repairs_complete_pipeline(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_file(str(path))
     conn = cache.get_conn()
     conn.execute(
@@ -281,7 +282,7 @@ def test_snapshot_mutation_during_backfill_is_invalidated(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
     snapshot = _snapshot(tmp_path, path)
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     conn = cache.get_conn()
     columns = [
         tuple(row)
@@ -334,7 +335,7 @@ def test_deleted_target_cannot_be_reresolved_from_cached_context(tmp_path):
     caller.write_text(
         "from target import target\n\ndef caller():\n    return target()\n"
     )
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_project(workers=0)
     conn = cache.get_conn()
     before = conn.execute(
@@ -372,7 +373,7 @@ def test_late_deletion_keeps_marker_incomplete_until_callee_retarget(tmp_path):
     primary.write_text("def target():\n    return 1\n")
     fallback.write_text("def target():\n    return 2\n")
     caller.write_text("def caller():\n    return target()\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_project(workers=0)
     clear_call_graph_built_strict(cache.get_conn())
     snapshot = _snapshot(tmp_path, primary, fallback, caller)
@@ -425,7 +426,7 @@ def test_late_deletion_keeps_marker_incomplete_until_callee_retarget(tmp_path):
 
 def test_empty_incremental_scan_keeps_graph_incomplete(tmp_path):
     # PR #1172: zero live candidates are not a complete call graph.
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     try:
         result = IncrementalSync(cache).sync()
         outcome = (result.scanned, cache.call_graph_built())
@@ -507,20 +508,24 @@ class TestSyncExcludePatterns:
             "src/util.py",
         }
 
-    def test_excluded_source_keeps_graph_incomplete(self, sync, cache):
-        # PR #1172 review 2026-07-27: selected-only equality hid exclusions.
+    def test_excluded_source_is_outside_the_certified_scope(self, sync, cache):
+        # #1697：与项目索引同一语义（``_candidate_paths_are_exact`` 只比较选中
+        # 的路径，#1253）：被排除的文件不在范围内，不使调用图不完整。
         sync.sync(exclude_patterns=frozenset({"src/helper.js"}))
 
-        assert cache.call_graph_built() is False
+        assert cache.call_graph_built() is True
+        assert cache.get_stats()["total_files"] == 2
 
-    def test_excluded_cached_file_is_not_treated_as_deleted(self, sync, cache):
-        # Incident 2026-07-26: exclusion filtering could mimic a disk deletion.
+    def test_excluded_cached_file_leaves_the_scope(self, sync, cache, project):
+        # #1697：旧范围留下的行在新范围外，按删除处理（与候选快照路径相同）；
+        # 源码本身仍在磁盘上。
         sync.sync()
 
         result = sync.sync(exclude_patterns=frozenset({"src/helper.js"}))
 
-        assert result.deleted_files == 0
-        assert cache.get_stats()["total_files"] == 3
+        assert result.deleted_files == 1
+        assert cache.get_stats()["total_files"] == 2
+        assert (project / "src" / "helper.js").exists()
 
     def test_deleted_excluded_file_is_removed_after_complete_scan(
         self, sync, cache, project
@@ -939,7 +944,7 @@ class TestFailedFileCleanup:
 
         source = tmp_path / "flaky.py"
         source.write_text("def residue():\n    return 1\n")
-        cache = ASTCache(str(tmp_path))
+        cache = engine_cache(tmp_path)
         cache.index_file(str(source))
         conn = cache.get_conn()
         sync = IncrementalSync(cache)
@@ -978,7 +983,7 @@ def test_incremental_sync_preserves_snapshot_candidate_order(tmp_path):
     first.write_text("z = 1\n")
     second.write_text("a = 1\n")
     snapshot = _snapshot(tmp_path, first, second)
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     seen: list[str] = []
     original = cache.index_file
 
@@ -1024,7 +1029,7 @@ def test_incremental_sync_snapshot_error_clears_graph_complete_marker(tmp_path):
         errors=1,
         limited=0,
     )
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     mark_call_graph_built(cache.get_conn())
 
     try:
@@ -1044,7 +1049,7 @@ def test_incremental_sync_reports_mutation_during_processing(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
     snapshot = _snapshot(tmp_path, path)
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     original = cache.index_file
     callback_details: list[dict] = []
 
@@ -1085,7 +1090,7 @@ def test_late_reclassification_preserves_other_file_details(tmp_path):
     first.write_text("a = 1\n")
     second.write_text("b = 1\n")
     snapshot = _snapshot(tmp_path, first, second)
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     original = cache.index_file
 
     def mutate_first_after_second(file_path: str, language: str | None = None):
@@ -1125,7 +1130,7 @@ def test_incremental_sync_rolls_back_mutation_during_processing(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("import os\n\ndef before():\n    return os.getcwd()\n")
     snapshot = _snapshot(tmp_path, path)
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     original = cache.index_file
 
     def index_then_mutate(file_path: str, language: str | None = None):
@@ -1171,7 +1176,7 @@ def test_incremental_sync_detects_late_mutation_without_callback(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
     snapshot = _snapshot(tmp_path, path)
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     original = cache.index_file
 
     def index_then_mutate(file_path: str, language: str | None = None):
@@ -1196,7 +1201,7 @@ def test_incremental_sync_reports_preexisting_snapshot_change_to_callback(tmp_pa
     path.write_text("value = 1\n")
     snapshot = _snapshot(tmp_path, path)
     path.unlink()
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     callback_details: list[dict] = []
 
     try:
@@ -1224,7 +1229,7 @@ def test_preexisting_snapshot_modification_is_only_reported_as_skipped(tmp_path)
     # PR #1253 review 3754914626: selected mutations are not scope deletions.
     path = tmp_path / "app.py"
     path.write_text("import os\n\ndef before():\n    return os.getcwd()\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_file(str(path))
     snapshot = _snapshot(tmp_path, path)
     path.write_text("def after():\n    return 2\n")
@@ -1296,7 +1301,7 @@ def test_candidate_snapshot_prunes_cached_row_outside_selected_scope(tmp_path):
     outside = tmp_path / "outside.py"
     selected.write_text("selected = True\n")
     outside.write_text("outside = True\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_file(str(selected))
     cache.index_file(str(outside))
     snapshot = _snapshot(tmp_path, selected)
@@ -1317,7 +1322,7 @@ def test_preexisting_snapshot_deletion_runs_backfills_and_restores_marker(tmp_pa
     # PR #1253 review 3755143808: an unlinked selected path is a deletion.
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_file(str(path))
     mirror = tmp_path / ".ast-cache" / "knowledge-graph.lbug"
     mirror.write_text("stale mirror", encoding="utf-8")
@@ -1383,7 +1388,7 @@ def test_deletion_mirror_cleanup_failure_rejects_certification(tmp_path, monkeyp
 
     path = tmp_path / "app.py"
     path.write_text("value = 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_file(str(path))
     path.unlink()
     snapshot = _snapshot(tmp_path)
@@ -1462,7 +1467,7 @@ def test_custom_db_deletion_does_not_mutate_project_mirror(tmp_path, monkeypatch
 def test_preexisting_snapshot_mutation_removes_ladybug_mirror(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_file(str(path))
     snapshot = _snapshot(tmp_path, path)
     mirror = tmp_path / ".ast-cache" / "knowledge-graph.lbug"
@@ -1579,7 +1584,7 @@ def test_late_new_file_mutation_rolls_back_new_counter(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
     snapshot = _snapshot(tmp_path, path)
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     original = cache.index_file
 
     def index_then_mutate(file_path: str, language: str | None = None):
@@ -1603,7 +1608,7 @@ def test_late_disappearance_reclassifies_index_error_as_snapshot_change(tmp_path
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
     snapshot = _snapshot(tmp_path, path)
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     original = cache.index_file
 
     def disappear_before_index(file_path: str, language: str | None = None):
@@ -1635,7 +1640,7 @@ def test_late_disappearance_reclassifies_index_error_as_snapshot_change(tmp_path
 def test_late_updated_file_mutation_rolls_back_updated_counter(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_file(str(path))
     path.write_text("value = 2\n")
     snapshot = _snapshot(tmp_path, path)
@@ -1661,7 +1666,7 @@ def test_late_updated_file_mutation_rolls_back_updated_counter(tmp_path):
 def test_late_unchanged_file_mutation_rolls_back_unchanged_counter(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_file(str(path))
     snapshot = _snapshot(tmp_path, path)
 
@@ -1689,7 +1694,7 @@ def test_late_mutation_unresolves_edges_from_other_files(tmp_path):
     caller.write_text(
         "from target import target\n\ndef caller():\n    return target()\n"
     )
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_project(workers=0)
     snapshot = _snapshot(tmp_path, target, caller)
     sync = IncrementalSync(cache)
@@ -1727,8 +1732,9 @@ def test_late_mutation_unresolves_edges_from_other_files(tmp_path):
         after["callee_symbol_id"],
         metadata["callee_resolution"],
         metadata["callee_resolved_file"],
-        metadata["callee_symbol_id"],
-    ) == ("target.py", "external", "", None, "unknown", "", None)
+        # #1671：撤销后的元数据与新提取的未解析边同形——没有该键。
+        metadata.get("callee_symbol_id", "absent"),
+    ) == ("target.py", "external", "", None, "unknown", "", "absent")
 
 
 def test_new_file_cleanup_failure_preserves_original_index_error():
@@ -1788,7 +1794,7 @@ def test_incremental_stamp_failure_does_not_delete_manifest(tmp_path):
 
     path = tmp_path / "app.py"
     path.write_text("value = 1\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_project(workers=0)
     snapshot = _snapshot(tmp_path, path)
     schema.stamp_full_index_manifest(cache.get_conn(), str(tmp_path))
@@ -1998,7 +2004,7 @@ def test_frozen_incremental_uses_logical_key_and_language(tmp_path):
     frozen_path = snapshot.selected_entries[0].frozen_path
     assert frozen_path is not None
     path.write_text("def later_live_symbol():\n    return 2\n")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     try:
         result = IncrementalSync(cache).sync(
             max_files=10,
@@ -2269,7 +2275,7 @@ def test_truncated_unchanged_snapshot_clears_global_certification(tmp_path):
         walk_fn=lambda _root: (str(first), str(second)),
         language_fn=_python_language,
     )
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     cache.index_file(str(first))
     conn = cache.get_conn()
     mark_call_graph_built(conn)
@@ -2301,7 +2307,7 @@ def test_real_file_certification_lifecycle(tmp_path, operation):
     # PR #1350：从真实 index_file 行出发，验证缓存、替换、删除和重新认证的持久状态。
     path = tmp_path / "app.py"
     path.write_text("def original(): return 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     try:
         with patch("time.time", return_value=1000):
             assert cache.index_file(str(path))["status"] == "indexed"
@@ -2352,7 +2358,7 @@ def test_certification_write_denial_cannot_report_complete(tmp_path):
     # PR #1350：真实 SQLite 拒绝认证字段更新时，必须撤销全局认证并报告错误。
     path = tmp_path / "app.py"
     path.write_text("def original(): return 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     try:
         cache.index_file(str(path))
         conn = cache.get_conn()
@@ -2403,7 +2409,7 @@ def test_failed_file_write_rolls_back_its_certification_only(tmp_path):
     good, bad = tmp_path / "good.py", tmp_path / "bad.py"
     good.write_text("def good(): return 1\n", encoding="utf-8")
     bad.write_text("def old_bad(): return 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     try:
         cache.index_file(str(good))
         cache.index_file(str(bad))
@@ -2412,6 +2418,11 @@ def test_failed_file_write_rolls_back_its_certification_only(tmp_path):
             "CREATE TRIGGER deny_bad_edges BEFORE INSERT ON edges WHEN NEW.file_path='bad.py' BEGIN SELECT RAISE(ABORT, 'edge write denied'); END"
         )
         conn.commit()
+        # #1718：未变的邻居保留原认证时间（只有新增/更新/NULL 文件盖本轮时间）。
+        good_certified = conn.execute(
+            "SELECT certified_at FROM ast_index WHERE file_path='good.py'"
+        ).fetchone()[0]
+        assert good_certified is not None
         bad.write_text("def replacement_bad(): return good()\n", encoding="utf-8")
         with patch("time.time", return_value=2000):
             result = IncrementalSync(cache).sync(
@@ -2430,7 +2441,7 @@ def test_failed_file_write_rolls_back_its_certification_only(tmp_path):
         assert [
             tuple(r)
             for r in conn.execute("SELECT file_path, certified_at FROM ast_index")
-        ] == [("good.py", 2000)]
+        ] == [("good.py", good_certified)]
         for table in ("ast_symbol_rows", "ast_symbol_projection_state", "edges"):
             assert (
                 conn.execute(
@@ -2448,11 +2459,18 @@ def test_late_source_mutation_resets_certification_through_sync(tmp_path):
     good, bad = tmp_path / "good.py", tmp_path / "bad.py"
     good.write_text("def good(): return 1\n", encoding="utf-8")
     bad.write_text("def original(): return 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     try:
         cache.index_file(str(good))
         cache.index_file(str(bad))
         bad.write_text("def updated(): return 22\n", encoding="utf-8")
+        # #1718：未变的邻居保留原认证时间。
+        good_certified = (
+            cache.get_conn()
+            .execute("SELECT certified_at FROM ast_index WHERE file_path='good.py'")
+            .fetchone()[0]
+        )
+        assert good_certified is not None
 
         def mutate(detail):
             if detail["file"] == "bad.py" and detail["status"] == "indexed":
@@ -2474,7 +2492,7 @@ def test_late_source_mutation_resets_certification_through_sync(tmp_path):
         assert [
             tuple(r)
             for r in conn.execute("SELECT file_path, certified_at FROM ast_index")
-        ] == [("good.py", 2000)]
+        ] == [("good.py", good_certified)]
         assert (
             conn.execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest").fetchone()[
                 0
@@ -2493,7 +2511,7 @@ def test_failed_file_certification_reset_denial_rolls_back(tmp_path, truncated):
         tmp_path / name for name in ("a_good.py", "b_bad.py", "z_unseen.py")
     )
     good.write_text("def good(): return 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = engine_cache(tmp_path)
     try:
         with patch("time.time", return_value=1000):
             cache.index_file(str(good))
@@ -2541,7 +2559,7 @@ def test_failed_file_certification_reset_denial_rolls_back(tmp_path, truncated):
         assert [
             tuple(r)
             for r in conn.execute("SELECT file_path, certified_at FROM ast_index")
-        ] == [("a_good.py", 1000 if truncated else 2000)]
+        ] == [("a_good.py", 1000)]  # #1718：未变文件保留原认证时间
         # 完整扫描的 reset 位于提交之后；只回滚当前事务，不撤销已提交的正常邻居。
         assert cache.call_graph_built() is False
     finally:

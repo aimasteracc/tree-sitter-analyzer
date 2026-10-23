@@ -29,6 +29,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.mcp.tools.callees_tool import CodeGraphCalleesTool
 
@@ -48,7 +49,7 @@ def test_changed_file_hot_zone_uses_only_computed_activation(tmp_path, state):
 
     source = tmp_path / "changed.py"
     source.write_text("def changed():\n    pass\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_file(str(source))
         source.write_text("def changed():\n    return 1\n", encoding="utf-8")
@@ -99,7 +100,7 @@ def test_partial_heat_keeps_only_confirmed_hot_symbols(tmp_path):
     source.write_text(
         "def known():\n    pass\ndef stale():\n    pass\n", encoding="utf-8"
     )
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_file(str(source))
         db = cache.get_conn()
@@ -141,7 +142,7 @@ def test_missing_activation_evidence_is_not_complete_no_hotspots(
     cache = None
     try:
         if case != "missing_db":
-            cache = ASTCache(str(tmp_path))
+            cache = legacy_cache(str(tmp_path))
             if case == "missing_table":
                 cache.get_conn().execute("DROP TABLE ast_symbol_activation")
                 cache.get_conn().commit()
@@ -174,7 +175,7 @@ def test_computed_heat_distinguishes_cold_from_invalid_counts(
 
     source = tmp_path / "changed.py"
     source.write_text("def changed():\n    pass\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_file(str(source))
         db = cache.get_conn()
@@ -231,7 +232,7 @@ async def test_change_impact_preserves_heat_diagnostic_in_public_views(
             capture_output=True,
             timeout=15,
         )
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_file(str(source))
         cache.get_conn().execute(
@@ -416,7 +417,7 @@ class TestHotZoneBumpsVerdict:
         _init_git_repo(repo)
 
         # Index the file so ast_symbol_rows is populated.
-        cache = ASTCache(str(repo))
+        cache = legacy_cache(str(repo))
         try:
             cache.index_file(str(repo / "mod.py"))
             symbol_id, stored_file_path = _first_symbol_row(cache.db_path, "mod.py")

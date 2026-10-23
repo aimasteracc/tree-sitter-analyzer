@@ -113,7 +113,8 @@ class TestSummaryMode:
         assert result["success"] is True
         assert result["mode"] == "summary"
         assert result["node_count"] == 6
-        assert result["edge_count"] == 3
+        # Issue #1557：`from pkg import utils` 等语句同时依赖包与子模块，共 6 条边。
+        assert result["edge_count"] == 6
         assert "top_hub_files" in result
         assert "high_dependency_files" in result
 
@@ -337,7 +338,8 @@ class TestFileDepsHelper:
     def test_file_deps_helper_counts(self, project):
         graph = DependencyGraph(str(project))
         result = _file_deps(graph, "main.py")
-        assert result["dependency_count"] == 2
+        # Issue #1557：两个包 `__init__.py` 加上 pkg/utils.py 与 lib/helper.py。
+        assert result["dependency_count"] == 4
         assert result["dependent_count"] == 0
 
 

@@ -45,6 +45,7 @@
     "mmap",
     "mmap2",
     "mprotect",
+    "mremap",
     "msync",
     "munmap"
   ],

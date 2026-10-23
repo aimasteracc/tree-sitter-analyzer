@@ -198,6 +198,8 @@ def _worker_index_file(
             "rel_path": rel_path,
             "abs_path": abs_path,
             "reason": result.error_message or "parse failed",
+            # #1671：被拒绝字节的摘要，绑定稳定失败的内容证据。
+            "content_hash": _content_hash(source_code),
         }
     symbols = _extract_symbols(result.tree, source_code, language)
     imports = _extract_imports(symbols)
@@ -269,4 +271,32 @@ def _extract_call_edges(
 
     if tree is not None and language in _COMMENT_NODE_TYPES:
         symbols["comments"] = extract_comments_from_body(tree.root_node, language)
+    if tree is not None and language == "python":
+        # RFC-0038：模块级变量的接收者类型，供跨文件 `alias.NAME.m()` 解析。
+        from ..receiver_module_hints import module_hints
+
+        variables = module_hints(tree.root_node).variables
+        if variables:
+            symbols["module_types"] = variables
+        # #1721：函数内 `global` 与模块级 `del` 重新绑定的名字（范围回填的解析面）。
+        from ..module_rebinds import module_rebinds
+
+        rebinds = module_rebinds(tree.root_node)
+        if rebinds:
+            symbols["module_rebinds"] = rebinds
+    if language in ("javascript", "jsx", "typescript", "tsx") and source_code:
+        # #1741：默认导出对象 / 具名导出决定 `utils.findKey()` 的解析（范围回填的解析面）。
+        # #1764：TS 同样经导入 / 再导出解析，导出形状含再导出与 `export *`。
+        from ..synapse_resolver._javascript_object_exports import export_shape
+
+        shape = export_shape(source_code)
+        if shape is not None:
+            symbols["js_exports"] = shape
+    if tree is not None and language == "java":
+        # #1743：匿名子类（`new T() {...}`）的基类型与类体范围，供 this.m() 分派使用。
+        from ..java_receiver_hints import anonymous_subclasses
+
+        anonymous = anonymous_subclasses(tree.root_node)
+        if anonymous:
+            symbols["java_anonymous"] = anonymous
     return extract_call_edges(tree, source_code, language)

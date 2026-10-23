@@ -227,7 +227,8 @@ def build_indexed_project(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     cache = ASTCache(str(project))
-    cache.index_project(max_files=100)
+    # #1625：增量运行现在会认证清单；这里显式保持未认证，供“未认证不可宣称”用例使用。
+    cache.index_project(max_files=100, certify_manifest=False)
     cache.close()
     return project
 
@@ -254,3 +255,64 @@ def build_many_relation_project(tmp_path: Path, relation: str) -> str:
             encoding="utf-8",
         )
     return str(tmp_path)
+
+
+AMBIGUOUS_PUBLISH_PROJECT = {
+    "gen_store.py": (
+        "class GenerationStore:\n    def publish(self, item):\n        return item\n"
+    ),
+    "registry.py": (
+        "class Registry:\n    def publish(self, item):\n        return item\n"
+    ),
+    "app.py": (
+        "import gen_store\nimport registry\n\n\n"
+        "def relay(x):\n    return x.publish(1)\n"
+    ),
+    "tests/test_gen_store.py": (
+        "import gen_store\nfrom app import relay\n\n\n"
+        "def test_relay():\n"
+        "    assert relay(gen_store.GenerationStore()) == 1\n\n\n"
+        "def test_publish_any(store):\n"
+        "    assert store.publish(2) == 2\n"
+    ),
+}
+
+
+async def index_ambiguous_publish_project(root: Path) -> str:
+    """#1559：两个类都定义 publish，`x.publish()` 的接收者无法解析。"""
+    for rel, text in AMBIGUOUS_PUBLISH_PROJECT.items():
+        target = root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+    indexed = await CodeGraphFullIndexTool(str(root)).execute(
+        {"mode": "full", "max_files": 20}
+    )
+    assert indexed["published"] is True
+    return str(root)
+
+
+#: #1619：两个嵌套的同名 ``inner``（无 receiver，qualified_name 相同），各自调用
+#: ``apply_budget`` 并各有一个独有的被调函数（``log_a`` / ``log_b``）。
+SAME_NAME_NESTED_SOURCE = (
+    "def apply_budget(x):\n    return x\n\n\n"
+    "def log_a(x):\n    return x\n\n\n"
+    "def log_b(x):\n    return x\n\n\n"
+    "def outer_a(a):\n"
+    "    def inner(b):\n"
+    "        return apply_budget(log_a(b))\n"
+    "    return inner(a)\n\n\n"
+    "def outer_b(a):\n"
+    "    def inner(b):\n"
+    "        return apply_budget(log_b(b))\n"
+    "    return inner(a)\n"
+)
+
+
+async def index_same_name_nested_project(root: Path) -> str:
+    """#1619：建立只含 ``pulse.py``（两个同名嵌套 ``inner``）的项目并完成索引。"""
+    (root / "pulse.py").write_text(SAME_NAME_NESTED_SOURCE, encoding="utf-8")
+    indexed = await CodeGraphFullIndexTool(str(root)).execute(
+        {"mode": "full", "max_files": 10}
+    )
+    assert indexed["published"] is True
+    return str(root)

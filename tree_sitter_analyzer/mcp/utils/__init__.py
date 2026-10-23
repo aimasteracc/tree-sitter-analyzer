@@ -55,48 +55,53 @@ MCP_UTILS_CAPABILITIES = {
     ],
 }
 
-# Import unified services for backward compatibility
-try:
-    from ...core.cache_service import CacheService as UnifiedCacheService
 
-    # Provide backward compatibility aliases
-    class BackwardCompatibleCacheManager:
-        """Backward compatible cache manager wrapper"""
+# 向后兼容的统一服务入口。core 服务改为调用时延迟导入：导入本包会拉起
+# core 解析栈（tree_sitter / chardet），曾使 MCP ``initialize`` 前多加载数十个模块。
+def _core_services_available() -> bool:
+    """调用时探测 core 缓存服务能否导入；不可用时兼容入口返回 None。"""
+    try:
+        from ...core.cache_service import CacheService  # noqa: F401
+    except ImportError:
+        return False
+    return True
 
-        def __init__(self) -> None:
-            self._cache_service = UnifiedCacheService()
 
-        def clear_all_caches(self) -> None:
-            """Backward compatibility: clear all caches"""
-            return self._cache_service.clear()
+class BackwardCompatibleCacheManager:
+    """Backward compatible cache manager wrapper"""
 
-        def get_cache_stats(self) -> dict[str, Any]:
-            """Backward compatibility: get cache statistics"""
-            return self._cache_service.get_stats()
+    def __init__(self) -> None:
+        from ...core.cache_service import CacheService as UnifiedCacheService
 
-        def __getattr__(self, name: str) -> Any:
-            """Delegate other methods to the cache service"""
-            return getattr(self._cache_service, name)
+        self._cache_service = UnifiedCacheService()
 
-    def get_cache_manager() -> Any:
-        """Backward compatibility: Get unified cache service"""
-        return BackwardCompatibleCacheManager()
+    def clear_all_caches(self) -> None:
+        """Backward compatibility: clear all caches"""
+        return self._cache_service.clear()
 
-    def get_performance_monitor() -> Any:
-        """Backward compatibility: Get unified performance monitor"""
-        from ...core.performance import PerformanceMonitor
+    def get_cache_stats(self) -> dict[str, Any]:
+        """Backward compatibility: get cache statistics"""
+        return self._cache_service.get_stats()
 
-        return PerformanceMonitor()
+    def __getattr__(self, name: str) -> Any:
+        """Delegate other methods to the cache service"""
+        return getattr(self._cache_service, name)
 
-except ImportError:
-    # Fallback if core services are not available
-    def get_cache_manager() -> Any:
-        """Fallback cache manager"""
+
+def get_cache_manager() -> Any:
+    """返回统一缓存服务的兼容包装；core 服务不可用时返回 None。"""
+    if not _core_services_available():
         return None
+    return BackwardCompatibleCacheManager()
 
-    def get_performance_monitor() -> Any:
-        """Fallback performance monitor"""
+
+def get_performance_monitor() -> Any:
+    """返回统一性能监视器；core 服务不可用时返回 None。"""
+    if not _core_services_available():
         return None
+    from ...core.performance import PerformanceMonitor
+
+    return PerformanceMonitor()
 
 
 __all__ = [

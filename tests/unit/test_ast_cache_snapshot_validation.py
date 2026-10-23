@@ -76,7 +76,7 @@ def test_force_index_rejects_fabricated_external_snapshot_entry(tmp_path):
     indexed.write_text("value = 1\n", encoding="utf-8")
     outside = tmp_path / "secret.py"
     outside.write_text("secret = 1\n", encoding="utf-8")
-    cache = ASTCache(str(project))
+    cache = _fixtures.engine_cache(project)
     cache.index_file(str(indexed))
     before = cache.lookup(str(indexed))
     snapshot = IndexCandidateSnapshot(

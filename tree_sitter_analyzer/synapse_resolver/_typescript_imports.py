@@ -42,6 +42,14 @@ _TS_RESOLUTION_SUFFIXES = (
     "/index.jsx",
 )
 
+#: Emitted JavaScript extension -> the TypeScript sources it is compiled from.
+_EMITTED_TO_SOURCE: dict[str, tuple[str, ...]] = {
+    "js": ("ts", "tsx", "d.ts"),
+    "jsx": ("tsx",),
+    "mjs": ("mts", "d.mts"),
+    "cjs": ("cts", "d.cts"),
+}
+
 #: ``import <clause> from '<specifier>'`` — the clause is optional so a
 #: side-effect-only ``import './x'`` also matches.
 _TS_IMPORT_RE = re.compile(
@@ -110,6 +118,14 @@ def resolve_typescript_specifier(
     )
     for suffix in _TS_RESOLUTION_SUFFIXES:
         candidate = f"{base}{suffix}"
+        if candidate in known:
+            return candidate
+    # #1764: under `moduleResolution: node16/nodenext` a TypeScript source names
+    # its sibling by the *emitted* extension — `./errors.js` is `./errors.ts`
+    # (zod). Tried only after the specifier names no indexed file as written.
+    stem, dot, extension = base.rpartition(".")
+    for source_extension in _EMITTED_TO_SOURCE.get(extension, ()) if dot else ():
+        candidate = f"{stem}.{source_extension}"
         if candidate in known:
             return candidate
     return ""

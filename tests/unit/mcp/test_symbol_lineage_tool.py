@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.mcp.tools._graph_cache_fingerprint import is_ast_index_stale
 from tree_sitter_analyzer.mcp.tools.symbol_lineage_tool import (
     SymbolLineageTool,
@@ -258,6 +259,8 @@ class TestInheritanceLineage:
         # Use a deterministic future timestamp to avoid timing races.
         future_ns = int(time.time() * 1e9) + 10_000_000_000  # 10 seconds ahead
         future_s = future_ns / 1e9
+        # #1707: staleness is content-based (an mtime-only touch is not an edit).
+        sub_path.write_text(sub_path.read_text() + "# edited\n")
         os.utime(str(sub_path), (future_s, future_s))
 
         # The tool must re-build the dep graph (source mtime changed) so
@@ -360,9 +363,10 @@ class TestInheritanceLineage:
         os.utime(str(tmp_path / "main_wrapper.py"), (past_s, past_s))
         ASTCache(str(tmp_path)).index_project(max_files=50)
 
-        # Now bump Main.kt mtime to the future — simulates an edit without re-index.
+        # Now edit Main.kt without re-index (#1707: content-based, not mtime-only).
         future_ns = int(time.time() * 1e9) + 10_000_000_000
         future_s = future_ns / 1e9
+        kt_path.write_text("class Main {\n    fun run() {}\n    fun stop() {}\n}\n")
         os.utime(str(kt_path), (future_s, future_s))
 
         tool._dep_graph = None
@@ -404,6 +408,8 @@ class TestInheritanceLineage:
 
         future_ns = int(time.time() * 1e9) + 10_000_000_000
         future_s = future_ns / 1e9
+        # #1707: staleness is content-based (an mtime-only touch is not an edit).
+        kt_path.write_text("class Main {\n    fun run() {}\n    fun stop() {}\n}\n")
         os.utime(str(kt_path), (future_s, future_s))
 
         second = asyncio.run(
@@ -420,11 +426,10 @@ class TestAstIndexStaleness:
         self, tool, tmp_path, monkeypatch, remove_during_open
     ):
         """空库或打开前消失的库均为未知；读取不能重新创建已删除数据库。"""
-        from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.cache import fingerprint
 
         _write_py(tmp_path, "pkg/a.py", "class A:\n    pass\n")
-        ASTCache(str(tmp_path)).close()
+        legacy_cache(str(tmp_path)).close()
         db = tmp_path / ".ast-cache" / "index.db"
         if remove_during_open:
             original = fingerprint.sqlite3.connect

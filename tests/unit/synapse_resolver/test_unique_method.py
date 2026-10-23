@@ -1,9 +1,10 @@
-"""RFC-0002 Phase 1: unique-method receiver resolution.
+"""RFC-0002 receiver resolution, as narrowed by #1669.
 
-When a method call `obj.method()` has a receiver whose type we can't infer,
-but `method` is defined on exactly ONE class across the whole project, resolve
-to it. If `method` is defined on multiple classes (e.g. `execute`), stay
-`unknown` rather than guess.
+A method call `obj.method()` whose receiver type cannot be inferred stays
+`unknown` even when `method` is defined on exactly ONE class across the whole
+project: a unique name is not evidence that `xs.append()` calls the project's
+only `append`. The receiver has to be proven (self/cls, an imported module or
+class, a class name, an annotated or constructed type).
 """
 
 from __future__ import annotations
@@ -22,15 +23,13 @@ def _ctx(**kw):
     return ResolverContext(**defaults)
 
 
-def test_unique_method_receiver_resolves_to_project():
-    # all_edges defined on exactly one class → pg.all_edges() resolves to it
+def test_unique_method_with_unproven_receiver_stays_unknown():
+    # #1669：all_edges 只定义在一个类上，但 pg 的类型未知 → 不得记为 project。
     ctx = _ctx(
         file_class_methods={"project_graph.py": {"ProjectGraph": {"all_edges": 42}}}
     )
     r = resolve_callee("pg.all_edges", "caller.py", ctx)
-    assert r.resolution == "project"
-    assert r.callee_symbol_id == 42
-    assert r.resolved_file == "project_graph.py"
+    assert (r.resolution, r.callee_symbol_id, r.resolved_file) == ("unknown", None, "")
 
 
 def test_ambiguous_method_stays_unknown():
@@ -83,13 +82,17 @@ def test_bare_name_without_self_full_unaffected():
 # -- Codex P2 regressions (PR #274) -------------------------------------------
 def test_unique_method_via_production_callee_full():
     """P2#1: production rows are callee_name='all_edges' + callee_full='pg.all_edges'.
-    Must split callee_full to recover the `pg` receiver so unique-method fires."""
+    The `pg` receiver is recovered from callee_full; it is unproven, so the call
+    stays unknown (#1669), while the class-name form still binds."""
     ctx = _ctx(
         file_class_methods={"project_graph.py": {"ProjectGraph": {"all_edges": 42}}}
     )
     r = resolve_callee("all_edges", "caller.py", ctx, callee_full="pg.all_edges")
-    assert r.resolution == "project"
-    assert r.callee_symbol_id == 42
+    bound = resolve_callee(
+        "all_edges", "caller.py", ctx, callee_full="ProjectGraph.all_edges"
+    )
+    assert (r.resolution, r.callee_symbol_id) == ("unknown", None)
+    assert (bound.resolution, bound.callee_symbol_id) == ("project", 42)
 
 
 def test_self_method_no_cross_class_match():
@@ -180,7 +183,8 @@ def test_repeated_method_resolution_builds_project_method_index_once():
     class_bound = resolve_callee("A.shared", "caller.py", ctx)
     ambiguous = resolve_callee("obj.shared", "caller.py", ctx)
 
-    assert (unique.resolution, unique.callee_symbol_id) == ("project", 10)
+    # #1669：接收者未知时，唯一的方法名也不绑定。
+    assert (unique.resolution, unique.callee_symbol_id) == ("unknown", None)
     assert (class_bound.resolution, class_bound.callee_symbol_id) == ("project", 11)
     assert ambiguous.resolution == "unknown"
     assert methods.items_calls == 1

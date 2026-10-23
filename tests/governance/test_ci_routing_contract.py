@@ -72,6 +72,27 @@ def test_no_coverage_suites_have_runtime_headroom() -> None:
         ), job_name
 
 
+def test_coverage_suites_dump_stuck_test_stacks() -> None:
+    """覆盖率轴卡死时必须留下卡住测试的线程栈，而不是静默等到步骤超时。"""
+    # 2026-10-15：run 38744393660 的 -q 输出停在 99% 直到 15 分钟超时，无从定位 (#1638)。
+    workflow = PROJECT_ROOT / ".github" / "workflows" / "reusable-test.yml"
+    text = workflow.read_text(encoding="utf-8")
+    coverage_steps = re.findall(
+        r"(?ms)^    - name: Run Tests with Coverage\n(?P<body>.*?)(?=^    - name:|\Z)",
+        text,
+    )
+
+    assert len(coverage_steps) == 2
+    for body in coverage_steps:
+        # 硬看门狗取代仅转储的 faulthandler_timeout：卡死须快速失败并带栈。
+        assert body.count("--hang-timeout=120") == 1
+        assert "faulthandler_timeout" not in body
+    pr_step = coverage_steps[0]
+    assert re.search(r"(?m)^      timeout-minutes:\s*15\s*$", pr_step)
+    assert "--durations=30" in pr_step
+    assert "sed -n '/slowest .* durations/,$p' pytest-output.txt" in pr_step
+
+
 def test_pr_ci_uses_fast_matrix_while_release_keeps_full_matrix() -> None:
     """PRs should get fast feedback; release/hotfix keep exhaustive validation."""
     reusable_text = (

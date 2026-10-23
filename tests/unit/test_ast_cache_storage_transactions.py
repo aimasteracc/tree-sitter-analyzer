@@ -52,7 +52,7 @@ def test_invalidation_removes_incoming_resolved_hierarchy_edges(tmp_path, kind):
 
     target = tmp_path / "target.py"
     target.write_text("class Base:\n    pass\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.engine_cache(tmp_path)
     cache.index_file(str(target))
     conn = cache.get_conn()
     EdgeStore(conn, ensure_schema=False).upsert_edges(
@@ -102,7 +102,7 @@ def test_full_rebuild_clear_tolerates_legacy_primary_only_schema():
 
 
 def test_full_rebuild_clear_propagates_derived_table_failure(tmp_path):
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.legacy_cache(str(tmp_path))
     conn = cache.get_conn()
 
     class FailingDerivedDelete:
@@ -171,7 +171,7 @@ def test_file_invalidation_tolerates_ladybug_cleanup_failure(tmp_path):
 def test_file_invalidation_rolls_back_derived_table_failure(tmp_path):
     path = tmp_path / "app.py"
     path.write_text("value = 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.engine_cache(tmp_path)
     cache.index_file(str(path))
     conn = cache.get_conn()
     before = cache.lookup(str(path))
@@ -203,7 +203,7 @@ def test_file_invalidation_rolls_back_marker_clear_failure(tmp_path):
     # PR #1172 review 2026-07-27: marker 失败曾导致删除事务未提交。
     path = tmp_path / "app.py"
     path.write_text("value = 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.engine_cache(tmp_path)
     cache.index_file(str(path))
     conn = cache.get_conn()
     before = cache.lookup(str(path))
@@ -297,11 +297,10 @@ def test_single_file_edge_write_failure_is_index_error(tmp_path, monkeypatch):
 @pytest.mark.parametrize("fault", ["sql_error", "schema_changed"])
 def test_certification_write_fault_propagates_and_rolls_back(tmp_path, route, fault):
     # PR #1350：真实 SQLite 更新错误不能被 pre-v14 兼容层吞掉并提交新行。
-    from tree_sitter_analyzer.ast_cache import ASTCache
 
     source = tmp_path / "sample.py"
     source.write_text("def before():\n    return 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.engine_cache(tmp_path)
     try:
         assert cache.index_file(str(source))["status"] == "indexed"
         conn = cache.get_conn()

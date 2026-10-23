@@ -3,25 +3,51 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
+from ...cache.admission import admission_failure_of
 from ...call_graph import CachedCallGraph, CallGraph
 from ...uml_export import UMLEdge, UMLExporter, render_flowchart_mermaid
 from ..utils.auto_index_guard import ensure_indexed
+from .index_bound_graph import index_bound_graph, reset_index_bound_graph
+
+logger = logging.getLogger(__name__)
 
 
-def safe_node_id(name: str, file_path: str) -> str:
-    """Build a Mermaid-safe node id for call-graph visualization nodes."""
-    raw = f"{file_path}::{name}"
+def safe_node_id(
+    name: str,
+    file_path: str,
+    owner: str | None = None,
+    line: int | None = None,
+) -> str:
+    """Build a Mermaid-safe node id for call-graph visualization nodes.
+
+    #1621: ``file::name`` alone merges same-name functions — methods of two
+    classes in one file, or two nested ``inner`` — into one node.  Callers that
+    hold a definition pass its ``owner`` (class) and definition ``line`` so every
+    definition gets its own node: ``file::Owner.name@line``.
+    """
+    symbol = f"{owner}.{name}" if owner else name
+    raw = f"{file_path}::{symbol}"
+    if line is not None:
+        raw = f"{raw}@{line}"
     return "".join(c if c.isalnum() or c == "_" else "_" for c in raw)
 
 
-def short_label(name: str, file_path: str) -> str:
+def short_label(
+    name: str,
+    file_path: str,
+    owner: str | None = None,
+    line: int | None = None,
+) -> str:
     """Build a compact label that preserves both file and function context."""
     parts = Path(file_path).parts
     short_file = parts[-1] if parts else file_path
-    return f"{short_file}::{name}"
+    symbol = f"{owner}.{name}" if owner else name
+    label = f"{short_file}::{symbol}"
+    return f"{label}:{line}" if line is not None else label
 
 
 def render_call_flowchart(
@@ -161,28 +187,41 @@ class CodeGraphVisualizationHub:
 
     def reset(self, project_root: str | None) -> None:
         self.project_root = project_root
-        self._call_graph = None
+        reset_index_bound_graph(self)
         self._cache = None
 
     def cache(self) -> Any | None:
         if not self.project_root:
             return None
         if self._cache is None:
-            self._cache = ensure_indexed(self.project_root)
+            try:
+                self._cache = ensure_indexed(self.project_root)
+            except Exception as exc:
+                if admission_failure_of(exc) is None:
+                    raise
+                # 只读可视化：首次预热被拒（RFC-0032 #1664）时照常从源码构建，
+                # 下次调用重新尝试预热；答复不声称来自索引。
+                logger.debug("visualization warm refused: %s", exc)
+                return None
         return self._cache
 
     def call_graph(self) -> CallGraph | None:
-        if self._call_graph is not None:
-            return self._call_graph
+        # #1611：调用图绑定索引身份；旧图与 hub 共享缓存，丢弃时一并换新。
+        return index_bound_graph(
+            self, self.project_root, self._build_call_graph, on_discard=self._drop_cache
+        )
+
+    def _drop_cache(self) -> None:
+        self._cache = None
+
+    def _build_call_graph(self) -> CallGraph | None:
         if not self.project_root:
             return None
         cache = self.cache()
         if cache is not None:
-            self._call_graph = CachedCallGraph(self.project_root, cache)
-            return self._call_graph
+            return CachedCallGraph(self.project_root, cache)
         cg = CallGraph(self.project_root)
         cg.build()
-        self._call_graph = cg
         return cg
 
     def uml_exporter(self) -> UMLExporter | None:

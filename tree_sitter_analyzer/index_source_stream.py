@@ -9,6 +9,36 @@ import stat
 import time
 from typing import Any
 
+# #1654: content-hash marker for a source that could not be opened or read
+# (on Windows, a file another process holds locked). It is never a digest, so it
+# never matches an indexed row; the reason follows the prefix.
+_UNREADABLE_PREFIX = "<unreadable>"
+
+
+class SourceUnreadable(OSError):
+    """``hash_source_at`` could not open or read the file; ``reason`` says why."""
+
+    def __init__(self, cause: OSError) -> None:
+        reason = f"source unreadable: {type(cause).__name__}"
+        if cause.errno is not None:
+            reason += f" [Errno {cause.errno}]"
+        if cause.strerror:
+            reason += f" {cause.strerror}"
+        super().__init__(cause.errno, reason)
+        self.reason = reason
+
+    @property
+    def marker(self) -> str:
+        """The content-hash value that records this failure in a snapshot."""
+        return _UNREADABLE_PREFIX + self.reason
+
+
+def unreadable_source_reason(content_hash: str) -> str | None:
+    """Return the failure reason when ``content_hash`` is an unreadable marker."""
+    if content_hash.startswith(_UNREADABLE_PREFIX):
+        return content_hash[len(_UNREADABLE_PREFIX) :]
+    return None
+
 
 def opened_entry_matches(before: os.stat_result, opened: os.stat_result) -> bool:
     """Bind an opened descriptor to the exact enumerated directory entry."""
@@ -29,7 +59,62 @@ def hash_source_at(
     metadata_marker: Any,
     same_file_metadata: Any,
 ) -> tuple[str, str, bool]:
-    """从同一句柄有界读取，并按索引写入端的统一解码规则计算摘要。"""
+    """从同一句柄有界读取，并按索引写入端的统一解码规则计算摘要。
+
+    文件已不存在时返回 ``<unsafe>``（源码变化）；其他打开或读取失败（如 Windows
+    上被其他进程锁定）抛出 ``SourceUnreadable``，由调用方按文件记录（#1654）。
+
+    #1673：按路径读取（``directory_fd is None``）时，``before``（调用方刚取得的
+    ``lstat``）加元数据变更时间与上次干净读取的证据完全相同、且不在时间戳竞争
+    窗口内，则复用那次读取的摘要而不重新打开文件（``source_hash_cache``）。
+    描述符绑定的读取不经缓存。
+    """
+    if directory_fd is None:
+        from . import source_hash_cache
+
+        cache = source_hash_cache.SOURCE_HASHES
+        key = source_hash_cache.evidence(name, before)
+        cached = cache.lookup(name, key)
+        if cached is not None:
+            return metadata_marker(before), cached, True
+        marker, digest, clean = _hash_source_uncached(
+            None,
+            name,
+            before,
+            deadline,
+            counters,
+            byte_budget,
+            metadata_marker,
+            same_file_metadata,
+        )
+        if clean and digest != "<unsafe>":
+            cache.store(name, key, digest)
+        else:
+            cache.forget(name)
+        return marker, digest, clean
+    return _hash_source_uncached(
+        directory_fd,
+        name,
+        before,
+        deadline,
+        counters,
+        byte_budget,
+        metadata_marker,
+        same_file_metadata,
+    )
+
+
+def _hash_source_uncached(
+    directory_fd: int | None,
+    name: str,
+    before: os.stat_result,
+    deadline: float,
+    counters: dict[str, int],
+    byte_budget: int,
+    metadata_marker: Any,
+    same_file_metadata: Any,
+) -> tuple[str, str, bool]:
+    """``hash_source_at`` 的实际读取：每次都打开文件。"""
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     try:
         fd = (
@@ -37,8 +122,10 @@ def hash_source_at(
             if directory_fd is None
             else os.open(name, flags, dir_fd=directory_fd)
         )
-    except OSError:
+    except FileNotFoundError:
         return metadata_marker(before), "<unsafe>", False
+    except OSError as exc:
+        raise SourceUnreadable(exc) from exc
     digest = hashlib.sha256()
     decoder = codecs.getincrementaldecoder("utf-8")("strict")
     pending_cr = False
@@ -67,6 +154,10 @@ def hash_source_at(
         except UnicodeDecodeError:
             digest = _hash_detected_source(fd, deadline, counters, byte_budget)
         after = os.fstat(fd)
+    except TimeoutError:
+        raise  # 预算耗尽（OSError 子类）不是读失败，由调用方类型化。
+    except OSError as exc:
+        raise SourceUnreadable(exc) from exc
     finally:
         os.close(fd)
     # 摘要绑定同一句柄读前后的完整元数据，后续路径稳定不能洗白读取变化。
@@ -84,6 +175,36 @@ def hash_source_at(
         digest.hexdigest() if clean else "<unsafe>",
         clean,
     )
+
+
+def hash_source_or_unsafe(
+    directory_fd: int | None,
+    name: str,
+    before: os.stat_result,
+    deadline: float,
+    counters: dict[str, int],
+    byte_budget: int,
+    metadata_marker: Any,
+    same_file_metadata: Any,
+) -> tuple[str, str, bool]:
+    """``hash_source_at`` for certification scans: an unreadable file is unsafe.
+
+    A file that cannot be certified must never count as clean; these scans
+    record it as ``<unsafe>``, exactly as a failed open always was.
+    """
+    try:
+        return hash_source_at(
+            directory_fd,
+            name,
+            before,
+            deadline,
+            counters,
+            byte_budget,
+            metadata_marker,
+            same_file_metadata,
+        )
+    except SourceUnreadable:
+        return metadata_marker(before), "<unsafe>", False
 
 
 def _hash_detected_source(

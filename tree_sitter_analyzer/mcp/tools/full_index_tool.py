@@ -41,6 +41,8 @@ from ..utils.error_sanitizer import (
 )
 from ..utils.format_helper import apply_output_format_to_response
 from .base_tool import BaseMCPTool
+from .full_index_grammar import missing_grammar_next_step
+from .full_index_outcome import CERTIFICATION_DEADLINE, certification_timed_out
 
 logger = setup_logger(__name__)
 
@@ -244,6 +246,14 @@ _MANIFEST_WARNING_NEXT_STEPS: dict[str, str] = {
         "The source tree changed while indexing, so this run is not "
         "certified against a stable snapshot. Do NOT trust --callers from "
         "it. Re-index (--full-index) with the tree quiescent."
+    ),
+    "INDEX_CERTIFICATION_DEADLINE": (
+        "The index was built and published, but certifying it (the source "
+        "rescan and index fingerprint) ran past its deadline, usually on a "
+        "loaded machine. The index is usable and marked incomplete, not "
+        "certified: do not read --callers completeness as certified. Run "
+        "index action=cache mode=index to certify it; that refresh reuses this "
+        "index instead of rebuilding it."
     ),
     "SOURCE_SCOPE_UNSUPPORTED": (
         "The source-generation oracle is unsupported on this platform, so "
@@ -670,6 +680,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                     and not candidate_snapshot.truncated_by_max_files
                 ),
                 source_scope=source_scope,
+                candidate_snapshot=candidate_snapshot,
             )
             manifest_certified = bool(stats.pop("_manifest_certified", False))
             manifest_warning = stats.get("manifest_warning")
@@ -710,6 +721,23 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                 **stats,
             }
             result["scope_complete"] = manifest_certified
+            # #1562：缺少可选语法属稳定失败，允许发布，但不认证完整性。
+            # 独立的清单认证失败仍阻止发布（PR #1350）；success 仍只表示已认证。
+            result["stable_failures_only"] = bool(
+                grammar_only_errors
+                and not snapshot_warning
+                and manifest_warning is None
+                and not stats.get("manifest_certification_failed", False)
+                and int(stats.get("certification_errors", 0)) == 0
+            )
+            if result["stable_failures_only"]:
+                result["agent_summary"]["next_step"] = missing_grammar_next_step(phases)
+            # #1684：盖戳只在其余一切都干净时才尝试；它因期限中断（负载高的机器
+            # 上源码复扫与索引指纹超时）时，索引本身完整可用，如实发布为未认证，
+            # 而不是丢弃整个版本让调用方重建。
+            result["certification_deadline_only"] = (
+                manifest_warning == CERTIFICATION_DEADLINE
+            )
 
             from ...indexing_candidate_materialization import (
                 release_index_candidate_snapshot,
@@ -1039,6 +1067,7 @@ class CodeGraphFullIndexTool(BaseMCPTool):
         *,
         stamp_manifest: bool = False,
         source_scope: SourceScopeDescriptor | None = None,
+        candidate_snapshot: IndexCandidateSnapshot | None = None,
         _cache: Any | None = None,
     ) -> dict[str, Any]:
         cache: Any | None = _cache
@@ -1064,7 +1093,20 @@ class CodeGraphFullIndexTool(BaseMCPTool):
                         "SOURCE_SCOPE_UNSUPPORTED"
                         if isinstance(exc, sqlite3.OperationalError)
                         and str(exc) == "SOURCE_SCOPE_UNSUPPORTED"
+                        else CERTIFICATION_DEADLINE
+                        if certification_timed_out(exc)
                         else "INDEX_MANIFEST_CERTIFICATION_FAILED"
+                    )
+                else:
+                    # #1671：本次运行盖出清单（无失败）后签发收敛刷新记录，
+                    # 其后的零变化刷新据此免复制、免发布。
+                    from ...cache.stable_failures import issue_after_stamp
+
+                    issue_after_stamp(
+                        cache.get_conn(),
+                        self.project_root or ".",
+                        candidate_snapshot,
+                        source_scope,
                     )
             stats = cache.get_stats()
             operational_unsupported = manifest_warning == "SOURCE_SCOPE_UNSUPPORTED"

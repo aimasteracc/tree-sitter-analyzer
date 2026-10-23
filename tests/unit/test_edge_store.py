@@ -7,6 +7,7 @@ from unittest.mock import call, patch
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache.schema import apply_migration_v8
 from tree_sitter_analyzer.cache.write import (
@@ -386,8 +387,9 @@ def test_replace_edges_for_file_deletes_use_indexes_not_full_scan(
             for sql, params in capture.calls
             if sql.strip().upper().startswith("DELETE")
         ]
-        # Exactly three index-driven deletes replace the one OR-scan.
-        assert len(delete_calls) == 3
+        # Three index-driven deletes replace the one OR-scan; the fourth removes
+        # placeholder-sourced edges by target range (#1673), also index-driven.
+        assert len(delete_calls) == 4
 
         scan_steps = []
         for sql, params in delete_calls:
@@ -497,7 +499,7 @@ def test_edge_store_call_queries_deduplicate_and_fallback_to_call_site_file(
 
 
 def test_ast_cache_creates_edges_schema(tmp_path: Path) -> None:
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         conn = sqlite3.connect(cache.db_path)
         conn.row_factory = sqlite3.Row
@@ -647,7 +649,7 @@ def test_ast_cache_call_queries_fall_back_when_edge_store_empty(
 
 
 def test_ast_cache_get_call_edges_handles_missing_table(tmp_path: Path) -> None:
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         # B1.3: CALLS rows live in the unified ``edges`` table. Dropping it
         # exercises the missing-table degrade path for both readers.
@@ -664,7 +666,7 @@ def test_ast_cache_resolve_only_refreshes_edge_store(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         monkeypatch.setattr(
             cache,
@@ -719,7 +721,7 @@ def test_ast_cache_refresh_edges_from_all_cached_rows_counts_json_errors(
 ) -> None:
     sample = tmp_path / "sample.py"
     sample.write_text("def ok():\n    return 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         assert cache.index_file(str(sample))["status"] == "indexed"
         cache.get_conn().execute(

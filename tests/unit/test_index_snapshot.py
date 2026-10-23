@@ -11,6 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import CodeGraphStatusTool
 
@@ -695,12 +696,11 @@ class TestAuthoritativeSnapshotOracle:
 
     @staticmethod
     def _certified_cache(root):
-        from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
 
         source = root / "sample.py"
         source.write_text("def answer():\n    return 42\n")
-        cache = ASTCache(str(root))
+        cache = legacy_cache(root)
         cache.index_file(str(source))
         stamp_full_index_manifest(cache.get_conn(), str(root))
         cache.close()
@@ -811,7 +811,8 @@ class TestAuthoritativeSnapshotOracle:
         assert result["completeness"] == "complete"
         assert result["snapshot_id"].startswith("idxsnap_")
         assert result["source_fingerprint"].startswith("sha256:")
-        assert result["index_fingerprint"].startswith("sha256:")
+        # RFC-0039：manifest v3 的索引承诺是认证根。
+        assert result["index_fingerprint"].startswith("merkle:")
         assert result["action_version"] == "index.status/v1"
         assert result["access_state"] == "available"
         assert result["access_reason"] is None
@@ -894,12 +895,10 @@ class TestAuthoritativeSnapshotOracle:
 
     @pytest.mark.asyncio
     async def test_changed_index_rows_make_old_manifest_partial(self, tmp_path):
-        from tree_sitter_analyzer.ast_cache import ASTCache
-
         self._certified_cache(tmp_path)
         source = tmp_path / "sample.py"
         source.write_text("def answer():\n    return 43\n")
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(tmp_path)
         cache.index_file(str(source))
         cache.close()
 
@@ -937,8 +936,9 @@ class TestAuthoritativeSnapshotOracle:
         connections = []
         registered = set(owner.REGISTRY._entries)
 
-        def mutate_after_copy(conn, deadline):
-            evidence, exact = copy_evidence(conn, deadline)
+        def mutate_after_copy(conn, deadline, *memo_key):
+            # #1561：透传内容寻址备忘录键，保持真实复制路径不变。
+            evidence, exact = copy_evidence(conn, deadline, *memo_key)
             connections.extend([conn, evidence])
             if change == "source_edit":
                 source.write_text("def answer():\n    return 43\n", encoding="utf-8")
@@ -1000,7 +1000,7 @@ class TestAuthoritativeSnapshotOracle:
             elif change == "manifest_mismatch":
                 conn.execute(
                     "UPDATE ast_index_snapshot_manifest SET index_fingerprint=?",
-                    ("sha256:" + "0" * 64,),
+                    ("merkle:" + "0" * 64,),  # RFC-0039：与 v3 格式相同、值不符
                 )
             else:
                 (tmp_path / "sample.py").write_text(
@@ -1156,12 +1156,11 @@ class TestSnapshotOpenBoundaries:
 
     @staticmethod
     def _certified_cache(root):
-        from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
 
         source = root / "sample.py"
         source.write_text("def answer():\n    return 42\n")
-        cache = ASTCache(str(root))
+        cache = legacy_cache(root)
         cache.index_file(str(source))
         stamp_full_index_manifest(cache.get_conn(), str(root))
         cache.close()
@@ -1187,7 +1186,6 @@ class TestSnapshotOpenBoundaries:
         # PR #1253: intentional 100 MiB I/O can exceed 5 s under macOS xdist load;
         # this is a correctness boundary, not a per-call performance assertion.
         # Backup admission is byte-based, not a fixed page count.
-        from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.index_snapshot import read_existing_snapshot
         from tree_sitter_analyzer.index_snapshot_schema import (
             stamp_full_index_manifest,
@@ -1201,7 +1199,7 @@ class TestSnapshotOpenBoundaries:
         conn.close()
         source = tmp_path / "sample.py"
         source.write_text("value = 1\n")
-        cache = ASTCache(str(tmp_path))
+        cache = legacy_cache(tmp_path)
         cache.index_file(str(source))
         conn = cache.get_conn()
         conn.execute(
@@ -1235,7 +1233,8 @@ class TestSnapshotOpenBoundaries:
         import tree_sitter_analyzer.index_snapshot as owner
 
         self._certified_cache(tmp_path)
-        monkeypatch.setattr(owner, "_CAPTURE_DEADLINE_SECONDS", -1.0)
+        # #1562：status 改用认证期限，经由它驱动超期。
+        monkeypatch.setattr(owner, "_CERTIFICATION_DEADLINE_SECONDS", -1.0)
 
         result = await CodeGraphStatusTool(str(tmp_path)).execute(
             {"output_format": "json"}
@@ -1280,13 +1279,16 @@ def test_capture_phases_share_one_absolute_deadline(tmp_path, monkeypatch):
 
     def fingerprint(_connection, _root, *, deadline):
         phases.append("fingerprint")
-        assert deadline == 10.0
+        # #1634：可入备忘录的指纹按整段预算算完；捕获本身仍在 10 秒处判超时。
+        assert deadline == now[0] + owner._fingerprint_deadline_seconds()
         now[0] += 5.0
         return "sha256:" + "0" * 64
 
     monkeypatch.setattr(owner, "_clock", lambda: now[0])
     monkeypatch.setattr(owner, "validate_snapshot_schema", validate)
     monkeypatch.setattr(owner, "index_fingerprint", fingerprint)
+    # RFC-0039：manifest v3 的读者重算认证根，同一个接缝。
+    monkeypatch.setattr(owner, "certification_root", fingerprint)
     monkeypatch.setattr(
         owner,
         "recorded_source_rows",
@@ -2125,6 +2127,8 @@ class TestWalSnapshotPath:
             (tmp_path / "sample.py").write_text(wal_source, encoding="utf-8")
         build = await CodeGraphFullIndexTool(str(tmp_path)).execute({"mode": "full"})
         assert (build["success"], build["verdict"]) == (True, "INFO")
+        # 密封版本为只读文件（RFC-0032 E5）；模拟活跃写端须先恢复写位。
+        os.chmod(resolve_index_path(str(tmp_path)), 0o600)
         conn = sqlite3.connect(resolve_index_path(str(tmp_path)))
         try:
             assert conn.execute("PRAGMA journal_mode=WAL").fetchone() == ("wal",)

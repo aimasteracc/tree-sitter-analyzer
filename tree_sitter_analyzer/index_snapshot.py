@@ -15,6 +15,13 @@ from dataclasses import dataclass, field
 from typing import Any, cast
 from urllib.parse import quote
 
+from .index_certification_tree import certification_root
+from .index_fingerprint_memo import (
+    memo_compute_deadline,
+    memoized_index_fingerprint,
+    memoized_projection_exact,
+    pinned_fd_content_key,
+)
 from .index_snapshot_capability import (
     exact_call_graph_marker as _exact_call_graph_marker,
 )
@@ -43,7 +50,12 @@ from .index_snapshot_registry import (
     IndexSnapshot,
     IndexSnapshotRegistry,
 )
-from .index_snapshot_schema import index_fingerprint, validate_snapshot_schema
+from .index_snapshot_schema import (
+    MANIFEST_VERSIONS,
+    _fingerprint_deadline_seconds,
+    index_fingerprint,
+    validate_snapshot_schema,
+)
 from .index_snapshot_schema import (
     stamp_full_index_manifest as stamp_full_index_manifest,
 )
@@ -81,6 +93,15 @@ _TTL_SECONDS = 35.0
 # (import direction: index_snapshot.py → index_snapshot_registry.py avoids circular import)
 _SNAPSHOT_OVERHEAD_BYTES = _WAL_CONNECTION_OVERHEAD_BYTES
 _CAPTURE_DEADLINE_SECONDS = 10.0
+#: RFC-0039：认证根与 v2 扁平指纹分开入备忘录（同一内容键加这个尾标记）。
+CERTIFICATION_ROOT_MEMO_TAG = "certification-root-v1"
+# #1561：search.symbol / nav.pulse / nav.resolve 的整次认证调用（捕获 + 读取 +
+# 读后复核）共用的绝对期限。每次认证都重新哈希全部已索引源码；在 2,412 文件的
+# 本仓库（Windows、高负载）实测冷捕获 47.5-51.2 秒（其中索引指纹 18.9-28.0 秒）、
+# 指纹备忘录命中后的捕获 24.9-30.6 秒、读后复核 6.2-11.8 秒，10 秒期限下三者
+# 每次必然失败。60 秒覆盖本仓库的实测冷捕获；超出时工具降级为未认证但有用的
+# 回答并给出 next_step，而不是谎称 fresh。其他路径仍使用 10 秒捕获期限。
+_CERTIFICATION_DEADLINE_SECONDS = 60.0
 _SOURCE_FILE_BYTE_LIMIT = 64 * 1024 * 1024
 _SOURCE_TOTAL_BYTE_LIMIT = 128 * 1024 * 1024
 _SOURCE_FILE_COUNT_LIMIT = 1024
@@ -89,6 +110,20 @@ _clock = time.monotonic
 _CERTIFIED_INDEX_REASON: ContextVar[str | None] = ContextVar(
     "certified_index_reason", default=None
 )
+# #1561：由消费者（search/resolve）为一次认证读取选择期限；未设置时沿用 10 秒。
+_CERTIFICATION_BUDGET_SECONDS: ContextVar[float | None] = ContextVar(
+    "certification_budget_seconds", default=None
+)
+
+
+@contextmanager
+def certification_budget(seconds: float) -> Iterator[None]:
+    """在当前上下文内为 ``certified_index_read`` 指定整次认证的期限。"""
+    token = _CERTIFICATION_BUDGET_SECONDS.set(seconds)
+    try:
+        yield
+    finally:
+        _CERTIFICATION_BUDGET_SECONDS.reset(token)
 
 
 def _require_capture_budget(deadline: float) -> None:
@@ -112,16 +147,47 @@ def _capture_sources_with_deadline(
         return capture_current_source_snapshot(root, source_scope)
 
 
+def _manifest_version(manifest: sqlite3.Row | None) -> int:
+    """读者按哪个版本重算承诺；没有 manifest 时用写者当前的格式（v3 认证根）。"""
+    return int(manifest["manifest_version"]) if manifest is not None else 3
+
+
 def _index_fingerprint_with_deadline(
-    connection: sqlite3.Connection, root: str, deadline: float
+    connection: sqlite3.Connection,
+    root: str,
+    deadline: float,
+    memo_key: tuple[str, ...] | None = None,
+    version: int = 2,
 ) -> str:
-    """Keep pre-deadline two-argument test seams source-compatible."""
-    try:
-        return index_fingerprint(connection, root, deadline=deadline)
-    except TypeError as exc:
-        if "unexpected keyword argument 'deadline'" not in str(exc):
-            raise
-        return index_fingerprint(connection, root)
+    """Keep pre-deadline two-argument test seams source-compatible.
+
+    #1561：给出「项目根 + 私有副本字节摘要」键时，同一内容只计算一次指纹。
+    RFC-0039：manifest v3 时重算认证根；它与 v2 指纹分开入备忘录（键尾加版本标记）。
+    """
+    if version == 3:
+        root_key = (*memo_key, CERTIFICATION_ROOT_MEMO_TAG) if memo_key else None
+
+        def compute_root() -> str:
+            budget = memo_compute_deadline(
+                root_key, deadline, _clock(), _fingerprint_deadline_seconds()
+            )
+            return certification_root(connection, root, deadline=budget)
+
+        return memoized_index_fingerprint(root_key, compute_root)
+
+    def compute() -> str:
+        # #1634：入表的指纹按整段预算算完，避免每次捕获都在期限处重算。
+        budget = memo_compute_deadline(
+            memo_key, deadline, _clock(), _fingerprint_deadline_seconds()
+        )
+        try:
+            return index_fingerprint(connection, root, deadline=budget)
+        except TypeError as exc:
+            if "unexpected keyword argument 'deadline'" not in str(exc):
+                raise
+            return index_fingerprint(connection, root)
+
+    return memoized_index_fingerprint(memo_key, compute)
 
 
 REGISTRY = IndexSnapshotRegistry(
@@ -156,9 +222,14 @@ def _read_bounded_manifest(
 
 
 def _copy_projection_evidence(
-    connection: sqlite3.Connection, deadline: float
+    connection: sqlite3.Connection,
+    deadline: float,
+    memo_key: tuple[str, ...] | None = None,
 ) -> tuple[sqlite3.Connection, bool]:
-    """在有预算的私有内存副本上核验投影，绝不向源库执行 FTS 控制写入。"""
+    """在有预算的私有内存副本上核验投影，绝不向源库执行 FTS 控制写入。
+
+    #1561：给出源字节摘要时，同一内容的投影判定只核验一次。
+    """
     _require_capture_budget(deadline)
     source_page_size = int(connection.execute("PRAGMA page_size").fetchone()[0])
     source_page_count = int(connection.execute("PRAGMA page_count").fetchone()[0])
@@ -195,12 +266,19 @@ def _copy_projection_evidence(
             )
         }
         evidence_fts5 = sqlite_compile_supports_fts5(evidence)
-        projection_exact = bool(
-            evidence_fts5 is not None
-            and has_ordinary_symbol_projection(evidence, evidence_tables)
-            and symbol_projection_is_exact(
-                evidence, deadline=deadline, require_fts=evidence_fts5
-            )
+        # #1634：与指纹相同，入表的判定按整段预算算完。
+        budget = memo_compute_deadline(
+            memo_key, deadline, _clock(), _fingerprint_deadline_seconds()
+        )
+        projection_exact = memoized_projection_exact(
+            memo_key,
+            lambda: bool(
+                evidence_fts5 is not None
+                and has_ordinary_symbol_projection(evidence, evidence_tables)
+                and symbol_projection_is_exact(
+                    evidence, deadline=budget, require_fts=evidence_fts5
+                )
+            ),
         )
         _require_capture_budget(deadline)
         return evidence, projection_exact
@@ -232,12 +310,14 @@ def _capture_wal_snapshot(
             raise RuntimeError("INDEX_SNAPSHOT_DEADLINE")
 
         with ExitStack() as private:
+            content_key: list[str] = []
             private_path, wal_frames = private.enter_context(
                 private_wal_database(
                     root,
                     deadline=deadline,
                     byte_limit=_BACKUP_BYTE_BUDGET,
                     check_deadline=_require_capture_budget,
+                    content_key=content_key,
                 )
             )
             uri = f"file:{quote(private_path, safe='/')}?mode=rw"
@@ -265,11 +345,14 @@ def _capture_wal_snapshot(
             if build_in_progress(staged):
                 raise ValueError("CONCURRENT_WRITER")
             _require_capture_budget(deadline)
-            index = _index_fingerprint_with_deadline(staged, root, deadline)
-            recorded = recorded_source_rows(staged, deadline=deadline)
+            memo_key = (root, *content_key) if content_key else None
             manifest = _read_bounded_manifest(staged, deadline)
             if manifest is not None:
                 _validate_manifest_scalars(manifest)
+            index = _index_fingerprint_with_deadline(
+                staged, root, deadline, memo_key, _manifest_version(manifest)
+            )
+            recorded = recorded_source_rows(staged, deadline=deadline)
             current = None
             source_scope = None
             scope_reason: str | None = None
@@ -299,7 +382,7 @@ def _capture_wal_snapshot(
                 and manifest["source_fingerprint"] == current.fingerprint
                 and manifest["index_fingerprint"] == index
                 and manifest["file_count"] == count
-                and manifest["manifest_version"] == 2
+                and manifest["manifest_version"] in MANIFEST_VERSIONS
             )
             call_graph_complete = _exact_call_graph_marker(staged, deadline=deadline)
             complete = exact_sources and exact_manifest and call_graph_complete
@@ -317,7 +400,9 @@ def _capture_wal_snapshot(
                 )
             else:
                 reason = "NO_EXACT_FULL_INDEX_MANIFEST"
-            connection, projection_exact = _copy_projection_evidence(staged, deadline)
+            connection, projection_exact = _copy_projection_evidence(
+                staged, deadline, memo_key
+            )
             if wal_frames is not None:
                 # 帧数须等于当前 salt 的完整前缀；损坏或未提交的当前代帧不能被忽略。
                 checkpoint = tuple(
@@ -462,13 +547,21 @@ def _capture_existing_snapshot(
             if build_in_progress(connection):
                 raise ValueError("CONCURRENT_WRITER")
             _require_capture_budget(deadline)
-            index = _index_fingerprint_with_deadline(connection, root, deadline)
-            _require_capture_budget(deadline)
-            recorded = recorded_source_rows(connection, deadline=deadline)
-            _require_capture_budget(deadline)
+            memo_key = (
+                root,
+                *pinned_fd_content_key(
+                    db_fd, initial.st_size, lambda: _require_capture_budget(deadline)
+                ),
+            )
             manifest = _read_bounded_manifest(connection, deadline)
             if manifest is not None:
                 _validate_manifest_scalars(manifest)
+            index = _index_fingerprint_with_deadline(
+                connection, root, deadline, memo_key, _manifest_version(manifest)
+            )
+            _require_capture_budget(deadline)
+            recorded = recorded_source_rows(connection, deadline=deadline)
+            _require_capture_budget(deadline)
             current = None
             source_scope = None
             scope_reason = None
@@ -499,7 +592,7 @@ def _capture_existing_snapshot(
                 and manifest["source_fingerprint"] == current.fingerprint
                 and manifest["index_fingerprint"] == index
                 and manifest["file_count"] == count
-                and manifest["manifest_version"] == 2
+                and manifest["manifest_version"] in MANIFEST_VERSIONS
             )
             _require_capture_budget(deadline)
             call_graph_complete = _exact_call_graph_marker(
@@ -520,7 +613,9 @@ def _capture_existing_snapshot(
                 )
             else:
                 reason = "NO_EXACT_FULL_INDEX_MANIFEST"
-            evidence, projection_exact = _copy_projection_evidence(connection, deadline)
+            evidence, projection_exact = _copy_projection_evidence(
+                connection, deadline, memo_key
+            )
             if source_scope is not None and current is not None:
                 _require_capture_budget(deadline)
                 final_current = _capture_sources_with_deadline(
@@ -884,7 +979,8 @@ def _certified_index_read_status(
     project_root: str,
 ) -> Iterator[tuple[CertifiedIndexRead | None, IndexSnapshot]]:
     """在同一租约中返回认证 owner 与已发布的快照状态。"""
-    deadline = _clock() + _CAPTURE_DEADLINE_SECONDS
+    budget = _CERTIFICATION_BUDGET_SECONDS.get()
+    deadline = _clock() + (_CAPTURE_DEADLINE_SECONDS if budget is None else budget)
     with _lease_certified_query_snapshot(project_root, deadline=deadline) as advertised:
         if (
             advertised.snapshot_id is None

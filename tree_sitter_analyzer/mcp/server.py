@@ -7,8 +7,13 @@ import sys
 from pathlib import Path as PathClass
 from typing import Any
 
+from ._sdk_lazy_import import defer_sdk_package_inits
+
 try:
-    from mcp.server import Server
+    # #1675: a stdio server needs only the low-level SDK modules; skip the
+    # ~300 modules the SDK's and httpx's package ``__init__`` files pull in.
+    defer_sdk_package_inits()
+    from mcp.server.lowlevel import Server
     from mcp.server.models import InitializationOptions
     from mcp.server.stdio import stdio_server as _stdio_server
 
@@ -41,7 +46,6 @@ except ImportError:
     stdio_server = _fallback_stdio_server
 
 
-from ..core.analysis_engine import get_analysis_engine
 from ..platform_compat.detector import PlatformDetector
 from ..project_detector import detect_project_root
 from ..security import SecurityValidator
@@ -49,22 +53,21 @@ from ..utils import setup_logger
 from . import MCP_INFO
 from ._sdk_compat import adapt_server
 from ._server_helpers import (
-    attach_tool_aliases,
     build_initialization_options,
     detect_server_version,
+    get_analysis_engine,
+    materialize_deferred_attribute,
     resolve_project_root,
 )
 from ._server_helpers import (
     log_safely as _log_safely,
 )
-from .resources import CodeFileResource, ProjectStatsResource
-from .server_utils.code_scale_handler import analyze_code_scale
 from .server_utils.prompt_registration import register_prompts
 from .server_utils.resource_registration import register_resources
 from .server_utils.tool_registration import register_tools
 
 # PERF-3: tool classes imported lazily by _create_tool_registry() — saves ~316 ms cold start.
-from .utils.file_metrics import compute_file_metrics
+# 冷启动：resources / code_scale_handler / file_metrics 拉起 core 解析栈，改为用时导入。
 from .utils.shared_cache import get_shared_cache
 
 # Set up logging
@@ -86,11 +89,12 @@ def _resolve_relative_path(base_root: str, file_path: str) -> str:
 def _create_tool_registry(
     project_root: str | None,
     lifecycle_manager: Any | None = None,
+    prebuilt: dict[str, Any] | None = None,
 ) -> tuple[list[Any], dict[str, Any]]:
     """Delegates to the single-source registry in ``_tool_registry.py``."""
     from ._tool_registry import create_tool_registry
 
-    return create_tool_registry(project_root, lifecycle_manager)
+    return create_tool_registry(project_root, lifecycle_manager, prebuilt)
 
 
 class TreeSitterAnalyzerMCPServer:
@@ -102,10 +106,9 @@ class TreeSitterAnalyzerMCPServer:
     """
 
     def __init__(self, project_root: str | None = None) -> None:
-        """初始化 MCP 服务器组件，并延迟构建较重的工具注册表。
+        """初始化轻量组件；注册表、分析引擎、资源与旧别名均在首次访问时构建。
 
-        注册表只在首次访问 ``tools``、``tool_instances`` 或旧别名属性时构建，
-        因此 MCP ``initialize`` 握手不承担约 54 毫秒的注册开销。
+        因此 MCP ``initialize`` 握手不承担工具模块导入与分析栈加载开销。
         """
         self.server: Server | None = None
         self._initialization_complete = False
@@ -113,21 +116,16 @@ class TreeSitterAnalyzerMCPServer:
         self._registry_built = False
         self._tool_instances: list[Any] | None = None
         self._tools: dict[str, Any] | None = None
+        # #1675：tools/call 只构建被调用的门面；之后的完整注册表复用这些实例。
+        self._facades: dict[str, Any] = {}
         from .subscription_lifecycle import SubscriptionLifecycleManager
 
         self.subscription_lifecycle = SubscriptionLifecycleManager(project_root)
 
         _log_safely(logger.info, "Starting MCP server initialization...")
 
-        # 这里仅初始化轻量组件；约 54 毫秒的注册表构建由 _ensure_registry 延迟执行。
-        self.analysis_engine = get_analysis_engine(project_root)
+        # 仅初始化轻量组件；其余在首次访问时构建（_ensure_registry / __getattr__）。
         self.security_validator = SecurityValidator(project_root)
-
-        attach_tool_aliases(self, {}, project_root)
-
-        self.code_file_resource = CodeFileResource()
-        self.project_stats_resource = ProjectStatsResource()
-        self.project_stats_resource.project_root = project_root
 
         self.name = MCP_INFO["name"]
         self.version = detect_server_version(
@@ -144,6 +142,15 @@ class TreeSitterAnalyzerMCPServer:
             self.version,
         )
 
+    def __getattr__(self, name: str) -> Any:
+        """常规查找失败时按需构建分析引擎、资源对象与旧版 ``*_tool`` 别名。"""
+        root = self.__dict__.get("_project_root")
+        if name == "analysis_engine":
+            # 经由本模块全局名调用，保持 patch 目标不变。
+            self.analysis_engine = get_analysis_engine(root)
+            return self.analysis_engine
+        return materialize_deferred_attribute(self, name, root)
+
     def _ensure_registry(self) -> None:
         """Build the deferred facade tool registry exactly once (idempotent).
 
@@ -156,10 +163,46 @@ class TreeSitterAnalyzerMCPServer:
         """
         if self._registry_built:
             return
-        self._tool_instances, self._tools = _create_tool_registry(
-            self._project_root, self.subscription_lifecycle
-        )
+        if self._facades:
+            self._tool_instances, self._tools = _create_tool_registry(
+                self._project_root, self.subscription_lifecycle, self._facades
+            )
+        else:
+            self._tool_instances, self._tools = _create_tool_registry(
+                self._project_root, self.subscription_lifecycle
+            )
         self._registry_built = True
+
+    def facade(self, name: str) -> Any | None:
+        """One facade by public name, building only that facade if needed (#1675).
+
+        A cold server's first ``tools/call`` no longer imports and constructs
+        the other seven facades. Returns ``None`` for a non-facade name.
+        """
+        from ._tool_registry import FACADE_NAMES, build_facade
+
+        if self._registry_built:
+            return (self._tools or {}).get(name)
+        if name not in FACADE_NAMES:
+            return None
+        built = self._facades.get(name)
+        if built is None:
+            built = build_facade(name, self._project_root, self.subscription_lifecycle)
+            self._facades[name] = built
+        return built
+
+    def tool_definitions(self) -> list[dict[str, Any]]:
+        """The 8 facade definitions for ``tools/list``, without building tools.
+
+        Definitions depend only on the installed package source, so they are
+        served from a cache keyed by its fingerprint (#1675); a miss builds the
+        registry exactly as before and records the result.
+        """
+        from .tool_definition_cache import cached_definitions
+
+        return cached_definitions(
+            lambda: [tool.get_tool_definition() for _, tool in self.tool_instances]
+        )
 
     def is_initialized(self) -> bool:
         """Check if the server is fully initialized."""
@@ -176,10 +219,8 @@ class TreeSitterAnalyzerMCPServer:
         from .intent_aliases import IntentAliasResolver
         from .legacy_shim import dispatch_legacy, is_legacy_name
 
-        tools = self.tools or {}
-
-        # 1. Live facade name.
-        tool = tools.get(name)
+        # 1. Live facade name (#1675: builds only this facade on a cold server).
+        tool = self.facade(name)
         if tool is not None:
             return await tool.execute(arguments)
 
@@ -193,7 +234,7 @@ class TreeSitterAnalyzerMCPServer:
             resolved = resolver.resolve(name)
         except (TypeError, ValueError):
             resolved = name
-        tool = tools.get(resolved)
+        tool = self.facade(resolved)
         if tool is not None:
             return await tool.execute(arguments)
         if is_legacy_name(resolved):
@@ -211,6 +252,8 @@ class TreeSitterAnalyzerMCPServer:
 
     async def _analyze_code_scale(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Legacy method for analyzing code scale. Delegates to code_scale_handler."""
+        from .server_utils.code_scale_handler import analyze_code_scale
+
         return await analyze_code_scale(
             arguments,
             analysis_engine=self.analysis_engine,
@@ -221,6 +264,8 @@ class TreeSitterAnalyzerMCPServer:
 
     def _calculate_file_metrics(self, file_path: str, language: str) -> dict[str, Any]:
         """Legacy wrapper for file metrics calculation."""
+        from .utils.file_metrics import compute_file_metrics
+
         bm = getattr(self.security_validator, "boundary_manager", None)
         base_root = getattr(bm, "project_root", None)
         return compute_file_metrics(
@@ -282,7 +327,8 @@ class TreeSitterAnalyzerMCPServer:
         # G3: rebind the legacy direct-access inner instances too. They are not
         # in ``self._tools`` (which now holds only the 8 facades) but back the
         # ``read_partial_tool`` / ``table_format_tool`` bespoke paths + tests.
-        for tool in getattr(self, "_legacy_alias_tools", []):
+        # 未物化的别名稍后按新 _project_root 构建。
+        for tool in self.__dict__.get("_legacy_alias_tools", []):
             tool.set_project_path(project_path)
 
         self.analysis_engine = get_analysis_engine(project_path)
@@ -424,6 +470,13 @@ class TreeSitterAnalyzerMCPServer:
             except Exception as e:
                 shutdown_error = e
                 _log_safely(_log_err, "MCP watcher shutdown failed: %s", e)
+            try:
+                # #1708：不再调度新的后台预构图，并在限定时间内等待在途构建。
+                from ..call_graph_warm import shutdown as shutdown_graph_warm
+
+                shutdown_graph_warm()
+            except Exception as e:  # 预构图收尾失败不阻断停止
+                _log_safely(_log_err, "call-graph warm shutdown failed: %s", e)
             _log_safely(_log_inf, _MSG_SHUTTING_DOWN)
         if primary_error is not None:
             raise primary_error
@@ -432,9 +485,13 @@ class TreeSitterAnalyzerMCPServer:
 
     def _shutdown_application_watcher(self) -> None:
         """停止本应用已物化的 watcher，不触发延迟 registry 构造。"""
-        if not self._registry_built or self._tools is None:
+        if self._registry_built and self._tools is not None:
+            index = self._tools.get("index")
+        else:
+            # #1675：只物化过单个门面时，index 门面可能已单独构建。
+            index = self.__dict__.get("_facades", {}).get("index")
+        if index is None:
             return
-        index = self._tools.get("index")
         cache = getattr(index, "action_map", {}).get("cache")
         if cache is not None:
             cache.shutdown_application_watcher()
@@ -472,6 +529,10 @@ async def main() -> None:
             logger.info, "MCP server starting with project root: %s", project_root
         )
 
+        # #1708：长驻服务器在发布刷新后立即为新版本构图（一次性进程不启用）。
+        from ..call_graph_warm import enable as enable_graph_warm
+
+        enable_graph_warm()
         server = TreeSitterAnalyzerMCPServer(project_root)
         await server.run()
 

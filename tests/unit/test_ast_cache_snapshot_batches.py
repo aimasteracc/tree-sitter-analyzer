@@ -6,9 +6,6 @@ from unittest.mock import patch
 
 import tests.unit._ast_cache_helpers as _fixtures
 from tests.unit._ast_cache_helpers import _python_language, _snapshot
-from tree_sitter_analyzer.ast_cache import (
-    ASTCache,
-)
 from tree_sitter_analyzer.cache.helpers import _commit_index_results
 from tree_sitter_analyzer.indexing_snapshot import (
     build_index_candidate_snapshot,
@@ -33,7 +30,7 @@ def test_snapshot_revalidates_pending_rows_at_batch_commit(tmp_path):
         walk_fn=lambda _root: (str(first), str(second)),
         language_fn=_python_language,
     )
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.engine_cache(tmp_path)
     real_insert = indexer.insert_index_row
 
     def insert_then_mutate(*args, **kwargs):
@@ -76,7 +73,7 @@ def test_snapshot_revalidates_rows_from_earlier_committed_batches(tmp_path):
         walk_fn=lambda _root: (str(first), str(second)),
         language_fn=_python_language,
     )
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.engine_cache(tmp_path)
     real_commit = _commit_index_results
     real_insert = indexer.insert_index_row
 
@@ -228,7 +225,7 @@ def test_failed_worker_snapshot_revalidation_discards_old_generation(tmp_path):
 
     path = tmp_path / "app.py"
     path.write_text("value = 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = _fixtures.engine_cache(tmp_path)
     cache.index_file(str(path))
     path.write_text("value = 20\n", encoding="utf-8")
     entry = _snapshot(tmp_path, path).selected_entries[0]

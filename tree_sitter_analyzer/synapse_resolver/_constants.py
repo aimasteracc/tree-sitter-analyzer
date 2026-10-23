@@ -546,12 +546,11 @@ BUILTIN_QUALIFIED_PY: frozenset[str] = frozenset(
 # receiver type when it sees a literal or constructor assignment, e.g.
 # ``result = {}`` -> receiver type ``dict``, ``items = []`` -> ``list``.
 #
-# Used by ``_try_unique_method`` and ``_is_obvious_external`` to gate the
-# builtin-receiver guard: a qualifier that IS one of these names is positively
-# inferred as a builtin container -- binding its methods to a project symbol is
-# wrong. A qualifier that is NOT here (e.g. ``store``, ``cache``) is an
-# untyped receiver and must be allowed through to normal candidate selection
-# (restores the ``store.get -> DataStore.get`` case, issue #447 adversarial P1).
+# Used by ``_is_obvious_external`` to gate the builtin-receiver guard: a
+# qualifier that IS one of these names is positively inferred as a builtin
+# container -- binding its methods to a project symbol is wrong. #1669: a
+# qualifier that is NOT here (e.g. ``store``, ``cache``) is an untyped receiver;
+# it is not bound to a project method by name either, only kept as possible.
 # ---------------------------------------------------------------------------
 BUILTIN_TYPE_NAMES_PY: frozenset[str] = frozenset(
     {

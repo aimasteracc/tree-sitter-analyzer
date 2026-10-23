@@ -30,7 +30,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from tree_sitter_analyzer.ast_cache import ASTCache
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.synapse_resolver import ResolvedCallee, resolve_callee
 from tree_sitter_analyzer.synapse_resolver import languages as _languages
 from tree_sitter_analyzer.synapse_resolver._context import ResolverContext
@@ -419,7 +419,7 @@ def test_no_cross_language_mis_wire_end_to_end(tmp_path: Path) -> None:
         "    return helper('hi');\n"
         "}\n"
     )
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_project()
         from tree_sitter_analyzer.synapse_resolver._context import (

@@ -58,6 +58,10 @@ def _find_parent_class(
                 name_node = parent.child_by_field_name("name")
                 if name_node:
                     return _node_text(name_node, source)
+                # #1765：`const X = class extends B {...}` 的方法属于类 `X`。
+                expression_name = jsts_class_expression_name(parent, source)
+                if expression_name:
+                    return expression_name
                 if parent.type == "companion_object":
                     parent = parent.parent
                     continue
@@ -88,12 +92,41 @@ def _python_parents(node: Any, source: str) -> list[str]:
     ]
 
 
+def jsts_class_expression_name(node: Any, source: str) -> str | None:
+    """#1765：匿名类表达式恰是 ``const X = class ...`` 的初始值时返回 ``X``。"""
+    if node.type != "class" or node.child_by_field_name("name") is not None:
+        return None
+    parent = node.parent
+    if (
+        parent is None
+        or parent.type != "variable_declarator"
+        or parent.child_by_field_name("value") != node
+    ):
+        return None
+    name = parent.child_by_field_name("name")
+    return (
+        _node_text(name, source)
+        if name is not None and name.type == "identifier"
+        else None
+    )
+
+
 def _javascript_parents(node: Any, source: str) -> list[str]:
+    """``class A extends B``：JS 的 ``class_heritage`` 直接含基类表达式；TS 的放在
+    ``extends_clause`` 里（#1765：此前 TS 类的 ``parents`` 总是空的，``implements``
+    的接口不提供实现，不计入）。"""
+    heritage = [child for child in node.children if child.type == "class_heritage"]
+    clauses = [
+        clause
+        for child in heritage
+        for clause in (
+            [child] + [c for c in child.children if c.type == "extends_clause"]
+        )
+    ]
     return [
         _node_text(parent, source)
-        for child in node.children
-        if child.type == "class_heritage"
-        for parent in child.children
+        for clause in clauses
+        for parent in clause.children
         if parent.type in ("identifier", "member_expression")
     ]
 

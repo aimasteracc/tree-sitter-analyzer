@@ -26,7 +26,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from tree_sitter_analyzer.ast_cache import ASTCache
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.synapse_resolver.languages.typescript import (
     build_typescript_resolver_context,
     resolve_typescript_callee,
@@ -41,7 +41,7 @@ def _index(tmp_path: Path, files: dict[str, str]) -> str:
         target = tmp_path / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(body)
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_project()
     finally:

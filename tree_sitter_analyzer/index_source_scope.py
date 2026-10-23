@@ -41,6 +41,11 @@ class SourceScopeDescriptor:
         return extras if self.no_default_excludes else _DEFAULT_EXCLUDES | extras
 
 
+def default_exclude_patterns() -> frozenset[str]:
+    """Built-in exclude patterns applied unless ``no_default_excludes`` is set."""
+    return _DEFAULT_EXCLUDES
+
+
 def make_source_scope_descriptor(
     *,
     roots: tuple[str, ...] = (".",),

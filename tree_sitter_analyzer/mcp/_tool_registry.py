@@ -21,12 +21,53 @@ when a registry is actually built (PERF-3).
 
 from __future__ import annotations
 
+import importlib
+from collections.abc import Mapping
 from typing import Any
+
+#: Registered facades in public registration order (governs ``tools/list``
+#: order): ``("name", takes_lifecycle_manager)`` for the builder
+#: ``tools/<name>_facade.build_<name>_facade``. One ``("name", ...)`` tuple per
+#: line, the registration shape ``scripts/codemap_surface.py`` and
+#: ``tests/integration/test_codemap_sync_hook.sh`` read statically.
+_FACADE_REGISTRATIONS: tuple[tuple[str, bool], ...] = (
+    ("search", True),
+    ("nav", False),
+    ("structure", False),
+    ("health", False),
+    ("edit", False),
+    ("project", False),
+    ("index", True),
+    ("viz", False),
+)
+_FACADES: dict[str, bool] = dict(_FACADE_REGISTRATIONS)
+FACADE_NAMES: tuple[str, ...] = tuple(_FACADES)
+
+
+def build_facade(
+    name: str,
+    project_root: str | None,
+    lifecycle_manager: Any | None = None,
+) -> Any:
+    """Build ONE facade, importing only that facade's inner tools (#1675).
+
+    A cold server answering its first ``nav`` call used to import and construct
+    all 8 facades (~100 inner tools, ~500 modules) first; building just the
+    facade being called skips the other seven.
+    """
+    if name not in _FACADES:
+        raise ValueError(f"unknown facade: {name!r}")
+    module = importlib.import_module(f".tools.{name}_facade", __package__)
+    builder = getattr(module, f"build_{name}_facade")
+    if _FACADES[name]:
+        return builder(project_root, lifecycle_manager)
+    return builder(project_root)
 
 
 def create_tool_registry(
     project_root: str | None,
     lifecycle_manager: Any | None = None,
+    prebuilt: Mapping[str, Any] | None = None,
 ) -> tuple[list[tuple[str, Any]], dict[str, Any]]:
     """Instantiate and return the 8 facade tools.
 
@@ -38,24 +79,19 @@ def create_tool_registry(
     Inner tool classes are still imported (lazily, inside each ``build_*_facade``)
     — they back the facade actions and the legacy shim. They are simply no longer
     registered as top-level MCP tools.
-    """
-    from .tools.edit_facade import build_edit_facade
-    from .tools.health_facade import build_health_facade
-    from .tools.index_facade import build_index_facade
-    from .tools.nav_facade import build_nav_facade
-    from .tools.project_facade import build_project_facade
-    from .tools.search_facade import build_search_facade
-    from .tools.structure_facade import build_structure_facade
-    from .tools.viz_facade import build_viz_facade
 
+    ``prebuilt`` facades (already built one at a time by a server answering
+    ``tools/call``) are reused rather than rebuilt, so every caller keeps
+    seeing the same facade instance and its state (#1675).
+    """
+    ready = prebuilt or {}
     tool_instances: list[tuple[str, Any]] = [
-        ("search", build_search_facade(project_root, lifecycle_manager)),
-        ("nav", build_nav_facade(project_root)),
-        ("structure", build_structure_facade(project_root)),
-        ("health", build_health_facade(project_root)),
-        ("edit", build_edit_facade(project_root)),
-        ("project", build_project_facade(project_root)),
-        ("index", build_index_facade(project_root, lifecycle_manager)),
-        ("viz", build_viz_facade(project_root)),
+        (
+            name,
+            ready[name]
+            if name in ready
+            else build_facade(name, project_root, lifecycle_manager),
+        )
+        for name in FACADE_NAMES
     ]
     return tool_instances, dict(tool_instances)

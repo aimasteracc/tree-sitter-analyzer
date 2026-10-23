@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 import tree_sitter_analyzer.mcp.tools.constraint_index_snapshot as owner
+from tests.unit._ast_cache_helpers import legacy_cache
 
 
 def _database(root: Path, rows: int = 1) -> Path:
@@ -287,7 +288,7 @@ def _certification_dependencies(
     )
     monkeypatch.setattr(owner, "_capture_constraint_sources", lambda *_a: current)
     monkeypatch.setattr(owner, "recorded_source_rows", lambda *_a, **_k: current.rows)
-    monkeypatch.setattr(owner, "index_fingerprint", lambda *_a, **_k: "index")
+    monkeypatch.setattr(owner, "index_commitment", lambda *_a, **_k: "index")
     monkeypatch.setattr(owner, "exact_call_graph_marker", lambda *_a, **_k: True)
     monkeypatch.setattr(owner, "sqlite_compile_supports_fts5", lambda _conn: True)
     monkeypatch.setattr(owner, "has_ordinary_symbol_projection", lambda *_a: True)
@@ -525,13 +526,12 @@ def test_real_partial_projection_rejects_constraint_evaluation(
     # PR #1350：普通便携副本与新增 WAL 资格门分别验证，未获资格不宣称检查过投影。
     import tree_sitter_analyzer.index_snapshot as snapshot_owner
     import tree_sitter_analyzer.index_snapshot_capability as capability
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.index_snapshot import REGISTRY, stamp_full_index_manifest
     from tree_sitter_analyzer.mcp.tools.constraint_check_tool import ConstraintCheckTool
 
     source = tmp_path / "app.py"
     source.write_text("def answer(): return 42\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         cache.index_file(str(source))
         conn = cache.get_conn()

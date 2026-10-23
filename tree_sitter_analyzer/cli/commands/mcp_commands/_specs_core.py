@@ -279,6 +279,7 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
             "include_activation": bool(
                 getattr(args, "ast_cache_include_activation", False)
             ),
+            "include_details": bool(getattr(args, "ast_cache_include_details", False)),
             "poll_interval": getattr(args, "watch_poll_interval", 5.0),
             "backend": getattr(args, "watch_backend", "poll"),
         },

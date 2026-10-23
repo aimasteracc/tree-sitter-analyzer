@@ -686,3 +686,114 @@ pytest 但选中零项，给 agent 一个看似可执行、实际永远无法验
 `tests/unit/mcp/test_verification_command.py` 固定 benchmark claim 的 POSIX、Windows 和 nodeid
 路径会删除且只删除 `not benchmark`，并固定普通 benchmark 路径仍受默认 marker 排除；
 生成命令的测试必须断言最终 marker 与目标可达性，不能只比较字符串片段。
+
+## 2026-10 — 只读连接不等于只读文件
+
+### Context
+
+v2.x 已发布版本的 `ASTCache.get_conn()` 以 `mode=ro` 打开，既有测试只验证直接
+`DELETE` 被拒绝。RFC-0032 可行性备忘录（`rfcs/evidence/0032-feasibility` E5，
+2026-10-13）实测：同一连接 `ATTACH DATABASE '<同一文件>' AS w`（`mode=rw`）后
+`DELETE FROM w.ast_index` 成功，新的 `ASTCache(root)` 随后报告 0 个文件。修复在密封时
+把版本切回回滚日志并清除文件写位；WAL 模式下只读主库的读者还会另建可写 `-wal`/`-shm`。
+
+### Lessons learned
+
+1. **`mode=ro` 是连接属性，不是文件属性。** 同一连接可以 ATTACH 出可写别名；不可变性
+   必须落在文件系统（或外部权限）层，测试必须覆盖 ATTACH 逃逸而不止直接写。
+2. **只读文件改变删除语义。** Windows 上 `shutil.rmtree` 遇只读文件报错，
+   `ignore_errors=True` 时静默残留；引入只读位的同一改动必须同时修正全部删除路径。
+3. **边界要写明。** root 与把写位改回来的同用户代码不受只读位约束，代码注释与测试
+   跳过原因都必须如实声明，不能宣称为访问控制。
+
+### Required guardrail
+
+`tests/unit/test_generation_indexing.py` 固定 ATTACH mode=rw 删除必须报 `readonly`
+且新读者仍得到原文件数；`tests/unit/test_generation_reads.py` 固定新进程读取后版本目录
+只剩只读主库文件（index.db）；`tests/unit/cli/test_clean_state_command.py` 固定 `--clean-state`
+能删除含密封版本的缓存。
+
+## 2026-10 — 内存记忆必须绑定索引身份，且物理戳记不是身份
+
+### Context
+
+dogfood 2026-10-14：同一 MCP 服务器内 `nav action=callers` 建索引后答 2 个调用者；
+编辑源码新增第三个调用者、再执行 `index action=cache mode=index` 后仍答 2，没有任何
+过期标记；`edit action=impact` 已把新边写入 index.db，nav 依旧答 2，只有
+`set_project_path` 能恢复。根因是 `CodeGraphRelationToolMixin._get_call_graph` 把
+内存调用图记忆到工具生命周期结束，只在项目根变化时重置。第一次修复用主库与 WAL 的
+(mtime_ns, size) 作为身份，结果每次调用都重建：实测每次打开 `ASTCache` 都会向 WAL
+写入约 57 KB，物理戳记每次都变。
+
+### Lessons learned
+
+1. **长寿命进程里的记忆必须有失效键。** 只在项目根变化时重置的缓存，在 MCP 服务器里
+   等于永久缓存；失效键要绑定数据来源的身份，而不是绑定调用者的参数。
+2. **物理戳记不是内容身份。** 读者也会写 WAL；身份应取内容层信号（generation、
+   `ast_index` 行数与最新 `indexed_at`、`edges` 最大 rowid），并用“索引未变时同一对象被
+   复用”的测试固定，防止身份退化为每次重建。
+3. **只检查答案涉及的文件不能宣称 fresh。** RFC-0030 已否决仅检查返回路径；廉价检查
+   通过时只能报告 `unknown`，检测到差异才报告 `stale`。
+
+### Required guardrail
+
+`tests/unit/test_codegraph_callees_tool.py` 用同一个长寿命 nav 实例固定：重建索引后答案
+反映新调用者；未重建时 `source_evidence.freshness == "stale"` 且 next_step 给出刷新命令；
+新符号缺席时不归咎拼写；索引未变时内存调用图对象被复用。
+
+## 2026-10 — 进程级资源按文件重建，修一处不等于修完
+
+### Context
+
+#1562（dogfood 2026-10-14）：`index action=cache mode=index` 在 2398 个文件上耗时 3119 s。
+对 920 个文件的顺序索引做 cProfile（Windows 11，机器高负载）：总计 584 s，其中
+`_annotate_canonical_complexity` 每个文件新建一个 `PluginManager`，重扫
+`importlib.metadata.entry_points()`，占 293 s（146,280 次元数据读取）。
+`complexity_heatmap` 早已因同一缺陷修过一次，修复只落在那一处。同一次剖析里，
+`_reset_incoming_edge_resolutions` 的 `kind = 'calls' AND (A OR B IN (...))` 让规划器退回
+`idx_edges_kind`，每个文件扫描全部调用边：62,263 条边时每次查询 252 ms，改为 UNION
+两支各走专用索引后为 0.55 ms。两处修复后同一顺序索引降到 178 s（CPU 352 s → 147 s）。
+
+### Lessons learned
+
+1. **由安装环境决定的对象是进程级的。** 插件注册表、语法加载器、entry point 扫描不随
+   被处理的文件变化，在每文件路径上构造它们就是 O(文件数) 的重复 I/O。
+2. **修一个调用点时，搜遍同一构造。** `PluginManager()` 在仓库里有 9 处直接构造；只修
+   热图那一处，索引路径里的同一模式继续存在。修复时先 grep 全部调用点并判断哪些在
+   每文件循环里。
+3. **`OR` 连接的不同列条件会让 SQLite 放弃两条索引。** 每文件执行的查询必须用
+   `EXPLAIN QUERY PLAN` 固定，否则随边表增长退化为二次复杂度，而功能测试全绿。
+
+### Required guardrail
+
+`tests/unit/test_ast_extraction.py` 的 `test_plugin_manager_is_built_once_per_process`
+固定多次标注只构造一个 `PluginManager`；`tests/unit/test_cache_write.py` 的
+`test_incoming_resolution_lookup_uses_both_edge_indexes` 固定查询计划只走
+`idx_edges_resolved` 与 `idx_edges_callee_name`。
+
+## 2026-10 — 保留上限必须在真实长驻读者存在时测量
+
+### Context
+
+#1631（dogfood round 6，2026-10-16）：#1567 承诺“active + 至多 2 个已密封版本”，
+单元测试也一直是绿的，但真实 MCP 服务器里 index + 3 次刷新后磁盘上有 4 份 339 MB 的
+`index.db`，本机磁盘 10-14..16 多次耗尽。两个原因叠加：(1) `indexed=0 removed=0` 的
+无变化刷新也复制并发布一份完整副本；(2) 读过旧版本的长驻工具实例（impact 的
+`CachedCallGraph`）调用结束后仍持有线程本地只读连接与版本钉，只要不再被调用，该版本
+永远不能回收，保留数因此变成 active + 2 + 空闲读者数。40 文件夹具实测：无变化刷新 5 次
+由 3 份降到 1 份；空闲 impact 读者 + 3 次变化刷新由 4 份降到 3 份。
+
+### Lessons learned
+
+1. **保留上限是对“整个进程”的承诺。** 只用短命读者或无读者测出的上限，不能代表长驻
+   服务器；测试必须包含一个读过旧版本后保持空闲的长寿命工具实例。
+2. **按调用解析版本的读者，调用之间不需要持有旧版本。** 下一次调用本就会换绑；空闲时
+   提前释放与换绑语义相同，但必须排除仍在进行中的调用所绑定的版本。
+3. **“刷新”不等于“发布”。** 运行结果为零变化、且认证清单（覆盖全部查询可见行的
+   `index_fingerprint`）与父版本逐行相同时，发布新版本只是复制磁盘。
+
+### Required guardrail
+
+`tests/unit/test_generation_retirement.py` 经公共路由 `index action=cache mode=index`
+固定：5 次无变化刷新后仍只有 1 个版本且 `publication_reason == "INDEX_UNCHANGED"`；
+空闲的长驻 nav 实例不再钉住旧版本；进行中的读者所用版本绝不被回收。

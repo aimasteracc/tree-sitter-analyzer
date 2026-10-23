@@ -3,7 +3,10 @@
 Self-contained and SAFE. Replaces the Python cascade for ``.ts``/``.tsx`` callers
 (``file_languages == "typescript"``) without regressing: it resolves SAME-FILE/
 SAME-LANGUAGE local calls, classifies a small, distinctive set of built-in global
-objects as ``builtin``, and returns ``unknown`` for everything else.
+objects as ``builtin``, binds a call through an ES-module import the binder can
+prove (#1764: named / default / namespace imports, re-exports through barrel files,
+the project's own package specifiers) as ``project``, and returns ``unknown`` for
+everything else.
 
 THE MOAT — never cross-language bind. ``_project_owns`` is language-aware: a
 same-named symbol in an incompatible-language file (e.g. a Python ``console``)
@@ -28,6 +31,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from .._es_module_binding import EsModuleBinder
+from .._javascript_object_exports import ObjectExportResolver, _js_variables
 from .._registry import register_language
 from ._typescript_constants import TYPESCRIPT_GLOBAL_OBJECTS
 
@@ -64,6 +69,8 @@ class TypeScriptResolverContext:
     # or ``import { Map } from './map'`` must suppress the ``builtin`` claim
     # (Codex P2 #2/#3). File-scoped: a shadow in one file does not affect another.
     shadow_locals: dict[str, set[str]] = field(default_factory=dict)
+    #: #1764：经 ES 模块导入 / 再导出绑定到别的项目文件；None 不启用（无项目根）。
+    binder: EsModuleBinder | None = None
 
 
 #: Binding names introduced by a TS ``import`` statement. The TS plugin stores
@@ -149,6 +156,7 @@ def build_typescript_resolver_context(
     file_class_methods: Any,  # zero-arg thunk -> class->method map (lazy)
     conn: Any = None,
     shadow_locals: dict[str, set[str]] | None = None,
+    project_root: str | None = None,
     **_ignored: Any,
 ) -> TypeScriptResolverContext | None:
     """Build the TS context, or ``None`` when no TypeScript file is indexed.
@@ -170,6 +178,40 @@ def build_typescript_resolver_context(
         global_name_table=global_name_table,
         file_languages=file_languages,
         shadow_locals=shadow_locals,
+        binder=_build_binder(
+            project_root, imports_by_file, file_languages, file_symbols, conn, fcm
+        ),
+    )
+
+
+def _build_binder(
+    project_root: str | None,
+    imports_by_file: dict[str, Any],
+    file_languages: dict[str, str],
+    file_symbols: dict[str, Any],
+    conn: Any,
+    class_methods: dict[str, dict[str, dict[str, int]]] | None = None,
+) -> EsModuleBinder | None:
+    """#1764：没有项目根（读不到源码）时不绑定任何跨文件调用。"""
+    if not project_root:
+        return None
+    indexed = frozenset(file_languages)
+    variables = _js_variables(conn, file_languages)
+    objects = ObjectExportResolver(
+        project_root=project_root,
+        imports_by_file=imports_by_file,
+        indexed_files=indexed,
+        file_symbols=file_symbols,
+        variables=variables,
+    )
+    return EsModuleBinder(
+        project_root=project_root,
+        imports_by_file=imports_by_file,
+        indexed_files=indexed,
+        file_symbols=file_symbols,
+        variables=variables,
+        object_exports=objects,
+        class_methods=class_methods,
     )
 
 
@@ -247,7 +289,7 @@ def resolve_typescript_callee(
     callee_full: str,
     caller_file: str,
     ctx: TypeScriptResolverContext,
-) -> tuple[int | None, str, str]:
+) -> tuple[int | None, str, str] | tuple[int | None, str, str, dict[str, Any]]:
     """Resolve one TypeScript call edge.
 
     Returns ``(symbol_id, resolution, resolved_file)`` where ``resolution`` is
@@ -265,9 +307,10 @@ def resolve_typescript_callee(
         sym_id = _lookup_in_file(ctx, caller_file, simple)
         if sym_id is not None:
             return sym_id, "local", caller_file
-        # A bare unresolved call stays unknown — NO global single-name binding,
+        # #1764: an import binding (``import { f } from './m'``) is proof; a bare
+        # name without one stays unknown — NO global single-name binding,
         # because that is exactly where cross-language mis-wires creep in.
-        return None, "unknown", ""
+        return _imported(ctx, "", simple, caller_file)
 
     # 1b. local — ``this``/``super`` method: class-scoped. The caller's enclosing
     #     class is NOT available to the resolver, so resolve ONLY when exactly one
@@ -289,10 +332,37 @@ def resolve_typescript_callee(
     if head in TYPESCRIPT_GLOBAL_OBJECTS and not _project_owns(ctx, head, caller_file):
         return None, "builtin", ""
 
+    # 2b. #1764 — ``ns.f()`` / ``z.core.f()`` / ``obj.m()`` through a namespace,
+    #     named or default import of a project module.
+    bound = _imported(ctx, receiver, simple, caller_file)
+    if bound[1] != "unknown":
+        return bound
+
     # 3. unknown — no confident same-language resolution. Conservative tiers keep
     #    bare-method names (``substring``/``push``/``map``) out of any classified
     #    bucket; they remain ``unknown`` rather than risk a domain mis-wire.
     return None, "unknown", ""
+
+
+def _imported(
+    ctx: TypeScriptResolverContext, receiver: str, simple: str, caller_file: str
+) -> tuple[int | None, str, str] | tuple[int | None, str, str, dict[str, Any]]:
+    """``project`` through an ES-module binding the binder can prove, else unknown."""
+    if ctx.binder is None:
+        return None, "unknown", ""
+    bound = ctx.binder.bind(receiver, simple, caller_file)
+    if bound is None:
+        return None, "unknown", ""
+    sym_id, target_file, alias = bound
+    from tree_sitter_analyzer.languages.language_family import languages_compatible
+
+    if not languages_compatible(
+        _TYPESCRIPT_LANG, ctx.file_languages.get(target_file, "")
+    ):
+        return None, "unknown", ""  # THE MOAT: never a cross-language bind.
+    if alias:
+        return sym_id, "project", target_file, alias
+    return sym_id, "project", target_file
 
 
 register_language(

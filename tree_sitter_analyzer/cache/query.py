@@ -414,10 +414,23 @@ def get_cross_file_stats(conn: sqlite3.Connection) -> dict[str, Any]:
 def backfill_cross_file_edges(cache: Any, conn: sqlite3.Connection) -> dict[str, Any]:
     """Resolve cross-file call edges and persist callee_resolved_file."""
     from ..cross_file_resolver import CrossFileResolver
+    from .backfill_scope import current
 
     resolver = CrossFileResolver(cache)
     resolver.build()
-    resolved_edges = resolver.resolve_call_edges()
+    scope = current(conn)
+    if scope is None:
+        resolved_edges = resolver.resolve_call_edges()
+    else:
+        resolved_edges = resolver.resolve_call_edges(
+            edge_filter=lambda edge: scope.covers(
+                str(edge.get("caller_file") or ""),
+                str(edge.get("callee_name") or ""),
+                None,
+            ),
+            # #1749：只读出范围内的边（与全量读取后过滤逐项相同），不再读全部调用边。
+            edges=_scoped_call_edges(conn, scope),
+        )
     total = len(resolved_edges)
     resolved = unchanged = errors = 0
     try:
@@ -450,6 +463,23 @@ def backfill_cross_file_edges(cache: Any, conn: sqlite3.Connection) -> dict[str,
         "unchanged": unchanged,
         "errors": errors,
     }
+
+
+def _scoped_call_edges(conn: Any, scope: Any) -> list[dict[str, Any]] | None:
+    """范围覆盖的调用边（调用方文件或被调名命中）；读失败时返回 None（改为全量读取）。"""
+    from .graph_input_rows import read_call_edge_rows_matching
+
+    try:
+        rows = read_call_edge_rows_matching(
+            conn,
+            (
+                ("file_path", sorted(scope.files)),
+                ("callee_name", sorted(scope.names)),
+            ),
+        )
+    except sqlite3.OperationalError:
+        return None
+    return rows.to_dicts()
 
 
 def query_callers_enhanced(

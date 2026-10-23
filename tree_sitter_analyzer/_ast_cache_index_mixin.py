@@ -20,6 +20,7 @@ from .cache.callgraph_state import (
 from .cache.extraction import _content_hash
 from .cache.helpers import _canonical_project_path
 from .cache.schema import clear_activation_for_file as _clear_activation_for_file_fn
+from .cache.writer_state import writer_operation
 from .index_source_snapshot import SourceScopeDescriptor
 from .indexing_snapshot import IndexCandidateSnapshot
 from .project_graph import _language_from_ext
@@ -97,6 +98,26 @@ class ASTCacheIndexMixin(ASTCacheSurface):
                     _frozen_deadline=_frozen_deadline,
                 ),
             )
+        with writer_operation(self):  # RFC-0032 slice 5：原地写入的修订号绑定
+            return self._index_file_in_place(
+                file_path,
+                language,
+                _source_path=_source_path,
+                _source_fingerprint=_source_fingerprint,
+                _frozen_identity=_frozen_identity,
+                _frozen_deadline=_frozen_deadline,
+            )
+
+    def _index_file_in_place(
+        self,
+        file_path: str,
+        language: str | None,
+        *,
+        _source_path: str | None,
+        _source_fingerprint: Any | None,
+        _frozen_identity: tuple[int, int, int] | None,
+        _frozen_deadline: float | None,
+    ) -> dict[str, Any]:
         abs_path = _canonical_project_path(file_path, self.project_root)
         rel_path = os.path.relpath(abs_path, self.project_root).replace("\\", "/")
         if language is None:
@@ -312,6 +333,31 @@ class ASTCacheIndexMixin(ASTCacheSurface):
                 exclude_patterns=tuple(sorted(exclude_patterns or ())),
                 certification_max_files=max_files,
             )
+            if not (force or resolve_only or language_filter or candidate_snapshot):
+                # #1625：无候选的增量运行改用发布侧捕获的同一快照，才能清除已从
+                # 磁盘删除的文件并重新认证；强制重建、仅解析与按语言运行不变。
+                from .cache.helpers import _project_index_activation_enabled
+
+                return mutate_published_cache(
+                    self,
+                    None,
+                    scope=scope,
+                    # #1671：git 活跃度会刷新待处理队列，不能以源码未变判定零变化。
+                    precheck_unchanged=bool(
+                        certify_manifest
+                        and not _project_index_activation_enabled(include_activation)
+                    ),
+                    snapshot_operation=lambda writable,
+                    captured: writable.index_project(
+                        max_files,
+                        workers=workers,
+                        include_activation=include_activation,
+                        exclude_patterns=exclude_patterns,
+                        candidate_snapshot=captured,
+                        source_scope=source_scope,
+                        certify_manifest=certify_manifest,
+                    ),
+                )
 
             return mutate_published_cache(
                 self,
@@ -329,6 +375,7 @@ class ASTCacheIndexMixin(ASTCacheSurface):
                 ),
                 scope=scope,
                 candidate_snapshot=candidate_snapshot,
+                report_publication=True,
             )
         # One cache owner serializes validation, destructive clear, and writes.
         # SQLite still arbitrates across processes; this lock closes the in-owner
@@ -342,7 +389,8 @@ class ASTCacheIndexMixin(ASTCacheSurface):
         # cache/indexer.py parallel workers run INSIDE _index_lock's critical
         # section (called via run_index_project), so WAL parallelism does not
         # conflict with them.
-        with self._index_lock:
+        # RFC-0032 slice 5：原地写入以修订号 CAS 绑定为一次操作（自定义 db_path）。
+        with self._index_lock, writer_operation(self, candidate_snapshot):
             return _indexer.run_index_project(
                 self,
                 max_files,

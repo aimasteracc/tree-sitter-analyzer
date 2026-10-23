@@ -118,12 +118,37 @@ class CodeGraphContextTool(BaseMCPTool):
         self._cache: Any = None
         self._call_graph: Any = None
         self._edge_store: Any = None
+        self._bound_index_identity: tuple[Any, ...] | None = None
         super().__init__(project_root)
 
     def _on_project_root_changed(self, project_root: str | None) -> None:
         self._cache = None
         self._call_graph = None
         self._edge_store = None
+        self._bound_index_identity = None
+
+    def _rebind_to_index_identity(self) -> None:
+        """#1608：缓存的 ASTCache / EdgeStore / 调用图绑定索引身份。
+
+        刷新索引会发布新 generation；ASTCache 换绑时关闭旧连接，而缓存的
+        EdgeStore 仍持有该已关闭连接。沿用 #1564 的 ``index_identity``：
+        身份变化即关闭旧缓存并全部丢弃，下次访问时按新 generation 重新打开，
+        绝不继续持有已退役 generation 的连接。
+        """
+        if not self.project_root:
+            return
+        from .relation_freshness import index_identity
+
+        identity = index_identity(self.project_root)
+        if identity == self._bound_index_identity:
+            return
+        stale_cache = self._cache
+        self._cache = None
+        self._call_graph = None
+        self._edge_store = None
+        self._bound_index_identity = identity
+        if stale_cache is not None and hasattr(stale_cache, "close"):
+            stale_cache.close()
 
     def _get_cache(self) -> Any:
         if self._cache is None:
@@ -244,6 +269,7 @@ class CodeGraphContextTool(BaseMCPTool):
         if "access_mode" in arguments:
             return await self._execute_read_existing(arguments)
         started = time.perf_counter()
+        self._rebind_to_index_identity()
 
         task = str(arguments["task"]).strip()
         max_nodes = _bounded_int(arguments.get("max_nodes", 30), 1, 100)
@@ -300,6 +326,13 @@ class CodeGraphContextTool(BaseMCPTool):
             from ..utils.auto_index_guard import empty_index_diagnostic
 
             result.update(empty_index_diagnostic(self._get_cache()))
+        # #1594：与 callers 相同，答案须声明其所依据的索引是否已落后于源码。
+        from .relation_freshness import apply_source_evidence, relation_source_evidence
+
+        evidence, stale_files = relation_source_evidence(
+            self._get_cache(), self.project_root, related_files, absence=not nodes
+        )
+        apply_source_evidence(result, evidence, stale_files)
 
         from ..utils.format_helper import apply_output_format_to_response
 

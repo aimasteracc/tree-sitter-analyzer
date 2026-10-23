@@ -213,7 +213,7 @@ class TestExecute:
             )
 
         assert result["success"] is False
-        assert result["verdict"] == "WARN"
+        assert result["verdict"] == "ERROR"  # #1674: not published
         assert result["phases"]["incremental_sync"]["status"] == "error"
         assert result["phases"]["incremental_sync"]["errors"] == 1
 
@@ -252,7 +252,7 @@ class TestExecute:
             )
 
         assert result["success"] is False
-        assert result["verdict"] == "WARN"
+        assert result["verdict"] == "ERROR"  # #1674: not published
         assert collect_stats.call_args.kwargs["stamp_manifest"] is False
 
     async def test_manifest_certification_warning_escalates_all_verdicts(
@@ -296,10 +296,10 @@ class TestExecute:
             result["agent_summary"]["summary_line"],
         ) == (
             False,
-            "WARN",
-            "WARN",
-            "codegraph_full_index: completed with warn",
-            "codegraph_full_index: completed with warn",
+            "ERROR",
+            "ERROR",
+            "codegraph_full_index: not published (INDEX_RUN_FAILED)",
+            "codegraph_full_index: not published (INDEX_RUN_FAILED)",
         )
 
     async def test_incremental_manifest_certification_failure_is_not_operational_success(
@@ -335,7 +335,7 @@ class TestExecute:
                 }
             )
 
-        assert (result["success"], result["verdict"]) == (False, "WARN")
+        assert (result["success"], result["verdict"]) == (False, "ERROR")
 
     async def test_manifest_warning_next_step_reaches_the_caller(self, tool_with_root):
         """The remedial step must be in the response, not just derivable.
@@ -586,7 +586,7 @@ class TestExecute:
 
         assert _cache_total_files(tmp_path) == 0
         assert result["success"] is False
-        assert result["verdict"] == "WARN"
+        assert result["verdict"] == "ERROR"  # #1674: not published
         assert result["phases"]["ast_cache"]["truncated_by_max_files"] is True
         assert result["phases"]["ast_cache"]["errors"] == 1
         assert result["phases"]["ast_cache"]["abort_remaining_phases"] is True
@@ -1108,7 +1108,10 @@ class TestExecute:
 
         scope = result["candidate_snapshot"]
         incremental = result["phases"]["incremental_sync"]
-        assert result["verdict"] == "WARN"
+        assert (result["verdict"], result["error_code"]) == (
+            "ERROR",
+            "INDEX_CANDIDATE_SUPERSEDED",
+        )  # #1674: source changed during the run, nothing published
         assert scope["selected"] == 1
         # PR #1253：冻结候选仍被处理，但源码漂移禁止发布新版本。
         assert scope["processed"] == 1
@@ -1400,9 +1403,11 @@ async def test_full_orchestration_stamps_manifest_exactly_once(tmp_path):
 def test_final_stats_stamp_failure_does_not_delete_later_manifest(tmp_path):
     # PR #1253 review 3755736546: callers only downgrade stamper failures.
     import tree_sitter_analyzer.index_snapshot_schema as schema
+    from tests.unit._ast_cache_helpers import legacy_cache
     from tree_sitter_analyzer.ast_cache import ASTCache
 
-    cache = ASTCache(str(tmp_path))
+    # #1554：默认库首写前只读；预置清单须写在原地旧库上。
+    cache = legacy_cache(tmp_path)
     conn = cache.get_conn()
     conn.execute(
         "INSERT INTO ast_index_snapshot_manifest "
@@ -1520,7 +1525,8 @@ class TestGrammarErrorsOnly:
     ("stats", "success"),
     [
         ({"_manifest_certified": True}, True),
-        ({"scope_complete": False}, False),
+        # #1674：只缺可选语法、无独立认证失败时照常发布，发布即成功（不完整、WARN）。
+        ({"scope_complete": False}, True),
         (
             {
                 "manifest_warning": "INDEX_MANIFEST_CERTIFICATION_FAILED",
@@ -1588,7 +1594,9 @@ async def test_grammar_only_errors_require_independent_certification(
         )
 
     assert result["success"] is success
-    assert result["verdict"] == "WARN"
+    assert result["published"] is success
+    # #1674：已发布（仅缺可选语法）为 WARN；未发布为 ERROR。
+    assert result["verdict"] == ("WARN" if success else "ERROR")
 
 
 def test_collect_final_stats_returns_empty_on_cache_failure(tmp_path, monkeypatch):

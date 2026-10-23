@@ -6,6 +6,47 @@
 - **North star:** Verified Change Success Rate (VCSR), not feature, language, tool, test, or edge count.
 - **Claim policy:** Public language is always bounded to named tools, versions, repositories, models, dates, and evidence levels. E0–E3 emit no quantitative competitive wording; E4 permits only the exact admitted bounded sentence, never an unqualified "No.1" claim.
 
+## 2026-09-19 交付状态：v2.2.0 已发布，原生实时文本检索已成为标准入口
+
+本节以 `develop@d3d1618d74627fbd6ac8bcb02a2ce317d1f32e6f` 为发布回合基线。
+[#1530](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1530) 固定了
+[RFC-0037](0037-live-text-search-action.md) 的公开契约；
+[#1531](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1531) 随后交付
+`search action=text` 与 CLI `--text-search`。该入口直接读取经 TSA admission、ignore、
+项目边界和文件身份规则认证的实时源码，稳定返回文件、行和列；首个版本使用原生
+引擎，不要求或调用 ripgrep/fd，也不建立 AST 索引。
+
+### 发版裁决
+
+- v2.2.0 已发布到 PyPI；[#1532](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1532)
+  已合入 `main@a1656acde0d1065f7670c4d041f81a0e344ef6d7`，注释标签与
+  [GitHub Release](https://github.com/aimasteracc/tree-sitter-analyzer/releases/tag/v2.2.0)
+  均指向该主线合并。[#1533](https://github.com/aimasteracc/tree-sitter-analyzer/pull/1533)
+  已把 release 提交回合 `develop`，两条长期分支文件内容一致，远程 release 分支已删除。
+- Release Automation 的 10 个完整 Linux、Windows、macOS 与 Python 3.10–3.13
+  适用轴全部通过，wheel 与 sdist 发布成功。净环境从 PyPI 安装后，
+  `tree-sitter-analyzer --version` 返回 `2.2.0`；原生 `--text-search` 冒烟调用在
+  1 个文件中准确返回 2 行，报告 `engine_used=native`、`scan_complete=true`。
+- 实现 PR 的本地综合测试为 24,831 项通过；发布准备的 focused gate 为 237 项通过，
+  quick gate 为 2,147 项通过、28 项跳过，patch coverage 没有新增可执行漏行。
+  发布 PR 与回合 PR 的 GitFlow、质量门、E2E、构建、回归、SQL 兼容和 Codecov
+  检查均通过。
+- 本次交付补齐了任意字面文本、错误消息、配置键和未索引文档的检索入口，但没有
+  宣称跨平台延迟、相对 ripgrep 性能或 agent 端到端提速。可选 ripgrep 后端仍须通过
+  RFC-0034 的固定 corpus 语义等价、安全边界和完整任务收益门；在此之前原生引擎
+  继续是唯一公开权威实现。
+
+### 下一阶段
+
+- 用具名仓库、模型和任务记录 native text search 的 E0 agent transcript，测量首次定位、
+  误命中恢复、总工具调用数和端到端任务时间，而不是只测扫描吞吐。
+- 按 RFC-0037 的边界评估 `nav.trace` 是否可共享认证的发现/读取 primitive；共享必须
+  保持既有过滤与 fail-closed 语义，不另建第二套遍历器。
+- 只有 RFC-0034 的差分语义矩阵、安全测试和任务基准同时通过时，才另案评审可选
+  ripgrep adapter；fd 没有独立必要性证据时不加入依赖。
+- TRUST-C1 / TRUST-T1 / TRUST-I1 的外部证据门继续开放；仓库内测试和一次成功发布
+  不能替代外部维护者采用、生产 canary、模型裁判或签名证明。
+
 ## 2026-09-18 交付状态：v2.1.0 已发布，agent-native 可信接口与索引恢复已落地
 
 本节以 `develop@1fc47f64b6302174c715d1acad1caa9badb86ebf` 为发布回合基线。

@@ -20,6 +20,7 @@ import pytest
 
 from tests.fixtures.git_temporal import make_repo
 from tests.fixtures.git_temporal.make_repo import make_shallow_marker
+from tests.unit._ast_cache_helpers import legacy_cache
 
 _GIT_TIMEOUT_SECONDS = 15
 
@@ -35,7 +36,6 @@ def test_legacy_message_projection_pending_then_real_git_refresh(
     import tree_sitter_analyzer.cache.write as write
     import tree_sitter_analyzer.git_readonly as git
     from tree_sitter_analyzer.api.pulse import query_pulse
-    from tree_sitter_analyzer.ast_cache import ASTCache
     from tree_sitter_analyzer.hyphae import Evaluator, parse
     from tree_sitter_analyzer.hyphae.parser import HyphaeSyntaxError
 
@@ -50,7 +50,7 @@ def test_legacy_message_projection_pending_then_real_git_refresh(
     )
     _run_git(tmp_path, ["add", "sample.py"])
     _run_git(tmp_path, ["commit", "-m", "restore message"])
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     assert cache.index_file(str(source))["status"] == "indexed"
     db = cache.get_conn()
     expected_heat = query_pulse(db, "sample.py", "target").git_heat
@@ -69,7 +69,7 @@ def test_legacy_message_projection_pending_then_real_git_refresh(
     db.commit()
     cache.close()
 
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         db = cache.get_conn()
         assert query_pulse(db, "sample.py", "target").git_heat is None
@@ -345,9 +345,8 @@ def _index_with_activation(repo: Path, files: list[str]) -> str:
     Activation columns are populated as a side-effect of indexing when the
     feature is wired in. Until then this is RED because the table is missing.
     """
-    from tree_sitter_analyzer.ast_cache import ASTCache
 
-    cache = ASTCache(str(repo))
+    cache = legacy_cache(str(repo))
     try:
         for rel in files:
             cache.index_file(str(repo / rel))

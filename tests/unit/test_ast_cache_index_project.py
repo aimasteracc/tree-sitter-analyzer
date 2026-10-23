@@ -15,13 +15,16 @@ from tree_sitter_analyzer.ast_cache import (
 
 tmp_project = _fixtures.tmp_project
 cache = _fixtures.cache
+engine = _fixtures.engine
 method_project = _fixtures.method_project
 
 
 class TestIndexProject:
     def test_index_project(self, cache):
         result = cache.index_project()
-        assert result["total_files"] == 2
+        # #1625：增量运行改由捕获的候选快照驱动，total_files 计入快照中的全部
+        # 候选条目（main.py、util.js 与不受支持的 readme.md），重新钉为 3。
+        assert result["total_files"] == 3
         assert result["indexed"] == 2
 
     def test_index_project_language_filter_indexes_only_matching(self, cache):
@@ -36,13 +39,13 @@ class TestIndexProject:
         result = cache.index_project()
         assert result["cached"] == 2
 
-    def test_index_project_reindexes_stale_extractor_version(self, cache):
-        cache.index_project(workers=0)
-        conn = cache._get_conn()
+    def test_index_project_reindexes_stale_extractor_version(self, engine):
+        engine.index_project(workers=0)
+        conn = engine._get_conn()
         conn.execute("UPDATE ast_index SET extractor_version = 0")
         conn.commit()
 
-        result = cache.index_project(workers=0)
+        result = engine.index_project(workers=0)
 
         assert result["indexed"] == 2
         assert result["cached"] == 0
@@ -64,7 +67,8 @@ class TestIndexProject:
 
     def test_index_project_max_files(self, cache):
         result = cache.index_project(max_files=1)
-        assert result["total_files"] <= 1
+        # #1625：快照驱动后上限如实标为截断，只索引一个文件（截断时不推断删除）。
+        assert (result["indexed"], result["truncated_by_max_files"]) == (1, True)
 
     def test_index_project_workers_field_in_stats(self, cache):
         """PERF-4：统计中包含最终生效的 worker 数量。"""
@@ -160,49 +164,49 @@ class TestIndexProject:
         assert "knowledge_graph" not in result
 
     def test_index_project_reports_unresolved_reference_backfill(
-        self, cache, monkeypatch
+        self, engine, monkeypatch
     ):
         monkeypatch.setattr(
-            cache,
+            engine,
             "_run_unresolved_refs_backfill",
             lambda: {"resolved": 3, "remaining": 1},
         )
 
-        result = cache.index_project(workers=0)
+        result = engine.index_project(workers=0)
 
         assert result["unresolved_refs_backfill"] == {
             "resolved": 3,
             "remaining": 1,
         }
 
-    def test_index_project_omits_empty_unresolved_backfill(self, cache, monkeypatch):
-        monkeypatch.setattr(cache, "_run_unresolved_refs_backfill", lambda: None)
+    def test_index_project_omits_empty_unresolved_backfill(self, engine, monkeypatch):
+        monkeypatch.setattr(engine, "_run_unresolved_refs_backfill", lambda: None)
 
-        result = cache.index_project(workers=0)
+        result = engine.index_project(workers=0)
 
         assert result["indexed"] == 2
         assert result["unresolved_refs_backfill"] is None
         assert result["backfill_errors"] == 1
 
     def test_index_project_tolerates_unresolved_backfill_failure(
-        self, cache, monkeypatch
+        self, engine, monkeypatch
     ):
         def fail_unresolved_backfill():
             raise RuntimeError("unresolved failed")
 
         monkeypatch.setattr(
-            cache,
+            engine,
             "_run_unresolved_refs_backfill",
             fail_unresolved_backfill,
         )
 
-        result = cache.index_project(workers=0)
+        result = engine.index_project(workers=0)
 
         assert result["indexed"] == 2
         assert "unresolved_refs_backfill" not in result
         assert result["backfill_errors"] == 1
         manifest_count = (
-            cache.get_conn()
+            engine.get_conn()
             .execute("SELECT COUNT(*) FROM ast_index_snapshot_manifest")
             .fetchone()[0]
         )
@@ -319,3 +323,131 @@ def test_backfill_exception_fails_certification(cache, monkeypatch, route, key):
     assert key not in stats
     assert stats["backfill_errors"] == 1
     converged.assert_not_called()
+
+
+_DELETION_PROJECT = {
+    "target.py": "def target():\n    return 1\n",
+    "caller_a.py": "from target import target\n\n\ndef use_a():\n    return target()\n",
+    "caller_b.py": "from target import target\n\n\ndef use_b():\n    return target()\n",
+    "other.py": "def other():\n    return 2\n",
+}
+
+
+async def _published_deletion_project(root):
+    """#1625：四个文件的已认证项目；caller_b.py 调用 target.py 中的 target。"""
+    from tree_sitter_analyzer.mcp.tools.index_facade import build_index_facade
+
+    for rel, text in _DELETION_PROJECT.items():
+        (root / rel).write_text(text, encoding="utf-8")
+    full = await build_index_facade(str(root)).execute(
+        {"action": "full", "mode": "full", "max_files": 50}
+    )
+    assert (full["success"], full["published"]) == (True, True)
+
+
+async def _refresh_and_status(root, action="cache"):
+    """执行公开增量刷新，再以全新 facade 读取 status（不复用进程内缓存）。"""
+    from tree_sitter_analyzer.mcp.tools.index_facade import build_index_facade
+
+    arguments = {"action": action}
+    if action == "cache":
+        arguments["mode"] = "index"
+    refreshed = await build_index_facade(str(root)).execute(arguments)
+    status = await build_index_facade(str(root)).execute({"action": "status"})
+    return refreshed, status
+
+
+async def _callers_of_target(root):
+    from tree_sitter_analyzer.mcp.tools.nav_facade import build_nav_facade
+
+    return await build_nav_facade(str(root)).execute(
+        {"action": "callers", "symbol": "target"}
+    )
+
+
+class TestIncrementalRefreshPurgesDeletedFiles:
+    """#1625：增量刷新必须清除已从磁盘删除的文件，而不是永远停在 SOURCE_INDEX_MISMATCH。"""
+
+    @pytest.mark.asyncio
+    async def test_status_file_count_drops_by_deleted_files(self, tmp_path):
+        await _published_deletion_project(tmp_path)
+        (tmp_path / "caller_b.py").unlink()
+        (tmp_path / "other.py").unlink()
+
+        _refreshed, status = await _refresh_and_status(tmp_path)
+
+        assert (status["total_files"], status["completeness"]) == (2, "complete")
+
+    @pytest.mark.asyncio
+    async def test_deleted_file_is_no_longer_a_caller(self, tmp_path):
+        await _published_deletion_project(tmp_path)
+        (tmp_path / "caller_b.py").unlink()
+        (tmp_path / "other.py").unlink()
+        await _refresh_and_status(tmp_path)
+
+        callers = await _callers_of_target(tmp_path)
+
+        assert [(c["name"], c["file"]) for c in callers["callers"]] == [
+            ("use_a", "caller_a.py")
+        ]
+        assert callers["source_evidence"]["reason"] == "SOURCE_REVALIDATION_SCOPED"
+
+    @pytest.mark.asyncio
+    async def test_refresh_reply_reports_removed_files(self, tmp_path):
+        await _published_deletion_project(tmp_path)
+        (tmp_path / "caller_b.py").unlink()
+        (tmp_path / "other.py").unlink()
+
+        refreshed, _status = await _refresh_and_status(tmp_path)
+
+        assert (refreshed["removed"], refreshed["removed_files"]) == (
+            2,
+            ["caller_b.py", "other.py"],
+        )
+        assert refreshed["summary_line"].endswith("removed=2")
+
+    @pytest.mark.asyncio
+    async def test_rename_purges_old_path_and_indexes_new_one(self, tmp_path):
+        await _published_deletion_project(tmp_path)
+        (tmp_path / "caller_b.py").rename(tmp_path / "caller_c.py")
+
+        refreshed, status = await _refresh_and_status(tmp_path)
+        callers = await _callers_of_target(tmp_path)
+
+        assert (refreshed["removed_files"], status["total_files"]) == (
+            ["caller_b.py"],
+            4,
+        )
+        assert [(c["name"], c["file"]) for c in callers["callers"]] == [
+            ("use_a", "caller_a.py"),
+            ("use_b", "caller_c.py"),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_sync_route_also_purges_deleted_files(self, tmp_path):
+        await _published_deletion_project(tmp_path)
+        (tmp_path / "caller_b.py").unlink()
+        (tmp_path / "other.py").unlink()
+
+        _refreshed, status = await _refresh_and_status(tmp_path, action="sync")
+
+        assert (status["total_files"], status["completeness"]) == (2, "complete")
+
+    @pytest.mark.asyncio
+    async def test_language_scoped_refresh_points_to_force(self, tmp_path):
+        from tree_sitter_analyzer.mcp.tools.ast_cache_index_view import (
+            FORCE_REFRESH_STEP,
+        )
+        from tree_sitter_analyzer.mcp.tools.index_facade import build_index_facade
+
+        await _published_deletion_project(tmp_path)
+        (tmp_path / "caller_b.py").unlink()
+
+        refreshed = await build_index_facade(str(tmp_path)).execute(
+            {"action": "cache", "mode": "index", "language": "python"}
+        )
+
+        assert (refreshed["removed"], refreshed["agent_summary"]["next_step"]) == (
+            None,
+            FORCE_REFRESH_STEP,
+        )

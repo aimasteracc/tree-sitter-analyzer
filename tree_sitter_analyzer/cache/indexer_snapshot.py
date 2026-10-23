@@ -182,6 +182,44 @@ def _record_frozen_replay_mismatches(
         stats["files"].append({"file": rel_path, "status": "warning", "reason": reason})
 
 
+_UNSUPPORTED = "SECURE_MATERIALIZATION_UNSUPPORTED"
+
+
+def _frozen_failure_reason(snapshot: IndexCandidateSnapshot | None) -> str | None:
+    """返回阻止强制重建的真实原因（#1562）。
+
+    Windows 无法做安全冻结实体化，``frozen_error`` 恒为
+    ``SECURE_MATERIALIZATION_UNSUPPORTED``，但运行器在该平台接受旧数据平面
+    （见 ``run_index_project`` 的 ``legacy_materialization``）。此时拒绝的真正原因
+    是截断、发现失败或未对账；原先却总报 "不支持"，把用户引向错误的结论。
+    """
+    if snapshot is None:
+        return "INDEX_CANDIDATE_FROZEN_EVIDENCE_MISSING"
+    from ..indexing_candidate_materialization import (
+        secure_candidate_materialization_supported,
+    )
+
+    if (
+        snapshot.frozen_error == _UNSUPPORTED
+        and not secure_candidate_materialization_supported()
+    ):
+        if snapshot.truncated_by_max_files:
+            return "INDEX_CANDIDATE_TRUNCATED_BY_MAX_FILES"
+        if snapshot.discovery_error is not None:
+            return "INDEX_CANDIDATE_DISCOVERY_FAILED"
+        if not snapshot.discovery_reconciled:
+            return "INDEX_CANDIDATE_DISCOVERY_UNRECONCILED"
+        # 其余情形由逐文件发现错误明细说明。
+        return None
+    if snapshot.frozen_error:
+        return snapshot.frozen_error
+    return (
+        "INDEX_CANDIDATE_FROZEN_EVIDENCE_MISSING"
+        if snapshot.frozen_root is None
+        else None
+    )
+
+
 def _unsafe_force_snapshot_result(
     candidate_snapshot: IndexCandidateSnapshot | None,
     activation_enabled: bool,
@@ -203,16 +241,7 @@ def _unsafe_force_snapshot_result(
         if candidate_snapshot is not None
         else []
     )
-    frozen_reason = (
-        candidate_snapshot.frozen_error
-        or (
-            "INDEX_CANDIDATE_FROZEN_EVIDENCE_MISSING"
-            if candidate_snapshot.frozen_root is None
-            else None
-        )
-        if candidate_snapshot is not None
-        else "INDEX_CANDIDATE_FROZEN_EVIDENCE_MISSING"
-    )
+    frozen_reason = _frozen_failure_reason(candidate_snapshot)
     if frozen_reason and not changed:
         discovery_details.append(
             {"file": "", "status": "error", "reason": frozen_reason}

@@ -342,6 +342,36 @@ class TestVisualizeIndexedProject:
         assert "mermaid" in result
         assert "helper" in result["mermaid"]
 
+    @pytest.mark.asyncio
+    async def test_function_mode_walks_both_same_name_seeds(self, tmp_path) -> None:
+        # #1619：两个嵌套同名 `inner` 都是种子；按 qualified_name 去重会跳过第二个，
+        # 它独有的被调函数 log_b 就从图中消失。
+        from tests.unit._navigation_test_support import (
+            index_same_name_nested_project,
+        )
+
+        root = await index_same_name_nested_project(tmp_path)
+        result = await CodeGraphVisualizeTool(root).execute(
+            {
+                "mode": "function",
+                "function": "inner",
+                "depth": 3,
+                "visualization_format": "sigma",
+                "output_format": "json",
+            }
+        )
+        # #1621：两个 `inner` 是不同的定义，节点 id 含定义行，各自成为一个节点。
+        assert [
+            (n["attributes"]["symbol"], n["attributes"]["line"])
+            for n in result["graph"]["nodes"]
+        ] == [
+            ("apply_budget", 1),
+            ("inner", 14),
+            ("inner", 20),
+            ("log_a", 5),
+            ("log_b", 9),
+        ]
+
 
 class TestBug786TruncatedFlag:
     """Bug #786: when edge collection is capped at max_edges, the response
@@ -439,3 +469,29 @@ class TestBug786TruncatedFlag:
             )
         assert result["success"] is True
         assert "truncated" not in result["stats"]
+
+    @pytest.mark.asyncio
+    async def test_function_mode_expands_same_identity_seed_once(self) -> None:
+        """#1619：按身份去重仍会合并真正相同的函数——重复出现的种子只展开一次。"""
+        tool = CodeGraphVisualizeTool(_PROJECT_ROOT)
+        from tree_sitter_analyzer.call_graph import FunctionRef
+
+        fn_a = FunctionRef("a.py", "alpha", 1, "python")
+        fn_a_again = FunctionRef("a.py", "alpha", 1, "python")
+        fn_b = FunctionRef("b.py", "beta", 5, "python")
+        cg = MagicMock()
+        cg.resolve_targets.return_value = [fn_a, fn_a_again]
+        cg.callee_refs_of.side_effect = lambda f: [fn_b] if f == fn_a else []
+        cg.caller_refs_of.return_value = []
+
+        with patch.object(tool, "get_call_graph", return_value=cg):
+            await tool.execute(
+                {
+                    "mode": "function",
+                    "function": "alpha",
+                    "depth": 2,
+                    "output_format": "json",
+                }
+            )
+        # alpha 展开一次 + beta 展开一次；重复的 alpha 被跳过。
+        assert cg.callee_refs_of.call_count == 2

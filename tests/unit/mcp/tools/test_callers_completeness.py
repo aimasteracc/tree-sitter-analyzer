@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.ast_cache import ASTCache
 from tree_sitter_analyzer.cache.callgraph_state import mark_call_graph_built_strict
 from tree_sitter_analyzer.graph.edge_store import file_node, symbol_node
@@ -28,6 +29,7 @@ def _insert_call(
     resolution: str,
     callee: str = _TARGET,
     callee_full: str | None = None,
+    call_line: int = 1,
 ) -> None:
     """Insert one CALLS edge with a chosen resolution state.
 
@@ -35,7 +37,7 @@ def _insert_call(
     which is what makes ``caller_name`` empty and the row "unattributed".
     ``callee_full`` defaults to ``callee``; pass it to model an attribute call
     (`list.append`) or a computed dispatch site whose full text differs from the
-    bare name the resolver recorded.
+    bare name the resolver recorded. ``call_line=0`` models a site without a call line.
     """
     full = callee_full if callee_full is not None else callee
     source = symbol_node("a.py", caller, caller_line) if caller else file_node("a.py")
@@ -48,7 +50,7 @@ def _insert_call(
                    ?, ?, 'a.py', ?, ?, 1, 'python', ?, ?)""",
         (
             source,
-            symbol_node("a.py", callee, 1),
+            symbol_node("a.py", callee, call_line),
             caller_line,
             caller,
             callee,
@@ -65,7 +67,8 @@ def tool_with_edges(tmp_path):
     """A real cache with the call graph marked built, and its edges cleared."""
     source = tmp_path / "a.py"
     source.write_text("def target_symbol():\n    return 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    # #1554：默认库首写后只读发布；夹具需改写边表，故建原地写的旧库。
+    cache = legacy_cache(tmp_path)
     assert cache.index_file(str(source))["status"] == "indexed"
     conn = cache.get_conn()
     conn.execute("DELETE FROM edges")
@@ -75,6 +78,10 @@ def tool_with_edges(tmp_path):
         yield CodeGraphCallersTool(str(tmp_path)), conn
     finally:
         cache.close()
+
+
+#: #1622 re-pin：模块级调用点有调用行时列为 ``<module>``；此处无调用行，仍只计数。
+_UNPLACED = {"caller": "", "caller_line": 0, "call_line": 0}
 
 
 async def _call(tool) -> dict:
@@ -115,7 +122,7 @@ async def test_incomplete_when_a_caller_exists_beside_an_unresolved_edge(
 async def test_unknown_never_reports_absence(tool_with_edges) -> None:
     """The case RFC-0028 §1 names: today's ``NOT_FOUND`` over an unresolved edge."""
     tool, conn = tool_with_edges
-    _insert_call(conn, caller="", caller_line=0, resolution="unknown")
+    _insert_call(conn, **_UNPLACED, resolution="unknown")
     conn.commit()
 
     result = await _call(tool)
@@ -148,7 +155,9 @@ async def test_unknown_never_reports_absence(tool_with_edges) -> None:
 
 
 @pytest.mark.asyncio
-async def test_real_zero_is_complete_and_may_say_not_in_index(tool_with_edges) -> None:
+async def test_real_zero_is_complete_and_says_defined_without_callers(
+    tool_with_edges,
+) -> None:
     """A zero over an indexed graph is a fact, and may be stated as one.
 
     The graph must hold edges somewhere, or the tool answers from parsing rather
@@ -163,7 +172,10 @@ async def test_real_zero_is_complete_and_may_say_not_in_index(tool_with_edges) -
     result = await _call(tool)
 
     assert (result["verdict"], result["completeness"]) == ("NOT_FOUND", "complete")
-    assert "not in the index" in str(result["next_step"])
+    # #1578 重新固定：target_symbol 在 a.py 中有定义，不得再说 "not in the index"。
+    assert result["next_step"] == (
+        f"{_TARGET!r} is defined in the index and no resolved call edge reaches it."
+    )
     assert result["agent_summary"]["summary_line"] == (
         f"callers: {_TARGET!r} has 0 caller(s)"
     )
@@ -243,7 +255,7 @@ async def test_unresolved_inbound_and_caller_count_are_different_units(
     ``(source_node_id, target_node_id, kind, line)``.
     """
     tool, conn = tool_with_edges
-    _insert_call(conn, caller="", caller_line=0, resolution="unknown")
+    _insert_call(conn, **_UNPLACED, resolution="unknown")
     conn.commit()
 
     result = await _call(tool)
@@ -269,7 +281,7 @@ async def test_resolved_module_level_caller_is_not_a_certified_zero(
     silent; only the unattributed count knew.
     """
     tool, conn = tool_with_edges
-    _insert_call(conn, caller="", caller_line=0, resolution=_RESOLVED)
+    _insert_call(conn, **_UNPLACED, resolution=_RESOLVED)
     conn.commit()
 
     result = await _call(tool)
@@ -295,7 +307,7 @@ async def test_an_unresolved_module_level_site_does_not_claim_unreadable(
     read" — a false statement about a successful read.
     """
     tool, conn = tool_with_edges
-    _insert_call(conn, caller="", caller_line=0, resolution="unknown")
+    _insert_call(conn, **_UNPLACED, resolution="unknown")
     conn.commit()
 
     result = await _call(tool)
@@ -312,7 +324,7 @@ def test_unrecognised_resolution_marker_counts_as_unresolved(tmp_path) -> None:
     """
     source = tmp_path / "a.py"
     source.write_text("def target_symbol():\n    return 1\n", encoding="utf-8")
-    cache = ASTCache(str(tmp_path))
+    cache = legacy_cache(str(tmp_path))
     try:
         assert cache.index_file(str(source))["status"] == "indexed"
         conn = cache.get_conn()
@@ -367,11 +379,16 @@ async def test_builtin_receiver_call_does_not_gate_the_file(tool_with_edges) -> 
             "string-keyed dispatch",
         ),
         ("getattr(self, name)", "getattr(self, name)", "reflection"),
-        ("self.handle", "self.handle", "own-class attribute"),
-        ("cls.build", "cls.build", "classmethod attribute"),
-        ("extractors.run", "extractors.run", "receiver is a local variable"),
-        ("local_helper", "local_helper", "bare name in scope"),
-        ("original", "original", "bare name bound at runtime"),
+        # #1596 重新固定：0 调用方时守卫按名收窄，同名的调用点才可能点名目标；
+        # 名字不同的别名调用（`original = target_symbol`）由非调用引用门负责，
+        # 见 test_callers_dispatch_scope.py。
+        ("self.target_symbol", "self.target_symbol", "own-class attribute"),
+        ("cls.target_symbol", "cls.target_symbol", "classmethod attribute"),
+        (
+            "extractors.target_symbol",
+            "extractors.target_symbol",
+            "receiver is a local variable",
+        ),
     ],
 )
 async def test_potentially_local_callee_still_gates_the_file(
@@ -381,7 +398,8 @@ async def test_potentially_local_callee_still_gates_the_file(
 
     These are the cases §1.2 exists for.  Narrowing may only remove callees it
     can *prove* cannot target the file; a receiver that is a local variable
-    (`extractors.run`) may well be a project object, so it stays counted.
+    (`extractors.target_symbol`) may well be a project object, so it stays
+    counted.
     """
     tool, conn = tool_with_edges
     _insert_call(
@@ -401,30 +419,30 @@ async def test_potentially_local_callee_still_gates_the_file(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("attribute", "guarded", "excluded"),
+    # #1632 re-pin：尾段非目标名时按名收窄排除（不是 builtin_receiver）。
+    [(_TARGET, 1, {}), ("from_private_bytes", 0, {"names_other_symbol": 1})],
+)
 async def test_dotted_callee_is_judged_by_receiver_not_by_substring(
-    tool_with_edges,
+    tool_with_edges, attribute: str, guarded: int, excluded: dict
 ) -> None:
-    """A dotted callee is excused by its receiver *text*, never by a substring.
-
-    `getattr(importlib.import_module(mod), cls).from_private_bytes` contains dots,
-    but its text before the first dot is `getattr(importlib` — not a builtin type
-    name.  A naive reading could excuse a real dispatch site; it must keep gating.
-    """
+    """接收者文本 `getattr(importlib` 不是内建类型名，内建接收者规则从不豁免它。"""
     tool, conn = tool_with_edges
     _insert_call(
         conn,
         caller="alpha",
         caller_line=10,
         resolution="unknown",
-        callee="from_private_bytes",
-        callee_full="getattr(importlib.import_module(mod), cls).from_private_bytes",
+        callee=attribute,
+        callee_full=f"getattr(importlib.import_module(mod), cls).{attribute}",
     )
     conn.commit()
 
     result = await _call(tool)
 
-    assert result["unresolved_in_declaring_files"] == 1
-    assert result["completeness"] != "complete"
+    assert result["unresolved_in_declaring_files"] == guarded
+    assert result["excluded_by_reason"] == excluded
 
 
 def _site(path: str, line: int, callee: str) -> dict:
@@ -583,10 +601,10 @@ async def test_failed_declaring_read_says_so_instead_of_claiming_a_zero(
     )
     conn.commit()
 
-    def _unreadable(self, func_name, file_path=None):
+    def _unreadable(self, func_name, file_path=None, bound_targets=None):
         return None
 
-    monkeypatch.setattr(ASTCache, "count_unresolved_callers", _unreadable)
+    monkeypatch.setattr(ASTCache, "unresolved_caller_sites", _unreadable)  # #1706
 
     result = await _call(tool)
 
@@ -718,3 +736,65 @@ def test_exclusion_reason_is_the_single_decision_point() -> None:
     ):
         assert exclusion_reason(callee) is None
         assert _can_target_local_symbol(callee) is True
+
+
+_PUBLISH_FIXTURE = {
+    "gen_store.py": (
+        "class GenerationStore:\n    def publish(self, item):\n        return item\n"
+    ),
+    "registry.py": (
+        "class Registry:\n    def publish(self, item):\n        return item\n"
+    ),
+    "app.py": (
+        "from gen_store import GenerationStore\n"
+        "from registry import Registry\n\n\n"
+        "def publish_generation():\n"
+        "    store = GenerationStore()\n"
+        "    return store.publish(1)\n\n\n"
+        "def publish_registry():\n"
+        "    reg = Registry()\n"
+        "    return reg.publish(2)\n\n\n"
+        "def publish_unknown(target):\n"
+        "    return target.publish(3)\n"
+    ),
+}
+
+
+class TestQualifiedCallersNoBareNameFanout:
+    """#1559：限定名 Class.method 的调用方不得按裸名扇出到同名方法。"""
+
+    @pytest.fixture
+    async def publish_root(self, tmp_path):
+        from tree_sitter_analyzer.mcp.tools.full_index_tool import (
+            CodeGraphFullIndexTool,
+        )
+
+        for name, text in _PUBLISH_FIXTURE.items():
+            (tmp_path / name).write_text(text, encoding="utf-8")
+        indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
+            {"mode": "full", "max_files": 10}
+        )
+        assert indexed["published"] is True
+        return str(tmp_path)
+
+    @pytest.mark.asyncio
+    async def test_qualified_callers_list_only_their_own_class(self, publish_root):
+        # #1559：`reg.publish` 已持久化解析到 Registry，不得出现在
+        # GenerationStore.publish 的调用方中；`target.publish` 无法判定，不得猜测。
+        result = await CodeGraphCallersTool(publish_root).execute(
+            {"function_name": "GenerationStore.publish", "include_bodies": False}
+        )
+        assert [c["name"] for c in result["callers"]] == ["publish_generation"]
+
+    @pytest.mark.asyncio
+    async def test_ambiguous_bare_call_makes_qualified_answer_incomplete(
+        self, publish_root
+    ):
+        # #1559：存在无法解析的 `target.publish` 时，答案不能声称 complete。
+        result = await CodeGraphCallersTool(publish_root).execute(
+            {"function_name": "GenerationStore.publish", "include_bodies": False}
+        )
+        assert (result["completeness"], result["unresolved_inbound"]) == (
+            "incomplete",
+            1,
+        )

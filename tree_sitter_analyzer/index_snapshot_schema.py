@@ -23,7 +23,23 @@ from .index_source_snapshot import (
     recorded_source_rows,
 )
 
-SNAPSHOT_SCHEMA_VERSION = CURRENT_SCHEMA_VERSION
+# 读者要求的版本：最近一次改变查询可见内容的迁移（17）。schema 18 只增加写入修订
+# 控制表（RFC-0032 slice 5），读者不依赖它，因此已发布的 v17 版本照常可读；
+# 高于 CURRENT_SCHEMA_VERSION 的未来版本仍被拒绝。
+SNAPSHOT_SCHEMA_VERSION = min(17, CURRENT_SCHEMA_VERSION)
+
+
+def reader_schema_supported(versions: set[int]) -> bool:
+    """只读查询能否使用该索引：已记录读者要求的版本，且没有未知的未来版本。
+
+    与快照校验同一规则：v17 版本照常可读，不必等下一次写入迁移到 18
+    （RFC-0032 #1664）。
+    """
+    return SNAPSHOT_SCHEMA_VERSION in versions and all(
+        1 <= version <= CURRENT_SCHEMA_VERSION for version in versions
+    )
+
+
 SCHEMA_V13_INDEX_SNAPSHOT = """
 CREATE TABLE IF NOT EXISTS ast_index_snapshot_manifest (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
@@ -43,6 +59,12 @@ _CONTROL_TABLES = frozenset(
         "ast_call_graph_state",
         "ast_resolve_state",
         "sqlite_sequence",
+        # RFC-0032 slice 5：写入修订号随每次提交推进，是写入权威而非索引内容。
+        "ast_writer_state",
+        # RFC-0039：认证树的叶是派生数据，不进入认证根（读者总是独立重算）。
+        "ast_certification_leaves",
+        # RFC-0039 slice 2：距上次完整重算的增量盖章次数与时间（校验计划）。
+        "ast_certification_state",
     }
 )
 _REQUIRED_COLUMNS = {
@@ -126,22 +148,28 @@ _REQUIRED_COLUMNS = {
 _FINGERPRINT_DEADLINE_SECONDS = 5.0
 # 单次便携式扫描允许配置有限预算；超时不等同于源变化，也不能放行认证。
 _FINGERPRINT_DEADLINE_ENV = "TSA_FINGERPRINT_DEADLINE_SECONDS"
+# #1561：建库末尾的认证盖戳（索引指纹 + 源码捕获）共用一个绝对期限。
+# 实测 2,401 文件 / 479,899 行：索引指纹 18.2 秒、源码双遍扫描 5-9 秒，
+# 旧的 5 秒上限使约 700 文件以上的索引永远无法认证。120 秒覆盖行预算
+# (_FINGERPRINT_ROW_BUDGET = 2M 行，按实测速率约 76 秒) 的最坏情况；
+# 它限制的是写事务 (BEGIN IMMEDIATE) 的持锁时间，不是每次查询的延迟。
+_STAMP_DEADLINE_SECONDS = 120.0
 
 
 def _fingerprint_deadline_seconds() -> float:
-    """读取（可配置的）单次源指纹遍历墙钟上限，下限 1 秒防误配。"""
+    """读取（可配置的）认证盖戳墙钟上限，下限 1 秒防误配。"""
     # 测试会以 PortableOS 桩替换 os 模块强制走便携分支(无 environ);
     # 防御式读取,桩环境下回落默认值
     env = getattr(os, "environ", None)
     raw = env.get(_FINGERPRINT_DEADLINE_ENV, "") if env else ""
     if not raw:
-        return _FINGERPRINT_DEADLINE_SECONDS
+        return _STAMP_DEADLINE_SECONDS
     try:
         value = float(raw)
     except ValueError:
-        return _FINGERPRINT_DEADLINE_SECONDS
+        return _STAMP_DEADLINE_SECONDS
     if not math.isfinite(value):
-        return _FINGERPRINT_DEADLINE_SECONDS
+        return _STAMP_DEADLINE_SECONDS
     return max(1.0, value)
 
 
@@ -157,6 +185,10 @@ _SCHEMA_VALIDATION_COLUMN_BUDGET = 4096
 
 
 _MANIFEST_FINGERPRINT = re.compile(r"sha256:[0-9a-f]{64}\Z")
+#: RFC-0039：manifest v3 的认证根。
+_MANIFEST_CERTIFICATION_ROOT = re.compile(r"merkle:[0-9a-f]{64}\Z")
+#: 读者接受的 manifest 版本：v2 记录扁平 ``index_fingerprint``，v3 记录认证根。
+MANIFEST_VERSIONS = (2, 3)
 _MANIFEST_TEXT_BYTE_BUDGET = 1024 * 1024
 
 
@@ -176,7 +208,7 @@ def validate_manifest_scalars(manifest: sqlite3.Row) -> None:
         or not isinstance(source, str)
         or _MANIFEST_FINGERPRINT.fullmatch(source) is None
         or not isinstance(index, str)
-        or _MANIFEST_FINGERPRINT.fullmatch(index) is None
+        or not _index_commitment_matches_version(index, version)
         or not isinstance(count, int)
         or isinstance(count, bool)
         or not 0 <= count <= 2_000_000
@@ -186,9 +218,26 @@ def validate_manifest_scalars(manifest: sqlite3.Row) -> None:
         or not descriptor.isascii()
         or not isinstance(version, int)
         or isinstance(version, bool)
-        or version != 2
+        or version not in MANIFEST_VERSIONS
     ):
         raise ValueError("INDEX_MANIFEST_INVALID")
+
+
+def _index_commitment_matches_version(index: str, version: object) -> bool:
+    """v2 的值是 ``sha256:`` 扁平指纹，v3 的值是 ``merkle:`` 认证根（RFC-0039）。"""
+    pattern = _MANIFEST_CERTIFICATION_ROOT if version == 3 else _MANIFEST_FINGERPRINT
+    return pattern.fullmatch(index) is not None
+
+
+def index_commitment(
+    conn: sqlite3.Connection, root: str, version: int, *, deadline: float
+) -> str:
+    """按 manifest 版本完整重算索引承诺：v3 为认证根，否则为扁平 ``index_fingerprint``。"""
+    if version == 3:
+        from .index_certification_tree import certification_root
+
+        return certification_root(conn, root, deadline=deadline)
+    return index_fingerprint(conn, root, deadline=deadline)
 
 
 def apply_snapshot_migration(conn: sqlite3.Connection, record_fn: Any) -> None:
@@ -202,8 +251,16 @@ def stamp_full_index_manifest(
     conn: sqlite3.Connection,
     project_root: str,
     source_scope: SourceScopeDescriptor | None = None,
+    *,
+    candidate_rows: frozenset[tuple[str, str, str]] | None = None,
 ) -> None:
-    """Certify one source/index epoch while excluding every SQLite writer."""
+    """Certify one source/index epoch while excluding every SQLite writer.
+
+    #1737：``candidate_rows`` 只由会在发布租约内复核源码的版本路由给出（RFC-0032：
+    发布前重新扫描并比较每个文件的内容摘要，不一致即拒绝发布）。此时盖章把记录的行
+    与捕获时绑定的候选行比较，不再另做一次完整的源码扫描与重哈希；之后源码的任何
+    变化都由发布复核拒绝，读者仍按 RFC-0030 对当前源码独立复核。其他路由照常现场捕获。
+    """
     # Finish all preceding indexing work before the certification transaction.
     conn.commit()
     transaction_started = False
@@ -215,20 +272,33 @@ def stamp_full_index_manifest(
         root = os.path.realpath(os.path.abspath(project_root))
         scope = source_scope or make_source_scope_descriptor()
         scope_json = canonical_source_scope_descriptor(scope)
+        stamp_deadline = time.monotonic() + _fingerprint_deadline_seconds()
         source = source_fingerprint(conn, root)
-        index = index_fingerprint(conn, root)
+        # RFC-0039：manifest v3 记录按文件分组的 Merkle 认证根，叶存入控制表，
+        # 供之后的刷新只重算被改动的组。
+        from .index_certification_tree import MANIFEST_VERSION, store_leaves
+
+        index, tree = stamp_commitment(conn, root, deadline=stamp_deadline)
         recorded = recorded_source_rows(conn)
-        if os.name == "posix" and os.path.exists("/dev/fd"):
-            current = capture_current_source_snapshot(root, scope)
+        if candidate_rows is not None:
+            if candidate_rows != recorded:
+                raise sqlite3.OperationalError(
+                    "SOURCE_CHANGED:state=candidate:reason=CANDIDATE_ROWS_DIFFER:"
+                    f"rows_current={len(candidate_rows)}:rows_recorded={len(recorded)}"
+                )
+        elif os.name == "posix" and os.path.exists("/dev/fd"):
+            current = capture_current_source_snapshot(
+                root, scope, deadline=stamp_deadline
+            )
         else:
             from .portable_source_snapshot import capture_portable_source_snapshot
 
             current = capture_portable_source_snapshot(
-                root,
-                scope,
-                deadline=time.monotonic() + _fingerprint_deadline_seconds(),
+                root, scope, deadline=stamp_deadline
             )
-        if current.state != "exact" or current.rows != recorded:
+        if candidate_rows is None and (
+            current.state != "exact" or current.rows != recorded
+        ):
             # 携带具体原因(#1364 诊断):区分超时/不安全/行不一致三种死法
             raise sqlite3.OperationalError(
                 f"SOURCE_CHANGED:state={current.state}:"
@@ -236,13 +306,14 @@ def stamp_full_index_manifest(
                 f"rows_current={len(current.rows) if current.rows else 0}:"
                 f"rows_recorded={len(recorded)}"
             )
+        store_leaves(conn, tree)
         conn.execute("DELETE FROM ast_index_snapshot_manifest")
         conn.execute(
             "INSERT INTO ast_index_snapshot_manifest "
             "(singleton, canonical_root, source_fingerprint, index_fingerprint, "
             "file_count, source_scope_descriptor, manifest_version) "
-            "VALUES (1, ?, ?, ?, ?, ?, 2)",
-            (root, source, index, len(recorded), scope_json),
+            "VALUES (1, ?, ?, ?, ?, ?, ?)",
+            (root, source, index, len(recorded), scope_json, MANIFEST_VERSION),
         )
         conn.commit()
     except BaseException:
@@ -252,6 +323,19 @@ def stamp_full_index_manifest(
         if transaction_started and conn.in_transaction:
             conn.rollback()
         raise
+
+
+def stamp_commitment(
+    conn: sqlite3.Connection, root: str, *, deadline: float
+) -> tuple[str, Any]:
+    """盖章用的认证根与认证树（RFC-0039）；测试可替换这个接缝。
+
+    slice 2：刷新已武装时只重算本连接写过的组，否则完整重算（见
+    ``cache.certification_tracking``）。
+    """
+    from .cache.certification_tracking import commitment
+
+    return commitment(conn, root, deadline=deadline)
 
 
 def validate_snapshot_schema(
@@ -279,7 +363,7 @@ def validate_snapshot_schema(
             "AND version = ? THEN 1 ELSE 0 END "
             "FROM ast_schema_version LIMIT ?",
             (
-                SNAPSHOT_SCHEMA_VERSION,
+                CURRENT_SCHEMA_VERSION,
                 SNAPSHOT_SCHEMA_VERSION,
                 _SCHEMA_VALIDATION_ROW_BUDGET + 1,
             ),

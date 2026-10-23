@@ -58,14 +58,20 @@ def test_pipeline_runs_all_three_stages_in_order_with_exact_counters() -> None:
 def test_incremental_method_ambiguity_invalidates_and_restores_resolution(
     tmp_path,
 ) -> None:
-    """保存引入同名方法时撤销唯一绑定，删除后重新绑定并认证调用图。"""
+    """保存引入同名类时撤销唯一绑定，删除后重新绑定并认证调用图。
+
+    #1669：接收者未知的 ``obj.special()`` 不再按唯一方法名绑定；这里用类名接收者
+    ``Target.special(obj)``，其绑定同样依赖 ``(Target, special)`` 在项目中唯一。
+    """
     target = tmp_path / "target.py"
     caller = tmp_path / "caller.py"
     duplicate = tmp_path / "duplicate.py"
     target.write_text(
         "class Target:\n    def special(self):\n        return 1\n", encoding="utf-8"
     )
-    caller.write_text("def caller(obj):\n    return obj.special()\n", encoding="utf-8")
+    caller.write_text(
+        "def caller(obj):\n    return Target.special(obj)\n", encoding="utf-8"
+    )
     cache = ASTCache(str(tmp_path))
     cache.index_project(workers=0)
     query = (
@@ -76,7 +82,8 @@ def test_incremental_method_ambiguity_invalidates_and_restores_resolution(
     try:
         before = cache.get_conn().execute(query).fetchone()
         duplicate.write_text(
-            "class Other:\n    def special(self):\n        return 2\n", encoding="utf-8"
+            "class Target:\n    def special(self):\n        return 2\n",
+            encoding="utf-8",
         )
         ambiguous_run = IncrementalSync(cache).sync(max_files=10)
         ambiguous = cache.get_conn().execute(query).fetchone()
@@ -306,21 +313,28 @@ def test_marker_certification_rechecks_consistency_after_writer_lock(
     monkeypatch,
 ) -> None:
     # PR #1253 thread 3763600672: marker publication and final check are atomic.
+    # #1749：只剩写锁内的那一次核验——核验时标记行已写入（即已持有写锁），失败则回滚。
     from tree_sitter_analyzer.cache import callgraph_state
 
     conn = sqlite3.connect(":memory:")
-    checks = iter((True, False))
-    monkeypatch.setattr(
-        callgraph_state,
-        "call_graph_edges_are_consistent",
-        lambda _conn: next(checks),
-    )
+    pending_markers: list[int] = []
+
+    def check(check_conn, **_kwargs) -> bool:  # #1684：写入方以自己的期限调用
+        pending_markers.append(
+            check_conn.execute(
+                "SELECT count(*) FROM ast_call_graph_state WHERE built = 1"
+            ).fetchone()[0]
+        )
+        return False
+
+    monkeypatch.setattr(callgraph_state, "call_graph_edges_are_consistent", check)
 
     with pytest.raises(
         sqlite3.OperationalError, match="CALL_GRAPH_DANGLING_RESOLUTION"
     ):
         callgraph_state.mark_call_graph_built_strict(conn)
 
+    assert pending_markers == [1]
     rows = conn.execute(
         "SELECT id, built, pipeline_version FROM ast_call_graph_state"
     ).fetchall()

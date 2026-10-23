@@ -7,6 +7,7 @@ import sqlite3
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.mcp.tools.codegraph_status_tool import CodeGraphStatusTool
 
 requires_posix_fd = pytest.mark.skipif(os.name != "posix", reason="GH-1253")
@@ -209,12 +210,11 @@ class TestAuthoritativeSnapshotTransitions:
 
     @staticmethod
     def _certified_cache(root):
-        from tree_sitter_analyzer.ast_cache import ASTCache
         from tree_sitter_analyzer.index_snapshot import stamp_full_index_manifest
 
         source = root / "sample.py"
         source.write_text("def answer():\n    return 42\n")
-        cache = ASTCache(str(root))
+        cache = legacy_cache(root)
         cache.index_file(str(source))
         stamp_full_index_manifest(cache.get_conn(), str(root))
         cache.close()
@@ -391,7 +391,9 @@ class TestAuthoritativeSnapshotTransitions:
 
         assert before["completeness"] == "complete"
         assert after["completeness"] == "partial"
-        assert after["index_fingerprint"] != before["index_fingerprint"]
+        # RFC-0039（owner decision 2026-10-20）：FTS5 不进入认证根，由逐文件投影摘要与
+        # 投影精确性核验绑定——认证根不变，完整性降为 partial。
+        assert after["index_fingerprint"] == before["index_fingerprint"]
 
     @pytest.mark.asyncio
     async def test_empty_successful_full_index_can_be_complete(self, tmp_path):
@@ -426,6 +428,7 @@ class TestAuthoritativeSnapshotTransitions:
         )
         from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 
+        os.chmod(resolve_index_path(tmp_path), 0o600)  # 密封版本只读，先恢复写位
         conn = sqlite3.connect(resolve_index_path(tmp_path))
         conn.execute("DELETE FROM ast_call_graph_state")
         conn.commit()

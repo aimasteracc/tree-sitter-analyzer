@@ -10,9 +10,14 @@ import json
 import re
 import sqlite3
 from collections import deque
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, cast
+
+from ..cached_annotated_binding import ANNOTATED_RECEIVER
+from .alias_edges import alias_call_rows, import_alias_of
+from .es_import_sites import imported_unresolved_rows, row_ids
 
 
 class EdgeKind(str, Enum):
@@ -282,6 +287,15 @@ class EdgeStore:
             "source_node_id >= ? AND source_node_id < ?",
             (prefix, prefix + "\U0010ffff"),
         )
+        # #1673：源为占位节点（如 Java 枚举常量体中方法的 ``class:Operation``）的
+        # 边没有所属文件（``file_path`` 为空），却是本文件抽取出来的；按目标节点
+        # 的前缀删除，否则文件删除或重写后它们永久残留（与全新重建不同）。
+        # ``+file_path`` 让规划器走 idx_edges_target_kind 的范围扫描。
+        self._conn.execute(
+            f"DELETE FROM edges WHERE {calls_clause}"  # nosec B608 — constant clause
+            "+file_path = '' AND target_node_id >= ? AND target_node_id < ?",
+            (prefix, prefix + "\U0010ffff"),
+        )
         self.upsert_edges(edges)
 
     def backfill_name_columns(self) -> None:
@@ -441,6 +455,7 @@ class EdgeStore:
         self,
         callee_name: str,
         callee_file: str | None = None,
+        bound_targets: Collection[tuple[str, int]] | None = None,
     ) -> int:
         """Count inbound CALLS edges into ``callee_name`` not known resolved.
 
@@ -458,11 +473,57 @@ class EdgeStore:
         ``_RESOLVED_CALLEE_RESOLUTIONS`` for why an unrecognised value counts as
         unresolved.
         """
-        count = 0
-        for row in _direct_callers(self._conn, callee_name, callee_file):
-            if not _resolution_is_resolved(row):
-                count += 1
-        return count
+        return len(
+            self.unresolved_caller_sites(callee_name, callee_file, bound_targets)
+        )
+
+    def unresolved_caller_sites(
+        self,
+        callee_name: str,
+        callee_file: str | None = None,
+        bound_targets: Collection[tuple[str, int]] | None = None,
+    ) -> list[dict[str, Any]]:
+        """The edges :meth:`count_unresolved_callers` counts, as call sites.
+
+        #1706: a bare count told the agent that inbound edges were unresolved but
+        not where they are. Each site is ``{file, line, caller, callee}``; ``line``
+        is the call line, ``caller`` is ``<module>`` for a module-level site, and
+        ``callee`` is the call's source text. The count is derived from this list,
+        so the number a response reports and the sites it names describe the same
+        edges.
+        """
+        sites: list[dict[str, Any]] = []
+        direct = _direct_callers(self._conn, callee_name, callee_file)
+        # #1764: an unresolved TS/JS call through an import keeps its placeholder
+        # target in the calling file, so the declaring-file filter above drops it.
+        imported = (
+            imported_unresolved_rows(
+                self._conn,
+                callee_name,
+                callee_file.replace("\\", "/"),
+                row_ids(direct),
+                is_resolved=_resolution_is_resolved,
+                source_file=_source_file,
+            )
+            if callee_file
+            else []
+        )
+        for row in [*direct, *imported]:
+            if _resolution_is_resolved(row) or _bound_to(row, bound_targets):
+                continue
+            edge = _edge_from_row(row)
+            source = parse_node_id(edge.source_node_id)
+            callee_full = _row_col(row, "callee_full", "callee_full", edge)
+            caller = _row_col(row, "caller_name", "caller_name", edge)
+            sites.append(
+                {
+                    "file": str(source.file_path or "").replace("\\", "/"),
+                    "line": int(edge.line or 0),
+                    "caller": str(caller or "") or "<module>",
+                    "callee": str(callee_full or callee_name),
+                }
+            )
+        return sites
 
     def count_unresolved_calls_in_file(self, file_path: str) -> int:
         """Count unresolved CALLS edges originating in ``file_path``.
@@ -513,6 +574,11 @@ class EdgeStore:
             }
             if reason:
                 site["reason_code"] = reason
+            bound = annotated_binding_target(row, edge)
+            if bound is not None:
+                # RFC-0038：经注解绑定的边对其绑定目标已解析，对其余目标仍未解析。
+                site["resolution"] = ANNOTATED_RECEIVER
+                site["bound_to"] = {"file": bound[0], "line": bound[1]}
             sites.append(site)
         return sites
 
@@ -819,11 +885,13 @@ def _direct_callers(
 ) -> list[sqlite3.Row]:
     rows: list[sqlite3.Row] = []
     fallback_rows: list[sqlite3.Row] = []
-    for row in _callers_by_name(conn, callee_name):
+    aliased = alias_call_rows(conn, callee_name)
+    alias_ids = {id(row) for row in aliased}
+    for row in [*_callers_by_name(conn, callee_name), *aliased]:
         edge = _edge_from_row(row)
         source = parse_node_id(edge.source_node_id)
         target = parse_node_id(edge.target_node_id)
-        if not _matches_callee(row, target, callee_name):
+        if id(row) not in alias_ids and not _matches_callee(row, target, callee_name):
             continue
         if callee_file:
             resolved_file = str(
@@ -841,6 +909,12 @@ def _direct_callers(
             continue
         rows.append(row)
     return rows or fallback_rows
+
+
+def _source_file(row: sqlite3.Row) -> str:
+    """The calling file of a CALLS row (``file:``-prefixed module nodes included)."""
+    source = parse_node_id(_edge_from_row(row).source_node_id)
+    return str(source.file_path or "").replace("\\", "/")
 
 
 def _direct_callees(
@@ -900,6 +974,38 @@ def _row_col(row: sqlite3.Row, column: str, meta_key: str, edge: Edge) -> Any:
 _RESOLVED_CALLEE_RESOLUTIONS = frozenset(
     {"project", "builtin", "stdlib", "local", "external"}
 )
+
+
+def annotated_binding_target(
+    row: sqlite3.Row, edge: Edge | None = None
+) -> tuple[str, int] | None:
+    """RFC-0038: (file, line) an ``annotated_receiver`` edge is bound to."""
+    edge = edge if edge is not None else _edge_from_row(row)
+    resolution = str(
+        _row_col(row, "callee_resolution", "callee_resolution", edge) or ""
+    )
+    if resolution != ANNOTATED_RECEIVER:
+        return None
+    binding = edge.metadata.get("receiver_binding")
+    resolved_file = str(
+        _row_col(row, "callee_resolved_file", "callee_resolved_file", edge) or ""
+    )
+    if not isinstance(binding, dict) or not resolved_file:
+        return None
+    try:
+        return (resolved_file, int(binding.get("line") or 0))
+    except (TypeError, ValueError):
+        return None
+
+
+def _bound_to(
+    row: sqlite3.Row, bound_targets: Collection[tuple[str, int]] | None
+) -> bool:
+    """Whether ``row`` is an annotated edge bound to one of ``bound_targets``."""
+    if not bound_targets:
+        return False
+    target = annotated_binding_target(row)
+    return target is not None and target in bound_targets
 
 
 def _resolution_is_resolved(row: sqlite3.Row) -> bool:
@@ -1038,7 +1144,7 @@ def _call_edge_entry(
         _row_col(row, "callee_resolved_file", "callee_resolved_file", edge) or ""
     )
     callee_full = str(_row_col(row, "callee_full", "callee_full", edge) or "")
-    return {
+    entry: dict[str, Any] = {
         "caller_name": source.name,
         "caller_file": source.file_path,
         "caller_line": source.line,
@@ -1049,3 +1155,9 @@ def _call_edge_entry(
         "callee_line": target.line or edge.line or 0,
         "depth": depth + 1,
     }
+    if annotated_binding_target(row, edge) is not None:
+        entry["receiver_binding"] = edge.metadata.get("receiver_binding")
+    alias = import_alias_of(edge)
+    if alias is not None:
+        entry["import_alias"] = alias
+    return entry

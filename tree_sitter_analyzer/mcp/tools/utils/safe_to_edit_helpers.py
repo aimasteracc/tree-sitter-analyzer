@@ -663,7 +663,7 @@ def _agent_guardrails(
     if edit_type == "rename":
         guardrails.append("find and update all references before verification")
     if health_grade in {"D", "F"}:
-        guardrails.append("run refactoring_suggestions before editing")
+        guardrails.append("run edit action=refactor before editing")
     if not has_tests:
         guardrails.append("add or identify verification before changing behavior")
     return guardrails

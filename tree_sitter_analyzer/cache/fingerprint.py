@@ -26,7 +26,7 @@ import os
 import sqlite3
 from collections.abc import Iterable
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 
@@ -190,7 +190,9 @@ def is_ast_index_stale(project_root: str) -> bool:
         try:
             # 只查询现有索引；文件消失时拒绝连接，不能重建空库。
             conn.execute("PRAGMA query_only=ON")
-            rows = conn.execute("SELECT file_path, mtime_ns FROM ast_index").fetchall()
+            rows = conn.execute(
+                "SELECT file_path, mtime_ns, file_size, content_hash FROM ast_index"
+            ).fetchall()
         finally:
             conn.close()
     except (sqlite3.Error, OSError, ValueError):
@@ -199,15 +201,20 @@ def is_ast_index_stale(project_root: str) -> bool:
     if not rows:
         return False
 
+    from . import stat_evidence
+
+    stamps = stat_evidence.load(project_root)
     indexed_paths: set[str] = set()
-    for file_path, recorded_mtime_ns in rows:
+    for file_path, recorded_mtime_ns, recorded_size, content_hash in rows:
         abs_path, rel_path = _indexed_abs_and_rel_path(root, str(file_path))
         indexed_paths.add(rel_path)
         try:
-            current_mtime_ns = abs_path.stat().st_mtime_ns
+            current = abs_path.stat()
         except OSError:
             return True
-        if current_mtime_ns > recorded_mtime_ns:
+        if current.st_mtime_ns > recorded_mtime_ns and _content_differs(
+            stamps, rel_path, abs_path, current, (recorded_size, str(content_hash))
+        ):
             return True
     # #978 Fix 2 (perf): the os.walk below runs on every call (e.g. per lineage
     # execute()) to detect newly-added, not-yet-indexed source files. It is only
@@ -221,6 +228,33 @@ def is_ast_index_stale(project_root: str) -> bool:
         if rel_path not in indexed_paths:
             return True
     return False
+
+
+def _content_differs(
+    stamps: Any,
+    rel_path: str,
+    abs_path: Path,
+    current: os.stat_result,
+    indexed: tuple[int, str],
+) -> bool:
+    """mtime 比行新时的内容判定（#1707）：只有 mtime 变化（``touch``）不算过期。
+
+    stat 证据（``stat_evidence``）为磁盘戳记作证时不读文件；否则大小不同即过期，
+    大小相同时比较归一化内容摘要（与索引写入端相同）。
+    """
+    from ..incremental_sync_support import file_content_hash
+    from . import stat_evidence
+
+    size, content_hash = indexed
+    live = (int(current.st_mtime_ns), int(current.st_size))
+    if stat_evidence.vouches(stamps, rel_path, live, (size, content_hash)):
+        return False
+    if int(current.st_size) != int(size):
+        return True
+    try:
+        return file_content_hash(str(abs_path)) != content_hash
+    except OSError:
+        return True
 
 
 def _indexed_abs_and_rel_path(root: Path, file_path: str) -> tuple[Path, str]:

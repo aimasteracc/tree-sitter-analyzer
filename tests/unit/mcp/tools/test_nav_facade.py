@@ -26,6 +26,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from tests.unit._ast_cache_helpers import legacy_cache
+
 # ---------------------------------------------------------------------------
 # INVARIANT DELEGATION NOTICE
 # The following 4 common facade invariants are tested canonically in:
@@ -1042,8 +1044,6 @@ def _indexed_project(tmp_path: Any) -> Any:
     """Index one small project and return its resolved root."""
     from pathlib import Path
 
-    from tree_sitter_analyzer.ast_cache import ASTCache
-
     project = tmp_path / "proj"
     project.mkdir()
     (project / "app.py").write_text(
@@ -1066,7 +1066,7 @@ def _indexed_project(tmp_path: Any) -> Any:
         "    return handle_request(request)\n",
         encoding="utf-8",
     )
-    cache = ASTCache(str(project))
+    cache = legacy_cache(str(project))
     cache.index_project(max_files=20)
     cache.close()
     return Path(str(project.resolve()))
