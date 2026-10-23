@@ -124,15 +124,16 @@ def test_update_refuses_a_plan_for_another_generation() -> None:
     assert inc.update(_Graph(), previous, plan) == "PLAN_FOR_ANOTHER_GENERATION"  # type: ignore[arg-type]
 
 
-def test_generation_of_reads_the_generation_directory_or_the_snapshot() -> None:
+def test_generation_of_reads_only_the_generation_directory() -> None:
     class _Snapshot:
-        source_generation = "gen-7"
+        source_generation = "idxsrc-v3:gen-7"
 
     class _Owner:
         snapshot = _Snapshot()
 
     class _SnapshotCache:
         _owner = _Owner()
+        db_path = "/r/.ast-cache/index-generations/generations/abc/index.db"
 
     class _Published:
         db_path = "/r/.ast-cache/index-generations/generations/abc/index.db"
@@ -140,7 +141,10 @@ def test_generation_of_reads_the_generation_directory_or_the_snapshot() -> None:
     class _Loose:
         db_path = "/r/.ast-cache/index.db"
 
-    assert inc.generation_of(_SnapshotCache()) == "gen-7"
+    # #1793：认证快照的 source_generation 不是 generation id，不参与比较。
+    assert inc.generation_of(_SnapshotCache()) is None
+    assert inc.base_refusal(_SnapshotCache()) == inc.CERTIFIED_SNAPSHOT_NOT_A_BASE
+    assert inc.base_refusal(_Published()) is None
     assert inc.generation_of(_Published()) == "abc"
     assert inc.generation_of(_Loose()) is None
     assert inc.generation_of(_Broken()) is None

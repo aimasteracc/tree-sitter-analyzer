@@ -24,6 +24,23 @@
 
 ### Fixed
 
+- **A call graph built on a certified snapshot is now explicitly not an
+  incremental base** (#1793). `call_graph_incremental.generation_of` returned
+  the snapshot's `source_generation` (`idxsrc-v3:…`), a source-tree
+  fingerprint that never equals the generation id a refresh plan records. So a
+  certified graph could never be the base for the #1723 incremental update, but
+  only by accident. #1778 (PR #1791) measured the possible gain as small:
+  neutral on fastapi, and never applicable on axios or rich
+  (`SCOPE_TOO_LARGE`). Mapping the fingerprint back to a generation would also
+  need proof that the private copy has the same edge rowids and rows as the
+  generation. So this now fails closed on purpose. `generation_of` compares
+  only generation ids and returns `None` for a certified snapshot. A certified
+  graph keeps no alignment or edge records (they could never be used), only the
+  reason `CERTIFIED_SNAPSHOT_NOT_A_BASE`. `update` and the post-publish warm
+  report that reason (`call_graph_warm.incremental_reason`). Certified queries
+  still reuse the incremental result built on the published generation through
+  the input digest. Answers are unchanged, and the full rebuild that replaces
+  the refused increment equals a fresh build. Extractor version unchanged.
 - **`--text-search` / `search action=text` completes on Windows** (#1783).
   On small, clean repos (rich has 553 tracked files; axios fails the same way) it
   returned `SOURCE_SCAN_BUDGET_EXCEEDED` after 13–28 s, while `git grep` answered

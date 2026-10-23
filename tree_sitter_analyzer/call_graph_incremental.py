@@ -136,17 +136,43 @@ def _published_generation(project_root: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 
+#: 认证快照上构建的图不作 #1723 增量基础（#1793），见 :func:`base_refusal`。
+CERTIFIED_SNAPSHOT_NOT_A_BASE = "CERTIFIED_SNAPSHOT_NOT_A_BASE"
+
+
+def base_refusal(cache: Any) -> str | None:
+    """在 ``cache`` 上构建的图不能作下一次增量基础时的原因；可以时为 None。
+
+    #1793：认证快照（``CertifiedSnapshotCache``）一律不作基础，明确放弃而非偶然不匹配：
+
+    * 身份不同：快照只带 ``source_generation``（``idxsrc-v3:`` 源码树指纹），刷新范围
+      记的是 generation id（``RefreshPlan.base_generation``），两者从不相等；把指纹
+      映射回 generation 需要证明私有副本与该版本的边 rowid 与行逐字节相同，否则
+      增量结果可能偏离冷构图。
+    * 收益小：#1778 的调查（PR #1791，测量条件与数据见 #1793）中，由上一快照的图
+      推导新快照图的原型在 fastapi 上与全量构图持平，axios / rich 上范围回填为
+      ``SCOPE_TOO_LARGE``，从未适用。
+    * 认证查询不因此变慢：发布后的预构图在已发布版本上增量更新，结果按输入摘要
+      登记（``finalize``），同一输入的认证查询按摘要直接取用。
+
+    放弃时图不保留对齐依据与解析结果（它们永远不会被用到），只留下原因。
+    """
+    owner = getattr(cache, "_owner", None)
+    if getattr(owner, "snapshot", None) is not None:
+        return CERTIFIED_SNAPSHOT_NOT_A_BASE
+    return None
+
+
 def generation_of(cache: Any) -> str | None:
     """构图所读版本的 generation id；不是已封存的版本（或无法判定）时为 None。
 
     已发布的版本封存后不再改写，id 即内容身份：已发布库位于
-    ``generations/<id>/index.db``；认证快照是某个版本的私有副本，带 ``source_generation``。
+    ``generations/<id>/index.db``。只用 generation id 这一种身份比较；认证快照的
+    ``source_generation`` 是源码树指纹而非 generation id，因此快照上为 None
+    （#1793，见 :func:`base_refusal`）。
     """
-    owner = getattr(cache, "_owner", None)
-    snapshot = getattr(owner, "snapshot", None)
-    if snapshot is not None:
-        source = getattr(snapshot, "source_generation", None)
-        return str(source) if source else None
+    if base_refusal(cache) is not None:
+        return None
     database = getattr(cache, "db_path", None)
     if not database:
         return None
@@ -211,7 +237,12 @@ def remember(
     """把对齐依据、解析结果与输入证据留在图状态里，供下一次刷新后增量更新。
 
     只在读的是已封存版本、对齐依据与结果一一对应时保留；否则清除（不增量）。
+    认证快照上的图只记下放弃原因（#1793，:func:`base_refusal`）。
     """
+    refusal = base_refusal(graph._cache)
+    if refusal is not None:
+        graph._incremental = {"refused": refusal}
+        return
     generation = generation_of(graph._cache)
     usable = (
         aligned is not None
@@ -332,6 +363,8 @@ def update(
         return "BACKFILL_NOT_SCOPED:" + plan.reason
     if not isinstance(memo, dict):
         return "PREVIOUS_GRAPH_NOT_ALIGNED"
+    if memo.get("refused"):
+        return str(memo["refused"])
     if plan.base_generation is None or memo.get("generation") != plan.base_generation:
         return "PREVIOUS_GRAPH_OTHER_GENERATION"
     generation = generation_of(graph._cache)
@@ -645,9 +678,11 @@ def memo_key(identity: tuple[Any, ...]) -> str:
 
 
 __all__ = [
+    "CERTIFIED_SNAPSHOT_NOT_A_BASE",
     "Alignment",
     "RefreshPlan",
     "alignment",
+    "base_refusal",
     "generation_of",
     "memo_key",
     "note_scope",
