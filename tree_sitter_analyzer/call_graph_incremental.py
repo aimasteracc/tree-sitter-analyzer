@@ -500,6 +500,7 @@ def _ordered_refs(
     """新库的函数定义，按 ``ast_index`` 的读取顺序；未改动文件沿用上一张图的引用。"""
     from .cache.graph_input_rows import FunctionRows
     from .call_graph import FunctionRef
+    from .overload_stubs import drop_overload_stubs
 
     order = [
         str(row[0])
@@ -515,7 +516,10 @@ def _ordered_refs(
             f"WHERE file_path IN ({marks}) ORDER BY rowid",
             chunk,
         ).fetchall()
-        for func in FunctionRows([tuple(row) for row in rows]).to_functions():
+        # #1773：与全量构图相同，``@overload`` 存根由唯一的实现代表。
+        for func in drop_overload_stubs(
+            FunctionRows([tuple(row) for row in rows]).to_functions()
+        ):
             reread.setdefault(func["file"], []).append(
                 FunctionRef(
                     file_path=func["file"],

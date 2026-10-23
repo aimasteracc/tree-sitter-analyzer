@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, cast
 
 from .jsts_function_names import FUNCTION_VALUE_TYPES, function_value_name
+from .overload_stubs import OVERLOAD_KEY, is_overload_stub
 from .python_own_receiver import mark_unbound_own_receiver
 from .receiver_hints import (
     Hint,
@@ -887,6 +888,10 @@ def _extract_recursive(
                     "end_line": node.end_point[0] + 1,
                     "end_col": node.end_point[1],
                     "class": parent_class,
+                    # #1773：``@overload`` 存根，构图时由唯一的实现代表。
+                    **(
+                        {OVERLOAD_KEY: True} if is_overload_stub(node, language) else {}
+                    ),
                 }
             )
             func_types = _collect_local_var_types(node, source, language)

@@ -139,7 +139,8 @@ _warned_extensions: set[str] = set()
 # v51：JS/TS 以常量定义的箭头函数 / 函数表达式按常量名索引为函数，函数体内调用归属于它（#1763）。
 # v52：TS 调用经 ES 模块导入 / 再导出 / 项目包说明符解析到定义，symbols_json 记录 TS 导出形状与再导出（#1764 / #1768）。
 # v53：TS 类的 `extends` 基类写入 parents；`const X = class extends B {...}` 以常量名索引为类（#1765）。
-_AST_CACHE_EXTRACTOR_VERSION = 53
+# v54：Python `@overload` 存根在 symbols_json 中标记 overload，构图时由唯一的实现代表（#1773）。
+_AST_CACHE_EXTRACTOR_VERSION = 54
 # #1673：写入方核验符号投影的期限（秒）。未核完会被当作不精确并重写全部投影，
 # 因此写入方不使用读者的 5 秒期限；与认证盖戳的期限（120 秒）一致。
 _WRITER_PROJECTION_SECONDS = 120.0

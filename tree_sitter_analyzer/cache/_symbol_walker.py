@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..jsts_function_names import function_value_name
+from ..overload_stubs import OVERLOAD_KEY, is_overload_stub
 from . import node_taxonomy as _taxonomy
 from . import unhandled_nodes as _unhandled_nodes
 from ._symbol_declarations import (
@@ -863,6 +864,9 @@ class _SymbolWalker:
         if return_type is not None:
             symbol["return_type"] = _node_text(return_type, self.source).lstrip(": ")
         self._add_python_docstring(symbol, node)
+        if is_overload_stub(node, self.language):
+            # #1773：存根与实现是同一个方法，构图时由实现代表。
+            symbol[OVERLOAD_KEY] = True
         parent_class = _find_parent_class(node, self.source, self.language)
         if parent_class:
             symbol["kind"] = "method"
