@@ -8,6 +8,7 @@ import pytest
 import tests.unit.mcp._safe_to_edit_tool_helpers as _fixtures
 from tests.unit.mcp._safe_to_edit_tool_helpers import _projection_conn
 from tree_sitter_analyzer.mcp.tools.utils import safe_to_edit_helpers as helpers
+from tree_sitter_analyzer.mcp.tools.utils import safe_to_edit_projection
 
 tool = _fixtures.tool
 _close_index_snapshot_registry = _fixtures._close_index_snapshot_registry
@@ -287,7 +288,7 @@ def test_python_projection_rejects_invalid_static_statement(
 ) -> None:
     conn = _projection_conn([("app.py", [{"text": "if ("}])])
     monkeypatch.setattr(
-        helpers,
+        safe_to_edit_projection,
         "_python_dynamic_loader_names_from_projection",
         lambda _: frozenset({"__import__"}),
     )
