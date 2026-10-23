@@ -194,3 +194,35 @@ def test_global_fallback_keeps_test_target_for_test_caller() -> None:
     )
     files = resolver.resolve_files("fixture_helper", "tests/unit/test_other.py")
     assert files == [("tests/unit/test_cache.py", 0.5)]
+
+
+def test_keep_test_shadows_returns_test_defs_for_source_caller() -> None:
+    """#1772: the demotion picks a certain target; the possible set keeps tests."""
+    test_def = {
+        "name": "new_validator",
+        "file": "tests/test_plugins.py",
+        "language": "python",
+        "line": 5,
+    }
+    src_def = {
+        "name": "new_validator",
+        "file": "pkg/__init__.py",
+        "language": "python",
+        "line": 5,
+    }
+    resolver = CalleeResolver(
+        functions_by_name={"new_validator": [src_def, test_def]},
+        functions_by_file={},
+        name_to_source={},
+        memoize_global=True,
+    )
+
+    demoted = resolver.resolve_items("plugin.new_validator", "pkg/use.py")
+    kept = resolver.resolve_items(
+        "plugin.new_validator", "pkg/use.py", keep_test_shadows=True
+    )
+
+    assert demoted == [(src_def, 0.5)]
+    assert kept == [(src_def, 0.5), (test_def, 0.5)]
+    # The memo keys the two answers apart.
+    assert resolver.resolve_items("plugin.new_validator", "pkg/use.py") == demoted

@@ -49,7 +49,13 @@ class CalleeResolver:
         include_local: bool = True,
         include_import: bool = True,
         include_global: bool = True,
+        keep_test_shadows: bool = False,
     ) -> list[tuple[Any, float]]:
+        """``keep_test_shadows``：全局档不为非测试调用方剔除测试文件里的同名定义。
+
+        剔除只适合挑选*确定*目标；接收者未被证明时，测试里的结构实现（#1772）
+        同样是可能目标。
+        """
         return [
             (resolved.item, resolved.confidence)
             for resolved in self._resolve(
@@ -59,6 +65,7 @@ class CalleeResolver:
                 include_local=include_local,
                 include_import=include_import,
                 include_global=include_global,
+                keep_test_shadows=keep_test_shadows,
             )
             if resolved.item is not None
         ]
@@ -152,6 +159,7 @@ class CalleeResolver:
         include_local: bool = True,
         include_import: bool = True,
         include_global: bool = True,
+        keep_test_shadows: bool = False,
     ) -> list[CalleeResolution]:
         qualifier, base_name = _split_qualifier(callee_name)
         results: list[CalleeResolution] = []
@@ -174,18 +182,30 @@ class CalleeResolver:
 
         if include_global and not results:
             results.extend(
-                self._global_resolutions(base_name, source_file, keep_items=keep_items)
+                self._global_resolutions(
+                    base_name,
+                    source_file,
+                    keep_items=keep_items,
+                    keep_test_shadows=keep_test_shadows,
+                )
             )
 
         return results
 
     def _global_resolutions(
-        self, base_name: str, source_file: str, *, keep_items: bool
+        self,
+        base_name: str,
+        source_file: str,
+        *,
+        keep_items: bool,
+        keep_test_shadows: bool = False,
     ) -> list[CalleeResolution]:
         """全局兜底的结果；只在本地 / import 两档都没有结果时调用。"""
         source_lang = self._source_language(source_file)
+        # 测试调用方本来就不剔除测试定义，两种取值的结果相同，共用记忆。
         source_is_test = is_test_file(source_file)
-        key = (base_name, source_lang, source_is_test, keep_items)
+        demote_tests = not (source_is_test or keep_test_shadows)
+        key = (base_name, source_lang, demote_tests, keep_items)
         if self._global_memo is not None:
             cached = self._global_memo.get(key)
             if cached is not None:
@@ -222,8 +242,10 @@ class CalleeResolver:
         # must not bind to a test mock (e.g. ``fts_search`` -> FallbackCache)
         # just because the test def is enumerated first. A test caller may
         # legitimately reference a test helper, so only filter for non-test
-        # callers and only when a non-test def actually exists.
-        if not source_is_test:
+        # callers and only when a non-test def actually exists.  #1772: the
+        # demotion picks a *certain* target only; ``keep_test_shadows`` keeps the
+        # test defs for the possible set of a call whose receiver is unproven.
+        if demote_tests:
             non_test = [f for f in globals_ if not is_test_file(_item_file(f))]
             if non_test:
                 globals_ = non_test
