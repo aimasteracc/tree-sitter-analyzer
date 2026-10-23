@@ -1,0 +1,173 @@
+# 错误 complete 判定器（夜间）
+#
+# PR CI 只跑已知答案语料（tests/known_answer）与固定种子、少量样例的属性测试；
+# 这里跑重的部分：
+#   - property：更多 Hypothesis 样例（种子写进运行摘要，失败可复现）；
+#   - sweep：在固定提交的真实仓库上抽样 nav callers，两种模式，用独立判定器
+#     （scripts/wrong_complete）评分；任何未经审查排除的错误 complete 都让作业失败，
+#     评分 JSON 作为 artifact 上传。
+#
+# 触发：每天定时、手动（可调样例数 / 种子），以及只改动判定器自身文件的 PR
+# （改判定器时先在 PR 上跑一遍，普通 PR 不触发）。
+
+name: Wrong-complete oracle
+
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+    inputs:
+      examples:
+        description: "Hypothesis examples per property test"
+        required: false
+        default: "300"
+      seed:
+        description: "Hypothesis seed (default: the run id)"
+        required: false
+        default: ""
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "scripts/wrong_complete/**"
+      - "tests/known_answer/**"
+      - "tests/property/callers_projects.py"
+      - "tests/property/test_callers_oracle_properties.py"
+      - ".github/workflows/wrong-complete-oracle.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  property:
+    name: Property tests (nightly examples)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Setup System Dependencies
+        uses: ./.github/actions/setup-system
+        with:
+          os: ubuntu-latest
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+        shell: bash
+
+      - name: Run property tests
+        shell: bash
+        env:
+          PYTHONUTF8: 1
+          # PR 触发时用较少样例，定时 / 手动用更多样例。
+          TSA_ORACLE_EXAMPLES: ${{ inputs.examples || (github.event_name == 'pull_request' && '60') || '300' }}
+          TSA_ORACLE_SEED: ${{ inputs.seed || github.run_id }}
+        run: |
+          echo "### Property tests: ${TSA_ORACLE_EXAMPLES} examples, seed ${TSA_ORACLE_SEED}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Reproduce: TSA_ORACLE_EXAMPLES=${TSA_ORACLE_EXAMPLES} TSA_ORACLE_SEED=${TSA_ORACLE_SEED} uv run pytest tests/property/test_callers_oracle_properties.py" >> "$GITHUB_STEP_SUMMARY"
+          uv run pytest tests/property/test_callers_oracle_properties.py -q \
+            --timeout=0 --session-timeout=0 --reruns=0 -p no:cacheprovider \
+            --hypothesis-show-statistics 2>&1 | tee property-output.txt
+          exit "${PIPESTATUS[0]}"
+
+      - name: Upload property output
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: wrong-complete-property-${{ github.run_id }}
+          path: property-output.txt
+          if-no-files-found: error
+
+  sweep:
+    name: Real-repo sweep (${{ matrix.label }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 与 dogfood r10-r12 相同的固定提交（#1740 / #1758 的测量基线）。
+          - label: rich
+            url: https://github.com/Textualize/rich.git
+            sha: 9d8f9a372cc5916fd4781fec207ced7ddac2f08f
+            lang: py
+          - label: gson
+            url: https://github.com/google/gson.git
+            sha: e2292f9c9f2e07a4791827e8eea34aa7d80545d6
+            lang: java
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Setup System Dependencies
+        uses: ./.github/actions/setup-system
+        with:
+          os: ubuntu-latest
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+        shell: bash
+
+      - name: Clone pinned repository
+        shell: bash
+        run: |
+          git init -q "/tmp/sweep/${{ matrix.label }}"
+          cd "/tmp/sweep/${{ matrix.label }}"
+          git remote add origin "${{ matrix.url }}"
+          git fetch -q --depth 1 origin "${{ matrix.sha }}"
+          git checkout -q FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "${{ matrix.sha }}"
+
+      - name: Sweep and score (fails on any wrong complete)
+        shell: bash
+        env:
+          PYTHONUTF8: 1
+        run: |
+          set -o pipefail
+          for seed in 20261024 20261101; do
+            uv run python -m scripts.wrong_complete.sweep \
+              --repo "/tmp/sweep/${{ matrix.label }}" --lang "${{ matrix.lang }}" \
+              --label "${{ matrix.label }}" --seed "$seed" --count 40 \
+              --exclusions scripts/wrong_complete/exclusions.json \
+              --out "scores-${{ matrix.label }}-${seed}.json" 2>&1 | tee -a "sweep-${{ matrix.label }}.log" \
+              || echo "seed $seed failed" >> sweep_failed
+          done
+          {
+            echo "### Sweep ${{ matrix.label }} @ ${{ matrix.sha }}"
+            echo '```text'
+            grep -E '^\{|^WRONG COMPLETE' "sweep-${{ matrix.label }}.log" || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          test ! -f sweep_failed
+
+      - name: Upload scores
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: wrong-complete-scores-${{ matrix.label }}-${{ github.run_id }}
+          path: |
+            scores-${{ matrix.label }}-*.json
+            sweep-${{ matrix.label }}.log
+          if-no-files-found: error
