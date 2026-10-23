@@ -12,6 +12,7 @@ import os
 import sqlite3
 from typing import Any
 
+from ...member_names import unquote_member_name
 from ...module_scope_caller import is_module_caller, module_caller_entry
 from ...receiver_proof import has_unproven_receiver
 from ...utils import setup_logger
@@ -420,7 +421,8 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
     async def _execute_bound(
         self, arguments: dict[str, Any], bound_cache: Any, source_reader: Any
     ) -> dict[str, Any]:
-        func_name = arguments["function_name"]
+        # #1762：`ZodType."~validate"` 与 `"~validate"` 按去掉引号的成员名查询。
+        func_name = unquote_member_name(arguments["function_name"])
         file_path = arguments.get("file_path")
         output_format = arguments.get("output_format", "json")
         include_activation = bool(arguments.get("include_activation", False))

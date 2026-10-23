@@ -187,7 +187,16 @@ def _func_name_identifier(node: Any) -> str | None:
 
 
 def _func_name_js(node: Any) -> str | None:
-    """JavaScript / TypeScript: identifier or property_identifier child."""
+    """JavaScript / TypeScript: identifier or property_identifier child.
+
+    #1762：方法名是字符串字面量（``"~validate"(data) {...}``）时取引号内的名字。
+    只看 ``method_definition`` 的 ``name`` 字段：箭头函数的函数体可以是字符串。
+    """
+    if node.type == "method_definition":
+        name_node = node.child_by_field_name("name")
+        literal = _js_string_literal(name_node)
+        if literal is not None:
+            return literal
     for child in node.children:
         if child.type in _IDENT_TYPES_JS:
             return _node_text_value(child)
@@ -265,7 +274,39 @@ def _call_info_field(node: Any, source: str) -> dict[str, Any] | None:
     func_node = node.child_by_field_name("function")
     if func_node is None:
         return None
+    if func_node.type == "subscript_expression":
+        member = _literal_subscript_member(func_node, source)
+        if member is not None:
+            return member | {
+                "line": node.start_point[0] + 1,
+                "col": node.start_point[1],
+            }
     return _call_from_text(_node_text(func_node, source), node)
+
+
+def _js_string_literal(node: Any) -> str | None:
+    """JS/TS 字符串字面量节点（``"x"`` / ``'x'``，无插值）的内容；其余为 None。"""
+    if node is None or node.type != "string":
+        return None
+    text = _node_text_value(node)
+    if text is None or len(text) < 2 or text[0] not in "'\"" or text[-1] != text[0]:
+        return None
+    inner = text[1:-1]
+    return inner if inner and "\\" not in inner and text[0] not in inner else None
+
+
+def _literal_subscript_member(func_node: Any, source: str) -> dict[str, Any] | None:
+    """#1762：``obj["m"](...)`` 与 ``obj.m(...)`` 同义：接收者 ``obj``，被调名 ``m``。
+
+    下标不是字符串字面量（``obj[name]()``）时返回 None：调用点保留原文，作为计算式
+    分发由声明文件门计入（RFC-0028 §1.2，与 Python 的 ``getattr`` 相同）。
+    """
+    obj = func_node.child_by_field_name("object")
+    member = _js_string_literal(func_node.child_by_field_name("index"))
+    if obj is None or member is None:
+        return None
+    receiver = _node_text(obj, source)
+    return {"name": member, "full_name": f"{receiver}.{member}", "receiver": receiver}
 
 
 def _call_info_java(node: Any, source: str) -> dict[str, Any] | None:

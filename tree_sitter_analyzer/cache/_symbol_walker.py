@@ -380,6 +380,7 @@ _JSTS_NAME_NODES = frozenset(
     }
 )
 _JSTS_MEMBER_NODES = frozenset({"member_expression", "subscript_expression"})
+_JSTS_LANGUAGES = frozenset({"javascript", "typescript", "tsx"})
 _JSTS_ACCESSOR_NODES = frozenset(
     {
         "identifier",
@@ -829,6 +830,12 @@ class _SymbolWalker:
         if node.type not in self.rules.get("function_like", ()):
             return None
         if name_node is not None:
+            if name_node.type == "string" and self.language in _JSTS_LANGUAGES:
+                # #1762：`"~validate"(data) {...}` 以去掉引号的成员名记录，与
+                # `this["~validate"](data)` 归一后的被调名一致。
+                literal = _jsts_static_accessor_name(name_node, self.source)
+                if literal is not None:
+                    return literal
             return _node_text(name_node, self.source)
         if node.type == "function_definition" and self.language in ("c", "cpp"):
             return _c_function_def_name(node, self.source)
