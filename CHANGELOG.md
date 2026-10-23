@@ -248,8 +248,8 @@
     method of an unrelated class, such as a sibling in the same file or a
     method on a class extending the external `Error`, is never a target.
 
-  Subclass overrides stay possible (#1648). The extractor version goes from 49
-  to 50.
+  Subclass overrides stay possible (#1648). The extractor version goes to 53
+  (provisional: #1763 takes 51, #1764 takes 52).
 
 
 - **An unresolved `x.m()` keeps every same-named method a possible target**
