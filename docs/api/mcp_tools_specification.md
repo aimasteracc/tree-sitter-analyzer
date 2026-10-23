@@ -1167,7 +1167,7 @@ The ripgrep batch wrapper is removed. Use `search action=text` for bounded live 
 }
 ```
 
-Call when project structure changed significantly, `get_project_summary` returns stale data, or setting up tree-sitter-analyzer in a new project. Do NOT call every session — the index auto-loads and stays fresh for 24 hours.
+Call when project structure changed significantly, `get_project_summary` returns stale data, or setting up tree-sitter-analyzer in a new project. Do NOT call every session: the saved project-summary index (`.tree-sitter-cache/project-index.json`) is reloaded from disk and reused for up to 24 hours. It does not track edits, so rebuild it sooner after a restructuring. It is separate from the `.ast-cache` code index behind `nav` / `search`, which reports its own freshness (for example `SOURCE_INDEX_MISMATCH`) and is updated by `index action=cache mode=index` or kept current by `mode=watch_start`.
 
 **CLI Parity**: `uv run python -m tree_sitter_analyzer --build-project-index --format json`
 
