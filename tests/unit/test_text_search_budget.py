@@ -39,7 +39,7 @@ def _request(project: Path, **overrides) -> TextSearchRequest:
 
 def _write_files(project: Path, count: int, body: str = "needle\n") -> None:
     for number in range(count):
-        (project / f"f{number:02d}.py").write_text(body, encoding="utf-8")
+        (project / f"f{number:02d}.py").write_bytes(body.encode("utf-8"))
 
 
 class _GatedReader:
@@ -150,7 +150,9 @@ def test_total_bytes_budget_failure_reports_bytes(tmp_path, monkeypatch):
         "limit": 10,
         "unit": "bytes",
     }
-    assert caught.value.details["progress"]["bytes_scanned"] > 10
+    # Two 7-byte files: the second one crosses the 10-byte ceiling.
+    assert caught.value.details["progress"]["bytes_scanned"] == 14
+    assert caught.value.details["progress"]["files_scanned"] == 2
 
 
 def test_single_file_budget_failure_names_the_file(tmp_path, monkeypatch):
