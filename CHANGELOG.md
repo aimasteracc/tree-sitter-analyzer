@@ -30,6 +30,19 @@
 
 ### Changed
 
+- **Warm `nav action=callers` builds the call graph at most once per query and
+  reuses it across queries on the same certified snapshot** (#1774). A bare name
+  built the graph twice on the certified path since #1759 (once to check for a
+  single method definition, once for the #1740 union), and every query re-read
+  all call edges to recompute the graph-input digest just to find the same graph
+  in memory. One query now shares one graph, and the digest is remembered per
+  certified snapshot (its random snapshot id, index fingerprint and source
+  generation name an immutable in-memory copy), as is a positive call-graph
+  marker check. A refresh or edit captures a new snapshot, so it never reuses an
+  old graph. Answers are unchanged. Warm in-process callers (first 10
+  targets): zod 0.92-1.33 s to 0.25-0.37 s, pydantic 1.20-1.30 s to
+  0.16-0.18 s, rich 0.19-0.27 s to 0.07-0.09 s.
+
 - **The call-graph step of a refresh no longer rebuilds the resolver context
   from scratch** (#1749). Every refresh runs on a new index generation, so the
   old context cache, keyed on the database file, never matched, and the

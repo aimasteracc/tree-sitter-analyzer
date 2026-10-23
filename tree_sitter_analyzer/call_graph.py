@@ -23,7 +23,12 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from . import call_graph_incremental, call_graph_memo, call_graph_store
+from . import (
+    call_graph_incremental,
+    call_graph_memo,
+    call_graph_snapshot_inputs,
+    call_graph_store,
+)
 from .cache import graph_input_rows, index_file_facts
 from .cached_edge_resolution import CachedEdgeResolver
 from .cached_reexport_binding import PackageReexportBinder
@@ -807,6 +812,10 @@ class CachedCallGraph(CallGraph):
     def _build_from_cache(self) -> None:
         if self._cache is not None and self._adopt_published_warm():
             return
+        # #1774：同一认证快照上已算过构图输入摘要时，不再读出全部调用边重算。
+        snapshot = call_graph_snapshot_inputs.snapshot_key(self._cache)
+        if self._adopt_snapshot_graph(snapshot):
+            return
         try:
             if self._cache is None:
                 return
@@ -847,6 +856,7 @@ class CachedCallGraph(CallGraph):
                     facts_stamp, _GRAPH_INPUT_FACT, [digest, edge_count]
                 )
         self._input_digest = digest
+        call_graph_snapshot_inputs.remember(snapshot, digest)
         owned = False
         if digest is not None:
             state = call_graph_memo.lookup(root, digest)
@@ -880,6 +890,21 @@ class CachedCallGraph(CallGraph):
         finally:
             if owned and digest is not None:
                 call_graph_memo.release(root, digest)
+
+    def _adopt_snapshot_graph(self, snapshot: tuple[str, ...] | None) -> bool:
+        """#1774：采用同一不可变认证快照此前构出的图（按其输入摘要取用）。
+
+        取不到（未见过该快照，或记忆已换成别的输入）返回 False，照常读行构图。
+        """
+        digest = call_graph_snapshot_inputs.digest_for(snapshot)
+        if digest is None:
+            return False
+        state = call_graph_memo.lookup(str(self.project_root), digest)
+        if state is None:
+            return False
+        self._adopt_state(state)
+        self._input_digest = digest
+        return True
 
     def _adopt_published_warm(self) -> bool:
         """#1708：采用发布后后台预构图的结果（同一索引库、身份未变时），不再读行。
