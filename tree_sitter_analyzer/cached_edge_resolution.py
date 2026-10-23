@@ -95,6 +95,7 @@ class CachedEdgeResolver:
         subclasses: SubclassIndex | None = None,
         memoize: bool = False,
         hierarchy: Callable[[], Hierarchy] | None = None,
+        jsts_imports: dict[str, dict[str, str]] | None = None,
     ) -> None:
         self._functions_by_file = functions_by_file
         self._functions_by_name = functions_by_name
@@ -105,6 +106,8 @@ class CachedEdgeResolver:
         self._subclasses = subclasses
         # #1677：类层级（有序基类与方法表），惰性读取，只在继承调用时需要。
         self._hierarchy = hierarchy
+        #: #1765：JS/TS 文件中按名字导入的绑定 -> 目标文件。
+        self._jsts_imports = jsts_imports or {}
         #: #1765：方法所属类名 -> 定义文件（惰性建立）。
         self._receiver_files: dict[str, set[str]] | None = None
         self._resolver = CalleeResolver(
@@ -332,7 +335,7 @@ class CachedEdgeResolver:
 
     def _jsts_class_file(self, class_name: str, from_file: str) -> str | None:
         """``from_file`` 中名字 ``class_name`` 指向的类所在文件；无法确定为 None。"""
-        imported = self._file_import_map.get(from_file, {}).get(class_name)
+        imported = self._jsts_imports.get(from_file, {}).get(class_name)
         if imported:
             return str(imported)
         if any(

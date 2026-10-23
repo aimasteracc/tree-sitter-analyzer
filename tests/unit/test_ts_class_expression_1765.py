@@ -101,7 +101,8 @@ async def test_inherited_this_call_binds_the_base_method(
 
 @pytest.mark.asyncio
 async def test_ambiguous_or_external_base_is_only_possible(tmp_path: Path) -> None:
-    # 基类名对应两个项目类，或是外部类（`Error`）：不确定绑定，调用点仍被点名。
+    # 基类名对应两个项目类且没有导入说明是哪个，或是外部类（`Error`）：
+    # 不确定绑定，调用点仍被点名。
     from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
 
     (tmp_path / "a.ts").write_text(
@@ -111,7 +112,7 @@ async def test_ambiguous_or_external_base_is_only_possible(tmp_path: Path) -> No
         "export class Base { reset() { return 2 } }\n", encoding="utf-8"
     )
     (tmp_path / "c.ts").write_text(
-        "import { Base } from './a'\n"
+        "declare const Base: any\n"
         "class Sub extends Base {\n"
         "  go() { return this.reset() }\n"
         "}\n"
@@ -177,3 +178,36 @@ async def test_class_expression_is_indexed_with_its_base(router_root: str) -> No
         "RegExpRouterWithMatcherExport": ["RegExpRouter"],
     }
     assert methods["buildAndExportAllMatchers"] == "RegExpRouterWithMatcherExport"
+
+
+@pytest.mark.asyncio
+async def test_duplicate_base_names_resolve_through_the_import(tmp_path: Path) -> None:
+    # zod：v3 与 v4 各有一个 `ZodType`；`import { ZodType } from './types'` 说明
+    # `class ZodString extends ZodType` 指的是同目录的那个。
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    for version in ("v3", "v4"):
+        (tmp_path / version).mkdir()
+        (tmp_path / version / "types.ts").write_text(
+            "export class ZodType {\n  _getType(input: number) { return input }\n}\n",
+            encoding="utf-8",
+        )
+    (tmp_path / "v3" / "string.ts").write_text(
+        "import { ZodType } from './types'\n"
+        "export class ZodString extends ZodType {\n"
+        "  parse(input: number) { return this._getType(input) }\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
+        {"mode": "full", "max_files": 10}
+    )
+    assert indexed["published"] is True
+
+    v3 = await _callers(str(tmp_path), "ZodType._getType", "v3/types.ts")
+    v4 = await _callers(str(tmp_path), "ZodType._getType", "v4/types.ts")
+
+    assert [(c["file"], c["name"]) for c in v3["callers"]] == [
+        ("v3/string.ts", "parse")
+    ]
+    assert v4["callers"] == []
