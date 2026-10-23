@@ -199,7 +199,8 @@ class CrashGuard:
         if settings.method != "thread" or threading.current_thread() is not main:
             return None  # pytest-timeout's own timer handles it
         main_id = main.ident
-        assert main_id is not None
+        if main_id is None:  # not started; cannot target it, keep the stock timer
+            return None
         timeout = float(settings.timeout)
 
         def fire() -> None:
