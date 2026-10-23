@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from tree_sitter_analyzer.mcp.tools.utils import safe_to_edit_helpers
+from tree_sitter_analyzer.mcp.tools.utils import safe_to_edit_live_deps
 from tree_sitter_analyzer.mcp.tools.utils.safe_to_edit_helpers import (
     FileDependencyView,
     _extract_import_specs,
@@ -294,7 +294,7 @@ def test_target_dependents_returns_empty_without_import_needles(
     target = _write(tmp_path, "pkg/main.py", "VALUE = 1\n")
     _write(tmp_path, "app/caller.py", "from pkg.main import VALUE\n")
     monkeypatch.setattr(
-        safe_to_edit_helpers,
+        safe_to_edit_live_deps,
         "_import_needles_for_target",
         lambda _rel_path: set(),
     )

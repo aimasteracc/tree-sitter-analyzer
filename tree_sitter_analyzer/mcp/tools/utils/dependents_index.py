@@ -74,15 +74,15 @@ from typing import Literal
 
 from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 
-from .safe_to_edit_helpers import (
+from .safe_to_edit_inventory_resolver import _import_targets_from_text
+from .safe_to_edit_live_deps import (
     _DEPENDENCY_SKIP_DIRS,
     _DEPENDENCY_SOURCE_EXTS,
     _extract_import_specs,
-    _import_targets_from_text,
-    _module_path_without_suffix,
     _resolve_import_spec,
     _target_dependents_by_scan,
 )
+from .safe_to_edit_paths import _module_path_without_suffix
 
 logger = logging.getLogger(__name__)
 
