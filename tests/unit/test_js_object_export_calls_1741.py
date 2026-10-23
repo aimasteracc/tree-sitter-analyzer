@@ -215,7 +215,7 @@ async def test_non_object_default_export_or_computed_key_is_not_bound(tmp_path) 
     files = {
         "lib/cls.js": (
             "function findKey(o) {\n  return o;\n}\n\n"
-            "export default class Store {\n  static findKey(o) {\n    return o;\n  }\n}\n"
+            "export default class Store {\n  static other(o) {\n    return o;\n  }\n}\n"
         ),
         "lib/computed.js": (
             "function pick(o) {\n  return o;\n}\n\n"
@@ -235,6 +235,9 @@ async def test_non_object_default_export_or_computed_key_is_not_bound(tmp_path) 
     by_class = await _callers(root, "findKey", "lib/cls.js")
     computed = await _callers(root, "pick", "lib/computed.js")
 
+    # The default export is a class, not an object literal: `Store.findKey` is not the
+    # module's top-level `findKey` (#1759: the class defines no `findKey` here, so the
+    # bare query names the function alone).
     assert ("lib/use.js", "a") not in _names(by_class)
     assert ("lib/use.js", "b") not in _names(computed)
 

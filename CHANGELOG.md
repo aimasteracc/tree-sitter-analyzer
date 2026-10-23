@@ -176,6 +176,26 @@
   targets too: `Live.process_renderables` answers `unknown`
   (`NAME_ONLY_INBOUND`) and names `console.py:1715` and `:2017`, in both bare
   and qualified form. A proven receiver still binds to the one definition.
+- **Bare and qualified method queries give the same answer** (#1759).
+  `Class.method` looked up its declaring files under the qualified name, found
+  none, and skipped the declaring-file guard (RFC-0028 s1.2), so a method reached
+  only through computed dispatch answered `complete, 0`: for example
+  `self.handlers[e](data)` over `{e: getattr(self, "handle_" + e)}`. Both forms now
+  scope the guard by the bare method name. A bare name that names exactly one
+  method in `file_path` is answered as that `Class.method`. A bare name with
+  several same-named definitions keeps the union, which now covers each method
+  among them; a same-named method beside a module-level function used to be
+  ignored. Two sound exclusions keep the guard from blocking answers that
+  cannot be reached:
+  - `type(x)(...)` constructs an instance;
+  - a callable produced by an imported non-project function, or taken from a
+    non-empty module-level container literal that is never mutated or named in
+    another file, can reach a project method only through a by-name reference,
+    which the non-call-reference gate already checks.
+
+  On the round-11 sweeps (2 x 40 methods), bare `complete` goes from 10 to 36 on
+  fastapi, from 26 to 43 on pydantic, and stays at 40 on rich, with 0 wrong
+  `complete` in either mode.
 - **Java calls through a typed receiver bind; overrides stay possible** (#1743).
   In `void create(Gson gson) { gson.getDelegateAdapter(...) }` the receiver's
   declared type was ignored, so every such call was only a same-name match and
