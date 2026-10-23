@@ -15,7 +15,59 @@ from .ignore_rules import load_ignore_rules as _load_ignore_rules
 
 
 class CandidateDiscoveryBudgetExceeded(RuntimeError):
-    """Raised after the first filesystem entry beyond a discovery budget."""
+    """Raised after the first filesystem entry beyond a discovery budget.
+
+    ``budget`` names the tripped limit (``entries`` / ``path_bytes`` / ``time``),
+    ``limit`` its configured ceiling and ``entries`` how many directory entries
+    had been charged when enumeration stopped (#1783).  ``str(exc)`` stays the
+    caller-supplied stable error code.
+    """
+
+    def __init__(
+        self,
+        code: str | None = None,
+        *,
+        budget: str = "unknown",
+        limit: float | None = None,
+        entries: int = 0,
+    ) -> None:
+        super().__init__(*(() if code is None else (code,)))
+        self.budget = budget
+        self.limit = limit
+        self.entries = entries
+
+
+def _budget_exceeded(
+    budget_error: str,
+    *,
+    entry_count: int,
+    entry_budget: int,
+    path_bytes: int,
+    path_byte_budget: int,
+    started: float,
+    discovery_seconds: float | None,
+) -> CandidateDiscoveryBudgetExceeded | None:
+    """Return the first tripped discovery budget, or ``None`` while within all."""
+    if entry_count > entry_budget:
+        return CandidateDiscoveryBudgetExceeded(
+            budget_error, budget="entries", limit=entry_budget, entries=entry_count
+        )
+    if path_bytes > path_byte_budget:
+        return CandidateDiscoveryBudgetExceeded(
+            budget_error,
+            budget="path_bytes",
+            limit=path_byte_budget,
+            entries=entry_count,
+        )
+    deadline = discovery_deadline(started, entry_count, discovery_seconds)
+    if time.monotonic() > deadline:
+        return CandidateDiscoveryBudgetExceeded(
+            budget_error,
+            budget="time",
+            limit=round(deadline - started, 3),
+            entries=entry_count,
+        )
+    return None
 
 
 class CandidateDiscoveryError(RuntimeError):
@@ -113,13 +165,17 @@ def walk_candidate_entries(
                 )
             except (TypeError, UnicodeError):
                 path_bytes = path_byte_budget + 1
-            if (
-                entry_count > entry_budget
-                or path_bytes > path_byte_budget
-                or time.monotonic()
-                > discovery_deadline(started, entry_count, discovery_seconds)
-            ):
-                raise CandidateDiscoveryBudgetExceeded(budget_error)
+            exceeded = _budget_exceeded(
+                budget_error,
+                entry_count=entry_count,
+                entry_budget=entry_budget,
+                path_bytes=path_bytes,
+                path_byte_budget=path_byte_budget,
+                started=started,
+                discovery_seconds=discovery_seconds,
+            )
+            if exceeded is not None:
+                raise exceeded
             try:
                 entry_info = entry.stat(follow_symlinks=False)
             except OSError as exc:
@@ -272,13 +328,17 @@ def _walk_path_entries(
                 )
             except (TypeError, UnicodeError):
                 path_bytes = path_byte_budget + 1
-            if (
-                entry_count > entry_budget
-                or path_bytes > path_byte_budget
-                or time.monotonic()
-                > discovery_deadline(budget[0], entry_count, budget[1])
-            ):
-                raise CandidateDiscoveryBudgetExceeded(budget_error)
+            exceeded = _budget_exceeded(
+                budget_error,
+                entry_count=entry_count,
+                entry_budget=entry_budget,
+                path_bytes=path_bytes,
+                path_byte_budget=path_byte_budget,
+                started=budget[0],
+                discovery_seconds=budget[1],
+            )
+            if exceeded is not None:
+                raise exceeded
             try:
                 is_directory = entry.is_dir(follow_symlinks=False)
             except OSError as exc:

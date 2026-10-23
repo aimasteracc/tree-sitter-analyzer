@@ -4,6 +4,24 @@
 
 ### Fixed
 
+- **`--text-search` / `search action=text` completes on Windows** (#1783).
+  On small, clean repos (rich has 553 tracked files; axios fails the same way) it
+  returned `SOURCE_SCAN_BUDGET_EXCEEDED` after 13–28 s, while `git grep` answered
+  at once. v2.2.0 behaved the same. The budget that tripped was time: a fixed 5 s.
+  Three costs added up. First, the Windows reader reopened and re-verified the
+  whole ancestor directory chain for every file, about 7.7 `CreateFileW` calls
+  per file. Second, files were read one at a time, so the on-access malware
+  scan of each first open (25–65 ms per file, up to 10 s for one file, measured
+  with plain `open()` too) was paid serially. Third, the decoder's first import
+  counted against the scan budget. Now one reader per scan pins each directory
+  once and verifies all of them at the end. Files are read on a bounded 8-thread
+  read-ahead pool, still yielded in discovery order. The budget is 30 s and
+  starts after worker start-up. On cold clones, rich dropped from 30.4 s to 2.9 s
+  and axios from 27.9 s to 3.0 s. Results equal `git grep -n -F` on tracked
+  files outside hidden and build/dependency paths. Budget failures now name the
+  budget, its limit and unit, and include `scan_progress`. They still return no
+  partial results.
+
 - **`self.m()` binds to a method that has `@overload` stubs** (#1773). Dogfood
   round 12 on pydantic: `_Pipeline.constrain` in
   `pydantic/experimental/pipeline.py` has about ten `@overload` stubs and one
