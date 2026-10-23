@@ -194,3 +194,84 @@ async def test_calls_in_constant_bodies_are_graph_edges(cors_root: str) -> None:
     assert [
         (c["name"], c["line"]) for c in graph.callees_of("getCookie", "src/cors.ts")
     ] == [("helper2", 15)]
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("const [a] = () => 1\n", None),  # 解构声明没有单一的名字。
+        ("run(() => 1)\n", None),  # 回调实参。
+        ("const f = (() => 1)\n", "f"),  # 括号包裹。
+        ("const g = function named() {}\n", "named"),  # 命名函数表达式用自己的名字。
+    ],
+)
+def test_function_value_name_shapes(source: str, expected: str | None) -> None:
+    import tree_sitter
+    import tree_sitter_typescript
+
+    from tree_sitter_analyzer.jsts_function_names import function_value_name
+
+    grammar = tree_sitter.Language(tree_sitter_typescript.language_typescript())
+    root = tree_sitter.Parser(grammar).parse(source.encode()).root_node
+
+    def first(node):
+        if node.type in ("arrow_function", "function_expression"):
+            return node
+        return next(filter(None, (first(child) for child in node.children)), None)
+
+    assert function_value_name(first(root)) == expected
+    assert function_value_name(root) is None
+
+
+def _resolver(refs, imports=None):
+    from collections import defaultdict
+
+    from tree_sitter_analyzer.cached_edge_resolution import CachedEdgeResolver
+
+    by_name, by_file = defaultdict(list), defaultdict(list)
+    for ref in refs:
+        by_name[ref.name].append(ref)
+        by_file[ref.file_path].append(ref)
+    return CachedEdgeResolver(
+        functions_by_name=dict(by_name),
+        functions_by_file=dict(by_file),
+        file_import_map=imports or {},
+    )
+
+
+def _edge(resolution: str = "unknown", resolved: str = "") -> dict:
+    return {
+        "callee_name": "g",
+        "callee_full": "g",
+        "callee_resolution": resolution,
+        "callee_resolved_file": resolved,
+    }
+
+
+def test_nested_only_definition_is_possible_from_another_file() -> None:
+    # `a.ts` 只有嵌套在 `f` 里的 `g`：别的文件按名字到达不了它。
+    from tree_sitter_analyzer.call_graph import FunctionRef
+
+    outer = FunctionRef("a.ts", "f", 1, "typescript", end_line=6)
+    inner = FunctionRef("a.ts", "g", 3, "typescript", end_line=5)
+    resolver = _resolver([outer, inner], {"b.ts": {"g": "a.ts"}})
+
+    for edge in (_edge("project", "a.ts"), _edge()):
+        targets = resolver.resolve(edge, "b.ts")
+        assert (targets.certain, targets.possible) == ([], [inner])
+    # 同一文件内的调用仍可到达嵌套定义。
+    assert resolver.resolve(_edge("local", "a.ts"), "a.ts").certain == [inner]
+
+
+def test_ambiguous_module_level_definitions_keep_nested_ones_possible() -> None:
+    from tree_sitter_analyzer.call_graph import FunctionRef
+
+    first = FunctionRef("a.ts", "g", 1, "typescript", end_line=6)
+    nested = FunctionRef("a.ts", "g", 3, "typescript", end_line=5)
+    other = FunctionRef("a.ts", "g", 8, "typescript", end_line=9)
+    resolver = _resolver([first, nested, other], {"b.ts": {"g": "a.ts"}})
+
+    targets = resolver.resolve(_edge(), "b.ts")
+
+    assert targets.certain == []
+    assert sorted(ref.start_line for ref in targets.possible) == [1, 3, 8]

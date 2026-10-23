@@ -27,14 +27,15 @@ def declarator_name(node: Any) -> str | None:
     parent = getattr(node, "parent", None)
     while parent is not None and parent.type == "parenthesized_expression":
         current, parent = parent, parent.parent
-    if parent is None or parent.type != "variable_declarator":
+    if (
+        parent is None
+        or parent.type != "variable_declarator"
+        or parent.child_by_field_name("value") != current
+    ):
         return None
-    if parent.child_by_field_name("value") != current:
-        return None
+    # 解构声明（`const [a] = () => 1`）没有单一的名字。
     name = parent.child_by_field_name("name")
-    if name is None or name.type != "identifier":
-        return None
-    return _text(name)
+    return _text(name) if name is not None and name.type == "identifier" else None
 
 
 def function_value_name(node: Any) -> str | None:
