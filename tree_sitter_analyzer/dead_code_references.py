@@ -100,9 +100,8 @@ def module_path_unresolvable(file_path: str) -> bool:
     normalized = normalize_rel_path(file_path)
     if not normalized.endswith(_PY_SUFFIXES):
         return False
+    # 以 ``.py`` 结尾保证至少有一段非空的文件名。
     parts = [part for part in normalized.split("/") if part not in ("", ".")]
-    if not parts:
-        return False
     stem = parts[-1].rsplit(".", 1)[0]
     return any(not part.isidentifier() for part in (*parts[:-1], stem))
 

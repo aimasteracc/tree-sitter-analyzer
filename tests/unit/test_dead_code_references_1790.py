@@ -407,3 +407,67 @@ def test_dogfood_priority_ignores_low_confidence_findings() -> None:
     items = priority._dead_code_items(mixed)  # type: ignore[attr-defined]
     assert items[0]["title"] == "7 potentially dead function(s) detected"
     assert items[0]["details"] == "orphan"
+
+
+def test_js_constructor_is_implicit_and_other_languages_are_not() -> None:
+    from tree_sitter_analyzer.dead_code_analyzer import _is_implicit_entry
+
+    assert _is_implicit_entry(FunctionRef("a.ts", "constructor", 1, "typescript"))
+    assert not _is_implicit_entry(FunctionRef("a.ts", "helper", 1, "typescript"))
+    assert not _is_implicit_entry(FunctionRef("a.go", "__init__", 1, "go"))
+
+
+def test_graph_without_callees_map_or_missing_root_still_reports() -> None:
+    from unittest.mock import MagicMock
+
+    orphan = FunctionRef("m.py", "orphan", 1, "python")
+    graph = MagicMock()
+    graph.project_root = "Z:/definitely/not/a/dir/1790"
+    graph.callees_map.side_effect = RuntimeError("no map")
+    graph.function_refs.return_value = [orphan]
+    graph.reachable_callee_refs_of.return_value = []
+    graph.callee_refs_of.return_value = []
+    graph.caller_refs_of.return_value = []
+
+    dead = find_transitive_dead_code(graph)
+
+    assert [item.function.name for item in dead] == ["orphan"]
+
+
+def test_reference_index_edges_decorators_and_unparsable_sources(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path,
+        "pkg/mod.py",
+        """
+        HANDLERS = {}
+
+        @HANDLERS[0]
+        def subscript_decorated():
+            return 1
+
+        def holder():
+            return [stored]
+
+        def stored():
+            return 2
+        """,
+    )
+    _write(tmp_path, "pkg/broken.py", "def broken(:\n    return stored\n")
+    _write(tmp_path, "pkg/.hidden.py", "VALUE = stored\n")
+    funcs = CallGraph(str(tmp_path)).function_refs()
+    candidates = [f for f in funcs if f.name in ("subscript_decorated", "stored")]
+
+    index = build_reference_index(tmp_path, funcs, candidates)
+
+    by_name = {f.name: f for f in funcs}
+    assert index.registered == frozenset({by_name["subscript_decorated"]})
+    assert by_name["stored"] in index.edges[by_name["holder"]]
+    assert by_name["stored"] in index.referenced()
+    assert build_reference_index(tmp_path, funcs, []).referenced() == frozenset()
+
+
+def test_module_path_unresolvable_empty_path() -> None:
+    assert module_path_unresolvable("./.py") is True
+    assert module_path_unresolvable("") is False
