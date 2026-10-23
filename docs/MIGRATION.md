@@ -1,4 +1,22 @@
-# Migration Guide: v1.x → v2.0.0
+# Migration Guide
+
+## v2.x → v3.0.0
+
+v3.0.0 changes several default outputs and one CLI behaviour, and moves the index format forward. The full list, with the issue for each change, is in the [CHANGELOG](../CHANGELOG.md) under **3.0.0 → Breaking / behaviour changes and migration**.
+
+| Surface | v2.x | v3.0.0 | To keep the old behaviour |
+|---|---|---|---|
+| `edit action=impact` / `--change-impact-full` | full lists (70–224 KB for a multi-file diff) | top entries with honest totals, within 24 KB | `include_details=true` / `--change-impact-include-details` |
+| `index action=cache` / `--ast-cache` `files` detail | every file, cached ones included | changed / errored files only, at most 50 | `include_details=true` / `--ast-cache-include-details` |
+| CLI `--watch` | starts a watcher and returns | holds until Ctrl-C, then stops the watcher | run it in the background, or use `--incremental-sync` for a one-shot refresh |
+| `nav action=callers` with a bare name + `file_path` | could answer `complete` where `Class.method` did not | same gates as `Class.method` | none; read `name_only_sites` / `unresolved_inbound_sites` |
+| Definition in an excluded file | `SYMBOL_NOT_DEFINED` | `SYMBOL_IN_EXCLUDED_FILE` | none |
+| Index admission errors | text in `error` | typed `error_code` / `cause_code` / `retryable` / `next_action`; `INDEX_CANDIDATE_UNBOUND` is new | branch on `error_code` |
+| `viz action=graph` node ids | `<file>::<name>` | `<file>::<Owner>.<name>@<line>` | re-derive stored ids |
+
+The index (manifest v3, schema 18, extractor version 53) is upgraded automatically by the next refresh. v2.x readers treat a v3 manifest as not certified and fail closed, so downgrading costs a re-index, not a wrong certified answer.
+
+## v1.x → v2.0.0
 
 This guide describes the breaking search-surface and encoding changes released in v2.0.0. The 8 MCP facades plus `set_project_path` remain the stable top-level surface.
 

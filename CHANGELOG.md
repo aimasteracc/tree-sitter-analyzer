@@ -2,6 +2,108 @@
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-10-23
+
+v3.0.0 is a major release. Several default outputs and one CLI behaviour
+changed since v2.2.0, and the index format moved forward. Existing indexes are
+rebuilt automatically on the next refresh. Read **Breaking / behaviour changes
+and migration** below before upgrading an agent or script that parses TSA output.
+
+Highlights:
+
+- **Honest call answers.**
+  - `nav action=callers` no longer answers `complete` when a real caller exists.
+    Dogfood rounds 10 and 11 (Python, Java, JavaScript) and the first
+    TypeScript round (zod, hono) gate at 0 wrong `complete` in both bare and
+    qualified form; the one the TypeScript round found is fixed (#1762).
+  - Bare and qualified method queries now pass the same gates (#1740, #1759).
+  - Unresolved receivers keep every same-named method possible (#1758).
+- **TypeScript and JavaScript resolution.**
+  - Calls bind through ES-module imports and re-exports (#1764).
+  - Calls also bind through imported default-export objects (#1741).
+  - Arrow-function constants are functions (#1763).
+  - `this.m()` dispatches through the class's `extends` chain (#1765).
+  - String-literal members match their element-access calls (#1762).
+- **Java.** Typed receivers bind, and overrides stay possible (#1743).
+- **Refresh cost.** A one-file refresh is much faster on a large project:
+  - only the call edges whose inputs changed are re-resolved (#1696);
+  - certification is incremental (RFC-0039, #1718);
+  - the resolver context is reused (#1749);
+  - capture, validation and publication do less work (#1737).
+- **Index safety.**
+  - Typed admission errors are shared by MCP, the CLI and the watcher
+    (RFC-0032 slice 4, #1554).
+  - Custom `db_path` caches are fenced against obsolete and concurrent writers
+    (RFC-0032 slice 5).
+
+### Breaking / behaviour changes and migration
+
+- **`edit action=impact` / CLI `--change-impact --change-impact-full` summarize
+  by default** (#1617).
+  - **What changed:** the full response used to return every list in full, 70–224 KB
+    for a multi-file diff. It now keeps the top entries of its bulk lists,
+    with honest totals (`*_total`, `details_truncated`, `details_next_step`),
+    within a 24 KB budget.
+  - **Migration:** pass `include_details=true` (CLI
+    `--change-impact-include-details`, which implies `--change-impact-full`)
+    to get the full lists and every command field, as before.
+- **`ast_cache` / `index action=cache` lists only changed or errored files**
+  (#1582).
+  - **What changed:** the `files` detail omits `status=cached` entries and lists
+    at most 50 files, errors first, with `files_total` / `files_listed` /
+    `files_cap` / `files_truncated` / `unchanged_omitted`.
+  - **Migration:** pass `include_details=true` (CLI
+    `--ast-cache-include-details`) for the old full list.
+- **CLI `--watch` holds until Ctrl-C** (#1685).
+  - **What changed:** before, `--watch` started a watcher and returned at once, so the
+    process exited mid-sync. It now prints its answer, keeps watching until
+    interrupted, then stops the watcher. It exits 1 if the stop does not finish.
+  - **Migration:** scripts that ran `--watch` and expected it to return must
+    run it in the background or send an interrupt. Use `--incremental-sync`
+    for a one-shot refresh.
+- **Bare-name queries are as strict as qualified ones** (#1740, #1759).
+  - **What changed:** `nav action=callers` with a bare method name plus `file_path`
+    now runs the same name-only and declaring-file checks as `Class.method`.
+    A bare name that names exactly one method in the file is answered as that
+    method. Answers that used to say `complete` may now say `unknown` or
+    `incomplete` with `NAME_ONLY_INBOUND` or `UNRESOLVED_IN_DECLARING_FILE`, and
+    list the evidence sites (`name_only_sites`, `unresolved_inbound_sites`).
+  - **Migration:** treat these as "read the named sites", not as errors.
+- **New and changed reason / error codes.**
+  - `SYMBOL_IN_EXCLUDED_FILE` replaces `SYMBOL_NOT_DEFINED` when the definition
+    sits in a file the index excludes (#1635, #1648). The reply names the file,
+    line and exclude pattern.
+  - Typed admission errors across MCP, the CLI and the watcher (RFC-0032 slice
+    4, #1554): `INDEX_WRITER_BUSY`, `INDEX_CANDIDATE_SUPERSEDED`,
+    `INDEX_RECOVERY_REQUIRED`. Each reply carries `error_code`, `cause_code`,
+    `retryable`, `retry_after_ms`, `next_action` and `next_step`.
+    `INDEX_GENERATION_SOURCE_CHANGED` moves from `error_code` to `cause_code`.
+    The codes are documented in `docs/agent-envelope-contract.md`.
+  - `INDEX_CANDIDATE_UNBOUND` (not retryable, `next_action:
+    obtain_bound_candidate`) reports a `candidate_snapshot` that was not
+    captured by `build_index_candidate_snapshot`. It used to be reported as
+    `INDEX_CANDIDATE_SUPERSEDED`.
+  - **Migration:** branch on `error_code` / `retryable` instead of matching
+    error text.
+- **Visualization node ids changed.**
+  - **What changed:** `codegraph_visualize` / `viz action=graph` ids are now
+    `<file>::<Owner>.<name>@<line>` (sanitized), so same-named functions no
+    longer collapse into one node. Labels are
+    `<basename>::<Owner>.<name>:<line>`.
+  - **Migration:** clients that stored or matched the old ids must re-derive them.
+- **Index format: manifest v3, schema 18, extractor version 53.**
+  - **What changed:**
+    - the certified manifest is `manifest_version` 3, with a per-file Merkle root
+      (RFC-0039, #1718);
+    - custom `db_path` databases move to schema 18 with `ast_writer_state`
+      (RFC-0032 slice 5, #1554);
+    - the extractor version goes from 39 (v2.2.0) to 53.
+  - **Migration:** nothing to do. The next refresh re-extracts files written by
+    an older extractor and upgrades the database in place. Older TSA versions
+    (v2.x) read a v3 manifest as not certified and fail closed. They answer
+    without certification, never with a wrong certified result. Downgrading
+    therefore costs a full re-index, not a corrupt answer.
+
 ### Added
 
 - `nav action=callers` attributes calls through a receiver whose type is given
