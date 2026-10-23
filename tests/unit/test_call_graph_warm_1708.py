@@ -563,7 +563,11 @@ def test_publish_during_an_in_flight_build_queues_one_rebuild(
         # 在途构建期间又一次发布：不并行启动第二个线程，结束后再为活动版本构图。
         with call_graph_warm.watcher_refresh():
             again = call_graph_warm.after_publish(project)
-        assert (again["scheduled"], again["queued"]) == (True, True)
+        assert (again["scheduled"], again["queued"], again["incremental"]) == (
+            True,
+            True,
+            False,
+        )
     finally:
         gate.set()
     assert call_graph_warm.wait(timeout=60) is True

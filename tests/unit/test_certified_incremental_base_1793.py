@@ -116,3 +116,70 @@ def test_certified_graph_keeps_no_alignment_and_is_never_a_base(
     rebuilt = call_graph_memo.latest(str(root.resolve()))
     assert rebuilt is not None
     assert _state(rebuilt) == _state(_fresh_state(str(root)))
+
+
+def test_base_refusal_names_each_reason(monkeypatch) -> None:
+    from tree_sitter_analyzer import call_graph_memo, call_graph_warm
+    from tree_sitter_analyzer.call_graph_incremental import RefreshPlan
+
+    latest: dict = {"state": None}
+    monkeypatch.setattr(call_graph_memo, "latest", lambda _root: latest["state"])
+
+    def plan(base: str | None, files: frozenset = frozenset({"a.py"})) -> RefreshPlan:
+        return RefreshPlan(base, files, files, frozenset(), "WHY", "g2")
+
+    refusal = call_graph_warm._base_refusal
+    assert refusal(".", plan(None, frozenset())) == "BACKFILL_NOT_SCOPED:WHY"
+    # 范围有界但基础版本未知（首次发布）：不归咎于范围。
+    assert refusal(".", plan(None)) == "BASE_GENERATION_UNKNOWN"
+    assert refusal(".", plan("g1")) == "NO_PREVIOUS_GRAPH"
+    latest["state"] = {"_incremental": None}
+    assert refusal(".", plan("g1")) == "PREVIOUS_GRAPH_NOT_ALIGNED"
+    latest["state"] = {"_incremental": {"refused": _REFUSED}}
+    assert refusal(".", plan("g1")) == _REFUSED
+    latest["state"] = {"_incremental": {"generation": "g0"}}
+    assert refusal(".", plan("g1")) == "PREVIOUS_GRAPH_OTHER_GENERATION"
+    latest["state"] = {"_incremental": {"generation": "g1"}}
+    assert refusal(".", plan("g1")) is None
+
+
+def test_queued_reply_keeps_the_refusal(tmp_path, monkeypatch) -> None:
+    import threading
+
+    from tree_sitter_analyzer import (
+        call_graph_incremental,
+        call_graph_memo,
+        call_graph_warm,
+    )
+    from tree_sitter_analyzer.call_graph_incremental import RefreshPlan
+
+    root = str(tmp_path)
+    monkeypatch.setattr(
+        call_graph_memo,
+        "latest",
+        lambda _root: {"_incremental": {"refused": _REFUSED}},
+    )
+    monkeypatch.setenv(call_graph_warm.ENV_VAR, "always")
+    files = frozenset({"a.py"})
+    key = call_graph_warm._key(root)
+    with call_graph_incremental._lock:
+        call_graph_incremental._plans[call_graph_incremental._key(root)] = RefreshPlan(
+            "g1", files, files, frozenset(), "OK", "g2"
+        )
+    release = threading.Event()
+    running = threading.Thread(target=release.wait, daemon=True)
+    running.start()
+    monkeypatch.setitem(call_graph_warm._threads, key, running)
+    try:
+        reply = call_graph_warm.after_publish(root)
+    finally:
+        release.set()
+        running.join(5)
+        call_graph_warm._again.pop(key, None)
+
+    assert reply is not None
+    assert (reply["queued"], reply["incremental"], reply["incremental_reason"]) == (
+        True,
+        False,
+        _REFUSED,
+    )

@@ -148,6 +148,9 @@ def after_publish(project_root: str) -> dict[str, Any] | None:
     key = _key(project_root)
     previous = last_outcome(project_root)
     job = _Job(plan if incremental else None, full)
+    status: dict[str, Any] = {"incremental": incremental}
+    if refusal is not None:
+        status["incremental_reason"] = refusal
     with _lock:
         if _closed:
             return None
@@ -155,7 +158,7 @@ def after_publish(project_root: str) -> dict[str, Any] | None:
         if running is not None and running.is_alive():
             # 在途构建结束后为当时的活动版本再构图一次；增量基础那时已是新图。
             _again[key] = job
-            return {"scheduled": True, "queued": True, "previous": previous}
+            return {"scheduled": True, "queued": True, **status, "previous": previous}
         # 调度时即登记将要读取的库，使紧随其后的 ``nav`` 调用等这次构建。
         _building[key] = _active_database(project_root)
         _settled[key] = threading.Event()
@@ -167,14 +170,7 @@ def after_publish(project_root: str) -> dict[str, Any] | None:
         )
         _threads[key] = thread
         thread.start()
-    reply: dict[str, Any] = {
-        "scheduled": True,
-        "incremental": incremental,
-        "previous": previous,
-    }
-    if refusal is not None:
-        reply["incremental_reason"] = refusal
-    return reply
+    return {"scheduled": True, **status, "previous": previous}
 
 
 def _base_refusal(project_root: str, plan: Any) -> str | None:
@@ -187,8 +183,11 @@ def _base_refusal(project_root: str, plan: Any) -> str | None:
 
     from . import call_graph_memo
 
-    if plan.base_generation is None:
+    if not plan.files and not plan.names and not plan.changed:
         return "BACKFILL_NOT_SCOPED:" + str(plan.reason)
+    if plan.base_generation is None:
+        # 范围有界，但刷新所基于的已发布版本未知（例如首次发布）。
+        return "BASE_GENERATION_UNKNOWN"
     previous = call_graph_memo.latest(str(Path(project_root).resolve()))
     if previous is None:
         return "NO_PREVIOUS_GRAPH"

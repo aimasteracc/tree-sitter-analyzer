@@ -149,9 +149,9 @@ def base_refusal(cache: Any) -> str | None:
       记的是 generation id（``RefreshPlan.base_generation``），两者从不相等；把指纹
       映射回 generation 需要证明私有副本与该版本的边 rowid 与行逐字节相同，否则
       增量结果可能偏离冷构图。
-    * 收益小：#1778（PR #1791）的原型在 fastapi 上持平（0.6 s 对 0.7 s，改
-      ``routing.py`` 重算 59% 的边），axios / rich 上范围回填为 ``SCOPE_TOO_LARGE``，
-      从未适用。
+    * 收益小：#1778 的调查（PR #1791，测量条件与数据见 #1793）中，由上一快照的图
+      推导新快照图的原型在 fastapi 上与全量构图持平，axios / rich 上范围回填为
+      ``SCOPE_TOO_LARGE``，从未适用。
     * 认证查询不因此变慢：发布后的预构图在已发布版本上增量更新，结果按输入摘要
       登记（``finalize``），同一输入的认证查询按摘要直接取用。
 
