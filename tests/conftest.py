@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 import pytest  # noqa: E402
 from hypothesis import settings as hypothesis_settings  # noqa: E402
 
-from tests import pytest_hang_watchdog  # noqa: E402
+from tests import pytest_crash_guard, pytest_hang_watchdog  # noqa: E402
 from tests.pytest_temp_hygiene import (  # noqa: E402
     cleanup_pytest_temp_root,
     configure_pytest_temp_root,
@@ -81,6 +81,9 @@ def pytest_configure(config):
     # #1638: a test stuck past the hard deadline dumps every thread stack and
     # fails fast instead of holding the CI step until its timeout.
     pytest_hang_watchdog.install(config)
+    # #1779: a per-test timeout stays a normal failed report naming the test,
+    # never a worker INTERNALERROR (exit 3) or a context-free worker crash.
+    pytest_crash_guard.install(config)
 
     # Suppress SQLite connection finalizer warnings that fire when gc.collect()
     # in one xdist worker collects objects from other workers. These are benign
