@@ -177,6 +177,23 @@
   repository).
 ### Fixed
 
+- **`self.m()` binds to a method that has `@overload` stubs** (#1773). Dogfood
+  round 12 on pydantic: `_Pipeline.constrain` in
+  `pydantic/experimental/pipeline.py` has about ten `@overload` stubs and one
+  implementation, and its 15 callers are sibling methods calling
+  `self.constrain(...)`. With several same-named definitions in the enclosing
+  class, the call could not be told apart and was only a name match, so the
+  qualified `_Pipeline.constrain` listed 0 callers while the bare `constrain`
+  listed them all. Stubs exist only for the type checker: at run time the
+  class body's last, undecorated definition is the method. Python functions
+  decorated with `@overload` or `@<x>.overload` are now marked in
+  `symbols_json`, and the call graph drops a group's stubs when the same file,
+  class and name have exactly one implementation, which then stands for the
+  method. `self.constrain(...)` binds to it as certain, and the bare name
+  resolves to the single method, so both forms give the same answer (#1759).
+  Stubs with no implementation (`.pyi`, Protocol stubs) and two undecorated
+  definitions (conditional definitions) are unchanged. The extractor version
+  goes from 53 to 54.
 - **An unresolved `x.m()` keeps a same-named method in a test file possible**
   (#1772). For a non-test caller, the global tier drops test-file definitions
   whenever a non-test one exists, so that a production call never binds to a
