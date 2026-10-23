@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+### Tests
+
+- **Wrong-`complete` detection for `nav action=callers` now runs in CI.** Until
+  now, "0 wrong `complete`" was measured by hand in dogfood rounds, and the
+  evidence lived outside the repo.
+  - `tests/known_answer/` is a known-answer corpus: 15 minimal projects built
+    from the real bugs #1740, #1743, #1758, #1759, #1762, #1764/#1769, #1766,
+    #1768, #1772 (4 variants) and #1773. The ground truth is marked in the
+    fixture source. Each case is checked in both bare and qualified modes:
+    - a `complete` answer lists every true caller and every site the oracle finds;
+    - callers that are listed now stay listed;
+    - no caller outside the truth is listed;
+    - an unlisted true caller appears in an evidence field;
+    - the bare answer is never more confident than the qualified one.
+  - `scripts/wrong_complete/` is an independent oracle that never imports TSA.
+    It resolves receivers with Python `ast` and uses a token scan for Java and
+    TS/JS. The same package holds the scorer and the real-repo sweep, and each
+    part has unit tests.
+  - `tests/property/test_callers_oracle_properties.py` runs Hypothesis over
+    generated multi-file Python projects and checks four invariants:
+    - `complete` implies the oracle's sites are a subset of the listed callers;
+    - the bare answer is never more confident than the qualified one;
+    - an unrelated same-named definition never upgrades confidence;
+    - a rename that keeps call semantics keeps the callers.
+
+    PR CI uses a fixed seed and 6 examples.
+  - `.github/workflows/wrong-complete-oracle.yml` runs nightly:
+    - it runs more Hypothesis examples;
+    - it sweeps rich and gson at the commits pinned by the dogfood rounds, and
+      fails on any wrong `complete` that a reviewed exclusion does not cover;
+    - it uploads the scores as an artifact.
+
 ### Performance
 
 - **First `nav action=callers` after an edit + refresh is faster on Windows**
