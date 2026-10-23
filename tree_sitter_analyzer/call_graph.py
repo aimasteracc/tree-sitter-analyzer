@@ -1085,6 +1085,7 @@ class CachedCallGraph(CallGraph):
             functions_by_name=self._func_by_name,
             functions_by_file=self._func_by_file,
             file_import_map=file_import_map,
+            external_imports=_package_imported_names(imports_raw),
             reexport_binder=reexport_binder,
             subclasses=subclasses,
             # #1657：函数与 import 索引此时已完整且不再变化，相同输入只解析一次。
@@ -1208,6 +1209,31 @@ def _resolve_edge(
         targets.binding,
         edge.get("callee_line", 0),
     )
+
+
+def _package_imported_names(imports_raw: dict[str, Any]) -> dict[str, frozenset[str]]:
+    """#1764：JS/TS 文件从包（非相对说明符）导入的本地名——它们不是项目定义的调用。"""
+    from .synapse_resolver._typescript_imports import parse_typescript_imports
+
+    out: dict[str, frozenset[str]] = {}
+    for file_path, import_texts in imports_raw.items():
+        if not file_path.endswith(_JSTS_SOURCE_SUFFIXES):
+            continue
+        names = {
+            entry.local_name
+            for imp in import_texts
+            for entry in parse_typescript_imports(
+                imp["text"] if isinstance(imp, dict) else str(imp), "typescript", file_path
+            )
+            if entry.local_name and not entry.is_relative
+        }
+        if names:
+            out[file_path] = frozenset(names)
+    return out
+
+
+#: JS/TS 源文件后缀。
+_JSTS_SOURCE_SUFFIXES = (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs")
 
 
 class _LazyHierarchy:

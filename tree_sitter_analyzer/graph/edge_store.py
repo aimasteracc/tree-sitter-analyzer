@@ -492,7 +492,7 @@ class EdgeStore:
         edges.
         """
         sites: list[dict[str, Any]] = []
-        for row in _direct_callers(self._conn, callee_name, callee_file):
+        for row in _unresolved_candidates(self._conn, callee_name, callee_file):
             if _resolution_is_resolved(row) or _bound_to(row, bound_targets):
                 continue
             edge = _edge_from_row(row)
@@ -893,6 +893,33 @@ def _direct_callers(
             continue
         rows.append(row)
     return rows or fallback_rows
+
+
+def _unresolved_candidates(
+    conn: sqlite3.Connection, callee_name: str, callee_file: str | None
+) -> list[sqlite3.Row]:
+    """#1764：可能指向 ``callee_file`` 中 ``callee_name`` 的边（调用方再按解析状态过滤）。
+
+    ``_direct_callers`` 按目标节点所在文件收窄：未解析的边目标节点停在调用方文件里，
+    于是 ``jwt.ts`` 里未解析的 ``verifying(...)`` 对 ``jws.ts`` 的 ``verifying`` 不可见——
+    它既不列出、也不计入未解析入边，答案可能错误地成为 complete（与 #1758 同类）。
+    未解析的同名边无论目标节点落在哪个文件都计入；已解析到别的文件的边仍排除。
+    """
+    if not callee_file:
+        return _direct_callers(conn, callee_name, None)
+    scoped = _direct_callers(conn, callee_name, callee_file)
+    seen = {id(row) for row in scoped}
+    kept = list(scoped)
+    for row in _direct_callers(conn, callee_name, None):
+        if id(row) in seen:
+            continue
+        edge = _edge_from_row(row)
+        resolved_file = str(
+            _row_col(row, "callee_resolved_file", "callee_resolved_file", edge) or ""
+        )
+        if not resolved_file:
+            kept.append(row)
+    return kept
 
 
 def _direct_callees(

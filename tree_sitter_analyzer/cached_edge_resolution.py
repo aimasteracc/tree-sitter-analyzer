@@ -84,6 +84,7 @@ class CachedEdgeResolver:
         functions_by_name: dict[str, list[FunctionRef]],
         functions_by_file: dict[str, list[FunctionRef]],
         file_import_map: dict[str, dict[str, str]],
+        external_imports: dict[str, frozenset[str]] | None = None,
         reexport_binder: PackageReexportBinder | None = None,
         subclasses: SubclassIndex | None = None,
         memoize: bool = False,
@@ -92,6 +93,8 @@ class CachedEdgeResolver:
         self._functions_by_file = functions_by_file
         self._functions_by_name = functions_by_name
         self._file_import_map = file_import_map
+        #: #1764：JS/TS 文件从包导入的本地名；对它们的裸调用不按项目同名定义确定。
+        self._external_imports = external_imports or {}
         self._reexport_binder = reexport_binder
         self._subclasses = subclasses
         # #1677：类层级（有序基类与方法表），惰性读取，只在继承调用时需要。
@@ -460,6 +463,9 @@ class CachedEdgeResolver:
                 )
             )
         globals_ = self._global_candidates(full_name, qualifier, caller_file)
+        if not qualifier and full_name in self._external_imports.get(caller_file, ()):
+            # #1764：`import { f } from 'pkg'` 后的 `f()`：同名项目定义只是可能目标。
+            return EdgeTargets(possible=globals_)
         narrowed = _narrow_by_receiver(globals_, qualifier)
         if len(narrowed) == 1 and _qualifier_admits_global(qualifier, narrowed[0]):
             return EdgeTargets(certain=narrowed)

@@ -291,6 +291,19 @@ def _extract_call_edges(
         shape = export_shape(source_code)
         if shape is not None:
             symbols["js_exports"] = shape
+    if language in ("typescript", "tsx") and source_code:
+        # #1764：相对导入绑定与导出形状决定 TS 跨文件调用的解析（范围回填的解析面）。
+        from ..synapse_resolver._typescript_bindings import (
+            export_shape as ts_export_shape,
+        )
+        from ..synapse_resolver._typescript_bindings import import_bindings
+
+        bindings = import_bindings(source_code)
+        if bindings is not None:
+            symbols["ts_imports"] = bindings
+        exports = ts_export_shape(source_code)
+        if exports is not None:
+            symbols["ts_exports"] = exports
     if tree is not None and language == "java":
         # #1743：匿名子类（`new T() {...}`）的基类型与类体范围，供 this.m() 分派使用。
         from ..java_receiver_hints import anonymous_subclasses

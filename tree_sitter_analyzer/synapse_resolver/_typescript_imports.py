@@ -112,7 +112,22 @@ def resolve_typescript_specifier(
         candidate = f"{base}{suffix}"
         if candidate in known:
             return candidate
+    # #1764：TypeScript 的 ESM 写法用编译后的扩展名指向源文件（`./errors.js` -> `errors.ts`）。
+    stem, ext = posixpath.splitext(base)
+    for source_ext in _TS_SOURCE_FOR_EMITTED.get(ext, ()):
+        candidate = f"{stem}{source_ext}"
+        if candidate in known:
+            return candidate
     return ""
+
+
+#: 编译产物扩展名 -> 可能的 TypeScript 源扩展名（按 tsc 的解析顺序）。
+_TS_SOURCE_FOR_EMITTED: dict[str, tuple[str, ...]] = {
+    ".js": (".ts", ".tsx", ".d.ts"),
+    ".jsx": (".tsx",),
+    ".mjs": (".mts", ".d.mts"),
+    ".cjs": (".cts", ".d.cts"),
+}
 
 
 def parse_typescript_imports(

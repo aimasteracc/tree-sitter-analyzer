@@ -357,6 +357,9 @@ def _surface(row: Any) -> _Surface:
             "truncated_depth",
             "import_projection_complete",
             "js_exports",
+            # #1764：TS 相对导入绑定与导出形状（经导入 / 再导出的跨文件解析）。
+            "ts_imports",
+            "ts_exports",
             # #1743：Java 匿名子类的基类型与范围（this.m() 分派的覆写候选）。
             "java_anonymous",
         )
@@ -523,6 +526,7 @@ def _dependent_files(
         typed_by_file.setdefault(path, set()).add(class_name)
     found |= _importer_closure(cache, conn, names_by_file, typed_by_file, wide)
     found |= _js_importer_closure(cache, wide)
+    found |= _ts_importer_closure(cache, conn, set(deltas) | wide)
     found |= _java_typed_dependents(conn, class_names)
     return found
 
@@ -606,6 +610,50 @@ def _js_importer_closure(cache: Any, wide: set[str]) -> set[str]:
             importer
             for target in frontier
             for importer in importers_of.get(target, ())
+            if importer not in found and importer not in targets
+        }
+        found |= following
+        frontier = following
+        if not frontier:
+            break
+    return found
+
+
+def _ts_importer_closure(
+    cache: Any, conn: sqlite3.Connection, changed: set[str]
+) -> set[str]:
+    """#1764：解析面变化的 TS 文件经相对导入 / 再导出链到达的文件（最多 ``_IMPORT_HOPS`` 跳）。
+
+    TS 的具名、命名空间导入与 ``export … from`` 不在 ``name_to_source`` 里；按
+    ``symbols_json`` 的 ``ts_imports`` / ``ts_exports`` 追踪，任何变化都让导入方重新解析。
+    """
+    from ..synapse_resolver._typescript_bindings import importers_of
+
+    targets = {
+        path for path in changed if path.endswith((".ts", ".tsx", ".mts", ".cts"))
+    }
+    if not targets:
+        return set()
+    imports: dict[str, Any] = {}
+    exports: dict[str, Any] = {}
+    indexed: set[str] = set()
+    for path, symbols_json in conn.execute(
+        "SELECT file_path, symbols_json FROM ast_index"
+    ):
+        indexed.add(str(path))
+        payload = json.loads(symbols_json or "{}")
+        if isinstance(payload.get("ts_imports"), dict):
+            imports[str(path)] = payload["ts_imports"]
+        if isinstance(payload.get("ts_exports"), dict):
+            exports[str(path)] = payload["ts_exports"]
+    graph = importers_of(imports, exports, frozenset(indexed))
+    found: set[str] = set()
+    frontier = set(targets)
+    for _hop in range(_IMPORT_HOPS):
+        following = {
+            importer
+            for target in frontier
+            for importer in graph.get(target, ())
             if importer not in found and importer not in targets
         }
         found |= following

@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .._registry import register_language
+from .._typescript_bindings import TypeScriptBindings
 from ._typescript_constants import TYPESCRIPT_GLOBAL_OBJECTS
 
 #: ``file_languages`` tag for every ``.ts``/``.tsx``/``.mts``/``.cts`` file.
@@ -64,6 +65,8 @@ class TypeScriptResolverContext:
     # or ``import { Map } from './map'`` must suppress the ``builtin`` claim
     # (Codex P2 #2/#3). File-scoped: a shadow in one file does not affect another.
     shadow_locals: dict[str, set[str]] = field(default_factory=dict)
+    #: #1764：相对导入 / 再导出绑定；None 表示不启用（测试注入的旧式上下文）。
+    bindings: TypeScriptBindings | None = None
 
 
 #: Binding names introduced by a TS ``import`` statement. The TS plugin stores
@@ -109,16 +112,29 @@ def _build_shadow_locals(conn: Any) -> dict[str, set[str]]:
     Map }``). The builtin gate consults this map so shadowed calls stay
     ``unknown``/project-owned instead of being mis-classified ``builtin``.
     """
+    return _scan_ts_payloads(conn)[0]
+
+
+def _scan_ts_payloads(
+    conn: Any,
+) -> tuple[dict[str, set[str]], dict[str, Any], dict[str, Any]]:
+    """一次扫描：shadow locals，以及 #1764 的 ``ts_imports`` / ``ts_exports``。"""
     out: dict[str, set[str]] = {}
+    imports: dict[str, Any] = {}
+    exports: dict[str, Any] = {}
     try:
         rows = conn.execute("SELECT file_path, symbols_json FROM ast_index").fetchall()
     except Exception:  # nosec B110 — missing-table tolerance, mirrors _context.py.
-        return out
+        return out, imports, exports
     for row in rows:
         try:
             symbols = json.loads(row["symbols_json"])
         except (json.JSONDecodeError, TypeError, KeyError):
             continue
+        if isinstance(symbols.get("ts_imports"), dict):
+            imports[row["file_path"]] = symbols["ts_imports"]
+        if isinstance(symbols.get("ts_exports"), dict):
+            exports[row["file_path"]] = symbols["ts_exports"]
         names: set[str] = set()
         for sym in symbols.get("symbols", []):
             kind = sym.get("kind")
@@ -137,7 +153,7 @@ def _build_shadow_locals(conn: Any) -> dict[str, set[str]]:
                 names |= _import_binding_names(statement)
         if names:
             out[row["file_path"]] = names
-    return out
+    return out, imports, exports
 
 
 def build_typescript_resolver_context(
@@ -162,14 +178,25 @@ def build_typescript_resolver_context(
     if not any(lang == _TYPESCRIPT_LANG for lang in file_languages.values()):
         return None
     fcm = file_class_methods() if callable(file_class_methods) else file_class_methods
-    if shadow_locals is None:
-        shadow_locals = _build_shadow_locals(conn) if conn is not None else {}
+    imports: dict[str, Any] = {}
+    exports: dict[str, Any] = {}
+    if conn is not None:
+        scanned, imports, exports = _scan_ts_payloads(conn)
+        if shadow_locals is None:
+            shadow_locals = scanned
     return TypeScriptResolverContext(
         file_symbols=file_symbols,
         file_class_methods=fcm or {},
         global_name_table=global_name_table,
         file_languages=file_languages,
-        shadow_locals=shadow_locals,
+        shadow_locals=shadow_locals or {},
+        bindings=TypeScriptBindings(
+            imports=imports,
+            exports=exports,
+            file_symbols=file_symbols,
+            file_class_methods=fcm or {},
+            indexed=frozenset(file_languages),
+        ),
     )
 
 
@@ -242,6 +269,19 @@ def _project_owns(
     return False
 
 
+def _bound(
+    ctx: TypeScriptResolverContext, receiver: str, simple: str, caller_file: str
+) -> tuple[int, str, str] | None:
+    """#1764：导入绑定证明的跨文件目标 ``(符号 id, "project", 文件)``；否则 None。"""
+    if ctx.bindings is None:
+        return None
+    hit = ctx.bindings.resolve(receiver, simple, caller_file)
+    if hit is None:
+        return None
+    sym_id, target_file = hit
+    return sym_id, "project", target_file
+
+
 def resolve_typescript_callee(
     callee_name: str,
     callee_full: str,
@@ -265,6 +305,10 @@ def resolve_typescript_callee(
         sym_id = _lookup_in_file(ctx, caller_file, simple)
         if sym_id is not None:
             return sym_id, "local", caller_file
+        # #1764：经相对具名导入（可经 index.ts 再导出）到达唯一的顶层函数。
+        bound = _bound(ctx, "", simple, caller_file)
+        if bound is not None:
+            return bound
         # A bare unresolved call stays unknown — NO global single-name binding,
         # because that is exactly where cross-language mis-wires creep in.
         return None, "unknown", ""
@@ -288,6 +332,12 @@ def resolve_typescript_callee(
     head = receiver.split(".", 1)[0]
     if head in TYPESCRIPT_GLOBAL_OBJECTS and not _project_owns(ctx, head, caller_file):
         return None, "builtin", ""
+
+    # 2b. #1764 — ``ns.f()`` / ``ns.sub.f()`` through a relative namespace import (and
+    #     ``export * as``), or ``Cls.m()`` on a relatively imported class.
+    bound = _bound(ctx, receiver, simple, caller_file)
+    if bound is not None:
+        return bound
 
     # 3. unknown — no confident same-language resolution. Conservative tiers keep
     #    bare-method names (``substring``/``push``/``map``) out of any classified
