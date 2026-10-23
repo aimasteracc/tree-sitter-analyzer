@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tests.known_answer.cases import Case
+from tests.known_answer._cases import Case
 
 # #1740（rich 形态）：局部类别名 ``_Style = Style`` 与未类型化的属性接收者 ``self.console``。
 RICH_ALIAS = Case(

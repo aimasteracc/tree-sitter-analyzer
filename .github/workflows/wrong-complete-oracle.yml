@@ -30,7 +30,7 @@ on:
     paths:
       - "scripts/wrong_complete/**"
       - "tests/known_answer/**"
-      - "tests/property/callers_projects.py"
+      - "tests/property/_callers_projects.py"
       - "tests/property/test_callers_oracle_properties.py"
       - ".github/workflows/wrong-complete-oracle.yml"
 

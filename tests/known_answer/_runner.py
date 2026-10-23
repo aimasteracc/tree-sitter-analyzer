@@ -17,7 +17,7 @@ from scripts.wrong_complete.tsa_driver import (
     query_callers,
     write_project,
 )
-from tests.known_answer.cases import MODES, Case
+from tests.known_answer._cases import MODES, Case
 
 
 @dataclass(frozen=True)

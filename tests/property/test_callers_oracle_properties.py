@@ -32,7 +32,7 @@ from scripts.wrong_complete.tsa_driver import (
     query_callers,
     write_project,
 )
-from tests.property.callers_projects import (
+from tests.property._callers_projects import (
     NAMES_A,
     NAMES_B,
     ProjectSpec,

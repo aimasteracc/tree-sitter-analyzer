@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tests.known_answer.cases import Case
+from tests.known_answer._cases import Case
 
 # #1740（gson 形态）+ #1743：转型接收者无法绑定；声明类型的字段 / 形参可以绑定。
 GSON_DELEGATE = Case(
