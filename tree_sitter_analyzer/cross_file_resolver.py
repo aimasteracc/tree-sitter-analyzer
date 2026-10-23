@@ -137,6 +137,10 @@ class ResolvedEdge:
         return d
 
 
+#: JS/TS 源文件后缀（包导入的名字不按项目同名定义绑定，#1764）。
+_JSTS_SUFFIXES = (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs")
+
+
 class CrossFileResolver:
     """Resolve cross-file symbol references using indexed AST cache data.
 
@@ -273,6 +277,12 @@ class CrossFileResolver:
                 callee_candidates = []
             if "." not in callee_full:
                 callee_candidates = self._bare_reachable(callee_name, callee_candidates)
+                if callee_candidates and self._imported_from_outside(
+                    caller_file, callee_name
+                ):
+                    # #1764：`import { f } from 'pkg'` 后的 `f()` 调用的是包里的 `f`，
+                    # 不能按名字绑定到项目里恰好同名的定义。
+                    callee_candidates = []
             callee_resolved = callee_candidates[0][0] if callee_candidates else ""
 
             confidence = 1.0
@@ -294,6 +304,18 @@ class CrossFileResolver:
                 )
             )
         return resolved
+
+    def _imported_from_outside(self, caller_file: str, name: str) -> bool:
+        """JS/TS 文件把 ``name`` 从解析不到项目文件的模块（包名）导入。"""
+        if not caller_file.endswith(_JSTS_SUFFIXES):
+            return False
+        local_target = self._name_to_source.get(caller_file, {}).get(name)
+        if local_target:
+            return False
+        return any(
+            name in entry.imported_names and not entry.is_relative
+            for entry in self._imports_by_file.get(caller_file, [])
+        )
 
     def _bare_reachable(
         self, callee_name: str, candidates: list[tuple[str, float]]

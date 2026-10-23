@@ -180,4 +180,4 @@ def test_extractor_version_is_bumped_for_module_rebinds() -> None:
     assert (
         ast_cache._AST_CACHE_EXTRACTOR_VERSION,
         indexer._AST_CACHE_EXTRACTOR_VERSION,
-    ) == (51, 51)
+    ) == (52, 52)

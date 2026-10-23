@@ -529,13 +529,15 @@ def resolve_callee(
     resolver = get_language_resolver(language)
     lang_ctx = ctx.lang_context(language) if resolver is not None and language else None
     if resolver is not None and lang_ctx is not None:
-        sym_id, resolution, resolved_file = resolver.resolve_callee(
+        result = resolver.resolve_callee(
             callee_name,
             callee_full if callee_full is not None else callee_name,
             caller_file,
             lang_ctx,
         )
-        return ResolvedCallee(sym_id, resolution, resolved_file)
+        # #1764：语言解析器可附带 ``import_alias`` 来源（第四项），与 #1670 同形。
+        alias = result[3] if len(result) > 3 else None
+        return ResolvedCallee(result[0], result[1], result[2], alias=alias)
 
     return _resolve_callee_python(
         callee_name, caller_file, ctx, callee_full, caller_name

@@ -17,6 +17,7 @@ from typing import Any, cast
 
 from ..cached_annotated_binding import ANNOTATED_RECEIVER
 from .alias_edges import alias_call_rows, import_alias_of
+from .es_import_sites import imported_unresolved_rows, row_ids
 
 
 class EdgeKind(str, Enum):
@@ -492,7 +493,22 @@ class EdgeStore:
         edges.
         """
         sites: list[dict[str, Any]] = []
-        for row in _direct_callers(self._conn, callee_name, callee_file):
+        direct = _direct_callers(self._conn, callee_name, callee_file)
+        # #1764: an unresolved TS/JS call through an import keeps its placeholder
+        # target in the calling file, so the declaring-file filter above drops it.
+        imported = (
+            imported_unresolved_rows(
+                self._conn,
+                callee_name,
+                callee_file.replace("\\", "/"),
+                row_ids(direct),
+                is_resolved=_resolution_is_resolved,
+                source_file=_source_file,
+            )
+            if callee_file
+            else []
+        )
+        for row in [*direct, *imported]:
             if _resolution_is_resolved(row) or _bound_to(row, bound_targets):
                 continue
             edge = _edge_from_row(row)
@@ -893,6 +909,12 @@ def _direct_callers(
             continue
         rows.append(row)
     return rows or fallback_rows
+
+
+def _source_file(row: sqlite3.Row) -> str:
+    """The calling file of a CALLS row (``file:``-prefixed module nodes included)."""
+    source = parse_node_id(_edge_from_row(row).source_node_id)
+    return str(source.file_path or "").replace("\\", "/")
 
 
 def _direct_callees(

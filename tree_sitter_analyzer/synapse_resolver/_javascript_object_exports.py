@@ -40,6 +40,8 @@ _IDENT_RE = re.compile(rf"^{_IDENT}$")
 _EXPORT_DEFAULT_RE = re.compile(r"(?m)^[ \t]*export[ \t]+default[ \t]+")
 _LINE_COMMENT_RE = re.compile(r"//[^\n]*")
 _BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+#: ES 模块语言（#1764：TypeScript 同样以 ``variable`` 记录箭头函数常量）。
+_ES_LANGUAGES = ("javascript", "jsx", "typescript", "tsx")
 
 
 class ObjectExportResolver:
@@ -235,6 +237,14 @@ class ObjectExportResolver:
                 result = _parse_members(body)
         self._members[file_path] = result
         return result
+
+    # ------------------------------------------------------------------ shared
+    # #1764：TS / JS 的 ES 模块绑定共用这里的源码读取与函数变量判定。
+    def source(self, rel_path: str) -> str | None:
+        return self._source(rel_path)
+
+    def is_default_clause(self, file_path: str, local: str) -> bool:
+        return self._is_default_clause(file_path, local)
 
     # ------------------------------------------------------------------ source
     def _source(self, rel_path: str) -> str | None:
@@ -435,6 +445,21 @@ def _parse_members(body: str) -> dict[str, list[str]] | None:
     return members
 
 
+#: 模块里以函数字面量初始化的 ``const``（可带类型注解与返回类型）；只认 ``const``——
+#: ``let`` / ``var`` 之后可能被重新赋值为别的函数。
+_FUNCTION_CONST_RE = re.compile(
+    rf"(?m)^[ \t]*(?:export[ \t]+)?const[ \t]+({_IDENT})[ \t]*(?::[^=\n]+)?=[ \t]*"
+    rf"(?:async[ \t]+)?(?:function\b|\([^()\n]*\)[^=\n]*=>|<[^>\n]*>[ \t]*\(|{_IDENT}[ \t]*=>)"
+)
+
+
+#: ``const name = ident;``——一个标识符初始化的 ``const``（别名）。
+_CONST_ALIAS_RE = re.compile(
+    rf"(?m)^[ \t]*(?:export[ \t]+)?const[ \t]+({_IDENT})[ \t]*(?::[^=\n]+)?=[ \t]*"
+    rf"({_IDENT})[ \t]*;?[ \t]*$"
+)
+
+
 def export_shape(source: str) -> dict[str, Any] | None:
     """范围回填的解析面（#1696）：默认导出对象的成员 / 展开，以及具名导出。
 
@@ -456,9 +481,35 @@ def export_shape(source: str) -> dict[str, Any] | None:
         }
     )
     has_default = _EXPORT_DEFAULT_RE.search(text) is not None
-    if not has_default and not named:
+    # #1764：再导出（``export { f } from`` / ``export *`` / ``export * as ns``）决定
+    # 经桶文件的 TS / JS 调用解析到哪里，同样进入解析面。
+    from ._es_export_table import parse_export_table
+
+    table = parse_export_table(source)
+    if not has_default and not named and not table.reexports and not table.stars:
         return None
     shape: dict[str, Any] = {"named": named}
+    if table.reexports or table.stars or not table.complete:
+        shape["reexports"] = sorted(
+            [name, spec, imported] for name, (spec, imported) in table.reexports.items()
+        )
+        shape["stars"] = list(table.stars)
+        shape["complete"] = table.complete
+    # #1768：导出名 -> 本地标识符与默认导出的形态。改名导入的未解析调用能否到达
+    # 某个定义，由它们判定（``import en from './en'`` 而默认导出是匿名函数）。
+    shape["locals"] = dict(sorted(table.local.items()))
+    shape["default_kind"] = table.default_kind
+    # ``const f = (…) => …`` 是它自己的函数，不是别的函数的别名（``const g = f``）。
+    shape["function_consts"] = sorted(set(_FUNCTION_CONST_RE.findall(text)))
+    # ``export const __isSame = isSameOriginRedirect;``（axios）：别名指向的标识符。
+    aliases: dict[str, set[str]] = {}
+    for name, target in _CONST_ALIAS_RE.findall(text):
+        aliases.setdefault(name, set()).add(target)
+    shape["const_aliases"] = {
+        name: next(iter(targets))
+        for name, targets in sorted(aliases.items())
+        if len(targets) == 1
+    }
     if has_default:
         body = _default_object_text(text)
         members = _parse_members(body) if body is not None else None
@@ -502,7 +553,7 @@ def _js_variables(
     out: dict[str, dict[str, list[tuple[int, int]]]] = {}
     for row in rows:
         file_path = row[2]
-        if file_languages.get(file_path) not in ("javascript", "jsx"):
+        if file_languages.get(file_path) not in _ES_LANGUAGES:
             continue
         out.setdefault(file_path, {}).setdefault(row[1], []).append(
             (int(row[0]), int(row[3] or 0))

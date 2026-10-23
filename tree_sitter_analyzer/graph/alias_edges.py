@@ -48,7 +48,38 @@ def alias_call_rows(conn: sqlite3.Connection, callee_name: str) -> list[sqlite3.
             alias = _row_alias(row)
             if alias is not None and alias.get("name") == callee_name:
                 rows.append(row)
+    seen = {row["id"] for row in rows}
+    for row in _es_alias_rows(conn, callee_name):
+        alias = _row_alias(row)
+        if (
+            row["id"] not in seen
+            and alias is not None
+            and alias.get("name") == callee_name
+        ):
+            seen.add(row["id"])
+            rows.append(row)
     return rows
+
+
+#: #1764 / #1768：ES 模块里改名的本地名不一定出现在导入行的 ``alias_of`` 上——默认导入
+#: （``import makeSig from './jws'``，默认导出是 ``signer``）与再导出链上的改名
+#: （``export { signer as sign } from``）。按调用文件的导入绑定连接调用边，以持久化的
+#: ``import_alias`` 来源确认。
+_ES_ALIAS_EDGES_SQL = (
+    "SELECT e.* FROM ast_imports i JOIN edges e "
+    "ON e.kind = 'calls' AND e.callee_name = i.local_name AND e.file_path = i.file_path "
+    "WHERE i.language IN ('javascript', 'jsx', 'typescript', 'tsx') "
+    "AND i.local_name <> ? AND instr(e.metadata, ?) > 0"
+)
+
+
+def _es_alias_rows(conn: sqlite3.Connection, callee_name: str) -> list[sqlite3.Row]:
+    try:
+        return conn.execute(
+            _ES_ALIAS_EDGES_SQL, (callee_name, f'"name": "{callee_name}"')
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return []
 
 
 def import_alias_of(edge: Any) -> str | None:

@@ -15,7 +15,8 @@ Contract per language:
   returns a per-language context, or ``None`` to opt out (e.g. no file of that
   language is indexed — zero cost for absent languages).
 - ``resolve_callee(bare_name, full_name, caller_file, lang_context)
-  -> (symbol_id, resolution, resolved_file)`` — the per-language resolution.
+  -> (symbol_id, resolution, resolved_file[, import_alias])`` — the per-language
+  resolution; the optional fourth item is persisted as ``metadata.import_alias``.
 """
 
 from __future__ import annotations
@@ -23,8 +24,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, NamedTuple
 
-# (symbol_id, resolution, resolved_file)
-ResolveResult = tuple[int | None, str, str]
+# (symbol_id, resolution, resolved_file[, import_alias]) — #1764: an optional
+# fourth item carries the ``import_alias`` provenance of a renamed import.
+ResolveResult = (
+    tuple[int | None, str, str] | tuple[int | None, str, str, dict[str, Any]]
+)
 
 BuildContextFn = Callable[..., Any | None]
 ResolveCalleeFn = Callable[[str, str, str, Any], ResolveResult]
