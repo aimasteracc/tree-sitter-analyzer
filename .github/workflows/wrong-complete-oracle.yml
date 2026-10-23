@@ -79,7 +79,7 @@ jobs:
           echo "### Property tests: ${TSA_ORACLE_EXAMPLES} examples, seed ${TSA_ORACLE_SEED}" >> "$GITHUB_STEP_SUMMARY"
           echo "Reproduce: TSA_ORACLE_EXAMPLES=${TSA_ORACLE_EXAMPLES} TSA_ORACLE_SEED=${TSA_ORACLE_SEED} uv run pytest tests/property/test_callers_oracle_properties.py" >> "$GITHUB_STEP_SUMMARY"
           uv run pytest tests/property/test_callers_oracle_properties.py -q \
-            --timeout=0 --session-timeout=0 --reruns=0 -p no:cacheprovider \
+            --timeout=0 --session-timeout=3300 --reruns=0 -p no:cacheprovider \
             --hypothesis-show-statistics 2>&1 | tee property-output.txt
           exit "${PIPESTATUS[0]}"
 
