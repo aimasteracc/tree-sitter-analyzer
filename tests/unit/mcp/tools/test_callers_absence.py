@@ -344,8 +344,9 @@ def test_accessor_check_reads_decorators_on_either_side(tmp_path) -> None:
     )
 
     assert _is_accessor(str(tmp_path), [("p.py", 2, "python")], "x") is True
-    assert _is_accessor(str(tmp_path), [("p.py", 99, "python")], "x") is False
-    assert _is_accessor(str(tmp_path), [("gone.py", 1, "python")], "x") is False
+    # RFC-0040：读不到的声明无法排除访问器——None，而不是 False。
+    assert _is_accessor(str(tmp_path), [("p.py", 99, "python")], "x") is None
+    assert _is_accessor(str(tmp_path), [("gone.py", 1, "python")], "x") is None
 
 
 def test_describe_names_three_sites_then_counts_the_rest() -> None:
