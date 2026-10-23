@@ -588,3 +588,114 @@ def test_native_workspace_reader_translates_reopen_failure(
         with pytest.raises(OSError) as error:
             os.fstat(handle)
         assert error.value.errno == errno.EBADF
+
+
+def _populate(tmp_path, count):
+    package = tmp_path / "pkg"
+    package.mkdir()
+    for number in range(count):
+        (package / f"m{number}.py").write_bytes(f"value = {number}\n".encode())
+    return [f"pkg/m{number}.py" for number in range(count)]
+
+
+def test_batch_reader_opens_each_directory_once_per_scan(tmp_path, kernel):
+    # #1783 root cause: the per-file reader reopened and re-verified the whole
+    # ancestor chain for every file (2*(depth+2) CreateFileW each).  On Windows
+    # with on-access scanning that made a 553-file scan exceed the 5 s budget.
+    paths = _populate(tmp_path, 10)
+
+    with owner.PinnedWorkspaceReader(
+        str(tmp_path), deadline=time.monotonic() + 5
+    ) as reader:
+        data = [reader.read(path, limit=1024)[0] for path in paths]
+        reads = list(kernel.requests)
+        reader.verify()
+
+    assert data == [f"value = {number}\n".encode() for number in range(10)]
+    directory_opens = [request for request in reads if request[1] == 0x80]
+    file_opens = [request for request in reads if request[1] == 0x80000000]
+    # root + pkg pinned once for the whole scan; each file opened + reopened once.
+    assert len(directory_opens) == 2
+    assert len(file_opens) == 2 * len(paths)
+    # The per-file reader needs 3x as many opens for the same work.
+    kernel.requests.clear()
+    for path in paths:
+        owner.read_pinned_workspace_file(
+            str(tmp_path), path, deadline=time.monotonic() + 5, limit=1024
+        )
+    assert len(kernel.requests) == 6 * len(paths)
+
+
+def test_batch_reader_releases_every_directory_handle(tmp_path, kernel):
+    paths = _populate(tmp_path, 3)
+
+    with owner.PinnedWorkspaceReader(
+        str(tmp_path), deadline=time.monotonic() + 5
+    ) as reader:
+        reader.read(paths[0], limit=1024)
+
+    assert all(directory is False for _p, directory, _i in kernel.handles.values())
+    with pytest.raises(ValueError, match="^INDEX_SOURCE_CHANGED$"):
+        reader.read(paths[1], limit=1024)
+
+
+def test_batch_reader_rejects_file_change_during_read(tmp_path, kernel, monkeypatch):
+    (source,) = _populate(tmp_path, 1)
+    real_read = owner._read_descriptor
+
+    def read_then_change(fd, size):
+        data = real_read(fd, size)
+        if data:
+            (tmp_path / source).write_bytes(b"after-content-is-longer\n")
+        return data
+
+    monkeypatch.setattr(owner, "_read_descriptor", read_then_change)
+    with owner.PinnedWorkspaceReader(
+        str(tmp_path), deadline=time.monotonic() + 5
+    ) as reader:
+        with pytest.raises(ValueError, match="^INDEX_SOURCE_CHANGED$"):
+            reader.read(source, limit=1024)
+
+
+def test_batch_reader_verify_rejects_replaced_directory(tmp_path, kernel):
+    # Directory identities are proven once at the end of the scan; a swapped
+    # directory must still fail the whole scan closed.
+    paths = _populate(tmp_path, 2)
+    with owner.PinnedWorkspaceReader(
+        str(tmp_path), deadline=time.monotonic() + 5
+    ) as reader:
+        reader.read(paths[0], limit=1024)
+        (tmp_path / "pkg").rename(tmp_path / "old-pkg")
+        (tmp_path / "pkg").mkdir()
+        with pytest.raises(ValueError, match="^INDEX_SOURCE_CHANGED$"):
+            reader.verify()
+
+
+def test_batch_reader_enforces_deadline_budget_and_paths(tmp_path, kernel):
+    (source,) = _populate(tmp_path, 1)
+    with owner.PinnedWorkspaceReader(
+        str(tmp_path), deadline=time.monotonic() + 5
+    ) as reader:
+        with pytest.raises(OverflowError, match="INDEX_SOURCE_CAPACITY"):
+            reader.read(source, limit=1)
+        with pytest.raises(ValueError, match="^INDEX_PATH_UNSAFE$"):
+            reader.read("../escape.py", limit=1024)
+        with pytest.raises(FileNotFoundError):
+            reader.read("pkg/missing.py", limit=1024)
+    with pytest.raises(TimeoutError, match="INDEX_SNAPSHOT_DEADLINE"):
+        owner.PinnedWorkspaceReader(str(tmp_path), deadline=0.0)
+
+
+def test_batch_reader_is_safe_under_concurrent_reads(tmp_path, kernel):
+    from concurrent.futures import ThreadPoolExecutor
+
+    paths = _populate(tmp_path, 24)
+    with owner.PinnedWorkspaceReader(
+        str(tmp_path), deadline=time.monotonic() + 5
+    ) as reader:
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            data = list(pool.map(lambda path: reader.read(path, limit=1024)[0], paths))
+        reader.verify()
+
+    assert data == [f"value = {number}\n".encode() for number in range(24)]
+    assert len([r for r in kernel.requests if r[1] == 0x80]) == 2 + 2  # pin + verify
