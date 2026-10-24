@@ -350,8 +350,12 @@ async def _walk_helper(
     return cov
 
 
+#: ``nav callees`` 中解析到项目内定义的被调方（跨文件 ``project`` 与同文件 ``local``）。
+_RESOLVED_CALLEES = frozenset({"project", "local"})
+
+
 async def callees(backends: Backends, inputs: list[Row]) -> RelationResult:
-    """通过 ``nav action=callees`` 获取项目内的 callees。
+    """通过 ``nav action=callees`` 获取项目内的 callees（跨文件与同文件）。
 
     ``nav callees`` 不做覆盖度声明，因此本阶段永远不是 ``complete``：若有
     callees 未解析到项目内定义则为 ``incomplete`` (列出的集合是下界)，
@@ -373,11 +377,13 @@ async def callees(backends: Backends, inputs: list[Row]) -> RelationResult:
         unresolved = 0
         listed = 0
         for entry in response.get("callees") or []:
-            if entry.get("callee_resolution") != "project":
+            target = str(entry.get("callee_resolved_file") or "")
+            # #1814：同文件被调方（``local``）同样解析到了项目内定义；只有带解析文件的
+            # 才算——``self.x`` 的 local 推测没有解析文件，仍是未解析。
+            if entry.get("callee_resolution") not in _RESOLVED_CALLEES or not target:
                 unresolved += 1
                 continue
             name = str(entry.get("name") or "")
-            target = str(entry.get("callee_resolved_file") or "")
             listed += 1
             out.setdefault(
                 f"{target}::{name}",
