@@ -68,5 +68,10 @@ def test_scoped_es_alias_rows_equal_the_per_name_query(tmp_path: Path) -> None:
     conn = _alias_db(tmp_path / "index.db")
     live = [row["id"] for row in _es_alias_rows(conn, "signer")]
     with query_scope():
-        bucketed = [row["id"] for row in _es_alias_rows(conn, "signer")]
+        # 前几个名字逐名查询，之后走分桶路径；两条路径的结果都须相同。
+        per_call = [
+            [row["id"] for row in _es_alias_rows(conn, "signer")] for _ in range(5)
+        ]
+        bucketed = per_call[-1]
+        assert per_call == [[1]] * 5
     assert (live, bucketed) == ([1], [1])

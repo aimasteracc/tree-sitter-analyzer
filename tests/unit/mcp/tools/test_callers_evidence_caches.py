@@ -464,6 +464,33 @@ async def test_warm_answer_equals_cold_answer(indexed_root) -> None:
         assert _without_timing(warm) == _without_timing(cold), name
 
 
+_BATCH_NAMES = ("Widget.unused", "Widget.used", "helper", "run", "missing_name")
+
+
+@pytest.mark.asyncio
+async def test_batched_answers_equal_single_answers(indexed_root) -> None:
+    # RFC-0041 跟进：批量入口只共享认证读与调用图，逐输入答复与单次调用相同。
+    from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+
+    requests = [{"function_name": n, "include_bodies": False} for n in _BATCH_NAMES]
+    batched = await CodeGraphCallersTool(str(indexed_root)).execute_batch(requests)
+    single = [await _cold_callers(indexed_root, n) for n in _BATCH_NAMES]
+    assert [_without_timing(r) for r in batched] == [_without_timing(r) for r in single]
+
+
+@pytest.mark.asyncio
+async def test_query_scoped_answers_equal_unscoped_answers(indexed_root) -> None:
+    # RFC-0041：查询作用域内共享的不变工作（stat、遍历、别名分桶、解析）不改变答复。
+    from tree_sitter_analyzer.query_scope import query_scope
+
+    unscoped = [await _cold_callers(indexed_root, n) for n in _BATCH_NAMES]
+    with query_scope():
+        scoped = [await _callers(indexed_root, n) for n in _BATCH_NAMES]
+    assert [_without_timing(r) for r in scoped] == [
+        _without_timing(r) for r in unscoped
+    ]
+
+
 @pytest.mark.asyncio
 async def test_new_unindexed_file_invalidates_the_cached_walk(indexed_root) -> None:
     warm = await _warm(indexed_root, "Widget.unused")
@@ -556,3 +583,39 @@ async def test_certifiable_index_still_takes_the_certified_read(
     await _callers(indexed_root, "Widget.used")
 
     assert entered == [str(indexed_root)]
+
+
+@pytest.mark.asyncio
+async def test_batch_marks_a_failing_bound_input_for_fallback(
+    indexed_root, monkeypatch
+) -> None:
+    # 认证绑定下单个输入读取失败只让该输入改走未认证回退（与单次 execute 相同）。
+    from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+
+    tool = CodeGraphCallersTool(str(indexed_root))
+    original = tool._execute_bound
+
+    async def flaky(arguments, bound_cache, source_reader):
+        if arguments["function_name"] == "helper":
+            raise OSError("snapshot vanished")
+        return await original(arguments, bound_cache, source_reader)
+
+    monkeypatch.setattr(tool, "_execute_bound", flaky)
+    answers = await tool._answer_all(
+        [{"function_name": "helper"}, {"function_name": "run"}],
+        None,
+        None,
+        fallible=True,
+    )
+    assert (answers[0], answers[1]["function"]) == (None, "run")
+
+
+def test_vocab_cannot_decide_non_word_needles(indexed_root) -> None:
+    from tree_sitter_analyzer.mcp.tools import reference_vocab
+    from tree_sitter_analyzer.query_scope import query_scope
+
+    with query_scope():
+        lacking = reference_vocab.for_root(str(indexed_root)).lacking(
+            [str(indexed_root / "widget.py")], b"a-b"
+        )
+    assert lacking == set()

@@ -525,15 +525,9 @@ def _reference_scan(
     started = time.monotonic()
     try:
         conn = cache.get_conn()
-        marks = ",".join("?" * len(languages))
-        files = sorted(
-            (str(row[0]), str(row[1]))
-            for row in conn.execute(
-                "SELECT file_path, language FROM ast_index "  # nosec B608
-                f"WHERE language IN ({marks})",
-                languages,
-            )
-        ) + [(path, text_language(path) or CONFIG_LANGUAGE) for path in config_files]
+        files = _indexed_files(conn, project_root, languages) + [
+            (path, text_language(path) or CONFIG_LANGUAGE) for path in config_files
+        ]
         declared_lines = {
             (str(row[0]), int(row[1]))
             for row in conn.execute(
@@ -597,6 +591,28 @@ def _reference_scan(
     return _with_foreign(sites, foreign), stamps
 
 
+def _indexed_files(
+    conn: Any, project_root: str, languages: list[str]
+) -> list[tuple[str, str]]:
+    """给定语言的已索引文件（有序）；RFC-0041 查询作用域内每个语言集只读一次。"""
+    from ...query_scope import scoped
+
+    def compute() -> list[tuple[str, str]]:
+        marks = ",".join("?" * len(languages))
+        return sorted(
+            (str(row[0]), str(row[1]))
+            for row in conn.execute(
+                "SELECT file_path, language FROM ast_index "  # nosec B608
+                f"WHERE language IN ({marks})",
+                languages,
+            )
+        )
+
+    return list(
+        scoped(("absence.indexed_files", project_root, tuple(languages)), compute)
+    )
+
+
 def _with_foreign(
     sites: list[dict[str, Any]], foreign: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
@@ -644,11 +660,27 @@ def _files_containing(
     开销主导耗时且会释放 GIL，因此用线程池并行读取。
     """
     hits: list[tuple[str, str, bytes, StatKey | None]] = []
+    vocab = reference_vocab.for_root(project_root)
+    from ...query_scope import in_scope
+
+    if in_scope():
+        # RFC-0041：作用域内词表判定只是字典查找，先在本线程筛掉词表证明不含名字
+        # 的文件，只把仍须读取的文件交给线程池；逐个判定由线程执行时 GIL 争用
+        # 反而更慢。结果与逐个读取相同（被筛掉的文件本就返回空字节）。
+        paths = [os.path.join(project_root, entry[0]) for entry in files]
+        lacking = vocab.lacking(paths, needle)
+        files = [
+            entry
+            for entry, path in zip(files, paths, strict=True)
+            if path not in lacking
+        ]
+        if not files:
+            vocab.flush()
+            return hits
     # dogfood 第 7 轮：逐文件提交 future 的调度开销与（已缓存的）读取相当；
     # 改为按块提交、块内顺序读取。期限与“任一不可读即 None”的判定不变。
     size = max(1, -(-len(files) // (_READ_WORKERS * _CHUNKS_PER_WORKER)))
     chunks = [files[start : start + size] for start in range(0, len(files), size)]
-    vocab = reference_vocab.for_root(project_root)
     executor = ThreadPoolExecutor(max_workers=_READ_WORKERS)
     try:
         # RFC-0041：工作线程继承调用方的上下文（含查询作用域的记忆）。
