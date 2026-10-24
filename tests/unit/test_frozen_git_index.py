@@ -19,6 +19,19 @@ from tree_sitter_analyzer.frozen_git_index import (
 from tree_sitter_analyzer.source_oracle import SourceOracleError
 
 
+def _is_inside(path: str, root: Path) -> bool:
+    """Whether ``path`` lies under ``root``; a different drive is outside.
+
+    ``os.path.commonpath`` raises on Windows for paths on different drives,
+    e.g. a pytest temp root on D: and the C: Windows Temp fallback (#1817).
+    """
+    real_root = os.path.realpath(root)
+    try:
+        return os.path.commonpath((real_root, path)) == real_root
+    except ValueError:
+        return False
+
+
 def test_parse_stage_zero_entries_returns_exact_headers() -> None:
     raw = b"100644 a 0\ta.py\0" + b"100755 b 0\tb.py\0"
 
@@ -227,9 +240,7 @@ def test_temp_parent_skips_project_tmpdir(tmp_path: Path, monkeypatch) -> None:
     selected = safe_external_temp_parent(str(project))
 
     assert os.path.isabs(selected)
-    assert os.path.commonpath(
-        (os.path.realpath(project), selected)
-    ) != os.path.realpath(project)
+    assert not _is_inside(selected, project)
 
 
 def test_no_safe_temp_parent_rejects_before_mkstemp(
@@ -282,9 +293,7 @@ def test_temp_parent_has_external_windows_fallback(tmp_path: Path, monkeypatch) 
     selected = safe_external_temp_parent(str(project))
 
     assert os.path.isabs(selected)
-    assert os.path.commonpath(
-        (os.path.realpath(project), selected)
-    ) != os.path.realpath(project)
+    assert not _is_inside(selected, project)
 
 
 def test_reconstructed_index_writes_valid_stage_zero_payload(
