@@ -27,6 +27,21 @@ from .project_graph import _language_from_ext
 
 logger = logging.getLogger(__name__)
 
+#: Fewest files a spawn worker should get. Each worker pays a full interpreter
+#: start and package import (about 2 s of CPU on Windows) before its first file,
+#: so on a small project extra workers cost more than they save: rich (213
+#: files) indexed cold in ~11 s with 3 workers and ~14 s with 13. Below this
+#: many candidates in total, extraction runs in-process.
+FILES_PER_WORKER = 64
+
+
+def _auto_worker_count(candidates: int, cpu_count: int) -> int:
+    """Workers for ``candidates`` files: none below ``FILES_PER_WORKER``, then
+    one per ``FILES_PER_WORKER`` files, at least 2 and at most ``cpu_count - 1``."""
+    if candidates < FILES_PER_WORKER:
+        return 0
+    return max(2, min(cpu_count - 1, candidates // FILES_PER_WORKER))
+
 
 def _cached_graph_rows(
     conn: sqlite3.Connection,
@@ -448,8 +463,7 @@ class ASTCacheIndexMixin(ASTCacheSurface):
             except ValueError:
                 pass
         if workers is None:
-            cpu_count = os.cpu_count() or 4
-            workers = 0 if len(candidates) < 64 else max(2, cpu_count - 1)
+            workers = _auto_worker_count(len(candidates), os.cpu_count() or 4)
         return workers
 
     def _refresh_graph_edges_from_cache(

@@ -83,7 +83,17 @@ class TestIndexProject:
         monkeypatch.setattr("tree_sitter_analyzer.ast_cache.os.cpu_count", lambda: 8)
 
         assert ASTCache._resolve_worker_count(None, list(range(63))) == 0
-        assert ASTCache._resolve_worker_count(None, list(range(64))) == 7
+        # One worker per 64 files (at least 2): spawn start-up is paid per worker.
+        assert ASTCache._resolve_worker_count(None, list(range(64))) == 2
+        assert ASTCache._resolve_worker_count(None, list(range(213))) == 3
+        # Capped at cpu_count - 1.
+        assert ASTCache._resolve_worker_count(None, list(range(1191))) == 7
+
+    def test_explicit_worker_counts_are_not_scaled(self, monkeypatch):
+        monkeypatch.delenv("TSA_INDEX_WORKERS", raising=False)
+        assert ASTCache._resolve_worker_count(12, list(range(64))) == 12
+        monkeypatch.setenv("TSA_INDEX_WORKERS", "9")
+        assert ASTCache._resolve_worker_count(None, list(range(64))) == 9
 
     def test_index_project_serial_and_parallel_agree(self, tmp_project):
         """PERF-4 正确性：并行和串行路径必须产生相同的索引数量和 SQLite 内容。"""
