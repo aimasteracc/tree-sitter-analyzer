@@ -661,13 +661,18 @@ def _files_containing(
     """
     hits: list[tuple[str, str, bytes, StatKey | None]] = []
     vocab = reference_vocab.for_root(project_root)
-    from ...query_scope import in_scope
+    from ...query_scope import in_scope, scoped
 
     if in_scope():
         # RFC-0041：作用域内词表判定只是字典查找，先在本线程筛掉词表证明不含名字
         # 的文件，只把仍须读取的文件交给线程池；逐个判定由线程执行时 GIL 争用
         # 反而更慢。结果与逐个读取相同（被筛掉的文件本就返回空字节）。
-        paths = [os.path.join(project_root, entry[0]) for entry in files]
+        # 跨名批量：同一组文件的绝对路径在作用域内只拼接一次。
+        rel_paths = tuple(entry[0] for entry in files)
+        paths = scoped(
+            ("absence.abs_paths", project_root, rel_paths),
+            lambda: [os.path.join(project_root, rel) for rel in rel_paths],
+        )
         lacking = vocab.lacking(paths, needle)
         files = [
             entry
@@ -804,11 +809,16 @@ def _is_accessor(
     RFC-0040：读不到的声明（文件不可读，或声明行已不在文件内）无法排除访问器；
     其余声明也都不是访问器时返回 ``None``——读不到不是“不是访问器”的证据。
     """
+    from ...query_scope import scoped
+
     getter = re.compile(r"\b(?:get|set)\s+" + re.escape(bare) + r"\s*\(")
     unread = False
     for rel_path, line, _language in declarations:
         text = FILE_CACHE.read_text(os.path.join(project_root, rel_path))
-        source = None if text is None else text.splitlines()
+        # RFC-0041 跨名批量：作用域内同一文本只切分一次（作用域外照常每次切分）。
+        source = (
+            None if text is None else scoped(("absence.lines", text), text.splitlines)
+        )
         if source is None or not 0 < line <= len(source):
             unread = True
             continue

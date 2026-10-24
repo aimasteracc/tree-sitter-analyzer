@@ -100,6 +100,18 @@ def _index_holds_rows(project_root: str | None) -> bool:
     """
     if not project_root:
         return False
+    from ..query_scope import scoped
+
+    # RFC-0041 跨名批量：一次回答里每个 callers 输入都在答复末尾声明成本档位；
+    # 作用域内一个答案只对应一个索引时刻，这一位只探测一次（每次探测约 50 ms）。
+    # 作用域外照常逐次探测。
+    return scoped(
+        ("query_cost.index_holds_rows", project_root),
+        lambda: _live_index_holds_rows(project_root),
+    )
+
+
+def _live_index_holds_rows(project_root: str) -> bool:
     from .live_index_probe import probe_live_index
 
     before = probe_live_index(project_root)

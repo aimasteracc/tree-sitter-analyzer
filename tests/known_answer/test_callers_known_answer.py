@@ -131,6 +131,16 @@ def test_the_bare_answer_is_never_more_confident_than_the_qualified(
 
 
 @pytest.mark.parametrize("case", CASES, ids=_IDS)
+def test_a_cross_name_batch_answers_every_input_as_a_single_call(
+    observed: Callable[[Case], Observation], case: Case
+) -> None:
+    # RFC-0041 跨名批量：查询作用域内一次 execute_batch（两种模式 + 夹具里的其余名字）
+    # 与逐个单次调用逐字节相同——共享的只是与输入无关的工作。
+    obs = observed(case)
+    assert obs.batch_mismatches == ()
+
+
+@pytest.mark.parametrize("case", CASES, ids=_IDS)
 def test_the_oracle_finds_exactly_the_hand_labelled_truth(case: Case) -> None:
     # 判定器自检：在语料上与手写真值逐点一致（不运行 TSA）。
     found = frozenset(site.key() for site in oracle_sites(case) if site.must_cover)

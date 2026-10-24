@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +29,9 @@ class Observation:
     case: Case
     answers: Mapping[str, Mapping[str, Any]]
     sites: tuple[Site, ...]
+    #: RFC-0041 跨名批量：一次 ``execute_batch``（查询作用域内）与逐个单次调用的答复
+    #: 不一致的输入；应为空。
+    batch_mismatches: tuple[str, ...] = ()
 
     def callers(self, mode: str) -> list[ListedCaller]:
         """该模式列出的调用方（TS 缺失的 ``end_line`` 按源码补齐）。"""
@@ -57,6 +62,58 @@ def oracle_sites(case: Case) -> tuple[Site, ...]:
     return tuple(oracle(dict(case.files), target))
 
 
+#: 夹具里出现的名字（Python ``def`` / ``class``，JS/TS ``function``，形如方法头的行）。
+#: 只用来凑一个跨名批量：多收的名字同样是合法输入。
+_DEFINED = re.compile(
+    r"^[ \t]*(?:async[ \t]+)?(?:def|class|function)[ \t]+(\w+)"
+    r"|^[ \t]*(?:(?:public|private|protected|static)[ \t]+)*[\w<>\[\]]+[ \t]+(\w+)\(",
+    re.MULTILINE,
+)
+
+
+def batch_requests(case: Case) -> list[dict[str, Any]]:
+    """两种模式的目标，加上夹具里定义的每个其他名字（不限文件），作为一次批量。"""
+    requests = [
+        {
+            "function_name": case.query_name(mode),
+            "file_path": case.target.file,
+            "include_bodies": False,
+            "limit": 5000,
+        }
+        for mode in MODES
+    ]
+    names = sorted(
+        {
+            name
+            for text in case.files.values()
+            for match in _DEFINED.finditer(text)
+            if (name := match.group(1) or match.group(2))
+        }
+    )
+    requests.extend(
+        {"function_name": name, "include_bodies": False, "limit": 5000}
+        for name in names
+    )
+    return requests
+
+
+async def _batch_mismatches(root: Path, case: Case) -> tuple[str, ...]:
+    """查询作用域内一次批量回答全部输入；与逐个单次调用逐字节比较。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+    from tree_sitter_analyzer.query_scope import query_scope
+
+    tool = CodeGraphCallersTool(str(root))
+    requests = batch_requests(case)
+    single = [await tool.execute(dict(r)) for r in requests]
+    with query_scope():
+        batched = await tool.execute_batch([dict(r) for r in requests])
+    return tuple(
+        f"{r['function_name']}@{r.get('file_path')}"
+        for r, one, many in zip(requests, single, batched, strict=True)
+        if json.dumps(one, sort_keys=True) != json.dumps(many, sort_keys=True)
+    )
+
+
 async def _observe(case: Case, root: Path) -> Observation:
     write_project(root, dict(case.files))
     await index_project(root)
@@ -64,7 +121,12 @@ async def _observe(case: Case, root: Path) -> Observation:
         mode: await query_callers(root, case.query_name(mode), case.target.file)
         for mode in MODES
     }
-    return Observation(case=case, answers=answers, sites=oracle_sites(case))
+    return Observation(
+        case=case,
+        answers=answers,
+        sites=oracle_sites(case),
+        batch_mismatches=await _batch_mismatches(root, case),
+    )
 
 
 def observe(case: Case, root: Path) -> Observation:

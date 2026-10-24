@@ -5,7 +5,8 @@
 a. ``complete`` ⇒ 判定器的必须覆盖点 ⊆ 已列出调用方覆盖的点；
 b. 同一目标，裸名回答不比限定名回答更有把握；
 c. 加一个无关的同名方法（或函数）不会让回答升级为 ``complete``；
-d. 不改变调用语义的别名 / 改名不改变调用方集合与完整性。
+d. 不改变调用语义的别名 / 改名不改变调用方集合与完整性；
+e. 查询作用域内的跨名批量（RFC-0041）对每个输入的答复与单次调用逐字节相同。
 
 PR CI 用固定种子、少量样例（``TSA_ORACLE_EXAMPLES`` 默认 6）；夜间工作流
 ``wrong-complete-oracle.yml`` 设 ``TSA_ORACLE_EXAMPLES`` / ``TSA_ORACLE_SEED`` 跑更多样例，
@@ -17,7 +18,9 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -169,6 +172,52 @@ def test_an_unrelated_same_named_definition_never_upgrades_confidence(
         and after[mode]["completeness"] == "complete"
     ]
     assert upgraded == [], (files, target, before, after)
+
+
+_DEFINED = re.compile(r"^[ \t]*(?:async[ \t]+)?(?:def|class)[ \t]+(\w+)", re.MULTILINE)
+
+
+def _batch_mismatches(root: Path, files: dict[str, str], target: Target) -> list[str]:
+    """索引一次；查询作用域内一次批量（两种模式 + 每个定义名）对照逐个单次调用。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+    from tree_sitter_analyzer.query_scope import query_scope
+
+    names = sorted(
+        {m.group(1) for text in files.values() for m in _DEFINED.finditer(text)}
+    )
+    requests: list[dict[str, Any]] = [
+        {"function_name": name, "file_path": target.file, "include_bodies": False}
+        for name in (target.name, target.qualified)
+    ] + [{"function_name": name, "include_bodies": False} for name in names]
+
+    async def run() -> list[str]:
+        write_project(root, files)
+        await index_project(root)
+        tool = CodeGraphCallersTool(str(root))
+        single = [await tool.execute(dict(r)) for r in requests]
+        with query_scope():
+            batched = await tool.execute_batch([dict(r) for r in requests])
+        return [
+            str(r["function_name"])
+            for r, one, many in zip(requests, single, batched, strict=True)
+            if json.dumps(one, sort_keys=True) != json.dumps(many, sort_keys=True)
+        ]
+
+    return asyncio.run(run())
+
+
+@seed(_SEED)
+@_SETTINGS
+@given(spec=projects())
+def test_a_cross_name_batch_answers_every_input_as_a_single_call(
+    tmp_path_factory: pytest.TempPathFactory, spec: ProjectSpec
+) -> None:
+    # 不变量 e（RFC-0041 跨名批量）：查询作用域内共享的只是与输入无关的工作，
+    # 每个输入的答复与单次调用逐字节相同。
+    files = render(spec, NAMES_A)
+    target = target_of(spec, files)
+    mismatches = _batch_mismatches(_fresh(tmp_path_factory), files, target)
+    assert mismatches == [], (files, target)
 
 
 @seed(_SEED)
