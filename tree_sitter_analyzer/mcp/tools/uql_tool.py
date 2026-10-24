@@ -77,7 +77,10 @@ class UqlTool(BaseMCPTool):
                     "minimum": 1,
                     "maximum": 500,
                     "default": 50,
-                    "description": "Rows per page across all groups.",
+                    "description": (
+                        "Rows per page across all groups (default 50). Every "
+                        "response reports page.total and page.next_cursor."
+                    ),
                 },
                 "cursor": {
                     "type": "string",
