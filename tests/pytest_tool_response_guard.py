@@ -33,6 +33,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from unittest.mock import NonCallableMock
 
 import pytest
 
@@ -119,6 +120,38 @@ def _record(tool: Any, arguments: Any, result: Any) -> None:
         bucket.append(Violation(label, rule, message))
 
 
+def _mocked_execute(tool: Any) -> bool:
+    """``execute`` on this instance (or its class) was replaced by a mock."""
+    own = getattr(tool, "__dict__", {}).get("execute")
+    return isinstance(own, NonCallableMock) or isinstance(
+        getattr(type(tool), "execute", None), NonCallableMock
+    )
+
+
+def _is_production(tool: Any) -> bool:
+    """The response is shaped by production code, not by a test double.
+
+    A ``tree_sitter_analyzer`` class is not enough on its own: tests build
+    facades with made-up names and test handlers, and patch a real facade's
+    inner ``execute`` with a mock. Both make the answer the test's, not the
+    producer's.
+    """
+    if not type(tool).__module__.startswith(_PRODUCTION_PREFIX):
+        return False
+    facade = getattr(tool, "facade_name", None)
+    if facade is None:
+        return True
+    from tree_sitter_analyzer.mcp.facade_map import is_facade_name
+
+    if not isinstance(facade, str) or not is_facade_name(facade):
+        return False
+    inners = [
+        *getattr(tool, "action_map", {}).values(),
+        *getattr(tool, "_bespoke_inners", ()),
+    ]
+    return not any(_mocked_execute(inner) for inner in inners)
+
+
 def guard_execute(execute: Any) -> Any:
     """Wrap an ``execute`` coroutine function so its response is validated."""
     if getattr(execute, _GUARD_ATTR, False):
@@ -127,7 +160,7 @@ def guard_execute(execute: Any) -> Any:
     @functools.wraps(execute)
     async def guarded(self: Any, arguments: Any) -> Any:
         stack = _STACK.get()
-        production = type(self).__module__.startswith(_PRODUCTION_PREFIX)
+        production = _is_production(self)
         if not production:
             for frame in stack:
                 frame.from_double = True
@@ -175,12 +208,33 @@ def _patch_tools() -> None:
             cls.execute = guard_execute(execute)  # type: ignore[attr-defined]
 
 
+UNCHECKED_MARKER = "tool_response_unchecked"
+
+
+def unchecked(item: pytest.Item) -> bool:
+    """The test opted out: its mocks, not a producer, shape the envelope.
+
+    ``@pytest.mark.tool_response_unchecked(reason="...")`` is for tests that
+    patch the code that builds the response (e.g. replace the formatter with
+    one returning a sentinel). A reason is required.
+    """
+    marker = item.get_closest_marker(UNCHECKED_MARKER)
+    if marker is None:
+        return False
+    reason = marker.kwargs.get("reason") or (marker.args[0] if marker.args else "")
+    if not isinstance(reason, str) or not reason.strip():
+        raise pytest.UsageError(
+            f"{item.nodeid}: @pytest.mark.{UNCHECKED_MARKER} needs a reason"
+        )
+    return True
+
+
 class ToolResponseGuard:
     """pytest hooks registered by :func:`install`."""
 
     @pytest.hookimpl(wrapper=True)
     def pytest_runtest_protocol(self, item: pytest.Item, nextitem: Any):
-        _STATE.current = item.nodeid
+        _STATE.current = None if unchecked(item) else item.nodeid
         try:
             return (yield)
         finally:
@@ -267,6 +321,12 @@ def install(config: pytest.Config) -> ToolResponseGuard | None:
     if mode not in {"enforce", "report", "off"}:
         raise pytest.UsageError(f"{MODE_ENV} must be enforce, report or off: {mode!r}")
     _STATE.mode = mode
+    # Registered in every mode so --strict-markers accepts the opt-out.
+    config.addinivalue_line(
+        "markers",
+        f"{UNCHECKED_MARKER}(reason): the test's mocks shape the MCP tool "
+        "response, so the envelope guard skips it",
+    )
     if mode == "off":
         return None
     existing = config.pluginmanager.get_plugin(_PLUGIN_NAME)

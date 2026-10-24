@@ -168,7 +168,10 @@ class CodeGraphCallPathTool(BaseMCPTool):
         paths = [p.to_dict() for p in result.paths]
         result_dict: dict[str, Any] = {
             "success": True,
-            "verdict": "PATH_FOUND" if result.paths else "NO_PATH",
+            # Canonical verdict for agents that branch on it (tool_response.
+            # CANONICAL_VERDICTS); the specific outcome stays in path_status.
+            "verdict": "INFO" if result.paths else "NOT_FOUND",
+            "path_status": "PATH_FOUND" if result.paths else "NO_PATH",
             "data_source": result.data_source,
             "source": source_function,
             "target": target_function,

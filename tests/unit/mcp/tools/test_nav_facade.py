@@ -816,7 +816,7 @@ async def test_call_path_in_running_event_loop_returns_dict(tmp_path: Any) -> No
         }
     )
     assert isinstance(result, dict)
-    assert result.get("verdict") in {"PATH_FOUND", "NO_PATH", "ERROR", "NOT_FOUND"}
+    assert result.get("verdict") in {"INFO", "ERROR", "NOT_FOUND"}
 
 
 # ---------------------------------------------------------------------------
