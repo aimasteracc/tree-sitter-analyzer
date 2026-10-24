@@ -762,3 +762,15 @@ def test_uql_key_includes_index_identity(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(freshness, "index_identity", lambda root: ("gen", 2))
     second = _uql_key(tmp_path, "symbol('target').callers()")
     assert first != second
+
+
+def test_uql_key_build_failure_falls_back_to_compute(tmp_path, monkeypatch) -> None:
+    import tree_sitter_analyzer.mcp.tools.relation_freshness as freshness
+
+    _uql_project(tmp_path)
+
+    def broken(root):
+        raise OSError("unreadable index")
+
+    monkeypatch.setattr(freshness, "index_identity", broken)
+    assert _uql_key(tmp_path, "symbol('target').callers()") is None

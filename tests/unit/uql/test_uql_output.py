@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 import json
 
+import pytest
+
 from tests.unit.uql._fake_backends import FakeBackends, callers_payload, sym
 from tree_sitter_analyzer.uql import answer
-from tree_sitter_analyzer.uql.output import canonical, encode_cursor
+from tree_sitter_analyzer.uql.output import canonical, encode_cursor, query_digest
 from tree_sitter_analyzer.uql.parser import parse_query
 
 
@@ -166,3 +168,93 @@ def test_cursor_is_bound_to_the_ir_not_the_spelling() -> None:
         {"query": 'symbol("t").callers()', "cursor": first["page"]["next_cursor"]}, fb
     )
     assert (out["success"], out["page"]["offset"]) == (True, 4)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [b"[1]", b'{"q": "x"}'],
+)
+def test_cursor_with_wrong_payload_shape_is_rejected(payload: bytes) -> None:
+    import base64
+
+    cursor = "uql1:" + base64.urlsafe_b64encode(payload).decode().rstrip("=")
+    out = _answer({"query": Q, "cursor": cursor}, _five_callers())
+    assert out["error_code"] == "UQL_INVALID_CURSOR"
+
+
+def test_cursor_with_negative_offset_is_rejected() -> None:
+    import base64
+    import json as _json
+
+    body = _json.dumps({"q": query_digest(_key(Q)), "o": -1, "g": None}).encode()
+    cursor = "uql1:" + base64.urlsafe_b64encode(body).decode().rstrip("=")
+    out = _answer({"query": Q, "cursor": cursor}, _five_callers())
+    assert out["error_code"] == "UQL_INVALID_CURSOR"
+
+
+def test_cursor_with_non_string_generation_is_rejected() -> None:
+    import base64
+    import json as _json
+
+    body = _json.dumps({"q": query_digest(_key(Q)), "o": 1, "g": 5}).encode()
+    cursor = "uql1:" + base64.urlsafe_b64encode(body).decode().rstrip("=")
+    out = _answer({"query": Q, "cursor": cursor}, _five_callers())
+    assert out["error_code"] == "UQL_INVALID_CURSOR"
+
+
+def test_cursor_past_the_end_is_rejected() -> None:
+    out = _answer(
+        {"query": Q, "cursor": encode_cursor(_key(Q), 99, "gen-1")}, _five_callers()
+    )
+    assert out["error_code"] == "UQL_INVALID_CURSOR"
+
+
+def test_integral_float_limit_is_accepted() -> None:
+    out = _answer({"query": Q, "limit": 2.0}, _five_callers())
+    assert out["page"]["returned"] == 2
+
+
+def test_unknown_detail_level_is_a_typed_tool_error() -> None:
+    out = _answer({"query": Q, "detail": "verbose"}, _five_callers())
+    assert out["error_code"] == "UQL_INVALID_TOOL_ARGUMENT"
+
+
+def test_full_detail_reports_class_and_indexed_files() -> None:
+    fb = FakeBackends({"m": [sym("m", **{"class": "Cls"})]})
+    out = _answer({"query": "symbol('m')", "detail": "full"}, fb)
+    assert (out["results"]["symbol"][0]["class"], out["indexed_files"]) == ("Cls", 10)
+
+
+def test_impact_output_splits_callers_tests_and_files() -> None:
+    fb = FakeBackends(
+        {"t": [sym("t")]},
+        {
+            "t": callers_payload(("a", "src/b.py", 2)),
+            "a": callers_payload(("test_a", "tests/test_b.py", 4)),
+        },
+    )
+    out = _answer({"query": "symbol('t').impact()"}, fb)
+    assert (out["results"]["impact"], out["results"]["impact.tests"], out["files"]) == (
+        ["src/b.py:2 a"],
+        ["tests/test_b.py:4 test_a"],
+        ["src/a.py", "src/b.py", "tests/test_b.py"],
+    )
+
+
+def test_unproven_selector_stage_carries_a_note() -> None:
+    fb = FakeBackends(selection=[sym("a")])
+    out = _answer({"query": ".function:calls(#t)"}, fb)
+    assert out["stages"][0]["note"] == (
+        "unproven predicates: :calls. :calls reads call edges without a coverage "
+        "proof; symbol('X').callers() answers the same question with nav-callers "
+        "completeness."
+    )
+
+
+def test_evidence_handles_are_capped_at_three() -> None:
+    gap_payload = callers_payload(completeness="unknown", reasons=("X",))
+    rows = [(f"c{i}", "src/b.py", i + 1) for i in range(5)]
+    callers = {"t": callers_payload(*rows)} | {f"c{i}": gap_payload for i in range(5)}
+    fb = FakeBackends({"t": [sym("t")]}, callers)
+    out = _answer({"query": "symbol('t').callers().callers()"}, fb)
+    assert len(out["evidence"]) == 3

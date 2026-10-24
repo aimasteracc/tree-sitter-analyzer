@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 from tests.unit.uql._fake_backends import FakeBackends, callers_payload, sym
 from tree_sitter_analyzer.uql import coverage as C
 from tree_sitter_analyzer.uql.engine import run
@@ -298,3 +300,69 @@ def test_untested_shares_one_producer_budget(monkeypatch) -> None:
     ex = _run("symbol('target').callers().untested()", fb)
     unknown = [r.name for r in ex.groups[1].rows if r.membership == "unknown"]
     assert (unknown, ex.stages[2].own.status) == (["f2", "f3"], "unknown")
+
+
+def test_invalid_filter_regex_is_a_typed_error_with_partial_facts() -> None:
+    fb = _backends(target=callers_payload(("a", "src/b.py", 3)))
+    parsed = parse_query("symbol('target').callers().filter(regex='(')")
+    assert isinstance(parsed, Ok)
+    result = asyncio.run(run(parsed.value, fb))
+    assert isinstance(result, Err)
+    assert (result.error.code, result.error.stage_index, result.error.partial) == (
+        "UQL_INVALID_ARGUMENT",
+        2,
+        {"stages_completed": 2, "groups": {"symbol": 1, "callers": 1}},
+    )
+
+
+def test_take_keeps_the_first_rows() -> None:
+    rows = [(f"c{i}", "src/b.py", i + 1) for i in range(4)]
+    ex = _run(
+        "symbol('target').callers().take(2)", _backends(target=callers_payload(*rows))
+    )
+    assert [r.name for r in ex.groups[1].rows] == ["c0", "c1"]
+
+
+@pytest.mark.parametrize(
+    ("by", "expected"),
+    [
+        ("line", ["c1", "c2", "c0"]),
+        ("file", ["c0", "c2", "c1"]),
+        ("name", ["c2", "c1", "c0"]),
+    ],
+)
+def test_sort_orders_rows_descending(by: str, expected: list[str]) -> None:
+    rows = [("c0", "src/c.py", 1), ("c1", "src/a.py", 3), ("c2", "src/b.py", 2)]
+    fb = _backends(target=callers_payload(*rows))
+    ex = _run(f"symbol('target').callers().sort(by='{by}', desc=true)", fb)
+    assert [r.name for r in ex.groups[1].rows] == expected
+
+
+def test_repeated_relation_groups_get_numbered_names() -> None:
+    fb = _backends(target=callers_payload(("a", "src/b.py", 3)), a=callers_payload())
+    ex = _run("symbol('target').callers().callers()", fb)
+    assert [g.name for g in ex.groups] == ["symbol", "callers", "callers#2"]
+
+
+def test_module_scope_rows_are_not_expanded() -> None:
+    fb = _backends(target=callers_payload(("<module>", "src/b.py", 1)))
+    _run("symbol('target').callers().callers()", fb)
+    assert fb.calls == [("callers", "target", None)]
+
+
+def test_callers_bfs_stops_at_node_budget(monkeypatch) -> None:
+    import tree_sitter_analyzer.uql.relations as relations
+
+    monkeypatch.setattr(relations, "NODE_BUDGET", 1)
+    fb = _backends(
+        target=callers_payload(("a", "src/b.py", 3)),
+        a=callers_payload(("b", "src/c.py", 4)),
+    )
+    ex = _run("symbol('target').callers(depth=2)", fb)
+    assert ex.stages[1].own == C.Coverage("incomplete", (C.RELATION_NODE_BUDGET,))
+
+
+def test_failed_callees_call_is_relation_error() -> None:
+    fb = FakeBackends({"t": [sym("t")]}, callees={"t": {"success": False}})
+    ex = _run("symbol('t').callees()", fb)
+    assert ex.stages[1].own == C.Coverage("unknown", (C.RELATION_ERROR,))

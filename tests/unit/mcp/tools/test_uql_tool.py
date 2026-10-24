@@ -187,3 +187,56 @@ async def test_help_serves_the_grammar_card() -> None:
 def test_search_facade_advertises_uql_action() -> None:
     schema = build_search_facade(None).get_tool_definition()["inputSchema"]
     assert "uql" in schema["properties"]["action"]["enum"]
+
+
+async def test_new_unindexed_source_makes_absence_unknown(project: str) -> None:
+    # RFC-0041 §3：未入索引的同语言新文件可能含有定义，0 行不是不存在的证据。
+    (Path(project) / "pkg" / "late.py").write_text("def ghost():\n    pass\n")
+    out = await _uql(project, "symbol('ghost')")
+    assert (out["completeness"], out["completeness_reasons"]) == (
+        "unknown",
+        ["symbol:UNINDEXED_SOURCE_FILES"],
+    )
+
+
+async def test_new_unindexed_source_makes_found_rows_a_lower_bound(
+    project: str,
+) -> None:
+    (Path(project) / "pkg" / "late.py").write_text("def target():\n    pass\n")
+    out = await _uql(project, "symbol('target')")
+    assert out["stages"][0]["c"] == "incomplete"
+
+
+def test_unreadable_unindexed_check_is_unknown(project: str, monkeypatch) -> None:
+    import tree_sitter_analyzer.mcp.tools.unindexed_sources as unindexed
+    from tree_sitter_analyzer.uql.backends import IndexBackends
+
+    monkeypatch.setattr(unindexed, "unindexed_source_files", lambda *a: None)
+    gate = IndexBackends(project).source_gate([], frozenset({"python"}))
+    assert (gate.status, gate.reasons) == ("unknown", ("UNINDEXED_SOURCE_UNCHECKED",))
+
+
+def test_definition_count_counts_indexed_definitions(project: str) -> None:
+    from tree_sitter_analyzer.uql.backends import IndexBackends
+
+    backends = IndexBackends(project)
+    assert (backends.definition_count("target"), backends.definition_count("nope")) == (
+        1,
+        0,
+    )
+
+
+async def test_unresolved_callees_are_a_lower_bound(project: str) -> None:
+    # 该夹具的调用边未解析到项目定义：不列出、并如实标为下界。
+    out = await _uql(project, "symbol('helper').callees()")
+    assert (out["results"]["callees"], out["stages"][1]) == (
+        [],
+        {"op": "callees", "n": 0, "c": "incomplete", "r": ["CALLEE_UNRESOLVED"]},
+    )
+
+async def test_missing_project_root_is_a_typed_error() -> None:
+    out = await UqlTool(None).execute({"query": "symbol('f')"})
+    assert (out["error_code"], out["error"]) == (
+        "UQL_INDEX_UNAVAILABLE",
+        "Project root not set. Call set_project_path first.",
+    )
