@@ -83,18 +83,6 @@ class ReferenceVocabulary:
         """证据仍成立且词表证明 ``path`` 不含 ``needle`` 时为真；否则须照常读取。"""
         if not searchable(needle):
             return False
-        from ...query_scope import in_scope, scoped
-
-        if in_scope():
-            # RFC-0041：作用域内先一次性核对全部记录的 stat 证据（每个路径只 stat
-            # 一次），之后每个名字的判定只是字典查找与字节包含测试。
-            valid = scoped(("reference_vocab.valid", self._root), self._valid_entries)
-            words = valid.get(path)
-            if words is None:
-                return False
-            with self._lock:
-                self._touched.add(path)
-            return needle not in words
         with self._lock:
             entry = self._entries.get(path)
         if entry is None:
@@ -108,15 +96,37 @@ class ReferenceVocabulary:
             self._touched.add(path)
         return needle not in entry[1]
 
-    def _valid_entries(self) -> dict[str, bytes]:
-        """stat 证据当前仍成立的记录：``path -> 词表``（失效或不可 stat 的不在内）。"""
+    def lacking(self, paths: list[str], needle: bytes) -> set[str]:
+        """``paths`` 中词表证明不含 ``needle`` 的路径（查询作用域内批量判定）。
+
+        RFC-0041：每个路径的 stat 证据在一个查询作用域内只核对一次（按需、只核对
+        被问到的路径），之后每个名字的判定只是字典查找与字节包含测试。与逐个
+        :meth:`lacks` 的结论相同。
+        """
+        if not searchable(needle):
+            return set()
+        from ...query_scope import scoped
+
+        valid: dict[str, bytes | None] = scoped(
+            ("reference_vocab.valid", self._root), dict
+        )
         with self._lock:
-            entries = dict(self._entries)
-        valid: dict[str, bytes] = {}
-        for path, (stamp, words) in entries.items():
-            if _current_stamp(path) == stamp:
-                valid[path] = words
-        return valid
+            entries = self._entries
+            out: set[str] = set()
+            for path in paths:
+                if path not in valid:
+                    entry = entries.get(path)
+                    if entry is None:
+                        valid[path] = None
+                    else:
+                        valid[path] = (
+                            entry[1] if _current_stamp(path) == entry[0] else None
+                        )
+                words = valid[path]
+                if words is not None and needle not in words:
+                    out.add(path)
+            self._touched.update(out)
+        return out
 
     def learn(self, path: str, data: bytes, stamp: StatKey | None) -> None:
         """记录一次完整读取的词表；读取期间被改写或处于竞争窗口时不记录。"""

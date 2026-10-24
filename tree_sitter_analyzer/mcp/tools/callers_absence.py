@@ -667,10 +667,12 @@ def _files_containing(
         # RFC-0041：作用域内词表判定只是字典查找，先在本线程筛掉词表证明不含名字
         # 的文件，只把仍须读取的文件交给线程池；逐个判定由线程执行时 GIL 争用
         # 反而更慢。结果与逐个读取相同（被筛掉的文件本就返回空字节）。
+        paths = [os.path.join(project_root, entry[0]) for entry in files]
+        lacking = vocab.lacking(paths, needle)
         files = [
             entry
-            for entry in files
-            if not vocab.lacks(os.path.join(project_root, entry[0]), needle)
+            for entry, path in zip(files, paths, strict=True)
+            if path not in lacking
         ]
         if not files:
             vocab.flush()

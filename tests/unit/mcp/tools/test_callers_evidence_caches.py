@@ -464,6 +464,33 @@ async def test_warm_answer_equals_cold_answer(indexed_root) -> None:
         assert _without_timing(warm) == _without_timing(cold), name
 
 
+_BATCH_NAMES = ("Widget.unused", "Widget.used", "helper", "run", "missing_name")
+
+
+@pytest.mark.asyncio
+async def test_batched_answers_equal_single_answers(indexed_root) -> None:
+    # RFC-0041 跟进：批量入口只共享认证读与调用图，逐输入答复与单次调用相同。
+    from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+
+    requests = [{"function_name": n, "include_bodies": False} for n in _BATCH_NAMES]
+    batched = await CodeGraphCallersTool(str(indexed_root)).execute_batch(requests)
+    single = [await _cold_callers(indexed_root, n) for n in _BATCH_NAMES]
+    assert [_without_timing(r) for r in batched] == [_without_timing(r) for r in single]
+
+
+@pytest.mark.asyncio
+async def test_query_scoped_answers_equal_unscoped_answers(indexed_root) -> None:
+    # RFC-0041：查询作用域内共享的不变工作（stat、遍历、别名分桶、解析）不改变答复。
+    from tree_sitter_analyzer.query_scope import query_scope
+
+    unscoped = [await _cold_callers(indexed_root, n) for n in _BATCH_NAMES]
+    with query_scope():
+        scoped = [await _callers(indexed_root, n) for n in _BATCH_NAMES]
+    assert [_without_timing(r) for r in scoped] == [
+        _without_timing(r) for r in unscoped
+    ]
+
+
 @pytest.mark.asyncio
 async def test_new_unindexed_file_invalidates_the_cached_walk(indexed_root) -> None:
     warm = await _warm(indexed_root, "Widget.unused")
