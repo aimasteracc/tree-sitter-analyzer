@@ -222,6 +222,24 @@ def test_pid_liveness_edges(monkeypatch) -> None:
     assert stage.pid_alive(12345) is True
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Kernel32 liveness probe")
+def test_windows_sweep_ignores_replaced_ctypes_globals(
+    parent: Path, monkeypatch
+) -> None:
+    # CI run 40095395832：快照测试把 ctypes.WinDLL 换成 Kernel32 替身时，回收别的
+    # 进程残留目录的存活探测拿到替身而失败。探测必须使用导入时绑定的真实接口。
+    import ctypes
+
+    crashed = _leftover(parent, f"{stage.PREFIX}{_dead_pid()}-abc")
+
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("存活探测不得使用被替换的 ctypes 全局")
+
+    monkeypatch.setattr(ctypes, "WinDLL", forbidden)
+    monkeypatch.setattr(ctypes, "get_last_error", forbidden)
+    assert stage.sweep_stale(str(parent)) == [crashed.name]
+
+
 def test_removing_a_vanished_dir_succeeds(tmp_path: Path) -> None:
     assert stage._remove(str(tmp_path / "gone")) is True
 
