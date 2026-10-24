@@ -13,7 +13,7 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from tree_sitter_analyzer import query_scope as qs
@@ -162,7 +162,14 @@ def test_join_choice_is_remembered_while_the_database_is_unchanged(
 _WORDS = st.text(alphabet="ab_$1é", min_size=0, max_size=6)
 
 
-@settings(max_examples=200, deadline=None)
+@settings(
+    # 单测每项 8 s 预算（tests/conftest.py）：长会话里 200 个样例曾超时，60 个约 1 s。
+    max_examples=60,
+    deadline=None,
+    database=None,
+    # 纯内存比较；CI / xdist 负载下样例生成可能变慢，那不是被测行为。
+    suppress_health_check=[HealthCheck.too_slow, HealthCheck.data_too_large],
+)
 @given(
     files=st.lists(st.lists(_WORDS, max_size=6), max_size=8),
     needle=st.text(alphabet="ab_$1é", min_size=1, max_size=4),
