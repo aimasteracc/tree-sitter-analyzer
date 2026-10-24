@@ -366,3 +366,45 @@ def test_failed_callees_call_is_relation_error() -> None:
     fb = FakeBackends({"t": [sym("t")]}, callees={"t": {"success": False}})
     ex = _run("symbol('t').callees()", fb)
     assert ex.stages[1].own == C.Coverage("unknown", (C.RELATION_ERROR,))
+
+
+def test_duplicate_frontier_rows_are_not_counted_as_all_definitions() -> None:
+    # Codex P2 on #1802: two branches reaching shared.py:helper must not look
+    # like "every definition of helper" and drop the file scope.
+    fb = _backends(
+        target=callers_payload(("left", "src/l.py", 1), ("right", "src/r.py", 1)),
+        left=callers_payload(("helper", "src/shared.py", 5)),
+        right=callers_payload(("helper", "src/shared.py", 5)),
+    )
+    fb.counts = {"helper": 2}
+    _run("symbol('target').callers(depth=3)", fb)
+    assert ("callers", "helper", "src/shared.py") in fb.calls
+
+
+def test_relation_rows_get_kinds_from_indexed_definitions() -> None:
+    # Codex P2 on #1802: filter(kind=...) used to drop every relation row.
+    fb = _backends(
+        target=callers_payload(("a", "src/b.py", 3), ("<module>", "src/c.py", 1))
+    )
+    fb.kinds = {("src/b.py", 3, "a"): "function"}
+    ex = _run("symbol('target').callers().filter(kind='function')", fb)
+    assert [(r.name, r.kind) for r in ex.groups[1].rows] == [("a", "function")]
+
+
+def test_module_scope_rows_are_kind_module() -> None:
+    fb = _backends(target=callers_payload(("<module>", "src/c.py", 1)))
+    ex = _run("symbol('target').callers()", fb)
+    assert [r.kind for r in ex.groups[1].rows] == ["module"]
+
+
+def test_callees_stage_respects_the_node_budget(monkeypatch) -> None:
+    # Codex P2 on #1802: callees() issued one producer call per selected row.
+    import tree_sitter_analyzer.uql.relations as relations
+
+    monkeypatch.setattr(relations, "NODE_BUDGET", 1)
+    fb = FakeBackends({"t": [sym("t", "src/a.py", 1), sym("t", "src/b.py", 2)]})
+    ex = _run("symbol('t').callees()", fb)
+    assert (
+        [c for c in fb.calls if c[0] == "callees"],
+        C.RELATION_NODE_BUDGET in ex.stages[1].own.reasons,
+    ) == ([("callees", "t", None)], True)

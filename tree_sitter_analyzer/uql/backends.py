@@ -85,6 +85,10 @@ class Backends(Protocol):
 
     def definition_count(self, name: str) -> int | None: ...
 
+    def definition_kinds(
+        self, coordinates: list[tuple[str, int, str]]
+    ) -> dict[tuple[str, int, str], str]: ...
+
     async def callers(self, name: str, file: str | None) -> dict[str, Any]: ...
 
     async def callees(self, name: str, file: str | None) -> dict[str, Any]: ...
@@ -154,7 +158,12 @@ class IndexBackends:
         if unindexed:
             return gap(failed, UNINDEXED_REASON)
         evidence, _changed = relation_source_evidence(
-            self.cache, self.project_root, files, absence=not files
+            # 有结果也复核全部已索引文件（Codex #1802 P1）：只复核结果所在文件时，
+            # 未列出的文件里已改名出来的同名定义会被漏掉而仍报 complete。
+            self.cache,
+            self.project_root,
+            files,
+            absence=True,
         )
         reason = _freshness_gap(evidence)
         return gap(failed, reason) if reason else COMPLETE_COVERAGE
@@ -202,6 +211,27 @@ class IndexBackends:
         ]
         found = _with_class(self.cache, found)
         return [r for r in found if not cls or r.get("class") == cls]
+
+    def definition_kinds(
+        self, coordinates: list[tuple[str, int, str]]
+    ) -> dict[tuple[str, int, str], str]:
+        """``(file, line, name) -> kind``：关系行的种类取自已索引定义（Codex #1802）。"""
+        out: dict[tuple[str, int, str], str] = {}
+        if not coordinates:
+            return out
+        try:
+            conn = self.cache.get_conn()
+            for file, line, name in coordinates:
+                row = conn.execute(
+                    "SELECT kind FROM ast_symbol_rows WHERE file_path = ? AND line = ? "
+                    "AND name = ? LIMIT 1",
+                    (file, line, name),
+                ).fetchone()
+                if row is not None and row[0]:
+                    out[(file, line, name)] = str(row[0])
+        except (sqlite3.Error, AttributeError):
+            return {}
+        return out
 
     def definition_count(self, name: str) -> int | None:
         """已索引的名为 ``name`` 的定义数；无法读取时返回 ``None``。"""

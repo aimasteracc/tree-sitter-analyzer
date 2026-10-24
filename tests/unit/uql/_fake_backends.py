@@ -46,6 +46,7 @@ class FakeBackends:
         counts: dict[str, int] | None = None,
     ) -> None:
         self.counts = counts or {}
+        self.kinds: dict[tuple[str, int, str], str] = {}
         self.symbols = symbols or {}
         self.callers_map = callers or {}
         self.callees_map = callees or {}
@@ -77,6 +78,11 @@ class FakeBackends:
 
     def definition_count(self, name: str) -> int | None:
         return self.counts.get(name, 1)
+
+    def definition_kinds(
+        self, coordinates: list[tuple[str, int, str]]
+    ) -> dict[tuple[str, int, str], str]:
+        return {c: self.kinds[c] for c in coordinates if c in self.kinds}
 
     async def callers(self, name: str, file: str | None) -> dict[str, Any]:
         self.calls.append(("callers", name, file))

@@ -234,9 +234,24 @@ async def test_unresolved_callees_are_a_lower_bound(project: str) -> None:
         {"op": "callees", "n": 0, "c": "incomplete", "r": ["CALLEE_UNRESOLVED"]},
     )
 
+
 async def test_missing_project_root_is_a_typed_error() -> None:
     out = await UqlTool(None).execute({"query": "symbol('f')"})
     assert (out["error_code"], out["error"]) == (
         "UQL_INDEX_UNAVAILABLE",
         "Project root not set. Call set_project_path first.",
+    )
+
+
+async def test_unlisted_edited_file_blocks_a_complete_census(project: str) -> None:
+    # Codex P1 on #1802: an edit outside the returned files (renaming outer to
+    # target without re-indexing) must not leave symbol('target') complete.
+    other = Path(project) / "pkg" / "other.py"
+    other.write_text(
+        "from pkg.core import helper\n\n\ndef target():\n    return helper()\n"
+    )
+    out = await _uql(project, "symbol('target')")
+    assert (out["stages"][0]["c"], out["completeness_reasons"]) == (
+        "incomplete",
+        ["symbol:SOURCE_INDEX_MISMATCH"],
     )

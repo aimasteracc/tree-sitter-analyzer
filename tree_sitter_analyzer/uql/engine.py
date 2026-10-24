@@ -270,6 +270,21 @@ async def _relate(
     rows = sorted(
         result.rows, key=lambda r: (r.depth or 0, r.file, r.line or 0, r.name)
     )
+    # 关系行的种类取自已索引定义，kind 细化才有意义（Codex #1802）；模块作用域
+    # 调用点没有定义行，记为 module。
+    kinds = backends.definition_kinds(
+        [(r.file, r.line, r.name) for r in rows if r.line is not None and not r.kind]
+    )
+    rows = [
+        r
+        if r.kind
+        else replace(
+            r,
+            kind=kinds.get((r.file, r.line or 0, r.name))
+            or ("module" if r.name == rel.MODULE_SCOPE else None),
+        )
+        for r in rows
+    ]
     files = None
     if stage.relation == "impact":
         rows = [

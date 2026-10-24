@@ -168,7 +168,10 @@ def _requests(backends: Backends, rows: list[Row]) -> list[tuple[Row, str, str |
     """
     by_name: dict[str, list[Row]] = {}
     for row in rows:
-        by_name.setdefault(row.name, []).append(row)
+        group = by_name.setdefault(row.name, [])
+        # 按定义身份去重：两条遍历分支到达同一定义不能被数成两个定义（Codex #1802）。
+        if all(existing.key != row.key for existing in group):
+            group.append(row)
     out: list[tuple[Row, str, str | None]] = []
     for name, group in by_name.items():
         count = backends.definition_count(name)
@@ -335,12 +338,17 @@ async def callees(backends: Backends, inputs: list[Row]) -> RelationResult:
     callees 未解析到项目内定义则为 ``incomplete`` (列出的集合是下界)，
     否则为 ``unknown``。
     """
+    budget = _Budget()
     covs: list[Coverage] = []
     evidence: list[dict[str, Any]] = []
     out: dict[str, Row] = {}
     for row in inputs:
         if row.name == MODULE_SCOPE:
             continue
+        # 与其他关系阶段同一生产者调用上限（Codex #1802）。
+        if not budget.take():
+            covs.append(gap(INCOMPLETE, RELATION_NODE_BUDGET))
+            break
         send, scope = _target(backends, row)
         response = await backends.callees(send, scope)
         unresolved = 0
