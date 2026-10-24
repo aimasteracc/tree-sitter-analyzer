@@ -60,6 +60,23 @@ _PULSE_SPECS: tuple[McpCommandSpec, ...] = (
         },
     ),
     McpCommandSpec(
+        flag_name="uql",
+        tool_attr="UqlTool",
+        label="Unified query (search action=uql, RFC-0041)",
+        value_arg_name="uql",
+        required_value_error="--uql requires a query string",
+        build_tool_args=lambda args, output_format: {
+            key: value
+            for key, value in {
+                "query": getattr(args, "uql", "") or "",
+                "limit": getattr(args, "uql_limit", 50),
+                "cursor": getattr(args, "uql_cursor", None),
+                "detail": getattr(args, "uql_detail", "compact"),
+            }.items()
+            if value is not None
+        },
+    ),
+    McpCommandSpec(
         flag_name="semantic_neighbors",
         tool_attr="SemanticNeighborsTool",
         label="Semantic neighbor search (search action=semantic)",

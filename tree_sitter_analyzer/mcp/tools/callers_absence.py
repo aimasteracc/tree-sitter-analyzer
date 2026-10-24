@@ -18,6 +18,7 @@ RFC-0028 §1.1 的单向不变式要求：答案不得把无法证明的不存�
 from __future__ import annotations
 
 import bisect
+import contextvars
 import os
 import re
 import sqlite3
@@ -650,8 +651,16 @@ def _files_containing(
     vocab = reference_vocab.for_root(project_root)
     executor = ThreadPoolExecutor(max_workers=_READ_WORKERS)
     try:
+        # RFC-0041：工作线程继承调用方的上下文（含查询作用域的记忆）。
         futures = [
-            executor.submit(_read_chunk, project_root, chunk, needle, vocab)
+            executor.submit(
+                contextvars.copy_context().run,
+                _read_chunk,
+                project_root,
+                chunk,
+                needle,
+                vocab,
+            )
             for chunk in chunks
         ]
         for chunk, future in zip(chunks, futures, strict=True):

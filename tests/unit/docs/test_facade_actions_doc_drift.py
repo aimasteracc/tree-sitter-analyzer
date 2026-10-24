@@ -80,7 +80,8 @@ def test_facade_actions_surface_pins() -> None:
         "viz",
     ]
     total_actions = sum(len(rows) for rows in rows_by_facade.values())
-    assert total_actions == 85
+    # RFC-0041 新增 search action=uql。
+    assert total_actions == 86
 
     gaps = sorted(
         (facade, row.action)

@@ -424,6 +424,38 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
             "symbol graph. CLI parity for: search action=tql_execute."
         ),
     )
+    # RFC-0041: unified, evidence-carrying query language.
+    parser.add_argument(
+        "--uql",
+        metavar="QUERY",
+        type=str,
+        help=(
+            "Unified query (RFC-0041): select -> relate (callers/tests/impact/"
+            "callees) -> filter -> take in one call, with per-stage "
+            "completeness, e.g. \"symbol('parse').callers().tests()\". "
+            "CLI parity for: search action=uql."
+        ),
+    )
+    parser.add_argument(
+        "--uql-limit",
+        metavar="N",
+        type=int,
+        default=50,
+        help="Rows per page for --uql (1-500, default 50).",
+    )
+    parser.add_argument(
+        "--uql-cursor",
+        metavar="CURSOR",
+        type=str,
+        default=None,
+        help="page.next_cursor from a previous --uql page of the same query.",
+    )
+    parser.add_argument(
+        "--uql-detail",
+        choices=["compact", "full"],
+        default="compact",
+        help="--uql output detail: compact (default) or full (rows + provenance).",
+    )
     parser.add_argument(
         "--semantic-neighbors",
         metavar="QUERY",

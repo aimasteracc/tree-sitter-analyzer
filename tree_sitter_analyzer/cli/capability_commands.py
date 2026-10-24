@@ -41,12 +41,23 @@ def _ensure_tsa_config(project_root: str) -> None:
         "default_depth": 3,
         "default_top_n": 20,
         "default_page_size": 20,
-        "supported_extensions": [".py", ".ts", ".js", ".java", ".go", ".rs", ".c", ".cpp"],
+        "supported_extensions": [
+            ".py",
+            ".ts",
+            ".js",
+            ".java",
+            ".go",
+            ".rs",
+            ".c",
+            ".cpp",
+        ],
     }
     config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
 
 
-def _write_index_meta(project_root: str, files_indexed: int, languages: list[str]) -> None:
+def _write_index_meta(
+    project_root: str, files_indexed: int, languages: list[str]
+) -> None:
     """Write .tsa/index-meta.json after a successful --hotspot run."""
     import datetime
     import importlib.metadata
@@ -67,7 +78,9 @@ def _write_index_meta(project_root: str, files_indexed: int, languages: list[str
         "languages": languages,
         "tsa_version": version,
     }
-    (tsa_dir / "index-meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    (tsa_dir / "index-meta.json").write_text(
+        json.dumps(meta, indent=2), encoding="utf-8"
+    )
 
 
 def _execute_facade(
@@ -124,36 +137,62 @@ def _handle_hotspot(
 
     # --- Argument validation ---
     if top_n < 1:
-        context.output_json(result_to_dict(HotspotResult(
-            success=False, error="invalid_argument",
-            error_category="configuration", recovery_hint="fix_argument",
-            message="Invalid value for --hotspot-top-n: must be >= 1",
-        )))
+        context.output_json(
+            result_to_dict(
+                HotspotResult(
+                    success=False,
+                    error="invalid_argument",
+                    error_category="configuration",
+                    recovery_hint="fix_argument",
+                    message="Invalid value for --hotspot-top-n: must be >= 1",
+                )
+            )
+        )
         return 1
     top_n = min(top_n, 200)
     if page < 1:
-        context.output_json(result_to_dict(HotspotResult(
-            success=False, error="invalid_argument",
-            error_category="configuration", recovery_hint="fix_argument",
-            message="Invalid value for --page: must be >= 1",
-        )))
+        context.output_json(
+            result_to_dict(
+                HotspotResult(
+                    success=False,
+                    error="invalid_argument",
+                    error_category="configuration",
+                    recovery_hint="fix_argument",
+                    message="Invalid value for --page: must be >= 1",
+                )
+            )
+        )
         return 1
     if page_size < 1:
-        context.output_json(result_to_dict(HotspotResult(
-            success=False, error="invalid_argument",
-            error_category="configuration", recovery_hint="fix_argument",
-            message="Invalid value for --page-size: must be >= 1",
-        )))
+        context.output_json(
+            result_to_dict(
+                HotspotResult(
+                    success=False,
+                    error="invalid_argument",
+                    error_category="configuration",
+                    recovery_hint="fix_argument",
+                    message="Invalid value for --page-size: must be >= 1",
+                )
+            )
+        )
         return 1
     if depth < 1:
-        context.output_json(result_to_dict(HotspotResult(
-            success=False, error="invalid_argument",
-            error_category="configuration", recovery_hint="fix_argument",
-            message="Invalid value for --depth: must be 1-5",
-        )))
+        context.output_json(
+            result_to_dict(
+                HotspotResult(
+                    success=False,
+                    error="invalid_argument",
+                    error_category="configuration",
+                    recovery_hint="fix_argument",
+                    message="Invalid value for --depth: must be 1-5",
+                )
+            )
+        )
         return 1
     if depth > 5:
-        print(f"WARNING: --depth {depth} exceeds max (5); capping at 5", file=sys.stderr)
+        print(
+            f"WARNING: --depth {depth} exceeds max (5); capping at 5", file=sys.stderr
+        )
         depth = 5
 
     # --- Write .tsa/config.json ---
@@ -164,43 +203,73 @@ def _handle_hotspot(
     try:
         dm.build()
     except FileNotFoundError:
-        context.output_json(result_to_dict(HotspotResult(
-            success=False, error="index_not_built",
-            error_category="state", recovery_hint="fix_then_retry",
-            message="Index not found — run 'tsa --ast-cache . --ast-cache-mode index' first, then retry --hotspot",
-        )))
+        context.output_json(
+            result_to_dict(
+                HotspotResult(
+                    success=False,
+                    error="index_not_built",
+                    error_category="state",
+                    recovery_hint="fix_then_retry",
+                    message="Index not found — run 'tsa --ast-cache . --ast-cache-mode index' first, then retry --hotspot",
+                )
+            )
+        )
         return 1
     except OSError:
-        context.output_json(result_to_dict(HotspotResult(
-            success=False, error="index_build_error",
-            error_category="transient", recovery_hint="retry",
-            message="Transient I/O error reading index — retry should succeed",
-        )))
+        context.output_json(
+            result_to_dict(
+                HotspotResult(
+                    success=False,
+                    error="index_build_error",
+                    error_category="transient",
+                    recovery_hint="retry",
+                    message="Transient I/O error reading index — retry should succeed",
+                )
+            )
+        )
         return 1
     except Exception:
-        context.output_json(result_to_dict(HotspotResult(
-            success=False, error="index_not_built",
-            error_category="state", recovery_hint="fix_then_retry",
-            message="Index not found — run 'tsa --ast-cache . --ast-cache-mode index' first, then retry --hotspot",
-        )))
+        context.output_json(
+            result_to_dict(
+                HotspotResult(
+                    success=False,
+                    error="index_not_built",
+                    error_category="state",
+                    recovery_hint="fix_then_retry",
+                    message="Index not found — run 'tsa --ast-cache . --ast-cache-mode index' first, then retry --hotspot",
+                )
+            )
+        )
         return 1
 
     # --- Heatmap data ---
     try:
         heatmap_files = heatmaps_from_project_analysis(project_root)
     except TimeoutError:
-        context.output_json(result_to_dict(HotspotResult(
-            success=False, error="parse_timeout",
-            error_category="transient", recovery_hint="retry",
-            message="File parse timeout — transient, retry should succeed",
-        )))
+        context.output_json(
+            result_to_dict(
+                HotspotResult(
+                    success=False,
+                    error="parse_timeout",
+                    error_category="transient",
+                    recovery_hint="retry",
+                    message="File parse timeout — transient, retry should succeed",
+                )
+            )
+        )
         return 1
     except OSError:
-        context.output_json(result_to_dict(HotspotResult(
-            success=False, error="fs_busy",
-            error_category="transient", recovery_hint="retry",
-            message="Transient I/O error — retry should succeed",
-        )))
+        context.output_json(
+            result_to_dict(
+                HotspotResult(
+                    success=False,
+                    error="fs_busy",
+                    error_category="transient",
+                    recovery_hint="retry",
+                    message="Transient I/O error — retry should succeed",
+                )
+            )
+        )
         return 1
 
     ca_map = build_ca_raw_map(dm)
@@ -214,22 +283,28 @@ def _handle_hotspot(
         import os as _os
 
         from tree_sitter_analyzer.complexity_heatmap import _collect_source_files
+
         all_py = _collect_source_files(project_root, "python", None, 5000)
         _known_files = [
-            _os.path.relpath(fp, project_root).replace("\\", "/")
-            for fp, _ in all_py
+            _os.path.relpath(fp, project_root).replace("\\", "/") for fp, _ in all_py
         ]
         if not ca_map:
             target_files = [fh.file.replace("\\", "/") for fh in heatmap_files]
-            ca_map = build_ca_from_source_imports(project_root, _known_files, target_files)
+            ca_map = build_ca_from_source_imports(
+                project_root, _known_files, target_files
+            )
         if not dm._import_edges:
-            dm._import_edges = build_import_edges_from_source(project_root, _known_files)
+            dm._import_edges = build_import_edges_from_source(
+                project_root, _known_files
+            )
 
     heatmap_map = build_heatmap_map(heatmap_files)
 
     # --- Alias-aware Ca (P3) ---
     # Pass _known_files when available to avoid expensive rglob on large repos
-    alias_ca_map = build_alias_ca_map(ca_map, dm._import_edges, project_root, _known_files)
+    alias_ca_map = build_alias_ca_map(
+        ca_map, dm._import_edges, project_root, _known_files
+    )
 
     # --- BFS subgraph (P5: trace_from != None) ---
     reachable = None
@@ -238,20 +313,27 @@ def _handle_hotspot(
 
     if trace_from is not None:
         from tree_sitter_analyzer.subgraph_traverser import get_subgraph
+
         reachable = get_subgraph(dm, trace_from, depth)
         if reachable is None:
             # Isolated file: no imports, no importers — still a valid entry at hop 0
             if trace_from in heatmap_map:
                 reachable = {trace_from: 0}
             else:
-                context.output_json(result_to_dict(HotspotResult(
-                    success=False, error="entry_point_not_found",
-                    error_category="data", recovery_hint="try_alternative",
-                    message=(
-                        f"Entry point not found: {trace_from} — "
-                        "try '--trace-from src/' or check path with 'tsa health'"
-                    ),
-                )))
+                context.output_json(
+                    result_to_dict(
+                        HotspotResult(
+                            success=False,
+                            error="entry_point_not_found",
+                            error_category="data",
+                            recovery_hint="try_alternative",
+                            message=(
+                                f"Entry point not found: {trace_from} — "
+                                "try '--trace-from src/' or check path with 'tsa health'"
+                            ),
+                        )
+                    )
+                )
                 return 1
         subgraph_summary = SubgraphSummary(
             entry_point=trace_from,
@@ -276,7 +358,7 @@ def _handle_hotspot(
     verdict = "CRITICAL" if n_critical > 0 else ("REVIEW" if n_review > 0 else "OK")
     summary_line = (
         f"hotspot: top={min(top_n, len(ranked))} files "
-        f"CRITICAL={n_critical} REVIEW={n_review} OK={len(ranked)-n_critical-n_review}"
+        f"CRITICAL={n_critical} REVIEW={n_review} OK={len(ranked) - n_critical - n_review}"
     )
     result = HotspotResult(
         success=True,
@@ -289,7 +371,9 @@ def _handle_hotspot(
         agent_summary={"summary_line": summary_line, "verdict": verdict},
     )
     if not ranked:
-        result.message = "No files exceed CRITICAL or REVIEW threshold — codebase is in good shape"
+        result.message = (
+            "No files exceed CRITICAL or REVIEW threshold — codebase is in good shape"
+        )
 
     # --- Alias gap summary (P3) ---
     if show_alias_diff:

@@ -131,7 +131,9 @@ producer evidence (unresolved sites, excluded sites, ...) is one call away.
 `detail="full"` returns structured rows with `depth` / `via` provenance and
 every examined input.
 
-Paging is across groups in output order (`limit` 1..500, default 50). Cursors
+Paging is across groups in output order (`limit` 1..500, default 50 — owner
+decision 2026-10-24); every response reports `page.total` and `page.next_cursor`
+(`null` on the last page). Cursors
 are stateless (`uql1:` + base64 of query digest, offset, 16-hex generation
 tag); the next page re-executes the query. A cursor for another query is
 `UQL_INVALID_CURSOR`; one from another source generation is

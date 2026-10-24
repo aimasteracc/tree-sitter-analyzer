@@ -77,8 +77,11 @@ class TestAllowlistFence:
     def test_health_file_is_in_the_allowlist(self) -> None:
         assert ("health", "file") in CACHEABLE_ACTIONS
 
-    def test_allowlist_holds_exactly_the_two_certified_expensive_routes(self) -> None:
-        assert CACHEABLE_ACTIONS == frozenset({("edit", "safe"), ("health", "file")})
+    def test_allowlist_holds_exactly_the_certified_expensive_routes(self) -> None:
+        # RFC-0041 新增 search action=uql (热态需数秒；以 IR + 索引为键)。
+        assert CACHEABLE_ACTIONS == frozenset(
+            {("edit", "safe"), ("health", "file"), ("search", "uql")}
+        )
 
 
 # --------------------------------------------------------------------------
@@ -680,3 +683,94 @@ class TestTheAllowlistedRoutesDoNotEvictEachOther:
         )
         assert cache.lookup(bumped) is None
         assert cache.lookup(health_key) is not None
+
+
+# --------------------------------------------------------------------------
+# RFC-0041 —— search action=uql 以解析后的 IR 与索引标识为键
+# --------------------------------------------------------------------------
+
+
+def _uql_project(tmp_path):
+    from tests.unit._ast_cache_helpers import legacy_cache
+
+    source = tmp_path / "mod.py"
+    source.write_text(
+        "def target():\n    return 1\n\n\ndef caller():\n    return target()\n"
+    )
+    old = time.time() - 60
+    os.utime(source, (old, old))
+    cache = legacy_cache(str(tmp_path))
+    try:
+        cache.index_project()
+    finally:
+        cache.close()
+    return source
+
+
+def _uql_key(root, query: str, **extra):
+    return build_answer_key("search", "uql", {"query": query, **extra}, str(root))
+
+
+def test_uql_key_is_shared_by_two_spellings_of_one_ir(tmp_path) -> None:
+    _uql_project(tmp_path)
+    first = _uql_key(tmp_path, "symbol('target').callers()")
+    second = _uql_key(tmp_path, 'symbol("target") . callers( )')
+    assert (first is not None, first == second) == (True, True)
+
+
+def test_uql_unparsable_query_is_never_cached(tmp_path) -> None:
+    _uql_project(tmp_path)
+    assert _uql_key(tmp_path, "symbol('target') | callers()") is None
+
+
+def test_uql_key_covers_paging_and_detail(tmp_path) -> None:
+    _uql_project(tmp_path)
+    base = _uql_key(tmp_path, "symbol('target').callers()")
+    assert (
+        base == _uql_key(tmp_path, "symbol('target').callers()", detail="full"),
+        base == _uql_key(tmp_path, "symbol('target').callers()", limit=1),
+    ) == (False, False)
+
+
+def test_uql_edit_plus_refresh_invalidates_the_key(tmp_path) -> None:
+    from tests.unit._ast_cache_helpers import legacy_cache
+
+    source = _uql_project(tmp_path)
+    before = _uql_key(tmp_path, "symbol('target').callers()")
+    source.write_text("def target():\n    return 1\n\n\ndef caller():\n    return 2\n")
+    old = time.time() - 30
+    os.utime(source, (old, old))
+    cache = legacy_cache(str(tmp_path))
+    try:
+        cache.index_project()
+    finally:
+        cache.close()
+    after = _uql_key(tmp_path, "symbol('target').callers()")
+    assert (before is not None, after is not None, before == after) == (
+        True,
+        True,
+        False,
+    )
+
+
+def test_uql_key_includes_index_identity(tmp_path, monkeypatch) -> None:
+    import tree_sitter_analyzer.mcp.tools.relation_freshness as freshness
+
+    _uql_project(tmp_path)
+    monkeypatch.setattr(freshness, "index_identity", lambda root: ("gen", 1))
+    first = _uql_key(tmp_path, "symbol('target').callers()")
+    monkeypatch.setattr(freshness, "index_identity", lambda root: ("gen", 2))
+    second = _uql_key(tmp_path, "symbol('target').callers()")
+    assert first != second
+
+
+def test_uql_key_build_failure_falls_back_to_compute(tmp_path, monkeypatch) -> None:
+    import tree_sitter_analyzer.mcp.tools.relation_freshness as freshness
+
+    _uql_project(tmp_path)
+
+    def broken(root):
+        raise OSError("unreadable index")
+
+    monkeypatch.setattr(freshness, "index_identity", broken)
+    assert _uql_key(tmp_path, "symbol('target').callers()") is None

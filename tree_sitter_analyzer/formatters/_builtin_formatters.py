@@ -84,6 +84,3 @@ class FullFormatter(IFormatter):
                 _append_full_element_lines(lines, element)
             lines.append("")
         return "\n".join(lines)
-
-
-

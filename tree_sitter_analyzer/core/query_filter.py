@@ -155,7 +155,9 @@ class QueryFilter:
         elif filter_key == "abstract":
             return self._match_modifier(result, "abstract", filter_value)
         elif filter_key == "complexity":
-            return self._match_numeric_comparison(result, "complexity_score", filter_config)
+            return self._match_numeric_comparison(
+                result, "complexity_score", filter_config
+            )
         elif filter_key == "line_span":
             return self._match_numeric_comparison(result, "line_span", filter_config)
 

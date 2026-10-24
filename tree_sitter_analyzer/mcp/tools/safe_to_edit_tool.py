@@ -254,7 +254,9 @@ class SafeToEditTool(BaseMCPTool):
         # so the tier is the actionable part of the declaration.
         from ...cache.query_cost import cost_fields, query_cost
 
-        result.update(cost_fields(query_cost("edit", "safe", self.project_root, arguments)))
+        result.update(
+            cost_fields(query_cost("edit", "safe", self.project_root, arguments))
+        )
 
         return apply_output_format_to_response(result, output_format)
 

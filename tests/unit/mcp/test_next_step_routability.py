@@ -124,8 +124,9 @@ def test_the_harvest_is_not_vacuous() -> None:
     #1783：文本检索预算失败按预算类型给出 3 条 next_step，计数 175 → 178。
     """
     harvest = _next_step_strings()
-    assert len(harvest) == 178, (
-        f"expected 178 next_step string constants, harvested {len(harvest)}; "
+    # RFC-0041: the uql answer summary adds 1 next_step constant, 178 -> 179.
+    assert len(harvest) == 179, (
+        f"expected 179 next_step string constants, harvested {len(harvest)}; "
         "update this constant if the phrasing changed, otherwise the AST walk is "
         "no longer matching how next_step is assigned"
     )

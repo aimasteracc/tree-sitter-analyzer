@@ -73,13 +73,58 @@ _ES_ALIAS_EDGES_SQL = (
 )
 
 
+#: 全部 ES 改名导入调用边（不带名字过滤），按 ``import_alias.name`` 分桶。
+#: RFC-0041：一次统一查询里 callers 会对许多名字各问一次；逐名的 ``instr`` 连接
+#: 扫描在 TSA 自身索引上每次约 0.3 s，而它只取决于索引内容。在查询作用域
+#: （``query_scope``）内按库文件只分桶一次；作用域外逐次实时计算，行为不变。
+_ES_ALIAS_ALL_SQL = (
+    "SELECT e.* FROM ast_imports i JOIN edges e "
+    "ON e.kind = 'calls' AND e.callee_name = i.local_name AND e.file_path = i.file_path "
+    "WHERE i.language IN ('javascript', 'jsx', 'typescript', 'tsx') "
+    "AND instr(e.metadata, '\"import_alias\"') > 0"
+)
+
+
+def _es_alias_buckets(conn: sqlite3.Connection) -> dict[str, list[sqlite3.Row]]:
+    from ..query_scope import scoped
+
+    def compute() -> dict[str, list[sqlite3.Row]]:
+        buckets: dict[str, list[sqlite3.Row]] = {}
+        for row in conn.execute(_ES_ALIAS_ALL_SQL):
+            alias = _row_alias(row)
+            name = alias.get("name") if alias else None
+            if isinstance(name, str):
+                buckets.setdefault(name, []).append(row)
+        return buckets
+
+    databases = tuple(tuple(r) for r in conn.execute("PRAGMA database_list"))
+    if any(not db[2] for db in databases):  # in-memory database: no file identity
+        return compute()
+    return scoped(("es_alias_buckets", databases), compute)
+
+
+#: 单个名字的同一查询（作用域外的原路径）。
+_ES_ALIAS_EDGES_SQL = (
+    "SELECT e.* FROM ast_imports i JOIN edges e "
+    "ON e.kind = 'calls' AND e.callee_name = i.local_name AND e.file_path = i.file_path "
+    "WHERE i.language IN ('javascript', 'jsx', 'typescript', 'tsx') "
+    "AND i.local_name <> ? AND instr(e.metadata, ?) > 0"
+)
+
+
 def _es_alias_rows(conn: sqlite3.Connection, callee_name: str) -> list[sqlite3.Row]:
+    from ..query_scope import in_scope
+
     try:
-        return conn.execute(
-            _ES_ALIAS_EDGES_SQL, (callee_name, f'"name": "{callee_name}"')
-        ).fetchall()
+        if not in_scope():
+            return conn.execute(
+                _ES_ALIAS_EDGES_SQL, (callee_name, f'"name": "{callee_name}"')
+            ).fetchall()
+        rows = _es_alias_buckets(conn).get(callee_name, [])
     except sqlite3.OperationalError:
         return []
+    # 与逐名查询的 ``i.local_name <> ?`` 条件一致：原样导入的同名不算改名。
+    return [row for row in rows if row["callee_name"] != callee_name]
 
 
 def import_alias_of(edge: Any) -> str | None:

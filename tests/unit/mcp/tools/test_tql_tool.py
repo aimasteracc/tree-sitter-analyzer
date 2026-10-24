@@ -479,10 +479,36 @@ async def test_tql_broken_edge_store_is_not_zero_matches(indexed_tql):
     assert response["symbols"] == []
 
 
+async def test_tql_unknown_pseudo_class_is_a_parse_time_error(indexed_tql):
+    # RFC-0041 §4：统一解析器在读取索引之前校验伪类，
+    # 并给出最接近的已知伪类作为修复。
+    tool, _ = indexed_tql
+    response = await tool.execute({"selector": ".function:cals(#alpha)"})
+    assert (
+        response["success"],
+        response["error_code"],
+        response["fixed_selector"],
+    ) == (
+        False,
+        "UQL_UNKNOWN_PSEUDO_CLASS",
+        ".function:calls(#alpha)",
+    )
+
+
+async def test_tql_unknown_attribute_is_not_a_silent_empty_result(indexed_tql):
+    # RFC-0041 §4：Hyphae 曾把未知的 [attr=...] 求值为 [] (看起来像
+    # "没有匹配")；适配器现在将其作为语法错误拒绝。
+    tool, _ = indexed_tql
+    response = await tool.execute({"selector": ".function[nam=alpha]"})
+    assert (response["success"], response["error_code"]) == (
+        False,
+        "UQL_SELECTOR_SYNTAX",
+    )
+
+
 @pytest.mark.parametrize(
     "selector,error",
     [
-        (".function:unsupported", "unknown pseudo-class ':unsupported'"),
         (".function:reaches(#alpha){2,1}", "depth must be within 1..50"),
     ],
 )
@@ -601,3 +627,25 @@ async def test_search_tql_real_relationships_do_not_cross_same_named_methods(
     assert result["truncated"] is False
     assert [(s["name"], s["class"], s["line"]) for s in result["symbols"]] == expected
     assert {s["file"] for s in result["symbols"]} == {"service.py"}
+
+
+async def test_tql_edge_predicate_zero_is_unknown_not_a_census(indexed_tql):
+    # RFC-0041 / §1 的发现：`:calls` 读取的调用边没有覆盖证明，
+    # TSA dogfood 用例在 10 个中返回 0 个，且没有任何完整性声明。
+    tool, _ = indexed_tql
+    response = await tool.execute({"selector": ".function:calls(#alpha)"})
+    assert (
+        response["count"],
+        response["completeness"],
+        response["completeness_reasons"],
+    ) == (
+        0,
+        "unknown",
+        ["SELECTOR_PREDICATE_UNPROVEN"],
+    )
+
+
+async def test_tql_exhaustive_selector_carries_derived_completeness(indexed_tql):
+    tool, _ = indexed_tql
+    response = await tool.execute({"selector": ".function"})
+    assert (response["count"], response["completeness"]) == (3, "complete")

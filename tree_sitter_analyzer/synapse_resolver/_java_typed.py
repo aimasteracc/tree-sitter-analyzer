@@ -42,7 +42,9 @@ class JavaTypeIndex:
     #: 文件 -> 类名 -> 基类型名（``extends`` 与 ``implements``，源码中的写法）。
     classes: dict[str, dict[str, list[str]]] = field(default_factory=dict)
     #: (文件, 类) -> 方法名 -> [(定义行, 符号 id)]
-    methods: dict[ClassKey, dict[str, list[tuple[int, int]]]] = field(default_factory=dict)
+    methods: dict[ClassKey, dict[str, list[tuple[int, int]]]] = field(
+        default_factory=dict
+    )
 
 
 def java_type_index(ctx: ResolverContext) -> JavaTypeIndex:
@@ -86,7 +88,9 @@ def _load(conn: Any, index: JavaTypeIndex) -> None:
                 if sym_id is None:
                     continue
                 key = (file_path, str(symbol["class"]))
-                index.methods.setdefault(key, {}).setdefault(name, []).append((line, sym_id))
+                index.methods.setdefault(key, {}).setdefault(name, []).append(
+                    (line, sym_id)
+                )
 
 
 def resolve_type(
@@ -118,11 +122,14 @@ def resolve_type(
     candidates = []
     if package:
         candidates.append(f"{package}.{name}")
-    candidates += [f"{pkg}.{name}" for pkg in jctx.wildcard_pkgs_by_file.get(file_path, [])]
+    candidates += [
+        f"{pkg}.{name}" for pkg in jctx.wildcard_pkgs_by_file.get(file_path, [])
+    ]
     found = {
         (target, name)
         for fqn in candidates
-        if (target := jctx.fqn_to_file.get(fqn)) and name in index.classes.get(target, {})
+        if (target := jctx.fqn_to_file.get(fqn))
+        and name in index.classes.get(target, {})
     }
     return found.pop() if len(found) == 1 else None
 
@@ -157,7 +164,11 @@ def find_method(
 
 
 def _declares_anywhere(
-    cls: ClassKey, method: str, jctx: JavaResolverContext, index: JavaTypeIndex, depth: int
+    cls: ClassKey,
+    method: str,
+    jctx: JavaResolverContext,
+    index: JavaTypeIndex,
+    depth: int,
 ) -> bool:
     if depth > _MAX_DEPTH:
         return True
@@ -165,7 +176,9 @@ def _declares_anywhere(
         return True
     for parent in index.classes.get(cls[0], {}).get(cls[1], []):
         resolved = resolve_type(parent, cls[0], jctx, index)
-        if resolved is None or _declares_anywhere(resolved, method, jctx, index, depth + 1):
+        if resolved is None or _declares_anywhere(
+            resolved, method, jctx, index, depth + 1
+        ):
             return True
     return False
 
@@ -203,4 +216,10 @@ def resolve_java_typed_receiver(
     return ResolvedCallee(sym_id, ANNOTATED_RECEIVER, def_file, binding=binding)
 
 
-__all__ = ["JavaTypeIndex", "find_method", "java_type_index", "resolve_java_typed_receiver", "resolve_type"]
+__all__ = [
+    "JavaTypeIndex",
+    "find_method",
+    "java_type_index",
+    "resolve_java_typed_receiver",
+    "resolve_type",
+]
