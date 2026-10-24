@@ -143,6 +143,23 @@ TRUNCATION_COUNT_PAIRS: tuple[tuple[str, str], ...] = (
     ("caller_count", "callers_listed"),
 )
 
+#: Every rule name :func:`envelope_violations` can report.
+ENVELOPE_RULES: frozenset[str] = frozenset(
+    {
+        "base",
+        "agent-summary-shape",
+        "verdict-canonical",
+        "verdict-mirror",
+        "failure-verdict",
+        "success-verdict",
+        "error-code",
+        "completeness-status",
+        "completeness-reasons",
+        "completeness-reason-code",
+        "truncation",
+    }
+)
+
 #: ``truncated``-style flags that must be booleans when present.
 _TRUNCATION_FLAGS: tuple[str, ...] = ("truncated", "skipped_files_truncated")
 
@@ -322,6 +339,7 @@ def envelope_violations(
 __all__ = [
     "CANONICAL_VERDICTS",
     "COMPLETENESS_STATUSES",
+    "ENVELOPE_RULES",
     "FAILURE_VERDICTS",
     "TRUNCATION_COUNT_PAIRS",
     "ToolResponse",
