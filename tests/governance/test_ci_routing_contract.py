@@ -248,7 +248,13 @@ def test_ci_route_job_controls_expensive_optional_jobs() -> None:
     assert "run_e2e_smoke" in ci_text
     assert "run_regression" in ci_text
     assert "run_sql_platform_compat" in ci_text
-    assert "check_optional" in ci_text
+    # The Quality Gate derives required lanes from these same route flags.
+    assert "python3 scripts/ci_required_gate.py" in ci_text
+    from scripts.ci_required_gate import LANES
+
+    assert LANES["e2e"] == "run_e2e_smoke"
+    assert LANES["regression"] == "run_regression"
+    assert LANES["sql-platform-compat"] == "run_sql_platform_compat"
 
 
 def test_expensive_workflows_are_not_direct_pr_push_duplicates() -> None:

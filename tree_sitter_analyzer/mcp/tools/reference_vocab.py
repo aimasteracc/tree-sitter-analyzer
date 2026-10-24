@@ -96,6 +96,38 @@ class ReferenceVocabulary:
             self._touched.add(path)
         return needle not in entry[1]
 
+    def lacking(self, paths: list[str], needle: bytes) -> set[str]:
+        """``paths`` 中词表证明不含 ``needle`` 的路径（查询作用域内批量判定）。
+
+        RFC-0041：每个路径的 stat 证据在一个查询作用域内只核对一次（按需、只核对
+        被问到的路径），之后每个名字的判定只是字典查找与字节包含测试。与逐个
+        :meth:`lacks` 的结论相同。
+        """
+        if not searchable(needle):
+            return set()
+        from ...query_scope import scoped
+
+        valid: dict[str, bytes | None] = scoped(
+            ("reference_vocab.valid", self._root), dict
+        )
+        with self._lock:
+            entries = self._entries
+            out: set[str] = set()
+            for path in paths:
+                if path not in valid:
+                    entry = entries.get(path)
+                    if entry is None:
+                        valid[path] = None
+                    else:
+                        valid[path] = (
+                            entry[1] if _current_stamp(path) == entry[0] else None
+                        )
+                words = valid[path]
+                if words is not None and needle not in words:
+                    out.add(path)
+            self._touched.update(out)
+        return out
+
     def learn(self, path: str, data: bytes, stamp: StatKey | None) -> None:
         """记录一次完整读取的词表；读取期间被改写或处于竞争窗口时不记录。"""
         if stamp is None or time.time_ns() - stamp[1] < RACY_WINDOW_NS:

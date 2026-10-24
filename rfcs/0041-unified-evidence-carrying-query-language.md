@@ -106,6 +106,11 @@ all consume these; none re-splits query text.
 A stage's **effective** coverage folds in the stage before it
 (`UPSTREAM_INCOMPLETE` / `UPSTREAM_UNKNOWN`); the query total is the last
 effective coverage, so one `unknown` stage makes the total non-`complete`.
+Source stages revalidate **every** indexed file against the index, not only the files
+they returned (Codex on #1802: an edit elsewhere could introduce a matching definition).
+The recheck has a 2 s deadline (owner decision 2026-10-24); running out degrades the
+stage to `unknown` with `SOURCE_RECHECK_DEADLINE`, never to `complete`.
+
 Status order: `complete` < `incomplete` (a known lower bound) < `unknown`.
 `Coverage` refuses `complete` with reasons and non-`complete` without one.
 
@@ -304,6 +309,30 @@ What the numbers say:
   input runs `nav callers`' full RFC-0040 checks, which `test_map`,
   `caller_tree` and TQL do not. The query scope (§5b) cut TSA Q1 from 9.2 s
   to 2.4 s; the remainder is per-input proof work.
+
+### 7b. Batched callers (follow-up PR #1802)
+
+`CodeGraphCallersTool.execute_batch` answers a stage's callers requests under one
+certified index read and one call graph; every input still runs all RFC-0040 checks
+and its payload is byte-identical to a single `execute` (35/35 on the TSA benchmark
+pipelines). Within a query scope the vocabulary stat check, the indexed-file list and
+the ES alias buckets are computed once. Warm medians (3 interleaved rounds):
+
+| repo | Q | today | uql (#1801) | uql (#1802) |
+| --- | --- | ---: | ---: | ---: |
+| tsa | Q1 | 1.23 | 2.41 | 1.79 |
+| tsa | Q3 | 1.36 | 1.97 | 1.85 |
+| tsa | Q5 | 1.77 | 1.50 | 1.33 |
+| tsa | Q7 | 0.21 | 1.17 | 1.19 |
+| rich | Q1 | 0.09 | 1.07 | 0.64 |
+| rich | Q2 | 0.21 | 0.82 | 0.41 |
+| rich | Q3 | 0.09 | 0.76 | 0.44 |
+
+Accepted limit (owner 2026-10-24): **Q7 cannot reach `test_map`'s 0.21 s while keeping
+the proof.** One proof-carrying `nav callers` call costs ~0.8 s on TSA and `test_map`
+makes no completeness claim. The next step is cross-name batching of the per-input
+checks (one file-scan pass for all names, SQL `IN` sets for the per-target edge
+queries), gated on byte-identical payloads.
 
 ## Drawbacks
 

@@ -255,3 +255,56 @@ async def test_unlisted_edited_file_blocks_a_complete_census(project: str) -> No
         "incomplete",
         ["symbol:SOURCE_INDEX_MISMATCH"],
     )
+
+
+def test_full_recheck_past_its_deadline_names_the_deadline(
+    project: str, monkeypatch
+) -> None:
+    # RFC-0041 §3：全量复核超出 2 s 期限时降级为 unknown，原因码点名期限而不是泛泛的未知。
+    import tree_sitter_analyzer.mcp.tools.relation_freshness as freshness
+    from tree_sitter_analyzer.uql.backends import IndexBackends
+
+    # 确定性地模拟“复核超时”：复核返回范围未知，期限设为 0（不依赖机器速度）。
+    monkeypatch.setattr(freshness, "_ABSENCE_SCAN_DEADLINE_SECONDS", 0.0)
+    monkeypatch.setattr(
+        freshness,
+        "relation_source_evidence",
+        lambda *a, **k: (
+            {"freshness": "unknown", "reason": freshness.UNKNOWN_REASON},
+            [],
+        ),
+    )
+    gate = IndexBackends(project).source_gate(["pkg/core.py"], frozenset({"python"}))
+    assert (gate.status, gate.reasons) == ("unknown", ("SOURCE_RECHECK_DEADLINE",))
+
+
+async def test_backend_single_callers_is_a_one_element_batch(project: str) -> None:
+    from tree_sitter_analyzer.uql.backends import IndexBackends
+
+    backends = IndexBackends(project)
+    single = await backends.callers("target", "pkg/core.py")
+    (batched,) = await backends.callers_many([("target", "pkg/core.py")])
+    assert (single["caller_count"], single == batched) == (2, True)
+
+
+def test_definition_kinds_reads_indexed_kinds(project: str) -> None:
+    from tree_sitter_analyzer.uql.backends import IndexBackends
+
+    kinds = IndexBackends(project).definition_kinds(
+        [("pkg/core.py", 5, "helper"), ("pkg/core.py", 99, "nope")]
+    )
+    assert kinds == {("pkg/core.py", 5, "helper"): "function"}
+
+
+def test_definition_kinds_unreadable_index_is_empty(project: str, monkeypatch) -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.uql.backends import IndexBackends
+
+    backends = IndexBackends(project)
+
+    def broken():
+        raise sqlite3.OperationalError("locked")
+
+    monkeypatch.setattr(backends.cache, "get_conn", broken)
+    assert backends.definition_kinds([("pkg/core.py", 5, "helper")]) == {}

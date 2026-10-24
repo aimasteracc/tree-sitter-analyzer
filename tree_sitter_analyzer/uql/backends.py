@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import sqlite3
+import time
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -19,6 +20,7 @@ from ..hyphae.ast import SelectorList
 from .coverage import (
     COMPLETE_COVERAGE,
     INCOMPLETE,
+    SOURCE_RECHECK_DEADLINE,
     UNKNOWN,
     Coverage,
     gap,
@@ -103,6 +105,7 @@ class IndexBackends:
         self.project_root = project_root
         self._cache = cache
         self._nav_facade: Any = None
+        self._callers_tool: Any = None
 
     @property
     def cache(self) -> Any:
@@ -140,8 +143,12 @@ class IndexBackends:
         门禁失败时，非空答案只是下界 (``incomplete``)；
         空答案则不能作为不存在的证据 (``unknown``)。
         """
+        from ..mcp.tools import relation_freshness as freshness
         from ..mcp.tools.callers_absence import _freshness_gap
-        from ..mcp.tools.relation_freshness import relation_source_evidence
+        from ..mcp.tools.relation_freshness import (
+            UNKNOWN_REASON,
+            relation_source_evidence,
+        )
         from ..mcp.tools.unindexed_sources import (
             UNCHECKED_REASON,
             UNINDEXED_REASON,
@@ -157,6 +164,7 @@ class IndexBackends:
             return gap(failed, UNCHECKED_REASON)
         if unindexed:
             return gap(failed, UNINDEXED_REASON)
+        started = time.monotonic()
         evidence, _changed = relation_source_evidence(
             # 有结果也复核全部已索引文件（Codex #1802 P1）：只复核结果所在文件时，
             # 未列出的文件里已改名出来的同名定义会被漏掉而仍报 complete。
@@ -166,6 +174,11 @@ class IndexBackends:
             absence=True,
         )
         reason = _freshness_gap(evidence)
+        if reason == UNKNOWN_REASON and time.monotonic() - started >= (
+            freshness._ABSENCE_SCAN_DEADLINE_SECONDS
+        ):
+            # 全量复核超出期限（owner 2026-10-24 接受）：降级为 unknown，原因点名期限。
+            return gap(UNKNOWN, SOURCE_RECHECK_DEADLINE)
         return gap(failed, reason) if reason else COMPLETE_COVERAGE
 
     def _indexed_languages(self) -> frozenset[str] | None:
@@ -275,7 +288,31 @@ class IndexBackends:
         return result if isinstance(result, dict) else {"success": False}
 
     async def callers(self, name: str, file: str | None) -> dict[str, Any]:
-        return await self._relation("callers", name, file)
+        return (await self.callers_many([(name, file)]))[0]
+
+    async def callers_many(
+        self, pairs: list[tuple[str, str | None]]
+    ) -> list[dict[str, Any]]:
+        """一次批量的 ``nav action=callers``：共享认证读与调用图，逐输入答复不变。
+
+        直接调用 callers 工具的 ``execute_batch``（与 nav 门面背后的同一工具、
+        同一参数投影），每个输入的 payload 与单次调用逐字节相同。
+        """
+        if self._callers_tool is None:
+            from ..mcp.tools.callers_tool import CodeGraphCallersTool
+
+            self._callers_tool = CodeGraphCallersTool(self.project_root)
+        requests = []
+        for name, file in pairs:
+            args: dict[str, Any] = {
+                "function_name": name,
+                "include_bodies": False,
+                "limit": RELATION_LIST_CAP,
+            }
+            if file:
+                args["file_path"] = file
+            requests.append(args)
+        return await self._callers_tool.execute_batch(requests)  # type: ignore[no-any-return]
 
     async def callees(self, name: str, file: str | None) -> dict[str, Any]:
         return await self._relation("callees", name, file)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 from unittest.mock import Mock
@@ -105,6 +106,7 @@ def test_run_module_does_not_invoke_uv_while_pyproject_is_swapped(
     assert calls == [
         ["/venv/bin/mutmut", "run"],
         ["/venv/bin/mutmut", "results"],
+        ["/venv/bin/mutmut", "export-cicd-stats"],
     ]
     assert real_pyproject.read_text(encoding="utf-8") == "[project]\nname = 'sample'\n"
 
@@ -165,20 +167,121 @@ def test_run_module_rejects_unknown_module(capsys, tmp_path: Path) -> None:
     assert "Unknown module: missing." in capsys.readouterr().out
 
 
-def test_main_defaults_to_ast_diff(monkeypatch, tmp_path: Path) -> None:
-    calls: list[tuple[str, Path]] = []
-    monkeypatch.setattr(run_mutation_baseline.sys, "argv", ["runner"])
+def _fake_repo(monkeypatch, tmp_path: Path, stats: dict | None, ratchet: dict) -> None:
+    """A repo whose mutmut run "succeeds" and leaves ``stats`` behind."""
     monkeypatch.setattr(
-        run_mutation_baseline,
-        "run_module",
-        lambda module_key, repo_root: calls.append((module_key, repo_root)),
+        run_mutation_baseline, "__file__", str(tmp_path / "scripts" / "runner.py")
+    )
+    if stats is not None:
+        report = tmp_path / run_mutation_baseline.STATS_PATH
+        report.parent.mkdir(parents=True)
+        report.write_text(json.dumps(stats), encoding="utf-8")
+    ratchet_file = tmp_path / run_mutation_baseline.RATCHET_PATH
+    ratchet_file.parent.mkdir(parents=True)
+    ratchet_file.write_text(json.dumps({"max_unkilled": ratchet}), encoding="utf-8")
+    monkeypatch.setattr(run_mutation_baseline, "run_module", lambda key, root: None)
+
+
+def _stats(total: int = 10, survived: int = 2, no_tests: int = 1) -> dict:
+    return {
+        "killed": total - survived - no_tests,
+        "survived": survived,
+        "no_tests": no_tests,
+        "total": total,
+        "check_was_interrupted_by_user": False,
+    }
+
+
+def test_main_defaults_to_ast_diff(monkeypatch, tmp_path: Path) -> None:
+    _fake_repo(monkeypatch, tmp_path, _stats(), {"ast_diff": 3})
+    calls: list[str] = []
+    monkeypatch.setattr(
+        run_mutation_baseline, "run_module", lambda key, root: calls.append(key)
     )
 
-    run_mutation_baseline.main()
+    assert (run_mutation_baseline.main([]), calls) == (0, ["ast_diff"])
 
-    assert calls == [
-        (
-            "ast_diff",
-            Path(run_mutation_baseline.__file__).parent.parent.resolve(),
-        )
+
+def test_missing_stats_report_fails_closed(monkeypatch, tmp_path: Path) -> None:
+    """2026-10-19 run 39216448214: a module with no report still passed."""
+    _fake_repo(monkeypatch, tmp_path, None, {"ast_diff": 3})
+
+    with pytest.raises(run_mutation_baseline.MutationReportError):
+        run_mutation_baseline.main(["ast_diff"])
+
+
+@pytest.mark.parametrize(
+    ("stats", "ratchet", "problem"),
+    [
+        (_stats(total=0, survived=0, no_tests=0), {"ast_diff": 0}, "zero mutants"),
+        (_stats(survived=3), {"ast_diff": 3}, "exceed the ratchet of 3"),
+        (_stats(), {}, "no ratchet entry for ast_diff; record 3"),
+    ],
+)
+def test_report_that_breaks_the_gate_fails(
+    monkeypatch, tmp_path: Path, capsys, stats: dict, ratchet: dict, problem: str
+) -> None:
+    _fake_repo(monkeypatch, tmp_path, stats, ratchet)
+
+    assert (
+        run_mutation_baseline.main(["ast_diff", "--report-dir", str(tmp_path / "r")])
+        == 1
+    )
+    assert problem in capsys.readouterr().err
+    report = json.loads((tmp_path / "r" / "ast_diff.json").read_text(encoding="utf-8"))
+    assert report["problems"] and problem in report["problems"][0]
+
+
+def test_beating_the_ratchet_passes_and_asks_to_lower_it(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    _fake_repo(monkeypatch, tmp_path, _stats(survived=0, no_tests=0), {"ast_diff": 5})
+
+    assert run_mutation_baseline.main(["ast_diff"]) == 0
+    assert "lower tests/effectiveness/mutation_ratchet.json to 0" in (
+        capsys.readouterr().out.replace("\\", "/")
+    )
+
+
+def test_list_prints_every_module(capsys) -> None:
+    assert run_mutation_baseline.main(["--list"]) == 0
+    assert json.loads(capsys.readouterr().out) == list(run_mutation_baseline.MODULES)
+
+
+def test_every_module_targets_existing_files() -> None:
+    """toon_encoder.py was deleted and the baseline kept "mutating" it."""
+    root = Path(run_mutation_baseline.__file__).parent.parent
+    missing = [
+        path
+        for source, tests in run_mutation_baseline.MODULES.values()
+        for path in (source, *tests)
+        if not (root / path).is_file()
     ]
+
+    assert missing == []
+
+
+def test_completeness_modules_are_mutated() -> None:
+    assert {"callers_checks", "callers_outcomes", "callers_target_set"} <= set(
+        run_mutation_baseline.MODULES
+    )
+
+
+def test_ratchet_entries_name_known_modules() -> None:
+    root = Path(run_mutation_baseline.__file__).parent.parent
+    ratchet = run_mutation_baseline.load_ratchet(root)
+
+    assert set(ratchet) == set(run_mutation_baseline.MODULES)
+    invalid = {m: v for m, v in ratchet.items() if type(v) is not int or v < 0}
+    assert invalid == {}
+
+
+def test_workflow_fails_closed() -> None:
+    root = Path(run_mutation_baseline.__file__).parent.parent
+    text = (root / ".github" / "workflows" / "mutation-baseline.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "|| true" not in text
+    assert "if-no-files-found: error" in text
+    assert "timeout-minutes: 30" in text
