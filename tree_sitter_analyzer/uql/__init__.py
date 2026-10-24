@@ -1,8 +1,8 @@
-"""Unified, evidence-carrying query language for tree-sitter-analyzer (RFC-0041).
+"""tree-sitter-analyzer 的统一、携带证据的查询语言 (RFC-0041)。
 
-One grammar (TQL selectors + pipeline stages), one IR (:mod:`.ir`), one
-parser (:mod:`.parser`), one engine (:mod:`.engine`). ``answer`` is the
-application-layer entry point shared by ``search action=uql`` and ``--uql``.
+一套语法 (TQL 选择器 + 管道阶段)、一个 IR (:mod:`.ir`)、一个解析器
+(:mod:`.parser`)、一个执行引擎 (:mod:`.engine`)。``answer`` 是
+``search action=uql`` 与 ``--uql`` 共用的应用层入口。
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ def _tool_error(message: str, query: Any) -> dict[str, Any]:
 
 
 async def answer(arguments: dict[str, Any], backends: Backends) -> dict[str, Any]:
-    """Parse, execute and project one query; every failure is a typed payload."""
+    """解析、执行并投影一个查询；所有失败都以类型化 payload 返回。"""
     query_text = arguments.get("query")
     limit = arguments.get("limit", DEFAULT_LIMIT)
     if isinstance(limit, float) and limit.is_integer():

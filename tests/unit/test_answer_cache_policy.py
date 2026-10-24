@@ -78,7 +78,7 @@ class TestAllowlistFence:
         assert ("health", "file") in CACHEABLE_ACTIONS
 
     def test_allowlist_holds_exactly_the_certified_expensive_routes(self) -> None:
-        # RFC-0041 added search action=uql (seconds warm; keyed on IR + index).
+        # RFC-0041 新增 search action=uql (热态需数秒；以 IR + 索引为键)。
         assert CACHEABLE_ACTIONS == frozenset(
             {("edit", "safe"), ("health", "file"), ("search", "uql")}
         )
@@ -686,7 +686,7 @@ class TestTheAllowlistedRoutesDoNotEvictEachOther:
 
 
 # --------------------------------------------------------------------------
-# RFC-0041 — search action=uql keys on the parsed IR and the index identity
+# RFC-0041 —— search action=uql 以解析后的 IR 与索引标识为键
 # --------------------------------------------------------------------------
 
 

@@ -480,8 +480,8 @@ async def test_tql_broken_edge_store_is_not_zero_matches(indexed_tql):
 
 
 async def test_tql_unknown_pseudo_class_is_a_parse_time_error(indexed_tql):
-    # RFC-0041 §4: the unified parser validates pseudo-classes before any
-    # index read and names the closest known one as the fix.
+    # RFC-0041 §4：统一解析器在读取索引之前校验伪类，
+    # 并给出最接近的已知伪类作为修复。
     tool, _ = indexed_tql
     response = await tool.execute({"selector": ".function:cals(#alpha)"})
     assert (
@@ -496,8 +496,8 @@ async def test_tql_unknown_pseudo_class_is_a_parse_time_error(indexed_tql):
 
 
 async def test_tql_unknown_attribute_is_not_a_silent_empty_result(indexed_tql):
-    # RFC-0041 §4: Hyphae evaluated an unknown [attr=...] to [] (looked like
-    # "no matches"); the adapter now rejects it as a syntax error.
+    # RFC-0041 §4：Hyphae 曾把未知的 [attr=...] 求值为 [] (看起来像
+    # "没有匹配")；适配器现在将其作为语法错误拒绝。
     tool, _ = indexed_tql
     response = await tool.execute({"selector": ".function[nam=alpha]"})
     assert (response["success"], response["error_code"]) == (
@@ -630,8 +630,8 @@ async def test_search_tql_real_relationships_do_not_cross_same_named_methods(
 
 
 async def test_tql_edge_predicate_zero_is_unknown_not_a_census(indexed_tql):
-    # RFC-0041 / §1 finding: `:calls` read call edges with no coverage proof,
-    # and the TSA dogfood case returned 0 of 10 with no claim at all.
+    # RFC-0041 / §1 的发现：`:calls` 读取的调用边没有覆盖证明，
+    # TSA dogfood 用例在 10 个中返回 0 个，且没有任何完整性声明。
     tool, _ = indexed_tql
     response = await tool.execute({"selector": ".function:calls(#alpha)"})
     assert (

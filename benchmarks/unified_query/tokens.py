@@ -1,9 +1,8 @@
-"""Count tokens for recorded benchmark texts (RFC-0041).
+"""统计已记录基准文本的 token 数 (RFC-0041)。
 
-Estimator: tiktoken ``o200k_base``. Claude's tokenizer is not public, so this
-is a labelled *estimate*; it counts request plus response text for every call
-(the whole task, not just one reply). ``bytes/4`` is reported alongside for
-comparison with ``benchmarks/agent-tasks``. Run with::
+估算器：tiktoken ``o200k_base``。Claude 的 tokenizer 未公开，因此这是明确标注的
+*估算值*；它统计每次调用的请求加响应文本 (整个任务，而非单次回复)。同时输出
+``bytes/4`` 以便与 ``benchmarks/agent-tasks`` 对比。运行方式::
 
     uv run --with tiktoken python benchmarks/unified_query/tokens.py <results-dir>
 """

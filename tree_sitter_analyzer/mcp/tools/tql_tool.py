@@ -197,10 +197,9 @@ class TqlExecuteTool(BaseMCPTool):
         max_results = arguments["max_results"]
         selector_echo = _cap_echo(selector)
 
-        # RFC-0041: the selector is parsed and validated by the unified
-        # language's single owner, so a typo'd pseudo-class or attribute is a
-        # syntax error here exactly as in ``search action=uql`` (an unknown
-        # ``[attr=...]`` used to evaluate to a silent empty result).
+        # RFC-0041：选择器由统一语言的唯一负责者解析和校验，因此拼错的伪类或
+        # 属性在这里与 ``search action=uql`` 一样是语法错误 (未知的
+        # ``[attr=...]`` 过去会静默求值为空结果)。
         from ...uql.backends import IndexBackends
         from ...uql.errors import Err
         from ...uql.selector import parse_selector
@@ -287,10 +286,9 @@ class TqlExecuteTool(BaseMCPTool):
             verdict = "INFO"
             next_step = "Refine with :in(path) / [file=] / :not() to narrow if needed."
 
-        # RFC-0041 / owner decision: TQL answers carry the same derived
-        # completeness as the uql select stage. Edge, history, rule and branch
-        # predicates have no coverage proof, so a 0 they return is ``unknown``
-        # (the silent "0 of 10" case), never an implied census.
+        # RFC-0041 / owner 决定：TQL 答案携带与 uql select 阶段相同的推导完整性。
+        # 边、历史、规则与分支谓词没有覆盖证明，因此它们返回的 0 是
+        # ``unknown`` (即静默的 "0 of 10" 情形)，绝不暗示已全量统计。
         from ...uql.engine import selection_coverage
 
         coverage, coverage_note = selection_coverage(backends, parsed.value, selection)

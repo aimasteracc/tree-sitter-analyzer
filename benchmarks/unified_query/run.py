@@ -1,16 +1,15 @@
-"""Run the unified-query benchmark for one repository and arm (RFC-0041).
+"""针对一个仓库和一个对照组运行统一查询基准测试 (RFC-0041)。
 
-Usage::
+用法::
 
     uv run python benchmarks/unified_query/run.py --repo rich \
         --root C:/git-private/tsa-dogfood/uq/repos/rich \
         --arm today --out C:/git-private/tsa-dogfood/uq/results
 
-Run with ``ANSWER_CACHE_BUDGET_MB=0`` so no arm is served a memoised answer.
-After one untimed warm-up pass (a long-lived MCP server has built its graph),
-each question is timed exactly once. Recorded request and
-response texts go to ``<out>/<repo>-<arm>-texts.jsonl`` for token counting
-(``tokens.py``); per-question rows go to ``<out>/<repo>-<arm>.jsonl``.
+请以 ``ANSWER_CACHE_BUDGET_MB=0`` 运行，确保任何组都拿不到缓存的答案。
+先执行一次不计时的预热 (相当于长驻 MCP 服务器已构建好图)，之后每个问题
+只计时一次。记录的请求与响应文本写入 ``<out>/<repo>-<arm>-texts.jsonl``
+供 token 统计 (``tokens.py``)；每个问题的结果行写入 ``<out>/<repo>-<arm>.jsonl``。
 """
 
 from __future__ import annotations
@@ -99,10 +98,10 @@ def main() -> None:
     client: Any = TsaClient(args.root) if args.arm != "grep" else GrepClient(args.root)
     rows: list[dict[str, Any]] = []
     texts: list[dict[str, Any]] = []
-    # Warm server: one untimed callers call on an unrelated symbol builds the
-    # in-memory graph, as a long-lived MCP server has. ``--cold`` skips it.
-    # The facade answer cache is disabled by the caller
-    # (ANSWER_CACHE_BUDGET_MB=0) so no arm is served a memoised payload.
+    # 预热服务器：对一个无关符号做一次不计时的 callers 调用，构建内存中的图，
+    # 与长驻 MCP 服务器的状态一致。``--cold`` 会跳过此步。
+    # facade 的 answer cache 由调用方禁用 (ANSWER_CACHE_BUDGET_MB=0)，
+    # 确保任何组都拿不到缓存的 payload。
     warmup = 0.0
     if not args.cold and args.arm != "grep":
         client.trace = Trace()

@@ -34,8 +34,8 @@ def _require_plain_path(path: Path, *, directory: bool) -> None:
 def logical_index_path(project_root: str) -> Path:
     from ..query_scope import scoped
 
-    # RFC-0041: one realpath per root inside a query scope (each producer call
-    # resolves it dozens of times); live outside a scope.
+    # RFC-0041：查询作用域内每个 root 只做一次 realpath (每次产出方调用都会
+    # 解析数十次)；作用域之外实时计算。
     real = scoped(
         ("logical_index_path.realpath", project_root),
         lambda: os.path.realpath(os.path.abspath(project_root)),

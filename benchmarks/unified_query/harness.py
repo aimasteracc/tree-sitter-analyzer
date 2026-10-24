@@ -1,13 +1,11 @@
-"""Measurement client for the unified-query benchmark (RFC-0041).
+"""统一查询基准测试的测量客户端 (RFC-0041)。
 
-Every TSA call goes through the same seam the MCP server uses: the facade's
-``execute`` followed by the canonical envelope normalisation and the wire
-serialiser (``json.dumps(indent=2)``), so the recorded bytes are the bytes an
-agent's context actually receives. Grep-arm calls run real ``git grep`` /
-file reads and record their stdout.
+每次 TSA 调用都经过与 MCP 服务器相同的接缝：facade 的 ``execute``、规范化
+envelope 处理，再经线上序列化 (``json.dumps(indent=2)``)，因此记录下的字节数
+就是 agent 上下文实际收到的字节数。grep 组的调用执行真实的 ``git grep`` /
+文件读取，并记录其 stdout。
 
-Tokens are counted later (``tokens.py``) from the recorded request and
-response texts; this module only records them.
+token 稍后由 ``tokens.py`` 根据记录的请求与响应文本统计；本模块只负责记录。
 """
 
 from __future__ import annotations
@@ -47,7 +45,7 @@ class Trace:
 
 
 class TsaClient:
-    """In-process facade client that serialises exactly like the MCP server."""
+    """进程内 facade 客户端，序列化方式与 MCP 服务器完全一致。"""
 
     def __init__(self, root: str) -> None:
         from tree_sitter_analyzer.mcp.tools.nav_facade import build_nav_facade
@@ -84,7 +82,7 @@ class TsaClient:
 
 
 class GrepClient:
-    """``git grep`` + file-read arm, recording the text an agent would read."""
+    """``git grep`` + 文件读取组，记录 agent 会读到的文本。"""
 
     def __init__(self, root: str) -> None:
         self.root = Path(root)
@@ -112,7 +110,7 @@ class GrepClient:
         return hits
 
     def read(self, file: str, start: int, end: int) -> list[str]:
-        """A ``Read`` of lines ``start..end`` (1-based, inclusive), numbered."""
+        """一次 ``Read``：读取第 ``start..end`` 行 (从 1 起、闭区间) 并加行号。"""
         begin = time.perf_counter()
         lines = (self.root / file).read_text(encoding="utf-8").splitlines()
         chunk = lines[start - 1 : min(end, len(lines))]
@@ -121,7 +119,7 @@ class GrepClient:
         return chunk
 
     def outline(self, file: str) -> list[tuple[int, int, str]]:
-        """An agent's cheapest way to map lines to functions: grep the defs."""
+        """agent 把行号映射到函数的最低成本方式：grep 所有 def。"""
         hits = self.grep(r"^\s*(async\s+)?def \w+", file)
         rows: list[tuple[int, int, str]] = []
         for _, line, text in hits:
@@ -132,7 +130,7 @@ class GrepClient:
 
 
 def enclosing(outline: list[tuple[int, int, str]], line: int, text: str) -> str:
-    """Nearest preceding def with smaller indentation, else ``<module>``."""
+    """之前最近的、缩进更小的 def；没有则返回 ``<module>``。"""
     indent = len(text) - len(text.lstrip())
     best = "<module>"
     for def_line, def_indent, name in outline:

@@ -1,8 +1,7 @@
-"""Plain ``git grep`` + def-outline plans (the no-TSA arm, RFC-0041).
+"""纯 ``git grep`` + def 大纲方案 (不使用 TSA 的对照组，RFC-0041)。
 
-The agent greps ``\\bname\\s*\\(`` for call sites, then greps each hit file's
-``def`` lines to map a hit to its enclosing function. Grep makes no
-completeness claim, so every claim is ``None``.
+agent 先 grep ``\\bname\\s*\\(`` 找调用点，再 grep 每个命中文件的 ``def`` 行，
+把命中映射到其所在函数。grep 不做任何完整性声明，因此所有 claim 都是 ``None``。
 """
 
 from __future__ import annotations
@@ -101,9 +100,9 @@ def implementers(g: GrepClient, p: dict[str, Any]) -> Answer:
 
 
 def impact(g: GrepClient, p: dict[str, Any]) -> Answer:
-    # A name-based closure explodes through common names (``__init__``, ...):
-    # uncapped, it took 1,020 greps / 373 s on rich. An agent stops; we stop
-    # at the same call budget an agent plausibly spends (60 calls).
+    # 基于名称的闭包会经由常见名称 (``__init__`` 等) 爆炸式扩张：不设上限时在
+    # rich 上耗费了 1,020 次 grep / 373 秒。agent 会中途停下；这里也在 agent
+    # 合理会花费的调用预算 (60 次) 处停止。
     cache: dict[str, Any] = {}
     frontier, seen, callers = {p["x"]}, {p["x"]}, set()
     for _ in range(50):

@@ -1,13 +1,12 @@
-"""Index-backed producers the unified query engine composes (RFC-0041 §5).
+"""统一查询引擎所组合的、基于索引的生产者 (RFC-0041 §5)。
 
-Nothing here re-derives a relation. Selection runs the Hyphae evaluator;
-callers / callees are the ``nav`` tools themselves (``CodeGraphCallersTool`` /
-``CodeGraphCalleesTool``) so their completeness and reason codes are consumed
-exactly as ``nav action=callers`` reports them; index readiness, unindexed
-sources and source freshness reuse the gates the callers tool runs.
+这里不会重新推导任何关系。选择由 Hyphae 求值器执行；callers / callees 直接
+就是 ``nav`` 工具本身 (``CodeGraphCallersTool`` / ``CodeGraphCalleesTool``)，
+因此其完整性与原因码完全按 ``nav action=callers`` 的报告原样采用；索引就绪度、
+未索引源文件与源码新鲜度复用 callers 工具所执行的同一套门禁。
 
-The engine talks to the :class:`Backends` protocol so tests can inject a fake
-producer and pin the propagation rules without an index.
+引擎通过 :class:`Backends` 协议交互，因此测试可以注入伪生产者，在没有索引的
+情况下固定传播规则。
 """
 
 from __future__ import annotations
@@ -25,9 +24,9 @@ from .coverage import (
     gap,
 )
 
-#: Probes the evaluator's read path needs (mirrors pre-RFC ``tql_execute``):
-#: some older cache read paths swallow SQL errors, so the tables are checked
-#: before evaluation instead of trusting an empty result.
+#: 求值器读取路径所需的探测语句 (沿用 RFC 之前的 ``tql_execute``)：
+#: 部分旧的缓存读取路径会吞掉 SQL 错误，所以在求值前先检查这些表，
+#: 而不是信任空结果。
 _READ_PROBES = (
     "SELECT file_path, language, symbols_json FROM ast_index LIMIT 0",
     "SELECT id, name, kind, file_path, language, line FROM ast_symbol_rows LIMIT 0",
@@ -38,8 +37,7 @@ _READ_PROBES = (
     "SELECT rule_id, caller_file, caller_name FROM ast_constraint_violations LIMIT 0",
 )
 
-#: Symbol kinds that are definitions (the ``symbol()`` source and the
-#: single-definition check share this one list).
+#: 属于定义的符号种类 (``symbol()`` 源与单一定义检查共用这一份列表)。
 DEFINITION_KINDS = (
     "function",
     "method",
@@ -52,15 +50,15 @@ DEFINITION_KINDS = (
     "variable",
     "constant",
 )
-#: The evaluator's hard cap on materialised matches per query.
+#: 求值器每次查询实际物化匹配数的硬上限。
 SELECT_CAP = 10_000
-#: Relation rows requested per producer call (nav callers lists this many).
+#: 每次生产者调用请求的关系行数 (nav callers 最多列出这么多)。
 RELATION_LIST_CAP = 10_000
 
 
 @dataclass(frozen=True)
 class IndexState:
-    """``ready`` / ``empty`` / ``missing`` / ``unavailable`` plus detail."""
+    """``ready`` / ``empty`` / ``missing`` / ``unavailable`` 状态及详情。"""
 
     state: str
     indexed_files: int = 0
@@ -95,7 +93,7 @@ class Backends(Protocol):
 
 
 class IndexBackends:
-    """The production :class:`Backends` over one project's AST cache."""
+    """基于单个项目 AST 缓存的生产环境 :class:`Backends` 实现。"""
 
     def __init__(self, project_root: str, cache: Any = None) -> None:
         self.project_root = project_root
@@ -110,13 +108,13 @@ class IndexBackends:
             self._cache = ASTCache(self.project_root)
         return self._cache
 
-    # -- index ------------------------------------------------------------
+    # -- 索引 -------------------------------------------------------------
     def index_state(self) -> IndexState:
         try:
             conn = self.cache.get_conn()
             for probe in _READ_PROBES:
                 conn.execute(probe)
-        except Exception as exc:  # noqa: BLE001 — any read failure is "unavailable"
+        except Exception as exc:  # noqa: BLE001 — 任何读取失败都视为 "unavailable"
             return IndexState("unavailable", 0, str(exc))
         try:
             stats = self.cache.get_stats() or {}
@@ -133,10 +131,10 @@ class IndexBackends:
         return Selection(rows, evaluator.total_matches(), evaluator.was_truncated())
 
     def source_gate(self, files: list[str], languages: frozenset[str]) -> Coverage:
-        """Unindexed-source and freshness gates, as ``nav action=callers`` runs them.
+        """未索引源文件门禁与新鲜度门禁，与 ``nav action=callers`` 的执行方式一致。
 
-        A non-empty answer is a lower bound when a gate fails (``incomplete``);
-        an empty answer is then not evidence of absence (``unknown``).
+        门禁失败时，非空答案只是下界 (``incomplete``)；
+        空答案则不能作为不存在的证据 (``unknown``)。
         """
         from ..mcp.tools.callers_absence import _freshness_gap
         from ..mcp.tools.relation_freshness import relation_source_evidence
@@ -173,11 +171,11 @@ class IndexBackends:
     def definitions(
         self, name: str, *, cls: str | None, file: str | None
     ) -> list[dict[str, Any]]:
-        """Exact-name definitions (the ``symbol()`` source).
+        """名称精确匹配的定义 (``symbol()`` 源)。
 
-        Same rows as Hyphae ``#name[class=..][file=..]`` without its fuzzy
-        search tiers, which cost ~0.9 s on TSA's own index and are then
-        discarded by the exact-name filter.
+        结果行与 Hyphae ``#name[class=..][file=..]`` 相同，但省去了其模糊搜索
+        层级：这些层级在 TSA 自身索引上约耗时 0.9 s，且结果随后会被精确名称
+        过滤丢弃。
         """
         placeholders = ", ".join("?" for _ in DEFINITION_KINDS)
         rows = (
@@ -206,7 +204,7 @@ class IndexBackends:
         return [r for r in found if not cls or r.get("class") == cls]
 
     def definition_count(self, name: str) -> int | None:
-        """Indexed definitions named ``name``; ``None`` when unreadable."""
+        """已索引的名为 ``name`` 的定义数；无法读取时返回 ``None``。"""
         try:
             row = (
                 self.cache.get_conn()
@@ -221,7 +219,7 @@ class IndexBackends:
             return None
         return int(row[0]) if row else None
 
-    # -- relations ---------------------------------------------------------
+    # -- 关系 -------------------------------------------------------------
     def _nav(self) -> Any:
         if self._nav_facade is None:
             from ..mcp.tools.nav_facade import build_nav_facade
@@ -232,9 +230,9 @@ class IndexBackends:
     async def _relation(
         self, action: str, name: str, file: str | None
     ) -> dict[str, Any]:
-        # Through the public ``nav`` facade, not the inner tool: the payload is
-        # literally the ``nav action=callers`` contract, and the facade's
-        # generation-keyed answer cache (RFC-0027 L6.1) is shared with it.
+        # 经由公开的 ``nav`` facade 而非内部工具调用：payload 就是
+        # ``nav action=callers`` 契约本身，并且与它共享 facade 按 generation
+        # 键控的答案缓存 (RFC-0027 L6.1)。
         args: dict[str, Any] = {
             "action": action,
             "function_name": name,
@@ -259,11 +257,10 @@ class IndexBackends:
 
 
 def _with_class(cache: Any, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Copies of ``rows`` with ``class`` filled where the evaluator lacked it.
+    """返回 ``rows`` 的副本，并补齐求值器缺失的 ``class`` 字段。
 
-    ``#name`` rows come from the cascade search, which has no class column;
-    the per-file function rows do. One read per distinct file; evaluator rows
-    may be shared cache objects, so they are copied rather than mutated.
+    ``#name`` 行来自级联搜索，没有 class 列；按文件的函数行则有。每个不同的
+    文件只读取一次；求值器返回的行可能是共享的缓存对象，因此复制而不是原地修改。
     """
     missing = {r.get("file") for r in rows if not r.get("class") and r.get("file")}
     getter = getattr(cache, "get_functions_by_file", None)
@@ -273,7 +270,7 @@ def _with_class(cache: Any, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             try:
                 for fn in getter(file) or []:
                     owners[(file, fn.get("name"), fn.get("line"))] = fn.get("class")
-            except Exception:  # noqa: BLE001 — enrichment is display data only
+            except Exception:  # noqa: BLE001 — 补全的只是展示用数据
                 continue
     out: list[dict[str, Any]] = []
     for row in rows:

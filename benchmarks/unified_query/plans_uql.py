@@ -1,9 +1,8 @@
-"""One ``search action=uql`` call per question (the "after" arm, RFC-0041).
+"""每个问题一次 ``search action=uql`` 调用 ("after" 组，RFC-0041)。
 
-Each plan sends one query and reads the answer sets and claims straight from
-the compact payload: ``results[group]`` rows are ``"file:line name"`` (or
-``"file:line Class.name"``), and each group's claim is its stage's effective
-completeness.
+每个方案发送一条查询，并直接从紧凑 payload 中读取答案集合与 claim：
+``results[group]`` 的行形如 ``"file:line name"`` (或 ``"file:line Class.name"``)，
+每个分组的 claim 即其所在阶段的有效完整性。
 """
 
 from __future__ import annotations
@@ -126,7 +125,7 @@ PLANS = {
     "callees": callees,
 }
 
-#: The one grammar-discovery call (``help target_action=uql``), paid once.
+#: 唯一一次语法发现调用 (``help target_action=uql``)，只需付出一次。
 DISCOVERY = {
     kind: ("search", {"action": "help", "target_action": "uql"}) for kind in PLANS
 }

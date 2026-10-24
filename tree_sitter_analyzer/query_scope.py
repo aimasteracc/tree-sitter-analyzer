@@ -1,13 +1,12 @@
-"""Query-scoped memoisation for work that is invariant within one answer.
+"""查询作用域内的记忆化：缓存在一次回答内不变的计算。
 
-RFC-0041: a unified query asks the same producers (``nav callers``) about
-many symbols against one index state. Some of their sub-steps read data that
-does not depend on the symbol (e.g. every ES alias edge in the index). Inside
-:func:`query_scope` such a step may be computed once; outside a scope every
-call computes live, so ordinary single-call behaviour is unchanged.
+RFC-0041：一次统一查询会针对同一索引状态，就许多符号反复调用同一批产出方
+(``nav callers``)。其中一些子步骤读取的数据与符号无关 (例如索引中所有 ES
+别名边)。在 :func:`query_scope` 内这类步骤只需计算一次；作用域之外每次调用
+都实时计算，因此普通单次调用的行为不变。
 
-The scope lives in a :class:`contextvars.ContextVar`, so it follows the
-awaiting task and never leaks into concurrent requests.
+作用域保存在 :class:`contextvars.ContextVar` 中，因此随所等待的 task 传递，
+不会泄漏到并发请求。
 """
 
 from __future__ import annotations
@@ -26,7 +25,7 @@ _SCOPE: ContextVar[dict[Hashable, Any] | None] = ContextVar(
 
 @contextmanager
 def query_scope() -> Iterator[None]:
-    """Memoise :func:`scoped` computations until the block exits."""
+    """在代码块退出前记忆化 :func:`scoped` 的计算结果。"""
     token = _SCOPE.set({})
     try:
         yield
@@ -35,7 +34,7 @@ def query_scope() -> Iterator[None]:
 
 
 def scoped(key: Hashable, compute: Callable[[], T]) -> T:
-    """``compute()`` once per active scope and ``key``; live when unscoped."""
+    """每个活动作用域与 ``key`` 只执行一次 ``compute()``；无作用域时实时计算。"""
     memo = _SCOPE.get()
     if memo is None:
         return compute()

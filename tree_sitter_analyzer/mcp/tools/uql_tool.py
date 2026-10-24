@@ -1,8 +1,7 @@
-"""MCP adapter for ``search action=uql`` (RFC-0041).
+"""``search action=uql`` 的 MCP 适配器 (RFC-0041)。
 
-Thin by design: argument transport only. Parsing, execution, completeness and
-projection live in :mod:`tree_sitter_analyzer.uql`, which the CLI ``--uql``
-flag reaches through this same tool.
+有意保持轻薄：只负责传递参数。解析、执行、完整性判定与投影都在
+:mod:`tree_sitter_analyzer.uql` 中，CLI 的 ``--uql`` 参数也经由本工具到达那里。
 """
 
 from __future__ import annotations
@@ -11,9 +10,8 @@ from typing import Any
 
 from .base_tool import BaseMCPTool
 
-#: The grammar card served by ``search action=help target_action=uql`` — the
-#: single discovery call for the language. Its size is pinned by
-#: ``tests/unit/mcp/test_output_cost_invariants.py``.
+#: 由 ``search action=help target_action=uql`` 提供的语法卡片 —— 了解该语言的
+#: 唯一发现调用。其大小由 ``tests/unit/mcp/test_output_cost_invariants.py`` 固定。
 QUERY_DESCRIPTION = (
     "Unified query (RFC-0041). Pipeline: source.stage().stage()... "
     "Sources: symbol('Name'|'Cls.m'|[names], file=?) | select('<TQL selector>') "
@@ -30,7 +28,7 @@ QUERY_DESCRIPTION = (
 
 
 class UqlTool(BaseMCPTool):
-    """Execute a unified query over the indexed code graph."""
+    """在已索引的代码图上执行统一查询。"""
 
     def __init__(self, project_root: str | None = None) -> None:
         self._backends: Any = None

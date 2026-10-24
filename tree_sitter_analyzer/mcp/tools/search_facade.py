@@ -130,8 +130,8 @@ def build_search_facade(
             # pseudo-classes.
             "tql_schema": TqlSchemaTool(project_root),
             "tql_execute": TqlExecuteTool(project_root),
-            # RFC-0041: unified, evidence-carrying query language. One call
-            # composes select -> relate -> refine with per-stage completeness.
+            # RFC-0041：统一、携带证据的查询语言。一次调用组合
+            # select -> relate -> refine，并报告各阶段的完整性。
             "uql": UqlTool(project_root),
             # Semantic search — vector similarity over indexed symbol embeddings.
             "semantic": SemanticNeighborsTool(project_root),

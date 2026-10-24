@@ -684,16 +684,16 @@ def test_impact_default_summary_smaller_than_details(tmp_path, monkeypatch) -> N
     assert (summary_bytes, details_bytes) == (19213, 173330)
 
 
-# ── RFC-0041: search action=uql — grammar card and compact rows ─────────────
+# ── RFC-0041：search action=uql —— 语法卡片与 compact 行 ─────────────────
 #
-# Measured 2026-10-24 (wire bytes, json.dumps(indent=2)):
-#   search tools/list entry 2506 B → 2533 B (+27 B: the `uql` enum entry and
-#   description sentence); the one UQL discovery call `help target_action=uql`
-#   is 3053 B, vs `tql_schema` 2354 B before / 2734 B after (+380 B pointer).
+# 2026-10-24 实测 (线上字节数，json.dumps(indent=2))：
+#   search 的 tools/list 条目 2506 B → 2533 B (+27 B：`uql` 枚举项与描述句)；
+#   唯一的 UQL 发现调用 `help target_action=uql` 为 3053 B，
+#   对比 `tql_schema` 改动前 2354 B / 改动后 2734 B (+380 B 指引)。
 
 
 def test_uql_grammar_card_bytes_pinned() -> None:
-    """RFC-0041 §5: the single discovery payload's grammar card is pinned."""
+    """RFC-0041 §5：固定唯一发现载荷中语法卡片的字节数。"""
     from tree_sitter_analyzer.mcp.tools.uql_tool import QUERY_DESCRIPTION
 
     assert len(QUERY_DESCRIPTION.encode("utf-8")) == 679

@@ -1,10 +1,8 @@
-"""Benchmark questions and their oracle answers (RFC-0041).
+"""基准问题及其 oracle 答案 (RFC-0041)。
 
-Each question names the analyst's question, the concrete targets for one
-repository, and how the independent oracle answers it. Targets were chosen so
-every name on the relevant relation path has exactly one definition in the
-repository (see ``oracle.unique_definition``); a name-based oracle is exact
-under that constraint.
+每个问题给出分析者的提问、针对某个仓库的具体目标，以及独立 oracle 的求解方式。
+目标的选取保证相关关系路径上的每个名称在仓库中恰好只有一个定义
+(见 ``oracle.unique_definition``)；在此约束下基于名称的 oracle 是精确的。
 """
 
 from __future__ import annotations
@@ -141,7 +139,7 @@ def _name(key: str) -> str:
 
 
 def oracle_answer(oracle: Oracle, q: Question) -> dict[str, set[str]]:
-    """The ground-truth sets for one question."""
+    """一个问题的 ground-truth 集合。"""
     p = q.params
     if q.kind == "callers_tests":
         callers = oracle.callers(p["x"])

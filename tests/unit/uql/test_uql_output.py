@@ -1,4 +1,4 @@
-"""RFC-0041 §4: bounded compact output, paging and continuation handles."""
+"""RFC-0041 §4：有界的 compact 输出、分页与续页句柄。"""
 
 from __future__ import annotations
 
@@ -158,8 +158,8 @@ def test_parse_error_payload_keeps_fixed_query() -> None:
 
 
 def test_cursor_is_bound_to_the_ir_not_the_spelling() -> None:
-    # Codex P2 on #1801: the answer cache shares one entry per IR, so a cursor
-    # from one spelling must continue the other.
+    # #1801 上的 Codex P2：answer 缓存按 IR 共享同一条目，因此一种写法产生的
+    # 游标必须能续接另一种写法。
     fb = _five_callers()
     first = _answer({"query": "symbol('t').callers()", "limit": 4}, fb)
     out = _answer(

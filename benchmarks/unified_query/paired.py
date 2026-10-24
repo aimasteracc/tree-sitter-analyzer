@@ -1,15 +1,13 @@
-"""Median wall time of interleaved today/uql runs (RFC-0041 §7).
+"""交错运行 today/uql 两组时的墙钟时间中位数 (RFC-0041 §7)。
 
-The machine is shared, so arms measured minutes apart are not comparable.
-``paired`` runs alternate the two arms per question in fresh processes,
-three rounds; this prints the median of each timing per (question, arm):
+机器是共享的，相隔数分钟测得的两组数据不可比。``paired`` 运行会在全新进程中
+对每个问题交替执行两组，共三轮；本脚本按 (问题, 组) 打印每种计时的中位数：
 
-* ``warm``   — first execution of the question after a warm-up call (server
-  warm, question new);
-* ``repeat`` — the same question again in that process (answer cache off);
-* ``cold``   — the question as the first call of a fresh process.
+* ``warm``   —— 预热调用之后首次执行该问题 (服务器已预热、问题是新的)；
+* ``repeat`` —— 在同一进程中再次执行同一问题 (answer cache 关闭)；
+* ``cold``   —— 该问题作为全新进程的第一次调用。
 
-Usage: ``python benchmarks/unified_query/paired.py <results-dir> <repo>``
+用法：``python benchmarks/unified_query/paired.py <results-dir> <repo>``
 """
 
 from __future__ import annotations

@@ -1,8 +1,8 @@
-"""In-memory :class:`~tree_sitter_analyzer.uql.backends.Backends` for UQL tests.
+"""供 UQL 测试使用的内存版 :class:`~tree_sitter_analyzer.uql.backends.Backends`。
 
-Producer payloads follow the ``nav action=callers`` contract shape so the
-engine's consumption of ``completeness`` / ``completeness_reasons`` /
-``caller_count`` / ``callers_listed`` is exercised exactly as in production.
+生产者载荷遵循 ``nav action=callers`` 的契约结构，使引擎对
+``completeness`` / ``completeness_reasons`` / ``caller_count`` /
+``callers_listed`` 的消费方式与生产环境完全一致地得到验证。
 """
 
 from __future__ import annotations

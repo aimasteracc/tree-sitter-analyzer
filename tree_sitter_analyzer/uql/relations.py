@@ -1,10 +1,9 @@
-"""Relation stages over the ``nav`` producers (RFC-0041 §3, §5).
+"""基于 ``nav`` 生产者的关系阶段 (RFC-0041 §3, §5)。
 
-Every relation consumes the producer's own coverage (``coverage.from_producer``)
-for each input it examined; a stage is ``complete`` only when every one of
-those inputs was. Rows keep their provenance (``via``) so the detail view can
-show which input produced them, and each examined input is recorded as
-evidence with a ready-to-call ``nav`` request.
+每个关系阶段对其检查过的每个输入，都直接采用生产者自身的覆盖度
+(``coverage.from_producer``)；只有当所有输入都是 ``complete`` 时，阶段才是
+``complete``。各行保留来源 (``via``)，使详细视图能显示由哪个输入产生；
+每个被检查的输入都作为证据记录，并附带可直接调用的 ``nav`` 请求。
 """
 
 from __future__ import annotations
@@ -28,8 +27,8 @@ from .coverage import (
     gap,
 )
 
-#: Producer calls one relation stage may spend; beyond it the stage is a
-#: lower bound (``RELATION_NODE_BUDGET``), never silently truncated.
+#: 单个关系阶段可消耗的生产者调用次数；超出后该阶段结果为下界
+#: (``RELATION_NODE_BUDGET``)，绝不静默截断。
 NODE_BUDGET = 400
 MODULE_SCOPE = "<module>"
 
@@ -90,8 +89,7 @@ def _evidence(
     listed: int,
     response: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    # The handle is the exact request that was sent, so replaying it shows
-    # the producer evidence this stage consumed.
+    # 该句柄就是实际发送的请求，重放它即可看到本阶段所采用的生产者证据。
     request: dict[str, Any] = {"action": op, "function_name": send}
     if scope:
         request["file_path"] = scope
@@ -103,8 +101,8 @@ def _evidence(
     }
     if cov.reasons:
         item["reasons"] = list(cov.reasons)
-    # RFC-0040: the producer's bounded per-check proof, carried unchanged so
-    # detail="full" shows what was examined for this input.
+    # RFC-0040：生产者给出的有界逐项检查证明，原样携带，
+    # 使 detail="full" 能显示对该输入检查了哪些内容。
     checks = (response or {}).get("completeness_checks")
     if checks is not None:
         item["checks"] = checks
@@ -134,25 +132,23 @@ def _related_rows(
 
 
 def _scope(backends: Backends, row: Row) -> str | None:
-    """The ``file_path`` to send with a producer request for ``row``.
+    """为 ``row`` 发送生产者请求时附带的 ``file_path``。
 
-    A bare name with exactly one indexed definition already names that
-    definition, so it is sent unscoped. With a ``file_path`` the callers tool
-    rewrites a lone method to ``Class.method`` (#1759), whose path is
-    measurably less complete today (RFC-0041 §7: ``get_truecolor`` on rich
-    lists 2 callers (NAME_ONLY_INBOUND) scoped vs 6 bare; both incomplete).
-    Several definitions keep the file so the answer is about this one.
-    Tracked as #1798 (scoped vs bare callers divergence).
+    只有一个已索引定义的裸名称已能唯一指向该定义，因此不带范围发送。
+    若带 ``file_path``，callers 工具会把单独的方法改写为 ``Class.method``
+    (#1759)，而该路径目前明显更不完整 (RFC-0041 §7：在 rich 上
+    ``get_truecolor`` 带范围时列出 2 个 callers (NAME_ONLY_INBOUND)，裸名称时
+    6 个；两者都不完整)。存在多个定义时保留文件，使答案针对这一个定义。
+    跟踪于 #1798 (带范围与裸名称 callers 结果不一致)。
     """
     return _target(backends, row)[1]
 
 
 def _target(backends: Backends, row: Row) -> tuple[str, str | None]:
-    """``(function_name, file_path)`` for a producer request about ``row``.
+    """针对 ``row`` 的生产者请求所用的 ``(function_name, file_path)``。
 
-    With several definitions of the name, a row that knows its class is sent
-    as ``Class.method``: a bare name plus a file holding two same-named
-    methods would make the callers tool answer their union (Codex on #1801).
+    名称有多个定义时，已知所属类的行以 ``Class.method`` 发送：若用裸名称加上
+    含两个同名方法的文件，callers 工具会返回二者的并集 (#1801 上的 Codex)。
     """
     if not row.file:
         return row.name, None
@@ -164,12 +160,11 @@ def _target(backends: Backends, row: Row) -> tuple[str, str | None]:
 
 
 def _requests(backends: Backends, rows: list[Row]) -> list[tuple[Row, str, str | None]]:
-    """One producer request per distinct question about ``rows``.
+    """对 ``rows`` 的每个不同问题只发一次生产者请求。
 
-    When the rows hold every indexed definition of a name, the unscoped bare
-    name asks exactly about that set (the callers tool answers a bare name
-    with several definitions as their union, never more confident than any
-    one of them, #1740), so it is one request instead of one per definition.
+    当这些行包含某名称的全部已索引定义时，不带范围的裸名称恰好就是在问这个
+    集合 (callers 工具对有多个定义的裸名称返回其并集，置信度不会高于其中
+    任何一个，#1740)，因此只发一次请求，而不是每个定义各发一次。
     """
     by_name: dict[str, list[Row]] = {}
     for row in rows:
@@ -198,12 +193,11 @@ class _Budget:
 async def callers(
     backends: Backends, inputs: list[Row], *, depth: int, closure: bool = False
 ) -> RelationResult:
-    """Callers up to ``depth`` hops (BFS, one producer call per expanded node).
+    """最多 ``depth`` 跳的 callers (BFS，每个展开节点调用一次生产者)。
 
-    ``closure=True`` (``impact()``) means the question is the whole transitive
-    closure: an unexpanded frontier at the depth cap is a gap
-    (``RELATION_DEPTH_LIMIT``). For ``callers(depth=N)`` the bound is the
-    question itself, so it is not.
+    ``closure=True`` (``impact()``) 表示问题是完整的传递闭包：在深度上限处
+    仍未展开的前沿是一个缺口 (``RELATION_DEPTH_LIMIT``)。而对
+    ``callers(depth=N)`` 而言，深度界限就是问题本身，因此不算缺口。
     """
     budget = _Budget()
     covs: list[Coverage] = []
@@ -257,12 +251,12 @@ def _in_test_file(row: Row) -> bool:
 async def tests(
     backends: Backends, inputs: list[Row], budget: _Budget | None = None
 ) -> RelationResult:
-    """Test entry points reaching each input directly or via one test helper.
+    """直接或经由一个测试辅助函数到达各输入的测试入口。
 
-    Same definition as ``nav action=test_map`` (RFC-0014 Phase B), but derived
-    from ``nav action=callers`` so it carries callers' coverage: an input's
-    tests are a census only if its callers are, and so are the callers of
-    every helper walked through.
+    定义与 ``nav action=test_map`` (RFC-0014 Phase B) 相同，但由
+    ``nav action=callers`` 推导，因此带有 callers 的覆盖度：只有当输入的
+    callers 是完整普查、且所经过的每个辅助函数的 callers 也是完整普查时，
+    该输入的测试才是完整普查。
     """
     budget = budget or _Budget()
     covs: list[Coverage] = []
@@ -335,11 +329,11 @@ async def _walk_helper(
 
 
 async def callees(backends: Backends, inputs: list[Row]) -> RelationResult:
-    """Project callees via ``nav action=callees``.
+    """通过 ``nav action=callees`` 获取项目内的 callees。
 
-    ``nav callees`` makes no coverage claim, so this stage is never
-    ``complete``: ``incomplete`` when some callees did not resolve to a
-    project definition (the listed set is a lower bound), else ``unknown``.
+    ``nav callees`` 不做覆盖度声明，因此本阶段永远不是 ``complete``：若有
+    callees 未解析到项目内定义则为 ``incomplete`` (列出的集合是下界)，
+    否则为 ``unknown``。
     """
     covs: list[Coverage] = []
     evidence: list[dict[str, Any]] = []

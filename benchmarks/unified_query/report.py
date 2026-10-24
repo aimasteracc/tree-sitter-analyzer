@@ -1,12 +1,11 @@
-"""Render the before/after table from benchmark rows (RFC-0041 §7).
+"""根据基准结果行渲染前后对比表 (RFC-0041 §7)。
 
-Usage: ``uv run python benchmarks/unified_query/report.py <results-dir>``
-(after ``tokens.py`` has added token counts).
+用法：``uv run python benchmarks/unified_query/report.py <results-dir>``
+(需先由 ``tokens.py`` 写入 token 计数)。
 
-``correct`` is ``exact`` (every answer set equals the oracle's) or the
-number of sets that match; ``claims`` lists each set's asserted completeness
-(``-`` = no claim). ``WRONG`` marks a set claimed ``complete`` that misses an
-oracle element.
+``correct`` 为 ``exact`` (每个答案集合都与 oracle 相同) 或匹配的集合数；
+``claims`` 列出每个集合声明的完整性 (``-`` = 无声明)。``WRONG`` 标记声明为
+``complete`` 却遗漏了 oracle 元素的集合。
 """
 
 from __future__ import annotations

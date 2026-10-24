@@ -1,4 +1,4 @@
-"""RFC-0041 ``search action=uql`` over a real index: contract and adapter parity."""
+"""基于真实索引的 RFC-0041 ``search action=uql``：契约与适配器一致性。"""
 
 from __future__ import annotations
 
@@ -115,8 +115,10 @@ async def test_tql_execute_and_uql_select_return_the_same_symbols(
     )
     out = await _uql(project, ".function:in(pkg/)")
     legacy = sorted(f"{s['file']}:{s['line']} {s['name']}" for s in tql["symbols"])
-    unified = sorted(label.split(" ")[0] + " " + label.split(" ")[1].split(".")[-1]
-                     for label in out["results"]["select"])
+    unified = sorted(
+        label.split(" ")[0] + " " + label.split(" ")[1].split(".")[-1]
+        for label in out["results"]["select"]
+    )
     assert unified == legacy
 
 
@@ -127,7 +129,11 @@ async def test_chain_and_uql_callers_agree(project: str) -> None:
     )
     out = await _uql(project, "search('target').callers()")
     legacy = sorted(
-        {f"{s['file']}:{s['line']} {s['name']}" for s in chain["symbols"] if s.get("depth")}
+        {
+            f"{s['file']}:{s['line']} {s['name']}"
+            for s in chain["symbols"]
+            if s.get("depth")
+        }
     )
     assert _labels(out, "callers") == legacy
 
@@ -136,7 +142,9 @@ async def test_unknown_pseudo_class_is_rejected_identically_by_both_adapters(
     project: str,
 ) -> None:
     facade = build_search_facade(project)
-    tql = await facade.execute({"action": "tql_execute", "selector": ".function:cals(#x)"})
+    tql = await facade.execute(
+        {"action": "tql_execute", "selector": ".function:cals(#x)"}
+    )
     out = await _uql(project, ".function:cals(#x)")
     assert (tql["error_code"], tql["fixed_selector"]) == (
         out["error_code"],
@@ -156,7 +164,11 @@ async def test_missing_index_is_a_typed_error(tmp_path: Path) -> None:
 
 def test_tool_schema_is_strict_and_requires_query() -> None:
     schema = UqlTool(None).get_tool_definition()["inputSchema"]
-    assert (schema["required"], schema["additionalProperties"], sorted(schema["properties"])) == (
+    assert (
+        schema["required"],
+        schema["additionalProperties"],
+        sorted(schema["properties"]),
+    ) == (
         ["query"],
         False,
         ["cursor", "detail", "limit", "output_format", "query"],

@@ -1,10 +1,9 @@
-"""Execute a parsed :class:`~.ir.Query` (RFC-0041 §3).
+"""执行已解析的 :class:`~.ir.Query` (RFC-0041 §3)。
 
-The engine owns stage semantics only: sources open a group, relations open a
-new group from the current set, refinements narrow the current group in
-place. Each stage records its *own* coverage; a group's *effective* coverage
-folds in everything upstream, and the query total is the last effective
-coverage — ``complete`` only when every stage is.
+引擎只负责阶段语义：源开启一个分组，关系从当前集合开启新分组，精炼在原地
+收窄当前分组。每个阶段记录其 *自身* 覆盖度；分组的 *有效* 覆盖度会合并上游
+的全部覆盖度，查询总覆盖度即最后一个有效覆盖度 —— 只有所有阶段都是
+``complete`` 时才是 ``complete``。
 """
 
 from __future__ import annotations
@@ -45,7 +44,7 @@ from .selector import relation_hint, unproven_predicates
 
 @dataclass
 class Group:
-    """One output group: the rows a source or relation stage produced."""
+    """一个输出分组：由源阶段或关系阶段产生的行。"""
 
     name: str
     rows: list[Row]
@@ -74,10 +73,10 @@ class Execution:
 
 
 class _Memo:
-    """Per-execution memo: one producer call per (relation, name, file).
+    """单次执行内的缓存：每个 (relation, name, file) 只调用一次生产者。
 
-    Within one query the index does not change, so a node reached by two
-    stages (``callers()`` then ``tests()``, or a BFS revisit) is asked once.
+    同一查询内索引不会变化，因此被两个阶段到达的节点 (先 ``callers()`` 再
+    ``tests()``，或 BFS 重复访问) 只查询一次。
     """
 
     def __init__(self, inner: Backends) -> None:
@@ -109,7 +108,7 @@ class _Memo:
 async def run(query: Query, backends: Backends) -> Result[Execution]:
     from ..query_scope import query_scope
 
-    # One index state per answer: producers may share invariant sub-steps.
+    # 每个答案对应一个索引状态：生产者之间可共享不变的子步骤。
     with query_scope():
         return await _run(query, _Memo(backends))
 
@@ -212,12 +211,11 @@ def _select(stage: Select, groups: list[Group], backends: Backends) -> _StepOut:
 def selection_coverage(
     backends: Backends, selector: Any, selection: Any, *, capped: bool = True
 ) -> tuple[Coverage, str | None]:
-    """Coverage of a selector's matched set (shared with ``tql_execute``).
+    """选择器命中集合的覆盖度 (与 ``tql_execute`` 共用)。
 
-    The index source gate, then predicate exhaustiveness: edge / history /
-    rule / branch pseudo-classes read tables with no coverage proof, so they
-    make the set ``unknown``. ``capped`` adds the evaluator cap as a gap; a
-    caller that reports ``total`` / ``truncated`` itself passes ``False``.
+    先经过索引源门禁，再检查谓词是否穷尽：边 / 历史 / 规则 / 分支类伪类读取的
+    表没有覆盖证明，因此会使集合成为 ``unknown``。``capped`` 会把求值器上限
+    记为缺口；自行报告 ``total`` / ``truncated`` 的调用方应传入 ``False``。
     """
     rows = [row_from_symbol(s) for s in selection.rows]
     # 语言域按索引全集检查，而不是按命中行的语言（Codex #1801）：未入索引的其他

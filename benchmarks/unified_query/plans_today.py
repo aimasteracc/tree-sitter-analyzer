@@ -1,11 +1,9 @@
-"""Today's best TSA call sequences per question (the "before" arm, RFC-0041).
+"""每个问题在现有接口下的最佳 TSA 调用序列 ("before" 组，RFC-0041)。
 
-Each plan is what a TSA-fluent agent does with the existing surface: the
-cheapest combination of ``nav`` / ``search`` actions that answers the question,
-with token-saving options an expert would know (``include_bodies=false``).
-Plans return ``(answer_sets, claims)`` where ``claims`` maps an answer set to
-the completeness the tools asserted for it (``None`` when the tools made no
-claim at all).
+每个方案都是熟练使用 TSA 的 agent 借助现有接口的做法：能回答该问题的最低成本
+``nav`` / ``search`` action 组合，并使用专家会知道的省 token 选项
+(``include_bodies=false``)。方案返回 ``(answer_sets, claims)``，其中 ``claims``
+把每个答案集合映射到工具为其声明的完整性 (工具完全未声明时为 ``None``)。
 """
 
 from __future__ import annotations
@@ -90,7 +88,7 @@ def callers_depth(c: TsaClient, p: dict[str, Any]) -> Answer:
 
 
 def implementers(c: TsaClient, p: dict[str, Any]) -> Answer:
-    # ``#m`` rows carry no class; ``:has(#m)`` returns the containing classes.
+    # ``#m`` 的结果行不带类信息；``:has(#m)`` 返回包含它的类。
     r = c.call(
         "search",
         {
@@ -140,7 +138,7 @@ def callees(c: TsaClient, p: dict[str, Any]) -> Answer:
             "include_bodies": False,
         },
     )
-    # Builtins come back with the caller's file; keep project-resolved callees.
+    # 内置函数返回时带的是调用者的文件；只保留解析到项目内的被调用者。
     names = {
         str(e.get("name"))
         for e in r.get("callees") or []
@@ -160,7 +158,7 @@ PLANS = {
     "callees": callees,
 }
 
-#: Discovery an agent must pay once before a plan's DSL is usable.
+#: 方案的 DSL 可用之前，agent 必须一次性付出的发现 (discovery) 成本。
 DISCOVERY = {
     "callers_depth": ("search", {"action": "tql_schema"}),
     "implementers": ("search", {"action": "tql_schema"}),

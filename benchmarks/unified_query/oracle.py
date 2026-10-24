@@ -1,17 +1,15 @@
-"""Independent ground-truth oracle for the unified-query benchmark (RFC-0041).
+"""统一查询基准测试的独立 ground-truth oracle (RFC-0041)。
 
-Uses only the standard-library :mod:`ast` module: it shares no code with
-tree-sitter-analyzer, so a TSA bug cannot hide behind the oracle agreeing with
-itself. Call resolution is by *name*: a call ``foo(...)`` or ``x.foo(...)`` is
-an edge to every definition named ``foo``. That over-approximates for common
-names, so the benchmark questions use targets whose names are unique in the
-repository (``unique_definition`` checks this); for those, the name-based edge
-set is the true static call set.
+只使用标准库 :mod:`ast` 模块，与 tree-sitter-analyzer 不共享任何代码，因此
+TSA 的 bug 不可能因 oracle "自己与自己一致" 而被掩盖。调用按*名称*解析：
+调用 ``foo(...)`` 或 ``x.foo(...)`` 会连边到所有名为 ``foo`` 的定义。对常见
+名称这会过度近似，所以基准问题选用在仓库中名称唯一的目标
+(由 ``unique_definition`` 检查)；对这些目标，基于名称的边集合就是真实的
+静态调用集合。
 
-Test semantics match ``nav action=test_map`` (RFC-0014 Phase B): a test is a
-pytest-collectible function (``test_*``) or the module scope of a test file
-that calls the target directly, or through one non-collectible helper in a
-test file.
+测试语义与 ``nav action=test_map`` (RFC-0014 Phase B) 一致：测试是指
+可被 pytest 收集的函数 (``test_*``) 或测试文件的模块作用域，它直接调用目标，
+或经由测试文件中一个不可收集的辅助函数间接调用目标。
 """
 
 from __future__ import annotations
@@ -29,7 +27,7 @@ _SKIP_DIRS = frozenset(
 
 @dataclass(frozen=True)
 class Definition:
-    """One function or method definition."""
+    """一个函数或方法定义。"""
 
     file: str
     name: str
@@ -62,7 +60,7 @@ class _Visitor(ast.NodeVisitor):
     def __init__(self, file: str) -> None:
         self.file = file
         self.defs: list[Definition] = []
-        self.calls: list[tuple[str, str, int]] = []  # (callee, caller, line)
+        self.calls: list[tuple[str, str, int]] = []  # (被调用者, 调用者, 行号)
         self._stack: list[str] = []
         self._cls: list[str] = []
 
@@ -104,14 +102,14 @@ class _Visitor(ast.NodeVisitor):
 
 
 class Oracle:
-    """Name-based static call oracle over one repository checkout."""
+    """针对一个仓库检出、基于名称的静态调用 oracle。"""
 
     def __init__(self, root: str) -> None:
         self.root = Path(root)
         self.defs: list[Definition] = []
-        # callee name -> set of (file, caller name)
+        # 被调用者名称 -> (文件, 调用者名称) 的集合
         self.callers_by_name: dict[str, set[tuple[str, str]]] = defaultdict(set)
-        # (file, caller name) -> set of callee names
+        # (文件, 调用者名称) -> 被调用者名称的集合
         self.callees_of: dict[tuple[str, str], set[str]] = defaultdict(set)
         self.sites_by_name: dict[str, set[tuple[str, int]]] = defaultdict(set)
         self._scan()
@@ -136,7 +134,7 @@ class Oracle:
                     self.callees_of[(rel, caller)].add(callee)
                     self.sites_by_name[callee].add((rel, line))
 
-    # -- questions -----------------------------------------------------------
+    # -- 问题 ----------------------------------------------------------------
     def definitions(self, name: str) -> list[Definition]:
         return [d for d in self.defs if d.name == name]
 
@@ -147,7 +145,7 @@ class Oracle:
         return {f"{f}::{c}" for f, c in self.callers_by_name.get(name, set())}
 
     def tests_of(self, name: str) -> set[str]:
-        """Test entries reaching ``name`` directly or via one test-file helper."""
+        """直接或经由一个测试文件辅助函数到达 ``name`` 的测试入口。"""
         out: set[str] = set()
         for file, caller in self.callers_by_name.get(name, set()):
             if not is_test_file(file):
@@ -161,7 +159,7 @@ class Oracle:
         return out
 
     def callers_within(self, name: str, depth: int, prefix: str) -> set[str]:
-        """Callers up to ``depth`` hops, keeping only files under ``prefix``."""
+        """最多 ``depth`` 跳的调用者，只保留 ``prefix`` 下的文件。"""
         frontier = {name}
         seen: set[str] = set()
         out: set[str] = set()
@@ -211,6 +209,6 @@ class Oracle:
         return {f"{f}:{line}" for f, line in self.sites_by_name.get(name, set())}
 
     def callees(self, file: str, func: str) -> set[str]:
-        """Project-defined callee names called from ``file::func``."""
+        """``file::func`` 调用的、在项目内定义的被调用者名称。"""
         defined = {d.name for d in self.defs}
         return {c for c in self.callees_of.get((file, func), set()) if c in defined}

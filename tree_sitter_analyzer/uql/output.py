@@ -1,15 +1,13 @@
-"""Bounded projection, paging and continuation handles (RFC-0041 §4).
+"""有界投影、分页与续页句柄 (RFC-0041 §4)。
 
-The default (``detail="compact"``) is the smallest sufficient answer: one
-string per row, per-stage counts and coverage, and — only for inputs whose
-coverage was not ``complete`` — a ready-to-call ``nav`` request that drills
-into the producer's full evidence. ``detail="full"`` returns structured rows
-with provenance and every examined input.
+默认 (``detail="compact"``) 返回最小的充分答案：每行一个字符串、各阶段的计数
+与覆盖情况，以及 —— 仅针对覆盖不是 ``complete`` 的输入 —— 一个可直接调用的
+``nav`` 请求，用于深入查看产出方的完整证据。``detail="full"`` 返回带来源信息
+的结构化行以及所有被检查的输入。
 
-Rows are paged across groups in output order. A cursor is stateless: it pins
-the query text and the source generation, and the next page re-executes the
-query (no server-side result retention). A cursor from another query is
-rejected; one from another generation is stale.
+各行按输出顺序跨分组分页。游标是无状态的：它固定查询文本与源码代次
+(generation)，下一页会重新执行查询 (服务端不保留结果)。来自其他查询的游标
+会被拒绝；来自其他代次的游标视为过期。
 """
 
 from __future__ import annotations
@@ -98,7 +96,7 @@ def decode_cursor(cursor: Any, text: str) -> Result[PageRequest]:
 def check_generation(
     request: PageRequest, current: str | None
 ) -> Result[Coverage | None]:
-    """Stale cursor -> error; unverifiable continuation -> a coverage gap."""
+    """过期游标 -> 错误；无法校验的续页 -> 覆盖缺口。"""
     if not request.cursor_given:
         return Ok(None)
     if request.generation is not None and current is not None:
@@ -131,7 +129,7 @@ def _full(row: Row) -> dict[str, Any]:
 def _output_groups(execution: Execution) -> list[tuple[str, list[Row]]]:
     out: list[tuple[str, list[Row]]] = []
     for group in execution.groups:
-        if group.files is not None:  # impact: callers, tests
+        if group.files is not None:  # impact：拆为 callers 与 tests
             out.append((group.name, [r for r in group.rows if r.role != "test"]))
             out.append(
                 (f"{group.name}.tests", [r for r in group.rows if r.role == "test"])
@@ -229,7 +227,7 @@ def _stage(report: Any, detail: str) -> dict[str, Any]:
 
 
 def _handles(execution: Execution) -> list[dict[str, Any]]:
-    """Ready-to-call drill-downs for the first non-complete examined inputs."""
+    """为前几个非 complete 的被检查输入生成可直接调用的深入查询。"""
     out: list[dict[str, Any]] = []
     for report in execution.stages:
         for item in report.evidence:

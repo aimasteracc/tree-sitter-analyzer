@@ -1,4 +1,4 @@
-"""RFC-0041: query-scoped memoisation is live outside a scope, shared inside."""
+"""RFC-0041：查询作用域记忆化——作用域外每次实时计算，作用域内共享结果。"""
 
 from __future__ import annotations
 
@@ -64,7 +64,7 @@ def _alias_db(path: Path) -> sqlite3.Connection:
 
 
 def test_scoped_es_alias_rows_equal_the_per_name_query(tmp_path: Path) -> None:
-    # RFC-0041: the bucketed lookup must return exactly the per-name rows.
+    # RFC-0041：分桶查找返回的行必须与逐名称查询完全一致。
     conn = _alias_db(tmp_path / "index.db")
     live = [row["id"] for row in _es_alias_rows(conn, "signer")]
     with query_scope():

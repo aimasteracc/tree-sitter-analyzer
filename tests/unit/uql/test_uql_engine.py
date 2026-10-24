@@ -1,4 +1,4 @@
-"""RFC-0041 §3: per-stage completeness and its propagation to the total."""
+"""RFC-0041 §3：逐阶段的完整性及其向总体完整性的传播。"""
 
 from __future__ import annotations
 
@@ -257,8 +257,8 @@ def test_subset_of_definitions_keeps_per_file_requests() -> None:
 
 
 def test_ambiguous_method_is_requested_class_qualified() -> None:
-    # Codex P2 on #1801: two same-named methods in one file must not be
-    # answered as their union when one class was selected.
+    # #1801 上的 Codex P2：同一文件中两个同名方法，在只选中其中一个类时
+    # 不得以二者的并集作答。
     fb = FakeBackends(
         {"run": [sym("run", "src/a.py", 3, **{"class": "A"})]}, counts={"run": 2}
     )
@@ -267,7 +267,7 @@ def test_ambiguous_method_is_requested_class_qualified() -> None:
 
 
 def test_callee_rows_keep_the_producer_language() -> None:
-    # Codex P2 on #1801: language=None made filter(language=...) drop callees.
+    # #1801 上的 Codex P2：language=None 曾导致 filter(language=...) 丢弃 callees。
     fb = FakeBackends(
         {"t": [sym("t")]},
         callees={
@@ -289,7 +289,7 @@ def test_callee_rows_keep_the_producer_language() -> None:
 
 
 def test_untested_shares_one_producer_budget(monkeypatch) -> None:
-    # Codex P2 on #1801: per-row tests() calls reset the 400-call budget.
+    # #1801 上的 Codex P2：逐行调用 tests() 曾重置 400 次调用的预算。
     import tree_sitter_analyzer.uql.relations as relations
 
     monkeypatch.setattr(relations, "NODE_BUDGET", 2)
