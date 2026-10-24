@@ -80,9 +80,19 @@ GATES = (
     ("scripts/codemap-sync-check.sh", BASH, ()),
 )
 
+#: Gates whose ordinary mode scans the whole test tree. Run twice (root and
+#: non-root cwd), check_loose_assertions --baseline took 24-27 s on CI runners
+#: and timed out at the global 30 s on ubuntu 3.10 (run 40099198915), so it gets
+#: a wider per-test timeout instead of a rerun.
+_WHOLE_TREE_GATE_MARKS = {
+    "scripts/check_loose_assertions.py": (pytest.mark.timeout(120),),
+}
+
 #: The gates whose ordinary mode is cheap enough to run twice on every test run.
 CWD_INVARIANT_GATES = tuple(
-    entry for entry in GATES if not entry[0].endswith("codemap-sync-check.sh")
+    pytest.param(*entry, marks=_WHOLE_TREE_GATE_MARKS.get(entry[0], ()))
+    for entry in GATES
+    if not entry[0].endswith("codemap-sync-check.sh")
 )
 
 
