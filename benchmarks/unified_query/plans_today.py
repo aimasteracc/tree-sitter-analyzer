@@ -138,11 +138,13 @@ def callees(c: TsaClient, p: dict[str, Any]) -> Answer:
             "include_bodies": False,
         },
     )
-    # 内置函数返回时带的是调用者的文件；只保留解析到项目内的被调用者。
+    # 内置函数返回时带的是调用者的文件；只保留解析到项目内的被调用者——跨文件的
+    # ``project`` 与同文件的 ``local``（#1814：曾只保留 ``project``，同文件被调方被丢弃）。
     names = {
         str(e.get("name"))
         for e in r.get("callees") or []
-        if e.get("callee_resolution") == "project"
+        if e.get("callee_resolution") in ("project", "local")
+        and e.get("callee_resolved_file")
     }
     return {"callees": names}, {"callees": _claim(r)}
 

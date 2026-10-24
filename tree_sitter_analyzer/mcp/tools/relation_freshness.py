@@ -179,6 +179,24 @@ def _prefetch_stamps(paths: list[str]) -> list[tuple[int, int] | None] | None:
     return [stamp for part in results for stamp in part]
 
 
+def _scoped_stamps(paths: list[str]) -> list[tuple[int, int] | None] | None:
+    """``_prefetch_stamps``；RFC-0041 查询作用域内每个路径只 stat 一次。
+
+    一次统一查询对许多 0 调用方的名字各做一次全量复核，同一批已索引文件被逐一
+    重复 stat（TSA 自身约 2.6k 个文件 × 每个名字）。作用域内一个答案只对应一个
+    源码时刻，因此复用首次 stat 的结果（``query_scope.scoped_stats``，与
+    ``reference_vocab`` 共用）；作用域外照旧每次实时 stat。
+    """
+    from ...query_scope import in_scope, scoped_stats
+
+    if not in_scope():
+        return _prefetch_stamps(paths)
+    return [
+        None if info is None else (info.st_mtime_ns, info.st_size)
+        for info in scoped_stats(paths)
+    ]
+
+
 def _evidence(freshness: str, reason: str) -> dict[str, Any]:
     """与 Pulse 相同的证据结构；nav 未经快照认证，因此身份字段为 None。"""
     return {
@@ -257,7 +275,7 @@ def _changed_files(
 
     ordered = sorted(rows)
     paths = [os.path.join(project_root, row[0]) for row in ordered]
-    stamps = _prefetch_stamps(paths)
+    stamps = _scoped_stamps(paths)
     # #1707：只有 mtime 变化、已在刷新时核对过内容的文件，由 stat 证据作证。
     evidence = stat_evidence.load(project_root)
     changed: list[str] = []

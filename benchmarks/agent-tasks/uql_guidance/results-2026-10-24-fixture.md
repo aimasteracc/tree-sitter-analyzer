@@ -45,5 +45,16 @@ What the numbers say:
 - **all_uql pays a fixed ~1.7 KB per answer.** On the one-hop questions this costs more than the single tools: Q7 1,752 vs 501 B, Q8 2,188 vs 1,064 B. Q6 is the exception (1,780 vs 2,085 B). This supports keeping one-hop questions on `nav`.
 - **Hints cost bytes on a repo this small.** Each manual loop here is 2–3 callers, so the agent has already paid for the `callers` answer and one `test_map` before the hint appears; adding the uql answer makes old_hints the most expensive arm (+18% vs old). The hint only pays off when the loop is long (TSA Q1: 13 calls). That case is not measured here.
 - **Hints fired only where intended:** 3 switches (Q1, Q2, Q5), none on one-hop questions.
-- **Q8 is a benchmark bug, not a TSA bug:** `nav callees` returns `fmt_body` and `fmt_header` with `callee_resolution: "local"` (same-file). `plans_today.callees` keeps only `"project"`, and the uql callees parse also returns nothing, so every arm scores 0/1. This probably explains the 0/1 Q8 rows in the earlier TSA/rich results too.
+- **Q8 was a benchmark bug and a uql bug (fixed in #1814):** `nav callees` returns `fmt_body` and `fmt_header` with `callee_resolution: "local"` (same-file). `plans_today.callees` kept only `"project"`, and the uql `callees()` relation itself dropped `local` callees, so every arm scored 0/1. See the update below.
 - **Windows path separators:** the no-index fallback path returned `app\doc.py`-style paths. The playbook normalizes them before scoring, and the indexed run here did not depend on that.
+
+## Update: re-run after #1814
+
+Same fixture and playbooks. Tool code: the cross-name batching PR (develop `96afc7ca` + #1814). Q8 is now exact in every arm. The uql answers are also smaller than in the first run, because of develop changes since `d4d337b8`.
+
+| arm | calls | response bytes | + discovery bytes | exact answers | wrong `complete` | hint switches |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| old | 15 | 18,147 | 2,868 | 8/8 | 0 | 0 |
+| all_uql | 8 | 15,323 | 3,122 | 8/8 | 0 | 0 |
+| routed | 8 | 13,626 | 3,122 | 8/8 | 0 | 0 |
+| old_hints | 14 | 21,016 | 2,868 | 8/8 | 0 | 3 |

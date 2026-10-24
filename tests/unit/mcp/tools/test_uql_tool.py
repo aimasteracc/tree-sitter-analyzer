@@ -226,12 +226,13 @@ def test_definition_count_counts_indexed_definitions(project: str) -> None:
     )
 
 
-async def test_unresolved_callees_are_a_lower_bound(project: str) -> None:
-    # 该夹具的调用边未解析到项目定义：不列出、并如实标为下界。
-    out = await _uql(project, "symbol('helper').callees()")
+async def test_same_file_callees_are_listed(project: str) -> None:
+    # #1814：`helper` 调用同文件的 `target`（`callee_resolution: "local"`），曾被当作
+    # 未解析丢弃、阶段标为 CALLEE_UNRESOLVED。nav callees 不做覆盖声明，故为 unknown。
+    out = await _uql(project, "symbol('helper', file='pkg/core.py').callees()")
     assert (out["results"]["callees"], out["stages"][1]) == (
-        [],
-        {"op": "callees", "n": 0, "c": "incomplete", "r": ["CALLEE_UNRESOLVED"]},
+        ["pkg/core.py target"],
+        {"op": "callees", "n": 1, "c": "unknown", "r": ["CALLEES_COVERAGE_UNREPORTED"]},
     )
 
 

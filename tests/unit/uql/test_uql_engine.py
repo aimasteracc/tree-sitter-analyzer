@@ -230,6 +230,54 @@ def test_unresolved_callees_make_a_lower_bound() -> None:
     assert ex.stages[1].own == C.Coverage("incomplete", (C.CALLEE_UNRESOLVED,))
 
 
+def test_same_file_callees_are_listed() -> None:
+    # #1814：同文件被调方（`callee_resolution: "local"`）已解析到定义，曾被当作未解析丢弃。
+    fb = FakeBackends(
+        {"target": [sym("target")]},
+        callees={
+            "target": {
+                "success": True,
+                "callees": [
+                    {
+                        "name": "helper",
+                        "callee_resolution": "local",
+                        "callee_resolved_file": "src/a.py",
+                    },
+                    {
+                        "name": "x",
+                        "callee_resolution": "project",
+                        "callee_resolved_file": "src/x.py",
+                    },
+                ],
+            }
+        },
+    )
+    ex = _run("symbol('target').callees()", fb)
+    rows = sorted((r.file, r.name) for r in ex.groups[1].rows)
+    assert (rows, ex.stages[1].own) == (
+        [("src/a.py", "helper"), ("src/x.py", "x")],
+        C.Coverage("unknown", (C.CALLEES_COVERAGE_UNREPORTED,)),
+    )
+
+
+def test_a_local_callee_without_a_resolved_file_is_unresolved() -> None:
+    # #1814：没有解析文件的 local（`self.x` 推测）不是已解析的定义。
+    fb = FakeBackends(
+        {"target": [sym("target")]},
+        callees={
+            "target": {
+                "success": True,
+                "callees": [{"name": "x", "callee_resolution": "local"}],
+            }
+        },
+    )
+    ex = _run("symbol('target').callees()", fb)
+    assert (ex.groups[1].rows, ex.stages[1].own) == (
+        [],
+        C.Coverage("incomplete", (C.CALLEE_UNRESOLVED,)),
+    )
+
+
 def test_each_node_is_asked_once_per_query() -> None:
     fb = _backends(target=callers_payload(("a", "src/b.py", 3)))
     _run("symbol('target').callers().tests()", fb)

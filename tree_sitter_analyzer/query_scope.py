@@ -11,7 +11,8 @@ RFC-0041：一次统一查询会针对同一索引状态，就许多符号反复
 
 from __future__ import annotations
 
-from collections.abc import Callable, Hashable, Iterator
+import os
+from collections.abc import Callable, Hashable, Iterator, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any, TypeVar
@@ -45,3 +46,41 @@ def scoped(key: Hashable, compute: Callable[[], T]) -> T:
 
 def in_scope() -> bool:
     return _SCOPE.get() is not None
+
+
+#: 文件数达到此值才并行 stat；更少时线程开销大于收益。
+_PARALLEL_STAT_MIN = 64
+#: 并行 stat 的线程数（``os.stat`` 释放 GIL）。
+_STAT_WORKERS = 8
+
+
+def _stat_or_none(path: str) -> os.stat_result | None:
+    try:
+        return os.stat(path)
+    except OSError:
+        return None
+
+
+def scoped_stats(paths: Sequence[str]) -> list[os.stat_result | None]:
+    """每个路径的 ``os.stat`` 结果（不可 stat 为 None）；作用域内每个路径只 stat 一次。
+
+    RFC-0041 跨名批量：一次回答里新鲜度复核（``relation_freshness``）与非调用引用的
+    词表核对（``reference_vocab``）各自对同一批已索引文件逐名重复 stat。作用域内一个
+    答案只对应一个源码时刻，两处共用这里的记忆；尚未 stat 的路径多时并行完成。
+    作用域外每次实时 stat，行为不变。
+    """
+    memo: dict[str, os.stat_result | None] | None = (
+        scoped(("query_scope.stat",), dict) if in_scope() else None
+    )
+    if memo is None:
+        return [_stat_or_none(path) for path in paths]
+    missing = [path for path in dict.fromkeys(paths) if path not in memo]
+    if len(missing) >= _PARALLEL_STAT_MIN:
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=_STAT_WORKERS) as executor:
+            results = list(executor.map(_stat_or_none, missing, chunksize=64))
+    else:
+        results = [_stat_or_none(path) for path in missing]
+    memo.update(zip(missing, results, strict=True))
+    return [memo[path] for path in paths]

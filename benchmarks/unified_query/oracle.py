@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import ast
 import os
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -56,15 +57,64 @@ def is_test_entry(path: str, name: str) -> bool:
     return is_test_file(path) and (name.startswith("test_") or name == "<module>")
 
 
+def _stdlib_aliases(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
+    """文件里绑定到标准库的名字：(模块名, 从标准库导入的名字)。
+
+    #1814 复核时发现：``time.monotonic()`` / ``os.path.exists()`` 与 rich 的
+    ``from html import escape`` 按名字连到了项目里恰好同名的唯一定义，Q8 的 callees
+    真值因此多出标准库调用。经标准库模块属性的调用、以及对从标准库导入的名字的
+    调用不可能指向项目内定义，不计为边。
+    """
+    modules: set[str] = set()
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                top = alias.name.partition(".")[0]
+                if top in sys.stdlib_module_names:
+                    modules.add(alias.asname or top)
+        elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+            if node.module.partition(".")[0] in sys.stdlib_module_names:
+                names.update(alias.asname or alias.name for alias in node.names)
+    return frozenset(modules), frozenset(names)
+
+
+#: 字面量接收者（``"".join(...)``、``[].append(...)``）：方法属于内置类型，不是项目代码。
+_LITERAL_RECEIVERS = (
+    ast.Constant,
+    ast.JoinedStr,
+    ast.List,
+    ast.Dict,
+    ast.Set,
+    ast.Tuple,
+    ast.ListComp,
+    ast.DictComp,
+    ast.SetComp,
+)
+
+
+def _receiver_root(expr: ast.expr) -> str | None:
+    while isinstance(expr, ast.Attribute):
+        expr = expr.value
+    return expr.id if isinstance(expr, ast.Name) else None
+
+
 class _Visitor(ast.NodeVisitor):
-    def __init__(self, file: str) -> None:
+    def __init__(
+        self,
+        file: str,
+        stdlib: tuple[frozenset[str], frozenset[str]] = (frozenset(), frozenset()),
+    ) -> None:
         self.file = file
         self.defs: list[Definition] = []
         self.calls: list[tuple[str, str, int]] = []  # (被调用者, 调用者, 行号)
         self._stack: list[str] = []
         self._cls: list[str] = []
+        self._stdlib_modules, self._stdlib_names = stdlib
+        self.classes: set[str] = set()
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.classes.add(node.name)
         self._cls.append(node.name)
         self.generic_visit(node)
         self._cls.pop()
@@ -95,6 +145,13 @@ class _Visitor(ast.NodeVisitor):
             if isinstance(func, ast.Attribute)
             else None
         )
+        if isinstance(func, ast.Attribute) and (
+            _receiver_root(func.value) in self._stdlib_modules
+            or isinstance(func.value, _LITERAL_RECEIVERS)
+        ):
+            name = None  # 标准库模块 / 字面量的方法调用（见 ``_stdlib_aliases``）
+        elif isinstance(func, ast.Name) and func.id in self._stdlib_names:
+            name = None  # 从标准库导入的名字
         if name:
             caller = self._stack[-1] if self._stack else "<module>"
             self.calls.append((name, caller, node.lineno))
@@ -112,6 +169,8 @@ class Oracle:
         # (文件, 调用者名称) -> 被调用者名称的集合
         self.callees_of: dict[tuple[str, str], set[str]] = defaultdict(set)
         self.sites_by_name: dict[str, set[tuple[str, int]]] = defaultdict(set)
+        #: 项目内定义的类名（callees 把直接调用类——构造——计为调用项目代码）。
+        self.classes: set[str] = set()
         self._scan()
 
     def _scan(self) -> None:
@@ -126,9 +185,10 @@ class Oracle:
                     tree = ast.parse(full.read_text(encoding="utf-8"))
                 except (SyntaxError, UnicodeDecodeError):
                     continue
-                visitor = _Visitor(rel)
+                visitor = _Visitor(rel, _stdlib_aliases(tree))
                 visitor.visit(tree)
                 self.defs.extend(visitor.defs)
+                self.classes |= visitor.classes
                 for callee, caller, line in visitor.calls:
                     self.callers_by_name[callee].add((rel, caller))
                     self.callees_of[(rel, caller)].add(callee)
@@ -209,6 +269,10 @@ class Oracle:
         return {f"{f}:{line}" for f, line in self.sites_by_name.get(name, set())}
 
     def callees(self, file: str, func: str) -> set[str]:
-        """``file::func`` 调用的、在项目内定义的被调用者名称。"""
-        defined = {d.name for d in self.defs}
+        """``file::func`` 调用的、在项目内定义的被调用者名称。
+
+        #1814 复核：直接调用项目内的类（构造，如 ``CurrentSourceSnapshot(...)``）同样
+        执行项目代码，``nav callees`` 也把它列为被调方，因此计入。
+        """
+        defined = {d.name for d in self.defs} | self.classes
         return {c for c in self.callees_of.get((file, func), set()) if c in defined}
