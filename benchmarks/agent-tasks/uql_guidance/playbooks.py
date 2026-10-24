@@ -40,14 +40,13 @@ _UQ = Path(__file__).resolve().parents[2] / "unified_query"
 sys.path.insert(0, str(_UQ))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import fixture  # noqa: E402
 import plans_today  # noqa: E402
 import plans_uql  # noqa: E402
 from harness import Trace, TsaClient  # noqa: E402
 from oracle import Oracle  # noqa: E402
 from questions import QUESTIONS, oracle_answer  # noqa: E402
 from run import _score  # noqa: E402
-
-import fixture  # noqa: E402
 
 QUESTIONS = {**QUESTIONS, "fixture": fixture.QUESTIONS}
 
