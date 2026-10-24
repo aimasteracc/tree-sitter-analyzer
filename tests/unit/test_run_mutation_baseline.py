@@ -271,7 +271,7 @@ def test_ratchet_entries_name_known_modules() -> None:
     root = Path(run_mutation_baseline.__file__).parent.parent
     ratchet = run_mutation_baseline.load_ratchet(root)
 
-    assert set(ratchet) <= set(run_mutation_baseline.MODULES)
+    assert set(ratchet) == set(run_mutation_baseline.MODULES)
     invalid = {m: v for m, v in ratchet.items() if type(v) is not int or v < 0}
     assert invalid == {}
 
