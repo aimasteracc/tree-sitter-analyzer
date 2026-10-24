@@ -53,6 +53,8 @@ def _counting_find_git_root(monkeypatch) -> list:
     return calls
 
 
+# Builds a real git repository and scores it; git subprocesses dominate.
+@pytest.mark.slow_ok
 def test_the_repo_root_is_resolved_once_for_the_whole_scan(tmp_path, monkeypatch):
     _git_repo(tmp_path)
     calls = _counting_find_git_root(monkeypatch)

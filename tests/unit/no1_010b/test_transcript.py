@@ -36,6 +36,7 @@ def _run_reference_task(capsys, task_id: str):
     return exit_code, captured, json.loads(captured.out)
 
 
+@pytest.mark.flaky(reruns=1)  # #1816: wall-clock limit on loaded runners
 def test_reference_transcript_reaches_registered_pass(capsys) -> None:
     exit_code, captured, transcript = _run_reference_task(
         capsys, "no1-010b/0001-bugfix-dispatch-unknown-route"
