@@ -56,6 +56,12 @@ from .nav_facade_help import (
     POINT_RELATION_KEYS,
     register_nav_help_schemas,
 )
+from .nav_uql_hints import (
+    CallerFollowUps,
+    append_next_step,
+    hint_after_callers,
+    hint_after_test_map,
+)
 
 # RFC-0014 Phase B: cap for test_map test_functions list (matches _MAX_LISTED).
 _MAX_TEST_MAP = 50
@@ -220,7 +226,8 @@ _NAV_ANNOTATIONS: dict[str, Any] = {
 }
 
 _NAV_DESCRIPTION = (
-    "Code-intelligence (codegraph-compatible) navigation facade. "
+    "Code-intelligence (codegraph-compatible) navigation facade "
+    "(multi-hop: search action=uql). "
     "Covers codegraph_navigate, codegraph_callers, codegraph_callees, "
     "codegraph_call_path, codegraph_xref, codegraph_impact, codegraph_context, "
     "codegraph_trace, and symbol lineage/resolve in one tool. "
@@ -267,6 +274,10 @@ _NAV_DESCRIPTION = (
     "Params: function_name/symbol (required), file_path, include_bodies, output_format.\n"
     "  scope=graph → full call-graph traversal (callers mode). "
     "Params: function_name/symbol (required), file_path, depth, output_format.\n"
+    "  Best for ONE hop. If the next question is about those callers (their "
+    "tests, which are untested, another hop, a path filter), ask it as one "
+    "search action=uql query, e.g. \"symbol('X').callers().tests()\" — one "
+    "call instead of one per caller, with per-stage completeness.\n"
     "- action=callees — what a function calls (codegraph_callees equivalent).\n"
     "  scope=point (default) → direct 1-hop callees (fast). "
     "Params: function_name/symbol (required), file_path, include_bodies, output_format.\n"
@@ -278,14 +289,19 @@ _NAV_DESCRIPTION = (
     "(default 3, cap 10), max_nodes (default 150), output_format.\n"
     "- action=caller_tree — depth-limited NESTED tree of everything that "
     "transitively calls a function (blast radius), in ONE call. Params: symbol "
-    "(required), file_path, max_depth, max_nodes, output_format.\n"
+    "(required), file_path, max_depth, max_nodes, output_format. Makes no "
+    "completeness claim; for an impact set with tests, files and completeness "
+    "use search action=uql query=\"symbol('X').impact()\".\n"
     "- action=test_map — which tests exercise a function (test-file callers, by "
     "file and test function name). Use BEFORE editing to know the test surface. "
     "Returns test_files (sorted, deduplicated), test_functions in "
     "'file::fn' format (paste directly into pytest), edge_count (raw call edges "
     "across all resolved targets), unique_function_count (post-dedup; truncated "
     "is keyed to this), truncated flag (cap=50 unique functions). "
-    "Params: symbol (required), file_path, output_format.\n"
+    "Params: symbol (required), file_path, output_format. One symbol, fast, "
+    "no completeness claim; for the tests of every caller of X use search "
+    "action=uql query=\"symbol('X').callers().tests()\" instead of a test_map "
+    "per caller.\n"
     "- action=co_change — git-history temporal coupling: files that historically "
     "change together with a file or symbol (lift-ranked). Use BEFORE editing to "
     "find implicit coupling that the call graph cannot see (config+code, "
@@ -341,6 +357,8 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
     # RFC-0014 Phase B: impact_inner shares its CachedCallGraph with test_map
     # so no second index build is needed when both actions are called per session.
     impact_inner = CodeGraphImpactTool(project_root)
+    # RFC-0041 采用：识别 "callers 之后逐个追问其调用方" 的序列，提示改用 uql。
+    follow_ups = CallerFollowUps()
 
     async def _context_route(args: dict[str, Any]) -> Any:
         """Bespoke context route: normalize symbol/query → task (fix ③).
@@ -376,7 +394,13 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         # scope=point (default): use the dedicated callers tool.
         # limit is forwarded so callers=point honours the budget cap.
         point_args = {k: v for k, v in args.items() if k in POINT_RELATION_KEYS}
-        return await callers_point.execute(point_args)
+        symbol = point_args.get("function_name")
+        source = follow_ups.source_of(symbol)
+        result = await callers_point.execute(point_args)
+        follow_ups.record(symbol, result)
+        return append_next_step(
+            result, hint_after_callers(source) if source is not None else None
+        )
 
     async def _callees_route(args: dict[str, Any]) -> Any:
         """R4: scope=point → direct callees; scope=graph → call-graph traversal."""
@@ -540,6 +564,9 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
                 ),
             },
         }
+        source = follow_ups.source_of(symbol)
+        if source is not None:
+            result = append_next_step(result, hint_after_test_map(source))
 
         from ..utils.format_helper import apply_output_format_to_response
 

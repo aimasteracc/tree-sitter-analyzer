@@ -29,6 +29,7 @@ from . import _call_tree
 from ._response_builder import build_response
 from .base_tool import BaseMCPTool
 from .codegraph_relation_tool import CodeGraphRelationToolMixin
+from .nav_uql_hints import hint_for_caller_tree
 
 logger = setup_logger(__name__)
 
@@ -217,6 +218,8 @@ class _CallTreeBase(CodeGraphRelationToolMixin, BaseMCPTool):
         )
         if tree["truncated"]:
             deterrent += _TRUNCATION_HINT
+        if found and self._direction == "callers":
+            deterrent += hint_for_caller_tree(symbol, tree["max_depth"])
 
         result = build_response(
             verdict="INFO" if found else "NOT_FOUND",
