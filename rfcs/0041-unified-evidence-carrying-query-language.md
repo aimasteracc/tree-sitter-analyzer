@@ -336,17 +336,17 @@ Hyphae (RFC-0003); jQuery-style chaining (TSA chain DSL).
 
 ## Test plan (RED-first)
 
-- `tests/unit/uql/test_parser.py` — grammar → IR; every error code with its
+- `tests/unit/uql/test_uql_parser.py` — grammar → IR; every error code with its
   fix (separator, misspelt stage, chain-only, keyword, depth, order, bare
   word, unbalanced, selector syntax, unknown pseudo / attribute, nested
   validation); closed code registry.
-- `tests/unit/uql/test_engine.py` — propagation with an in-memory producer:
+- `tests/unit/uql/test_uql_engine.py` — propagation with an in-memory producer:
   verbatim reason pass-through, one `unknown` input → stage and total
   `unknown`, upstream inheritance, missing / failed producer, list limit,
   source gate, unproven predicates, `tests()` helper walk + nested helper,
   `untested()` membership, depth bound vs closure cap, callees never
   complete, per-query memo, union requests.
-- `tests/unit/uql/test_output.py` — compact labels, bounded first page,
+- `tests/unit/uql/test_uql_output.py` — compact labels, bounded first page,
   pages concatenate to the whole answer, last page, paging keeps
   completeness, foreign / malformed / stale cursors, unverifiable generation,
   evidence handles only for gaps, full detail provenance, compact < full.
