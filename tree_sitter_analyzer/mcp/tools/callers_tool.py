@@ -8,6 +8,7 @@ CodeGraph parity: equivalent to codegraph_callers.
 Simpler and more discoverable than the monolithic codegraph_call_graph tool.
 """
 
+import contextvars
 import os
 import sqlite3
 from collections.abc import Callable
@@ -390,8 +391,22 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
+        return (await self.execute_batch([arguments]))[0]
+
+    async def execute_batch(
+        self, requests: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """逐个回答 ``requests``，共享一次认证读与一张调用图（RFC-0041 跟进）。
+
+        每个输入照旧走完整的 RFC-0040 检查，答复与逐次 ``execute`` 逐字节相同：
+        批量只共享与输入无关的部分——同一次认证索引读取（同一快照）与据此构建的
+        调用图。单输入的 ``execute`` 就是一元素的批量。
+        """
+        for arguments in requests:
+            self.validate_arguments(arguments)
         if is_index_rebuilding(self.project_root):
-            return await self._execute_bound(arguments, None, None)
+            rebuilding = await self._answer_all(requests, None, None)
+            return [r for r in rebuilding if r is not None]
         if self.project_root and not _certification_ruled_out(self.project_root):
             # #1710：同一索引与源码状态下捕获已在期限内完成不了时，直接走与捕获
             # 超时相同的未认证回退，不再每次白付约 10 s。
@@ -401,6 +416,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                     certified_index_read,
                 )
 
+                bound: list[dict[str, Any] | None] = []
                 try:
                     with certified_index_read(self.project_root) as owner:
                         certification_timeouts.record(
@@ -410,12 +426,58 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                             else _certified_index_read_reason(),
                         )
                         if owner is not None:
-                            return await self._execute_bound(
-                                arguments, owner.query_cache(), owner.read_source
+                            bound = await self._answer_all(
+                                requests,
+                                owner.query_cache(),
+                                owner.read_source,
+                                fallible=True,
                             )
+                    if owner is not None:
+                        # 与逐次 execute 相同：绑定读取失败的输入单独走未认证回退。
+                        missing = [i for i, r in enumerate(bound) if r is None]
+                        fallback = await self._answer_all(
+                            [requests[i] for i in missing], None, None
+                        )
+                        for index, answer in zip(missing, fallback, strict=True):
+                            bound[index] = answer
+                        return [r for r in bound if r is not None]
                 except (OSError, ValueError, RuntimeError, sqlite3.DatabaseError):
                     pass
-        return await self._execute_bound(arguments, None, None)
+        return [
+            r for r in await self._answer_all(requests, None, None) if r is not None
+        ]
+
+    async def _answer_all(
+        self,
+        requests: list[dict[str, Any]],
+        bound_cache: Any,
+        source_reader: Any,
+        *,
+        fallible: bool = False,
+    ) -> list[dict[str, Any] | None]:
+        """同一绑定下依次回答；调用图在首次使用时构建一次，所有输入共用。
+
+        ``fallible``：认证绑定下单个输入的读取失败记为 ``None``，由调用方按单次
+        ``execute`` 的规则改走未认证回退，其余输入不受影响。
+        """
+        token = _BATCH_GRAPH.set(_QueryGraph(lambda: self._graph_for(bound_cache)))
+        answers: list[dict[str, Any] | None] = []
+        try:
+            for arguments in requests:
+                if not fallible:
+                    answers.append(
+                        await self._execute_bound(arguments, bound_cache, source_reader)
+                    )
+                    continue
+                try:
+                    answers.append(
+                        await self._execute_bound(arguments, bound_cache, source_reader)
+                    )
+                except (OSError, ValueError, RuntimeError, sqlite3.DatabaseError):
+                    answers.append(None)
+        finally:
+            _BATCH_GRAPH.reset(token)
+        return answers
 
     def _graph_for(self, bound_cache: Any) -> tuple[Any, str]:
         """限定名与裸名共用的调用图（及其数据来源标签）。"""
@@ -504,7 +566,10 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # same evidence, same completeness. A bare name with several definitions
         # keeps the union path below (#1740), never more confident than any one.
         # #1774：本次查询只取一次调用图，裸名改写与下方两条路径共用它。
-        query_graph = _QueryGraph(lambda: self._graph_for(bound_cache))
+        # 批量回答时同一绑定下的输入共用一张图（见 ``_answer_all``）。
+        query_graph = _BATCH_GRAPH.get() or _QueryGraph(
+            lambda: self._graph_for(bound_cache)
+        )
         func_name = self._single_method_name(
             bound_cache, func_name, file_path, query_graph
         )
@@ -1050,6 +1115,12 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 )
             results.append(entry)
         return results, unattributed
+
+
+#: 批量回答期间共享的调用图（按任务隔离；单次 execute 时为一元素批量）。
+_BATCH_GRAPH: contextvars.ContextVar["_QueryGraph | None"] = contextvars.ContextVar(
+    "callers_batch_graph", default=None
+)
 
 
 class _QueryGraph:

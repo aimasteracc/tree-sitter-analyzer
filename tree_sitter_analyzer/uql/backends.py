@@ -103,6 +103,7 @@ class IndexBackends:
         self.project_root = project_root
         self._cache = cache
         self._nav_facade: Any = None
+        self._callers_tool: Any = None
 
     @property
     def cache(self) -> Any:
@@ -275,7 +276,31 @@ class IndexBackends:
         return result if isinstance(result, dict) else {"success": False}
 
     async def callers(self, name: str, file: str | None) -> dict[str, Any]:
-        return await self._relation("callers", name, file)
+        return (await self.callers_many([(name, file)]))[0]
+
+    async def callers_many(
+        self, pairs: list[tuple[str, str | None]]
+    ) -> list[dict[str, Any]]:
+        """一次批量的 ``nav action=callers``：共享认证读与调用图，逐输入答复不变。
+
+        直接调用 callers 工具的 ``execute_batch``（与 nav 门面背后的同一工具、
+        同一参数投影），每个输入的 payload 与单次调用逐字节相同。
+        """
+        if self._callers_tool is None:
+            from ..mcp.tools.callers_tool import CodeGraphCallersTool
+
+            self._callers_tool = CodeGraphCallersTool(self.project_root)
+        requests = []
+        for name, file in pairs:
+            args: dict[str, Any] = {
+                "function_name": name,
+                "include_bodies": False,
+                "limit": RELATION_LIST_CAP,
+            }
+            if file:
+                args["file_path"] = file
+            requests.append(args)
+        return await self._callers_tool.execute_batch(requests)  # type: ignore[no-any-return]
 
     async def callees(self, name: str, file: str | None) -> dict[str, Any]:
         return await self._relation("callees", name, file)

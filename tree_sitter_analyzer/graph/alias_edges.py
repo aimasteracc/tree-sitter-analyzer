@@ -112,11 +112,19 @@ _ES_ALIAS_EDGES_SQL = (
 )
 
 
+#: 作用域内先逐名查询的名字数，之后改用一次分桶。
+_PER_NAME_BEFORE_BUCKETING = 3
+
+
 def _es_alias_rows(conn: sqlite3.Connection, callee_name: str) -> list[sqlite3.Row]:
-    from ..query_scope import in_scope
+    from ..query_scope import in_scope, scoped
 
     try:
-        if not in_scope():
+        # 作用域内前几个名字仍逐名查询：分桶要扫描全部 ES 改名边，只有一次查询
+        # 问到足够多的名字时才划算。
+        calls = scoped(("es_alias.calls",), lambda: [0]) if in_scope() else [0]
+        calls[0] += 1
+        if not in_scope() or calls[0] <= _PER_NAME_BEFORE_BUCKETING:
             return conn.execute(
                 _ES_ALIAS_EDGES_SQL, (callee_name, f'"name": "{callee_name}"')
             ).fetchall()

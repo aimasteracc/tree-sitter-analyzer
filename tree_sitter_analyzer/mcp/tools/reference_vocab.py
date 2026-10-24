@@ -83,6 +83,18 @@ class ReferenceVocabulary:
         """证据仍成立且词表证明 ``path`` 不含 ``needle`` 时为真；否则须照常读取。"""
         if not searchable(needle):
             return False
+        from ...query_scope import in_scope, scoped
+
+        if in_scope():
+            # RFC-0041：作用域内先一次性核对全部记录的 stat 证据（每个路径只 stat
+            # 一次），之后每个名字的判定只是字典查找与字节包含测试。
+            valid = scoped(("reference_vocab.valid", self._root), self._valid_entries)
+            words = valid.get(path)
+            if words is None:
+                return False
+            with self._lock:
+                self._touched.add(path)
+            return needle not in words
         with self._lock:
             entry = self._entries.get(path)
         if entry is None:
@@ -95,6 +107,16 @@ class ReferenceVocabulary:
         with self._lock:
             self._touched.add(path)
         return needle not in entry[1]
+
+    def _valid_entries(self) -> dict[str, bytes]:
+        """stat 证据当前仍成立的记录：``path -> 词表``（失效或不可 stat 的不在内）。"""
+        with self._lock:
+            entries = dict(self._entries)
+        valid: dict[str, bytes] = {}
+        for path, (stamp, words) in entries.items():
+            if _current_stamp(path) == stamp:
+                valid[path] = words
+        return valid
 
     def learn(self, path: str, data: bytes, stamp: StatKey | None) -> None:
         """记录一次完整读取的词表；读取期间被改写或处于竞争窗口时不记录。"""
