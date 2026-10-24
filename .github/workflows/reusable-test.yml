@@ -67,6 +67,8 @@ jobs:
       PYTHONIOENCODING: utf-8
       PYTHONUTF8: 1
       PYTEST_XDIST_AUTO_NUM_WORKERS: "4"
+      TSA_TOOL_RESPONSE_GUARD: report
+      TSA_TOOL_RESPONSE_GUARD_REPORT: ${{ github.workspace }}/guard-report
 
     steps:
     - uses: actions/checkout@v7
@@ -180,6 +182,14 @@ jobs:
           -m "slow and not network and not e2e and not benchmark and not full_language"
       shell: bash
 
+    - name: Upload tool-response guard report (discovery)
+      if: always()
+      uses: actions/upload-artifact@v7.0.2
+      with:
+        name: guard-report-${{ matrix.os }}-py${{ matrix.python-version }}
+        path: guard-report/
+        if-no-files-found: warn
+
     - name: Upload failed test diagnostics
       if: failure() && hashFiles('pytest-output.txt') != ''
       uses: actions/upload-artifact@v7.0.2
@@ -227,6 +237,8 @@ jobs:
       PYTHONIOENCODING: utf-8
       PYTHONUTF8: 1
       PYTEST_XDIST_AUTO_NUM_WORKERS: "4"
+      TSA_TOOL_RESPONSE_GUARD: report
+      TSA_TOOL_RESPONSE_GUARD_REPORT: ${{ github.workspace }}/guard-report
 
     steps:
     - uses: actions/checkout@v7
