@@ -25,7 +25,8 @@ TSA does not require external ripgrep or fd executables.
 | Unknown entry point / concept | `nav action=context task="Describe the task"` |
 | Meaning-based retrieval, when embeddings are ready | `search action=semantic query="Describe behavior"` |
 | AST pattern in a file | `search action=query file_path="..." query_key="functions"` |
-| Callers / downstream impact | `nav action=callers` / `nav action=impact` |
+| Callers (one hop) / downstream impact | `nav action=callers` / `nav action=impact` |
+| Callers then their tests, untested callers, filtered or deeper callers | one `search action=uql query="symbol('Name').callers().tests()"` (per-stage completeness) |
 | File structure from the index | `structure action=sitemap` |
 | Live symbol mentions | `nav action=trace symbol="Name"` |
 | Exact source evidence | `structure action=read file_path="..." start_line=10 end_line=30` |

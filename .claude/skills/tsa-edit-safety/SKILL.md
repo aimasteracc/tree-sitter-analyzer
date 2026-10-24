@@ -21,6 +21,7 @@ allowed-tools:
   - mcp__tree-sitter-analyzer__health
   - mcp__tree-sitter-analyzer__project
   - mcp__tree-sitter-analyzer__nav
+  - mcp__tree-sitter-analyzer__search
   - Bash
   - Read
 ---
@@ -49,6 +50,15 @@ Call these 3 tools in ONE message:
 1. `edit action=safe` with `file_path: "<the file>"` and `edit_type: "<refactor|add_feature|fix_bug|rename>"`
 2. `edit action=impact` with `mode: "staged"` (or `"branch"` if pre-stage), scope to the file
 3. `health action=file` with `file_path: "<the file>"`
+
+If the question is "what tests cover Z **and the code that calls Z**" (the
+test surface of a signature change), add one call instead of a `nav
+action=test_map` per caller:
+
+4. `search action=uql query="symbol('Z').impact()"` — transitive callers,
+   their tests and files in one call, each stage labelled complete /
+   incomplete / unknown. For Z's own tests only, `nav action=test_map` is
+   faster (it makes no completeness claim).
 
 ### Step 2 — Read the verdict cascade
 
