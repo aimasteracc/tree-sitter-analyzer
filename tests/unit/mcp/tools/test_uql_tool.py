@@ -264,6 +264,15 @@ def test_full_recheck_past_its_deadline_names_the_deadline(
     import tree_sitter_analyzer.mcp.tools.relation_freshness as freshness
     from tree_sitter_analyzer.uql.backends import IndexBackends
 
+    # 确定性地模拟“复核超时”：复核返回范围未知，期限设为 0（不依赖机器速度）。
     monkeypatch.setattr(freshness, "_ABSENCE_SCAN_DEADLINE_SECONDS", 0.0)
+    monkeypatch.setattr(
+        freshness,
+        "relation_source_evidence",
+        lambda *a, **k: (
+            {"freshness": "unknown", "reason": freshness.UNKNOWN_REASON},
+            [],
+        ),
+    )
     gate = IndexBackends(project).source_gate(["pkg/core.py"], frozenset({"python"}))
     assert (gate.status, gate.reasons) == ("unknown", ("SOURCE_RECHECK_DEADLINE",))
