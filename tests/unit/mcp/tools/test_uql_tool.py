@@ -255,3 +255,15 @@ async def test_unlisted_edited_file_blocks_a_complete_census(project: str) -> No
         "incomplete",
         ["symbol:SOURCE_INDEX_MISMATCH"],
     )
+
+
+def test_full_recheck_past_its_deadline_names_the_deadline(
+    project: str, monkeypatch
+) -> None:
+    # RFC-0041 §3：全量复核超出 2 s 期限时降级为 unknown，原因码点名期限而不是泛泛的未知。
+    import tree_sitter_analyzer.mcp.tools.relation_freshness as freshness
+    from tree_sitter_analyzer.uql.backends import IndexBackends
+
+    monkeypatch.setattr(freshness, "_ABSENCE_SCAN_DEADLINE_SECONDS", 0.0)
+    gate = IndexBackends(project).source_gate(["pkg/core.py"], frozenset({"python"}))
+    assert (gate.status, gate.reasons) == ("unknown", ("SOURCE_RECHECK_DEADLINE",))

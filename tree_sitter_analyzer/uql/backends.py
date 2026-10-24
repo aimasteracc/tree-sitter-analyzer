@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import sqlite3
+import time
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -19,6 +20,7 @@ from ..hyphae.ast import SelectorList
 from .coverage import (
     COMPLETE_COVERAGE,
     INCOMPLETE,
+    SOURCE_RECHECK_DEADLINE,
     UNKNOWN,
     Coverage,
     gap,
@@ -141,8 +143,12 @@ class IndexBackends:
         门禁失败时，非空答案只是下界 (``incomplete``)；
         空答案则不能作为不存在的证据 (``unknown``)。
         """
+        from ..mcp.tools import relation_freshness as freshness
         from ..mcp.tools.callers_absence import _freshness_gap
-        from ..mcp.tools.relation_freshness import relation_source_evidence
+        from ..mcp.tools.relation_freshness import (
+            UNKNOWN_REASON,
+            relation_source_evidence,
+        )
         from ..mcp.tools.unindexed_sources import (
             UNCHECKED_REASON,
             UNINDEXED_REASON,
@@ -158,6 +164,7 @@ class IndexBackends:
             return gap(failed, UNCHECKED_REASON)
         if unindexed:
             return gap(failed, UNINDEXED_REASON)
+        started = time.monotonic()
         evidence, _changed = relation_source_evidence(
             # 有结果也复核全部已索引文件（Codex #1802 P1）：只复核结果所在文件时，
             # 未列出的文件里已改名出来的同名定义会被漏掉而仍报 complete。
@@ -167,6 +174,11 @@ class IndexBackends:
             absence=True,
         )
         reason = _freshness_gap(evidence)
+        if reason == UNKNOWN_REASON and time.monotonic() - started >= (
+            freshness._ABSENCE_SCAN_DEADLINE_SECONDS
+        ):
+            # 全量复核超出期限（owner 2026-10-24 接受）：降级为 unknown，原因点名期限。
+            return gap(UNKNOWN, SOURCE_RECHECK_DEADLINE)
         return gap(failed, reason) if reason else COMPLETE_COVERAGE
 
     def _indexed_languages(self) -> frozenset[str] | None:
