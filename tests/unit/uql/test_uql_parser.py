@@ -221,3 +221,111 @@ def test_pipe_repair_keeps_quoted_literals_intact() -> None:
     # #1800 上的 Codex P2：修复逻辑曾改写字符串内的 'a . b'。
     error = _err("symbol('x').filter(regex='a . b') | callers()")
     assert error.fixed_query == "symbol('x').filter(regex='a . b').callers()"
+
+
+@pytest.mark.parametrize(
+    ("text", "names"),
+    [
+        (
+            "symbol('x').callers().tests().impact().callees()",
+            ["symbol", "callers", "tests", "impact", "callees"],
+        ),
+        (
+            "select('.function').filter(file='a').exclude(test=true).untested()",
+            ["select", "filter", "exclude", "untested"],
+        ),
+        (
+            "symbol('x').tested().take(3).sort(by='line')",
+            ["symbol", "tested", "take", "sort"],
+        ),
+    ],
+)
+def test_stage_names(text: str, names: list[str]) -> None:
+    from tree_sitter_analyzer.uql.ir import stage_name
+
+    assert [stage_name(s) for s in _ok(text).stages] == names
+
+
+def test_query_error_projects_only_set_fields() -> None:
+    error = E.QueryError(E.BARE_WORD, "m", fixed_query="symbol('x')", partial={"n": 1})
+    assert error.to_dict() == {
+        "code": E.BARE_WORD,
+        "message": "m",
+        "fixed_query": "symbol('x')",
+        "partial": {"n": 1},
+    }
+
+
+def test_result_variants_report_ok() -> None:
+    assert (Ok(1).ok, Err(E.QueryError(E.EMPTY_QUERY, "m")).ok) == (True, False)
+
+
+def test_unproven_predicates_found_in_nested_selectors() -> None:
+    from tree_sitter_analyzer.uql.selector import unproven_predicates
+
+    query = _ok(".class:not(.function:calls(#x)):hot")
+    assert unproven_predicates(query.stages[0].selector) == ("calls", "hot")
+
+
+def test_relation_hint_names_the_proof_carrying_stage() -> None:
+    from tree_sitter_analyzer.uql.selector import relation_hint
+
+    assert relation_hint(("hot", "calls")) == (
+        ":calls reads call edges without a coverage proof; "
+        "symbol('X').callers() answers the same question with "
+        "nav-callers completeness."
+    )
+
+
+def test_relation_hint_is_none_without_edge_predicates() -> None:
+    from tree_sitter_analyzer.uql.selector import relation_hint
+
+    assert relation_hint(("hot",)) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "select()",
+        "select('')",
+        "search()",
+        "symbol('x', file=3)",
+        "symbol('x').take(0)",
+        "symbol('x').sort(by='size')",
+        "symbol('x').filter('a')",
+        "symbol('x').filter()",
+        "symbol('x').tests(1)",
+        "symbol('x').untested(1)",
+        "symbol('x').callers(depth='2')",
+    ],
+)
+def test_invalid_stage_arguments_are_typed(text: str) -> None:
+    assert _err(text).code == E.INVALID_ARGUMENT
+
+
+def test_select_stage_selector_error_keeps_stage_index() -> None:
+    error = _err("select('.function:cals(#x)')")
+    assert (error.code, error.stage_index) == (E.UNKNOWN_PSEUDO_CLASS, 0)
+
+
+def test_query_too_long_is_typed() -> None:
+    assert _err("symbol('" + "x" * 5000 + "')").code == E.QUERY_TOO_LONG
+
+
+def test_too_many_stages_is_typed() -> None:
+    assert _err("symbol('x')" + ".take(1)" * 25).code == E.TOO_MANY_STAGES
+
+
+def test_chain_dialect_errors_are_typed() -> None:
+    result = parse_chain("search('x').callerz()")
+    assert isinstance(result, Err)
+    assert (result.error.code, result.error.suggestion) == (
+        E.UNKNOWN_STAGE,
+        "Did you mean callers()?",
+    )
+
+
+def test_chain_dialect_rejects_pipe_with_fixed_query() -> None:
+    result = parse_chain("search('x') | callers()")
+    assert isinstance(result, Err)
+    assert result.error.fixed_query == "search('x').callers()"

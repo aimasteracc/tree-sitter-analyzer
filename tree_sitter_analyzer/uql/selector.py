@@ -190,25 +190,12 @@ def relation_hint(names: tuple[str, ...]) -> str | None:
     return None
 
 
-def name_selector(name: str, *, cls: str | None, file: str | None) -> SelectorList:
-    """直接以 AST 构造 ``#name[class=cls][file=file]`` (不经文本往返)。"""
-    from ..hyphae.ast import AttributeSelector
-
-    attrs: list[AttributeSelector] = []
-    if cls:
-        attrs.append(AttributeSelector("class", cls))
-    if file:
-        attrs.append(AttributeSelector("file", file))
-    return SelectorList((SimpleSelector(("name", name), tuple(attrs), ()),))
-
-
 __all__ = [
     "EXHAUSTIVE_PSEUDOS",
     "KNOWN_ATTRIBUTES",
     "KNOWN_PSEUDOS",
     "UNPROVEN_PSEUDOS",
     "PseudoClass",
-    "name_selector",
     "parse_selector",
     "relation_hint",
     "unproven_predicates",
