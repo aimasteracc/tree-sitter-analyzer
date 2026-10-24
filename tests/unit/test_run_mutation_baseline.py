@@ -272,7 +272,8 @@ def test_ratchet_entries_name_known_modules() -> None:
     ratchet = run_mutation_baseline.load_ratchet(root)
 
     assert set(ratchet) <= set(run_mutation_baseline.MODULES)
-    assert all(value >= 0 for value in ratchet.values())
+    invalid = {m: v for m, v in ratchet.items() if type(v) is not int or v < 0}
+    assert invalid == {}
 
 
 def test_workflow_fails_closed() -> None:

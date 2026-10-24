@@ -136,7 +136,8 @@ def _gate_job() -> str:
     match = re.search(
         r"(?ms)^  quality-gate:\n(?P<body>.*?)(?=^  [a-z0-9_-]+:|\Z)", text
     )
-    assert match is not None
+    if match is None:
+        raise AssertionError("ci.yml has no quality-gate job")
     return match.group("body")
 
 
