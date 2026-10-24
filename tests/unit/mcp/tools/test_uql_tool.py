@@ -276,3 +276,35 @@ def test_full_recheck_past_its_deadline_names_the_deadline(
     )
     gate = IndexBackends(project).source_gate(["pkg/core.py"], frozenset({"python"}))
     assert (gate.status, gate.reasons) == ("unknown", ("SOURCE_RECHECK_DEADLINE",))
+
+
+async def test_backend_single_callers_is_a_one_element_batch(project: str) -> None:
+    from tree_sitter_analyzer.uql.backends import IndexBackends
+
+    backends = IndexBackends(project)
+    single = await backends.callers("target", "pkg/core.py")
+    (batched,) = await backends.callers_many([("target", "pkg/core.py")])
+    assert (single["caller_count"], single == batched) == (2, True)
+
+
+def test_definition_kinds_reads_indexed_kinds(project: str) -> None:
+    from tree_sitter_analyzer.uql.backends import IndexBackends
+
+    kinds = IndexBackends(project).definition_kinds(
+        [("pkg/core.py", 5, "helper"), ("pkg/core.py", 99, "nope")]
+    )
+    assert kinds == {("pkg/core.py", 5, "helper"): "function"}
+
+
+def test_definition_kinds_unreadable_index_is_empty(project: str, monkeypatch) -> None:
+    import sqlite3
+
+    from tree_sitter_analyzer.uql.backends import IndexBackends
+
+    backends = IndexBackends(project)
+
+    def broken():
+        raise sqlite3.OperationalError("locked")
+
+    monkeypatch.setattr(backends.cache, "get_conn", broken)
+    assert backends.definition_kinds([("pkg/core.py", 5, "helper")]) == {}

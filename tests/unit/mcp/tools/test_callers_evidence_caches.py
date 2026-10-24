@@ -583,3 +583,39 @@ async def test_certifiable_index_still_takes_the_certified_read(
     await _callers(indexed_root, "Widget.used")
 
     assert entered == [str(indexed_root)]
+
+
+@pytest.mark.asyncio
+async def test_batch_marks_a_failing_bound_input_for_fallback(
+    indexed_root, monkeypatch
+) -> None:
+    # 认证绑定下单个输入读取失败只让该输入改走未认证回退（与单次 execute 相同）。
+    from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+
+    tool = CodeGraphCallersTool(str(indexed_root))
+    original = tool._execute_bound
+
+    async def flaky(arguments, bound_cache, source_reader):
+        if arguments["function_name"] == "helper":
+            raise OSError("snapshot vanished")
+        return await original(arguments, bound_cache, source_reader)
+
+    monkeypatch.setattr(tool, "_execute_bound", flaky)
+    answers = await tool._answer_all(
+        [{"function_name": "helper"}, {"function_name": "run"}],
+        None,
+        None,
+        fallible=True,
+    )
+    assert (answers[0], answers[1]["function"]) == (None, "run")
+
+
+def test_vocab_cannot_decide_non_word_needles(indexed_root) -> None:
+    from tree_sitter_analyzer.mcp.tools import reference_vocab
+    from tree_sitter_analyzer.query_scope import query_scope
+
+    with query_scope():
+        lacking = reference_vocab.for_root(str(indexed_root)).lacking(
+            [str(indexed_root / "widget.py")], b"a-b"
+        )
+    assert lacking == set()
