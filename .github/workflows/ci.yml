@@ -226,65 +226,17 @@ jobs:
     needs: [route, docs-check, test, quality-check, build, e2e, regression, sql-platform-compat, test-quality-audit]
     runs-on: ubuntu-latest
     if: always()
+    timeout-minutes: 5
     steps:
-      - name: Check Overall Status
-        run: |
-          echo "### 🏆 Final Quality Gate Status" >> "$GITHUB_STEP_SUMMARY"
-          SUCCESS=true
-
-          check_required() {
-            local name="$1"
-            local result="$2"
-            if [[ "$result" != "success" ]]; then
-              echo "❌ ${name} failed: ${result}" >> "$GITHUB_STEP_SUMMARY"
-              SUCCESS=false
-            fi
-          }
-
-          # Routed jobs: a deliberate ``skipped`` (the route turned the job off)
-          # is acceptable; only ``failure``/``cancelled`` rejects the gate.
-          check_routed() {
-            local name="$1"
-            local result="$2"
-            if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
-              echo "❌ ${name} failed: ${result}" >> "$GITHUB_STEP_SUMMARY"
-              SUCCESS=false
-            else
-              echo "✅ ${name}: ${result}" >> "$GITHUB_STEP_SUMMARY"
-            fi
-          }
-
-          check_optional() {
-            check_routed "$1" "$2"
-          }
-
-          ROUTE="${{ needs.route.result }}"
-          DOCS="${{ needs.docs-check.result }}"
-          TEST="${{ needs.test.result }}"
-
-          check_required "Route CI" "$ROUTE"
-          # quality/test/build are skipped on a docs-only change; docs-check
-          # runs instead. Each is rejected only on a real failure.
-          check_routed "Docs Check" "$DOCS"
-          check_routed "Quality Checks" "${{ needs.quality-check.result }}"
-          check_routed "Test Suite" "$TEST"
-          check_routed "Build Verification" "${{ needs.build.result }}"
-          check_optional "E2E Tests" "${{ needs.e2e.result }}"
-          check_optional "Regression Tests" "${{ needs.regression.result }}"
-          check_optional "SQL Platform Compatibility" "${{ needs.sql-platform-compat.result }}"
-          check_routed "Test Quality Audit" "${{ needs.test-quality-audit.result }}"
-
-          # Belt-and-suspenders: SOMETHING substantive must have run. Reject a
-          # run where neither the test matrix nor the docs-check executed (guards
-          # against a route misfire that skips everything).
-          if [[ "$TEST" == "skipped" && "$DOCS" == "skipped" ]]; then
-            echo "❌ Neither Test Suite nor Docs Check ran — route misfire?" >> "$GITHUB_STEP_SUMMARY"
-            SUCCESS=false
-          fi
-
-          if [ "$SUCCESS" = true ]; then
-            echo "✅ All systems go! This version meets our authority standards." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "⚠️ Quality Gate rejected this version." >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/ci_required_gate.py
+          sparse-checkout-cone-mode: false
+      # Fail-closed: the required lanes are derived from the route job's own
+      # outputs. A selected lane must end ``success`` -- ``skipped``,
+      # ``cancelled`` or missing fails the gate; only an unselected lane may be
+      # skipped. Mapping and rules: scripts/ci_required_gate.py.
+      - name: Require every selected lane to pass
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/ci_required_gate.py

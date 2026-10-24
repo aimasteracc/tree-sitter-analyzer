@@ -118,7 +118,7 @@ class HangWatchdog:
         # Controller or single process. Duplicate fd 2 now, while global
         # capture is suspended, so a dump reaches the real stderr rather than
         # a per-test capture file.
-        self._fd = os.dup(sys.stderr.fileno())
+        self._fd = _dup_stderr()
         if self._config.pluginmanager.hasplugin("xdist"):
             self._dump_dir = Path(tempfile.mkdtemp(prefix="tsa-hang-"))
 
@@ -191,6 +191,23 @@ class HangWatchdog:
         if self._dump_dir is not None:
             shutil.rmtree(self._dump_dir, ignore_errors=True)
             self._dump_dir = None
+
+
+def _dup_stderr() -> int | None:
+    """A private copy of the process stderr descriptor, or ``None``.
+
+    An in-process runner such as mutmut replaces ``sys.stderr`` with an object
+    that has no file descriptor; fall back to fd 2. When no stderr descriptor
+    exists at all the watchdog stays unarmed instead of breaking the session.
+    """
+    try:
+        fd = sys.stderr.fileno()
+    except (AttributeError, OSError, ValueError):
+        fd = 2
+    try:
+        return os.dup(fd)
+    except OSError:
+        return None
 
 
 def install(config: pytest.Config) -> HangWatchdog | None:
