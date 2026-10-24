@@ -116,6 +116,8 @@ def _es_alias_rows(conn: sqlite3.Connection, callee_name: str) -> list[sqlite3.R
     from ..query_scope import in_scope
 
     try:
+        # 实测（TSA 自身索引）：逐名查询每次约 0.23 s，一次分桶约 0.2 s，故作用域内
+        # 从第一个名字起就分桶。
         if not in_scope():
             return conn.execute(
                 _ES_ALIAS_EDGES_SQL, (callee_name, f'"name": "{callee_name}"')

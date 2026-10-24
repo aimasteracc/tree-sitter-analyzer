@@ -212,7 +212,9 @@ async def callers(
         nxt: list[Row] = []
         pending = [r for r in frontier if r.key not in expanded]
         expanded.update(r.key for r in pending)
-        for row, send, scope in _requests(backends, pending):
+        requests = _requests(backends, pending)
+        await prefetch(backends, [(s, f) for _, s, f in requests], budget)
+        for row, send, scope in requests:
             if not budget.take():
                 covs.append(gap(INCOMPLETE, RELATION_NODE_BUDGET))
                 return RelationResult(
@@ -234,6 +236,18 @@ async def callers(
     if closure and frontier:
         covs.append(gap(INCOMPLETE, RELATION_DEPTH_LIMIT))
     return RelationResult(list(out.values()), combine_or_complete(covs), evidence)
+
+
+async def prefetch(
+    backends: Backends, pairs: list[tuple[str, str | None]], budget: _Budget
+) -> None:
+    """把一个阶段将要发出的 callers 请求合并成一次批量（不超出剩余预算）。
+
+    只是预取：随后逐个读取时命中查询内记忆，答复与逐个请求完全相同。
+    """
+    fetch = getattr(backends, "prefetch_callers", None)
+    if callable(fetch) and pairs:
+        await fetch(pairs[: max(0, NODE_BUDGET - budget.spent)])
 
 
 def _is_test_entry(row: Row) -> bool:
@@ -266,7 +280,10 @@ async def tests(
     evidence: list[dict[str, Any]] = []
     out: dict[str, Row] = {}
     candidates = [r for r in inputs if r.name != MODULE_SCOPE]
-    for row, send, scope in _requests(backends, candidates):
+    requests = _requests(backends, candidates)
+    await prefetch(backends, [(s, f) for _, s, f in requests], budget)
+    helpers: list[tuple[Row, Row]] = []
+    for row, send, scope in requests:
         if not budget.take():
             covs.append(gap(INCOMPLETE, RELATION_NODE_BUDGET))
             break
@@ -283,9 +300,11 @@ async def tests(
             if _is_test_entry(caller):
                 out.setdefault(caller.key, _as_test(caller, row))
                 continue
-            covs.append(
-                await _walk_helper(backends, caller, row, budget, out, evidence)
-            )
+            helpers.append((caller, row))
+    # 测试文件辅助函数的上一跳同样合并成一次批量。
+    await prefetch(backends, [_target(backends, h) for h, _ in helpers], budget)
+    for helper, row in helpers:
+        covs.append(await _walk_helper(backends, helper, row, budget, out, evidence))
     return RelationResult(list(out.values()), combine_or_complete(covs), evidence)
 
 
@@ -388,6 +407,10 @@ async def callees(backends: Backends, inputs: list[Row]) -> RelationResult:
 def new_budget() -> _Budget:
     """一个阶段共享的生产者调用预算（``untested()`` 逐行调用 ``tests()`` 时共用）。"""
     return _Budget()
+
+
+def target(backends: Backends, row: Row) -> tuple[str, str | None]:
+    return _target(backends, row)
 
 
 def is_test_entry(row: Row) -> bool:

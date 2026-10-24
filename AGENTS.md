@@ -42,7 +42,7 @@
 For non-trivial work, expert agents must use this project as their primary feedback instrument while they work, then preserve the learning in memory:
 
 1. **Before edits:** run `uv run python -m tree_sitter_analyzer --change-impact --format json` to get the affected surface and verification command.
-2. **During exploration:** prefer TSA queries over blind file scans. Use focused codegraph/query/health commands for the area being changed, and keep the raw command outputs small enough to compare before/after.
+2. **During exploration:** prefer TSA queries over blind file scans. Use focused codegraph/query/health commands for the area being changed, and keep the raw command outputs small enough to compare before/after. For multi-hop questions (callers plus their tests, untested or filtered callers, depth-N callers, impact of a change) ask one `search action=uql` query (CLI `--uql`) instead of chaining `nav` calls; keep single `nav`/`--callers` calls for one-hop questions.
 3. **After edits:** rerun change-impact and the reported verification command. For Python source changes, also run the local patch coverage gate from the Test Runtime Contract.
 4. **Memory capture:** store a concise JSON record in project memory with `branch`, `task`, `tools_used`, `signals`, `decision`, `verification`, and `followups`. Use the available `memory_store` MCP when present; otherwise use the Claude Flow memory CLI (`npx @claude-flow/cli@latest memory store --namespace tsa/agent-feedback ...`). If neither memory backend is available, include the JSON in the final response so the lead can store it.
 

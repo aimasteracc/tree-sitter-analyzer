@@ -98,6 +98,19 @@ class _Memo:
             self._relations[key] = await self._inner.callers(name, file)
         return self._relations[key]
 
+    async def prefetch_callers(self, pairs: list[tuple[str, str | None]]) -> None:
+        """把尚未问过的 callers 请求合并成一次批量（生产者支持时）。"""
+        missing = list(
+            dict.fromkeys(
+                p for p in pairs if ("callers", p[0], p[1]) not in self._relations
+            )
+        )
+        many = getattr(self._inner, "callers_many", None)
+        if not missing or not callable(many):
+            return
+        for pair, answer in zip(missing, await many(missing), strict=True):
+            self._relations[("callers", pair[0], pair[1])] = answer
+
     async def callees(self, name: str, file: str | None) -> dict[str, Any]:
         key = ("callees", name, file)
         if key not in self._relations:
@@ -320,6 +333,11 @@ async def _presence(stage: HasTests, current: Group, backends: Backends) -> _Ste
     undecided = 0
     # 整个阶段共用一个预算：逐行调用不能绕过 tests() 的生产者调用上限（Codex #1801）。
     budget = rel.new_budget()
+    await rel.prefetch(
+        backends,
+        [rel.target(backends, r) for r in current.rows if r.name != rel.MODULE_SCOPE],
+        budget,
+    )
     for row in current.rows:
         found = await rel.tests(backends, [row], budget)
         evidence.extend(found.evidence)

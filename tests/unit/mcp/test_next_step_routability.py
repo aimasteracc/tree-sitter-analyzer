@@ -125,8 +125,10 @@ def test_the_harvest_is_not_vacuous() -> None:
     """
     harvest = _next_step_strings()
     # RFC-0041: the uql answer summary adds 1 next_step constant, 178 -> 179.
-    assert len(harvest) == 179, (
-        f"expected 179 next_step string constants, harvested {len(harvest)}; "
+    # uql adoption (nav_uql_hints.py): the callers -> test_map / callers
+    # follow-up hints and the caller_tree impact pointer add 7, 179 -> 186.
+    assert len(harvest) == 186, (
+        f"expected 186 next_step string constants, harvested {len(harvest)}; "
         "update this constant if the phrasing changed, otherwise the AST walk is "
         "no longer matching how next_step is assigned"
     )
@@ -176,6 +178,32 @@ def test_every_route_token_in_a_next_step_resolves() -> None:
         "RFC-0028 §3.1 next_step routability is red. A next_step that names a "
         "route must name one that resolves; an agent follows these literally:\n  "
         + "\n  ".join(unresolved)
+    )
+
+
+_FACADE_ACTION = re.compile(r"\b([a-z_]+) action=([a-z_]+)")
+
+
+def test_every_facade_action_pair_in_a_next_step_resolves() -> None:
+    """``<facade> action=<name>`` must name an action that facade registers.
+
+    The token check above only sees the facade name, so a hint naming
+    ``search action=uqll`` would pass it. Agents copy these pairs verbatim.
+    """
+    facades = _registered_facades()
+    pairs: dict[tuple[str, str], set[str]] = {}
+    for module, text in _next_step_strings():
+        for facade, action in _FACADE_ACTION.findall(text):
+            if facade in facades:
+                pairs.setdefault((facade, action), set()).add(module)
+    assert ("search", "uql") in pairs, "the uql follow-up hints were not harvested"
+    unresolved = [
+        f"{facade} action={action} (in {', '.join(sorted(where))})"
+        for (facade, action), where in sorted(pairs.items())
+        if action != "help" and action not in facades[facade]
+    ]
+    assert unresolved == [], "next_step names unregistered actions:\n  " + (
+        "\n  ".join(unresolved)
     )
 
 

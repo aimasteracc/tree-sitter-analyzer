@@ -1,0 +1,12 @@
+{
+  "_comment": "Max unkilled mutants (survived + no_tests) per module of scripts/run_mutation_baseline.py. Only ever lower these numbers; the nightly mutation-baseline workflow fails when a module exceeds its entry or has none. Seeded from mutation-baseline run 40088388329 (ubuntu-latest, 2026-10-24).",
+  "max_unkilled": {
+    "ast_diff": 64,
+    "callers_checks": 10,
+    "callers_outcomes": 0,
+    "callers_target_set": 20,
+    "facade_tool": 160,
+    "query_symbol_search": 97,
+    "semantic_change_classifier": 12
+  }
+}

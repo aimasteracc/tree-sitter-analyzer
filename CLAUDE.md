@@ -215,6 +215,8 @@ and verify the output is sane before committing.
 
 In order: `--class-hierarchy`, `--callers`, `--callees`, `--call-graph`, `--class-hierarchy mode=tree`. These exist and work. Writing a 50-line Python script to answer "what subclasses does LanguagePlugin have" is wasted effort — `--class-hierarchy mode=subclasses --class-hierarchy-class LanguagePlugin` gives the same answer in one command.
 
+**Multi-hop questions are one UQL query, not a chain of single tools.** "Callers of X and the tests covering them", "untested callers of Y in module M", "callers to depth N under `src/`", "impact of changing X" → one `search action=uql query="symbol('X').callers().tests()"` (CLI: `--uql "symbol('X').callers().tests()"`). It reports completeness per stage, so read the total before trusting an empty result. Stay on the single tools (`nav action=callers`, `nav action=test_map`, `--callers`) for one-hop questions: they are smaller and faster there.
+
 ### 11. A non-functional claim (cost / size / latency) is a BELIEF until it is an executable invariant
 
 **Why (incident, 2026-06-08):** The MCP TOON response was ~**1.96× the size of plain JSON** for metadata-heavy decision tools — the "token-efficient" format was nearly twice as expensive as the one it replaced. ~18,000 tests were green throughout. A **human using the tool** found it; the suite never could. Root cause: the suite is a *conformance* net (does the code match its spec?), and it **cannot discover that the spec itself is wasteful**. The premise — CLAUDE.md §1's "TOON is 50-70% more token-efficient" — lived only as prose, so it was never falsifiable. (Worse: the bug was *self-protecting* — 62 test files asserted the duplicated shape as "correct", so the fix broke them.)

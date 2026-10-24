@@ -89,6 +89,38 @@ def test_invalid_hang_timeout_is_rejected(monkeypatch):
         watchdog.configured_base(config)
 
 
+class _NoFilenoStream:
+    """Mimics mutmut's in-process stderr capture: ``fileno`` is unsupported."""
+
+    def fileno(self) -> int:
+        import io
+
+        raise io.UnsupportedOperation("fileno")
+
+    def write(self, text: str) -> int:
+        return len(text)
+
+
+def test_stderr_without_fileno_falls_back_to_fd_2(monkeypatch):
+    # The mutation baseline runs pytest inside mutmut, where sys.stderr has no
+    # descriptor; install() used to crash pytest_configure with INTERNALERROR.
+    monkeypatch.setattr(sys, "stderr", _NoFilenoStream())
+    duplicated: list[int] = []
+    monkeypatch.setattr(os, "dup", lambda fd: duplicated.append(fd) or 99)
+    assert watchdog._dup_stderr() == 99
+    assert duplicated == [2]
+
+
+def test_no_stderr_descriptor_leaves_the_watchdog_unarmed(monkeypatch):
+    monkeypatch.setattr(sys, "stderr", _NoFilenoStream())
+
+    def closed(fd: int) -> int:
+        raise OSError(9, "Bad file descriptor")
+
+    monkeypatch.setattr(os, "dup", closed)
+    assert watchdog._dup_stderr() is None
+
+
 def _run_hanging_session(
     tmp_path: Path, *args: str, timeout: float = 25
 ) -> tuple[int, str, float]:
