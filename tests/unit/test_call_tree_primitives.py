@@ -210,6 +210,22 @@ class TestCallerTreeTool:
         # bar is called by foo (transitive caller, depth 2).
         foo = next((c for c in bar["children"] if c["name"] == "foo"), None)
         assert foo is not None
+        # The tree makes no completeness claim; it points at the uql impact set.
+        assert result["next_step"].endswith(
+            "search action=uql query=\"symbol('baz').impact(depth=3)\"."
+        )
+
+    @pytest.mark.asyncio
+    async def test_empty_caller_tree_has_no_uql_pointer(
+        self, chain_project_root
+    ) -> None:
+        from tree_sitter_analyzer.mcp.tools._call_tree_tool import (
+            CodeGraphCallerTreeTool,
+        )
+
+        tool = CodeGraphCallerTreeTool(chain_project_root)
+        result = await tool.execute({"symbol": "foo", "output_format": "json"})
+        assert "action=uql" not in result["next_step"]
 
     @pytest.mark.asyncio
     async def test_symbol_required(self, chain_project_root) -> None:
