@@ -136,6 +136,82 @@ def test_pool_returns_every_result() -> None:
     assert sorted(results) == [1, 2, 3]
 
 
+class _FakeWorker:
+    def __init__(self, pid: int, fail: bool = False) -> None:
+        self._pid = pid
+        self._fail = fail
+        self.pid: int | None = None
+
+    def start(self) -> None:
+        if self._fail:
+            raise OSError("CreateProcess failed")
+        self.pid = self._pid
+
+
+def test_concurrent_start_starts_every_worker() -> None:
+    workers = [_FakeWorker(pid) for pid in (11, 12, 13)]
+
+    started, error = worker_pool._start_concurrently(workers)
+
+    assert error is None
+    assert [w.pid for w in started] == [11, 12, 13]
+
+
+def test_concurrent_start_returns_started_workers_and_the_failure() -> None:
+    workers = [_FakeWorker(21), _FakeWorker(22, fail=True), _FakeWorker(23)]
+
+    started, error = worker_pool._start_concurrently(workers)
+
+    assert isinstance(error, OSError)
+    assert [w.pid for w in started] == [21, 23]
+
+
+def test_concurrent_start_failure_leaves_started_workers_in_the_pool() -> None:
+    pool: list = []
+    created = iter([_FakeWorker(31), _FakeWorker(32, fail=True)])
+
+    def factory(ctx, target, args):  # mirrors ``Pool.Process(ctx, ...)``
+        worker = next(created)
+        worker.name = "Process-1"
+        worker.daemon = False
+        return worker
+
+    with pytest.raises(OSError):
+        worker_pool._ConcurrentStartPool._repopulate_pool_static(
+            None, factory, 2, pool, None, None, None, (), None, False
+        )
+
+    # Pool.__init__ terminates and joins whatever is in ``pool`` on failure.
+    assert [w.pid for w in pool] == [31]
+    assert pool[0].daemon is True
+    assert pool[0].name == "PoolWorker-1"
+
+
+def test_non_context_objects_still_build_their_own_pool() -> None:
+    calls: list = []
+
+    class _Ctx:
+        def Pool(self, processes, initializer):  # noqa: N802 - mirrors the API
+            calls.append((processes, initializer))
+            return "pool"
+
+    assert worker_pool._make_pool(_Ctx(), 3, None) == "pool"
+    assert calls == [(3, None)]
+
+
+def test_real_context_gets_concurrently_started_daemon_workers() -> None:
+    pool = worker_pool._make_pool(get_context("spawn"), 2, None)
+    try:
+        assert isinstance(pool, worker_pool._ConcurrentStartPool)
+        workers = list(pool._pool)  # type: ignore[attr-defined]
+        assert len(workers) == 2
+        assert all(w.daemon and "PoolWorker" in w.name for w in workers)
+        assert sorted(pool.map(abs, [-1, -2])) == [1, 2]
+    finally:
+        pool.terminate()
+        pool.join()
+
+
 def test_bounds_from_environment(monkeypatch) -> None:
     monkeypatch.setenv(worker_pool.ENV_VAR, "7.5")
     assert worker_pool._bounds() == (7.5, 7.5)
