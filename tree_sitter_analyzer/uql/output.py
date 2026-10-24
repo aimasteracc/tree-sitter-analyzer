@@ -46,6 +46,15 @@ class PageRequest:
     cursor_given: bool = False
 
 
+def canonical(query: Any) -> str:
+    """查询身份：解析后 IR 的规范形式（与答案缓存键一致，Codex #1801）。
+
+    同一 IR 的两种写法共享缓存条目，因此游标也必须按 IR 而非原文绑定，否则
+    命中缓存的另一写法续页会被判为“别的查询”。
+    """
+    return repr(query.stages)
+
+
 def query_digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
@@ -160,7 +169,7 @@ def project(
         results[name].append(_full(row) if detail == "full" else _label(row))
     next_offset = page.offset + len(window)
     next_cursor = (
-        encode_cursor(execution.query.text, next_offset, generation)
+        encode_cursor(canonical(execution.query), next_offset, generation)
         if next_offset < total
         else None
     )

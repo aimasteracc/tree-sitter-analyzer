@@ -254,3 +254,47 @@ def test_subset_of_definitions_keeps_per_file_requests() -> None:
     fb = FakeBackends({"run": [sym("run", "src/a.py", 1)]}, counts={"run": 2})
     _run("symbol('run').callers()", fb)
     assert fb.calls == [("callers", "run", "src/a.py")]
+
+
+def test_ambiguous_method_is_requested_class_qualified() -> None:
+    # Codex P2 on #1801: two same-named methods in one file must not be
+    # answered as their union when one class was selected.
+    fb = FakeBackends(
+        {"run": [sym("run", "src/a.py", 3, **{"class": "A"})]}, counts={"run": 2}
+    )
+    _run("symbol('A.run').callers()", fb)
+    assert fb.calls == [("callers", "A.run", "src/a.py")]
+
+
+def test_callee_rows_keep_the_producer_language() -> None:
+    # Codex P2 on #1801: language=None made filter(language=...) drop callees.
+    fb = FakeBackends(
+        {"t": [sym("t")]},
+        callees={
+            "t": {
+                "success": True,
+                "callees": [
+                    {
+                        "name": "x",
+                        "language": "python",
+                        "callee_resolution": "project",
+                        "callee_resolved_file": "src/x.py",
+                    }
+                ],
+            }
+        },
+    )
+    ex = _run("symbol('t').callees().filter(language='python')", fb)
+    assert [r.name for r in ex.groups[1].rows] == ["x"]
+
+
+def test_untested_shares_one_producer_budget(monkeypatch) -> None:
+    # Codex P2 on #1801: per-row tests() calls reset the 400-call budget.
+    import tree_sitter_analyzer.uql.relations as relations
+
+    monkeypatch.setattr(relations, "NODE_BUDGET", 2)
+    rows = [(f"f{i}", "src/b.py", i + 1) for i in range(4)]
+    fb = _backends(target=callers_payload(*rows))
+    ex = _run("symbol('target').callers().untested()", fb)
+    unknown = [r.name for r in ex.groups[1].rows if r.membership == "unknown"]
+    assert (unknown, ex.stages[2].own.status) == (["f2", "f3"], "unknown")

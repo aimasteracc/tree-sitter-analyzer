@@ -15,6 +15,7 @@ from .output import (
     DEFAULT_LIMIT,
     MAX_LIMIT,
     PageRequest,
+    canonical,
     check_generation,
     decode_cursor,
     error_payload,
@@ -51,7 +52,7 @@ async def answer(arguments: dict[str, Any], backends: Backends) -> dict[str, Any
     page = PageRequest()
     cursor = arguments.get("cursor")
     if cursor is not None:
-        decoded = decode_cursor(cursor, query.text)
+        decoded = decode_cursor(cursor, canonical(query))
         if isinstance(decoded, Err):
             return error_payload(decoded.error, query_text)
         page = decoded.value

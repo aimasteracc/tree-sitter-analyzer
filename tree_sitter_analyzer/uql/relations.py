@@ -83,6 +83,7 @@ def row_from_symbol(sym: dict[str, Any]) -> Row:
 
 def _evidence(
     op: str,
+    send: str,
     row: Row,
     scope: str | None,
     cov: Coverage,
@@ -91,7 +92,7 @@ def _evidence(
 ) -> dict[str, Any]:
     # The handle is the exact request that was sent, so replaying it shows
     # the producer evidence this stage consumed.
-    request: dict[str, Any] = {"action": op, "function_name": row.name}
+    request: dict[str, Any] = {"action": op, "function_name": send}
     if scope:
         request["file_path"] = scope
     item: dict[str, Any] = {
@@ -143,12 +144,26 @@ def _scope(backends: Backends, row: Row) -> str | None:
     Several definitions keep the file so the answer is about this one.
     Tracked as #1798 (scoped vs bare callers divergence).
     """
+    return _target(backends, row)[1]
+
+
+def _target(backends: Backends, row: Row) -> tuple[str, str | None]:
+    """``(function_name, file_path)`` for a producer request about ``row``.
+
+    With several definitions of the name, a row that knows its class is sent
+    as ``Class.method``: a bare name plus a file holding two same-named
+    methods would make the callers tool answer their union (Codex on #1801).
+    """
     if not row.file:
-        return None
-    return None if backends.definition_count(row.name) == 1 else row.file
+        return row.name, None
+    if backends.definition_count(row.name) == 1:
+        return row.name, None
+    if row.cls:
+        return f"{row.cls}.{row.name}", row.file
+    return row.name, row.file
 
 
-def _requests(backends: Backends, rows: list[Row]) -> list[tuple[Row, str | None]]:
+def _requests(backends: Backends, rows: list[Row]) -> list[tuple[Row, str, str | None]]:
     """One producer request per distinct question about ``rows``.
 
     When the rows hold every indexed definition of a name, the unscoped bare
@@ -159,13 +174,13 @@ def _requests(backends: Backends, rows: list[Row]) -> list[tuple[Row, str | None
     by_name: dict[str, list[Row]] = {}
     for row in rows:
         by_name.setdefault(row.name, []).append(row)
-    out: list[tuple[Row, str | None]] = []
+    out: list[tuple[Row, str, str | None]] = []
     for name, group in by_name.items():
         count = backends.definition_count(name)
         if len(group) > 1 and count is not None and len(group) >= count:
-            out.append((group[0], None))
+            out.append((group[0], name, None))
             continue
-        out.extend((row, _scope(backends, row)) for row in group)
+        out.extend((row, *_target(backends, row)) for row in group)
     return out
 
 
@@ -200,17 +215,19 @@ async def callers(
         nxt: list[Row] = []
         pending = [r for r in frontier if r.key not in expanded]
         expanded.update(r.key for r in pending)
-        for row, scope in _requests(backends, pending):
+        for row, send, scope in _requests(backends, pending):
             if not budget.take():
                 covs.append(gap(INCOMPLETE, RELATION_NODE_BUDGET))
                 return RelationResult(
                     list(out.values()), combine_or_complete(covs), evidence
                 )
-            response = await backends.callers(row.name, scope)
+            response = await backends.callers(send, scope)
             cov = from_producer(response)
             covs.append(cov)
             found = _related_rows(response, "callers", row, level)
-            evidence.append(_evidence("callers", row, scope, cov, len(found), response))
+            evidence.append(
+                _evidence("callers", send, row, scope, cov, len(found), response)
+            )
             for item in found:
                 if item.key not in out:
                     out[item.key] = item
@@ -237,7 +254,9 @@ def _in_test_file(row: Row) -> bool:
     return bool(is_test_file(row.file))
 
 
-async def tests(backends: Backends, inputs: list[Row]) -> RelationResult:
+async def tests(
+    backends: Backends, inputs: list[Row], budget: _Budget | None = None
+) -> RelationResult:
     """Test entry points reaching each input directly or via one test helper.
 
     Same definition as ``nav action=test_map`` (RFC-0014 Phase B), but derived
@@ -245,20 +264,22 @@ async def tests(backends: Backends, inputs: list[Row]) -> RelationResult:
     tests are a census only if its callers are, and so are the callers of
     every helper walked through.
     """
-    budget = _Budget()
+    budget = budget or _Budget()
     covs: list[Coverage] = []
     evidence: list[dict[str, Any]] = []
     out: dict[str, Row] = {}
     candidates = [r for r in inputs if r.name != MODULE_SCOPE]
-    for row, scope in _requests(backends, candidates):
+    for row, send, scope in _requests(backends, candidates):
         if not budget.take():
             covs.append(gap(INCOMPLETE, RELATION_NODE_BUDGET))
             break
-        response = await backends.callers(row.name, scope)
+        response = await backends.callers(send, scope)
         cov = from_producer(response)
         covs.append(cov)
         direct = _related_rows(response, "callers", row, 1)
-        evidence.append(_evidence("callers", row, scope, cov, len(direct), response))
+        evidence.append(
+            _evidence("callers", send, row, scope, cov, len(direct), response)
+        )
         for caller in direct:
             if not _in_test_file(caller):
                 continue
@@ -293,11 +314,13 @@ async def _walk_helper(
 ) -> Coverage:
     if not budget.take():
         return gap(INCOMPLETE, RELATION_NODE_BUDGET)
-    scope = _scope(backends, helper)
-    response = await backends.callers(helper.name, scope)
+    send, scope = _target(backends, helper)
+    response = await backends.callers(send, scope)
     cov = from_producer(response)
     parents = _related_rows(response, "callers", helper, 2)
-    evidence.append(_evidence("callers", helper, scope, cov, len(parents), response))
+    evidence.append(
+        _evidence("callers", send, helper, scope, cov, len(parents), response)
+    )
     nested = False
     for parent in parents:
         if not _in_test_file(parent):
@@ -324,8 +347,8 @@ async def callees(backends: Backends, inputs: list[Row]) -> RelationResult:
     for row in inputs:
         if row.name == MODULE_SCOPE:
             continue
-        scope = _scope(backends, row)
-        response = await backends.callees(row.name, scope)
+        send, scope = _target(backends, row)
+        response = await backends.callees(send, scope)
         unresolved = 0
         listed = 0
         for entry in response.get("callees") or []:
@@ -337,7 +360,14 @@ async def callees(backends: Backends, inputs: list[Row]) -> RelationResult:
             listed += 1
             out.setdefault(
                 f"{target}::{name}",
-                Row(name=name, file=target, line=None, depth=1, via=row.key),
+                Row(
+                    name=name,
+                    file=target,
+                    line=None,
+                    language=entry.get("language") or None,
+                    depth=1,
+                    via=row.key,
+                ),
             )
         cov = (
             gap(INCOMPLETE, CALLEE_UNRESOLVED)
@@ -347,10 +377,15 @@ async def callees(backends: Backends, inputs: list[Row]) -> RelationResult:
         if response.get("success") is False:
             cov = from_producer(response)
         covs.append(cov)
-        item = _evidence("callees", row, scope, cov, listed, response)
+        item = _evidence("callees", send, row, scope, cov, listed, response)
         item["unresolved"] = unresolved
         evidence.append(item)
     return RelationResult(list(out.values()), combine_or_complete(covs), evidence)
+
+
+def new_budget() -> _Budget:
+    """一个阶段共享的生产者调用预算（``untested()`` 逐行调用 ``tests()`` 时共用）。"""
+    return _Budget()
 
 
 def is_test_entry(row: Row) -> bool:

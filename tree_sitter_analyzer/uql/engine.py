@@ -201,10 +201,6 @@ def _sort_key(by: str) -> Any:
     return lambda r: (r.name, r.file, r.line or 0)
 
 
-def _languages(rows: list[Row]) -> frozenset[str]:
-    return frozenset(r.language for r in rows if r.language)
-
-
 def _select(stage: Select, groups: list[Group], backends: Backends) -> _StepOut:
     selection = backends.select(stage.selector, SELECT_CAP)
     rows = [row_from_symbol(s) for s in selection.rows]
@@ -224,7 +220,9 @@ def selection_coverage(
     caller that reports ``total`` / ``truncated`` itself passes ``False``.
     """
     rows = [row_from_symbol(s) for s in selection.rows]
-    covs = [backends.source_gate(sorted({r.file for r in rows}), _languages(rows))]
+    # 语言域按索引全集检查，而不是按命中行的语言（Codex #1801）：未入索引的其他
+    # 语言文件同样可能满足选择器。
+    covs = [backends.source_gate(sorted({r.file for r in rows}), frozenset())]
     unproven = unproven_predicates(selector)
     note = None
     if unproven:
@@ -246,7 +244,7 @@ def _symbols(stage: SymbolSource, groups: list[Group], backends: Backends) -> _S
             seen.setdefault(row.key, row)
     rows = sorted(seen.values(), key=lambda r: (r.file, r.line or 0))
     groups.append(Group(_group_name("symbol", groups), rows, COMPLETE_COVERAGE))
-    gate = backends.source_gate(sorted({r.file for r in rows}), _languages(rows))
+    gate = backends.source_gate(sorted({r.file for r in rows}), frozenset())
     return gate, [], None
 
 
@@ -307,8 +305,10 @@ async def _presence(stage: HasTests, current: Group, backends: Backends) -> _Ste
     kept: list[Row] = []
     evidence: list[dict[str, Any]] = []
     undecided = 0
+    # 整个阶段共用一个预算：逐行调用不能绕过 tests() 的生产者调用上限（Codex #1801）。
+    budget = rel.new_budget()
     for row in current.rows:
-        found = await rel.tests(backends, [row])
+        found = await rel.tests(backends, [row], budget)
         evidence.extend(found.evidence)
         has_tests = bool(found.rows)
         decided = has_tests or found.coverage.complete

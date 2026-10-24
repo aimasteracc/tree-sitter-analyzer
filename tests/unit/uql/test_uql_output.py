@@ -7,7 +7,8 @@ import json
 
 from tests.unit.uql._fake_backends import FakeBackends, callers_payload, sym
 from tree_sitter_analyzer.uql import answer
-from tree_sitter_analyzer.uql.output import encode_cursor
+from tree_sitter_analyzer.uql.output import canonical, encode_cursor
+from tree_sitter_analyzer.uql.parser import parse_query
 
 
 def _answer(args: dict, fb: FakeBackends) -> dict:
@@ -20,6 +21,10 @@ def _five_callers(**kw) -> FakeBackends:
 
 
 Q = "symbol('t').callers()"
+
+
+def _key(text: str) -> str:
+    return canonical(parse_query(text).value)  # type: ignore[union-attr]
 
 
 def test_compact_rows_are_file_line_name_strings() -> None:
@@ -42,7 +47,7 @@ def test_first_page_is_bounded_and_returns_a_cursor() -> None:
     ) == (
         4,
         6,
-        encode_cursor(Q, 4, "gen-1"),
+        encode_cursor(_key(Q), 4, "gen-1"),
     )
 
 
@@ -72,7 +77,7 @@ def test_paging_does_not_change_completeness() -> None:
 
 
 def test_cursor_from_another_query_is_rejected() -> None:
-    cursor = encode_cursor("symbol('other')", 1, "gen-1")
+    cursor = encode_cursor(_key("symbol('other')"), 1, "gen-1")
     out = _answer({"query": Q, "cursor": cursor}, _five_callers())
     assert out["error_code"] == "UQL_INVALID_CURSOR"
 
@@ -83,14 +88,14 @@ def test_malformed_cursor_is_rejected() -> None:
 
 
 def test_cursor_from_another_generation_is_stale() -> None:
-    cursor = encode_cursor(Q, 2, "gen-0")
+    cursor = encode_cursor(_key(Q), 2, "gen-0")
     out = _answer({"query": Q, "cursor": cursor}, _five_callers())
     assert out["error_code"] == "UQL_STALE_CURSOR"
 
 
 def test_unverifiable_generation_downgrades_continuation_pages() -> None:
     fb = _five_callers(generation=None)
-    cursor = encode_cursor(Q, 2, None)
+    cursor = encode_cursor(_key(Q), 2, None)
     out = _answer({"query": Q, "cursor": cursor}, fb)
     assert (out["completeness"], out["completeness_reasons"]) == (
         "incomplete",
@@ -150,3 +155,14 @@ def test_parse_error_payload_keeps_fixed_query() -> None:
         False,
         "symbol('t').callers()",
     )
+
+
+def test_cursor_is_bound_to_the_ir_not_the_spelling() -> None:
+    # Codex P2 on #1801: the answer cache shares one entry per IR, so a cursor
+    # from one spelling must continue the other.
+    fb = _five_callers()
+    first = _answer({"query": "symbol('t').callers()", "limit": 4}, fb)
+    out = _answer(
+        {"query": 'symbol("t").callers()', "cursor": first["page"]["next_cursor"]}, fb
+    )
+    assert (out["success"], out["page"]["offset"]) == (True, 4)
