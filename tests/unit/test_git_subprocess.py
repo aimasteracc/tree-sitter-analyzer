@@ -190,6 +190,7 @@ def test_strip_one_record_terminator_preserves_path_newline() -> None:
     assert oracle._strip_one_record_terminator(b"repo\n\r\n") == b"repo\n"
 
 
+@pytest.mark.flaky(reruns=1)  # #1816: wall-clock limit on loaded runners
 @POSIX_SNAPSHOT_TEST
 def test_git_output_timeout_kills_hostile_descendant(
     tmp_path: Path, monkeypatch

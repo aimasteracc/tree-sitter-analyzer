@@ -16,6 +16,8 @@ import pytest
 from tree_sitter_analyzer import verification_runner as runner
 
 
+# Spawns two real pytest sessions (each with -n 4) to prove tier selection.
+@pytest.mark.slow_ok
 def test_explicit_pytest_targets_execute_excluded_tiers(tmp_path, monkeypatch):
     """2026-09-09：显式选择必须执行层级测试，并保留默认门禁及外部限制。"""
     from tree_sitter_analyzer.mcp.tools.utils.verification_command import (

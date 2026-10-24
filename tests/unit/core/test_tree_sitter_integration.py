@@ -439,6 +439,7 @@ def code_block():
                 file_path, "python", query_key="invalid_query"
             )
 
+    @pytest.mark.flaky(reruns=1)  # #1816: wall-clock limit on loaded runners
     @pytest.mark.asyncio
     async def test_large_file_performance(self):
         """Test performance with larger files"""

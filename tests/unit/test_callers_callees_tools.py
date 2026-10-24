@@ -572,6 +572,7 @@ class TestEmptyIndexHint:
         assert "--full-index" not in result["next_step"]
         assert result["agent_summary"]["verdict"] == "WARN"
 
+    @pytest.mark.flaky(reruns=1)  # #1816: wall-clock limit on loaded runners
     @pytest.mark.asyncio
     async def test_callers_non_empty_index_no_spurious_hint(
         self, tiny_project_root
