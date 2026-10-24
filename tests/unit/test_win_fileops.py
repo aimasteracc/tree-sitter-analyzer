@@ -145,7 +145,9 @@ def test_bounded_contention_has_no_publish_or_read_errors(store):
         stop.set()
         reader.join(10)
     assert (failures, outcomes) == ([], {"errors": [], "torn": 0})
-    assert reads[0] > 0, "reader never ran concurrently with the publishes"
+    assert reads[0] > 0, (  # ratchet: nondeterministic reader iteration count
+        "reader never ran concurrently with the publishes"
+    )
 
 
 @windows_only
