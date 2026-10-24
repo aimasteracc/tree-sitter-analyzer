@@ -19,7 +19,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Final
 
@@ -81,7 +81,9 @@ class Ledger:
     """一次查询的检查记录（不可变；:meth:`record` 返回新的记录）。"""
 
     scope: Scope
-    outcomes: Mapping[str, CheckOutcome] = MappingProxyType({})
+    outcomes: Mapping[str, CheckOutcome] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
 
     def record(self, name: str, outcome: CheckOutcome) -> Ledger:
         if name not in CHECK_NAMES:
