@@ -32,11 +32,15 @@ def _require_plain_path(path: Path, *, directory: bool) -> None:
 
 
 def logical_index_path(project_root: str) -> Path:
-    return (
-        _NativePath(os.path.realpath(os.path.abspath(project_root)))
-        / ".ast-cache"
-        / "index.db"
+    from ..query_scope import scoped
+
+    # RFC-0041: one realpath per root inside a query scope (each producer call
+    # resolves it dozens of times); live outside a scope.
+    real = scoped(
+        ("logical_index_path.realpath", project_root),
+        lambda: os.path.realpath(os.path.abspath(project_root)),
     )
+    return _NativePath(real) / ".ast-cache" / "index.db"
 
 
 def generation_storage_path(project_root: str) -> Path:

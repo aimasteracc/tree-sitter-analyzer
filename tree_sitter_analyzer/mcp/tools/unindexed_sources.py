@@ -67,7 +67,22 @@ def unindexed_source_files(
 def project_files(
     cache: Any, project_root: str, languages: frozenset[str]
 ) -> ProjectFiles | None:
-    """同一次遍历同时找出未入索引的源码与配置文件（#1607、#1624）；失败为 None。"""
+    """同一次遍历同时找出未入索引的源码与配置文件（#1607、#1624）；失败为 None。
+
+    RFC-0041：查询作用域内（一个答案、一个索引与源码时刻）每个根与语言集只遍历
+    一次；作用域外照旧每次遍历。
+    """
+    from ...query_scope import scoped
+
+    return scoped(
+        ("project_files", os.path.abspath(project_root), languages),
+        lambda: _project_files(cache, project_root, languages),
+    )
+
+
+def _project_files(
+    cache: Any, project_root: str, languages: frozenset[str]
+) -> ProjectFiles | None:
     from ...constants import EXCLUDE_DIRS
     from ...index_candidate_walker import (
         CandidateDiscoveryBudgetExceeded,

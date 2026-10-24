@@ -493,9 +493,7 @@ def read_existing_index_consumer(
                     }
                 ],
             )
-            return apply_output_format_to_response(
-                result, output_format
-            )
+            return apply_output_format_to_response(result, output_format)
     except (
         ValueError,
         RuntimeError,

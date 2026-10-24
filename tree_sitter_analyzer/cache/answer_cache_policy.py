@@ -58,6 +58,10 @@ CACHEABLE_ACTIONS: frozenset[tuple[str, str]] = frozenset(
     {
         ("edit", "safe"),
         ("health", "file"),
+        # RFC-0041: a pipeline answer fans out to many nav callers calls
+        # (seconds warm); its key adds the parsed IR and the index identity
+        # (see ``_route_key_args``).
+        ("search", "uql"),
     }
 )
 
@@ -344,6 +348,33 @@ def extra_inputs_digest(project_root: str) -> str:
     )
 
 
+def _route_key_args(
+    tool: str, action: str, arguments: dict[str, Any], project_root: str
+) -> dict[str, Any] | None:
+    """Route-specific key inputs beyond the raw arguments (``None`` = uncacheable).
+
+    RFC-0041 ``search action=uql``: the answer depends on the *parsed* query
+    (two spellings of one IR share an entry; an unparsable query is never
+    cached), on ``limit`` / ``cursor`` / ``detail``, and on the index content —
+    a refresh that changes rows without a source edit must miss, so the
+    index identity (``relation_freshness.index_identity``) is part of the key.
+    Source freshness is the generation component, recomputed on every lookup.
+    """
+    if (tool, action) != ("search", "uql"):
+        return arguments
+    from ..mcp.tools.relation_freshness import index_identity
+    from ..uql.errors import Err
+    from ..uql.parser import parse_query
+
+    parsed = parse_query(arguments.get("query"))
+    if isinstance(parsed, Err):
+        return None
+    keyed = {k: v for k, v in arguments.items() if k != "query"}
+    keyed["query_ir"] = repr(parsed.value.stages)
+    keyed["index_identity"] = repr(index_identity(project_root))
+    return keyed
+
+
 def build_answer_key(
     tool: str,
     action: str,
@@ -370,10 +401,13 @@ def build_answer_key(
             # this as a stamp is what made every answer permanently cacheable
             # for the 11 extensions outside GRAPH_SOURCE_EXTS.
             return None
+        routed = _route_key_args(tool, action, arguments, project_root)
+        if routed is None:
+            return None
         return AnswerKey(
             tool=tool,
             action=action,
-            normalized_args=normalize_args(arguments, project_root),
+            normalized_args=normalize_args(routed, project_root),
             generation=generation,
             producer_version=producer_version(tool, action),
             extra_inputs=extra_inputs_digest(project_root),

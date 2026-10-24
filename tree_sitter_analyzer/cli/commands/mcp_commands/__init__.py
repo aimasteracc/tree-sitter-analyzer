@@ -198,6 +198,7 @@ from tree_sitter_analyzer.mcp.tools.uml_tool import CodeGraphUMLTool  # noqa: F4
 from tree_sitter_analyzer.mcp.tools.unreachable_code_tool import (
     UnreachableCodeTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.uql_tool import UqlTool  # noqa: F401
 from tree_sitter_analyzer.mcp.tools.verification_tool import (
     VerificationTool,  # noqa: F401
 )
@@ -285,6 +286,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "GetProjectSchemaTool",
         "TqlSchemaTool",
         "TqlExecuteTool",
+        "UqlTool",
         "SemanticNeighborsTool",
     }
 )

@@ -160,6 +160,4 @@ class MarkdownFormatter(BaseFormatter):
 
     def _format_csv(self, analysis_result: dict[str, Any]) -> str:
         """Format CSV output for Markdown files (removed)"""
-        raise NotImplementedError(
-            "CSV format removed; use 'json' or 'text' instead"
-        )
+        raise NotImplementedError("CSV format removed; use 'json' or 'text' instead")

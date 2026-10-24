@@ -145,12 +145,29 @@ def declaration_decorators(
     return _tree_sitter_decorators(text, line, language)
 
 
+def _parsed_python(text: str) -> tuple[ast.Module, dict[str, set[str]]] | None:
+    """The module tree and its bindings; one parse per text inside a query scope.
+
+    RFC-0041: a pipeline asks callers about several symbols declared in the
+    same file; outside a scope every call parses live, as before.
+    """
+    from ...query_scope import scoped
+
+    def compute() -> tuple[ast.Module, dict[str, set[str]]] | None:
+        try:
+            tree = ast.parse(text)
+        except (SyntaxError, ValueError):
+            return None
+        return tree, _python_bindings(tree)
+
+    return scoped(("callers_decorators.parse", text), compute)
+
+
 def _python_decorators(text: str, line: int) -> list[Decorator] | None:
-    try:
-        tree = ast.parse(text)
-    except (SyntaxError, ValueError):
+    parsed = _parsed_python(text)
+    if parsed is None:
         return None
-    bindings = _python_bindings(tree)
+    tree, bindings = parsed
     found: list[Decorator] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):

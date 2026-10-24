@@ -173,9 +173,6 @@ def compact_header_row(header: dict[str, Any]) -> str:
     return f"| {level} | {text} | {line} |"
 
 
-
-
-
 def markdown_csv_row(element: dict[str, Any]) -> list[Any]:
     """Return one Markdown element as a CSV row."""
     elem_type = element.get("type", "unknown")

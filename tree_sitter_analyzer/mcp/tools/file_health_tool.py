@@ -178,9 +178,7 @@ class FileHealthTool(BaseMCPTool):
             resolved, file_path, language, output_format
         )
         if early is not None:
-            return apply_output_format_to_response(
-                early, output_format
-            )
+            return apply_output_format_to_response(early, output_format)
 
         language = self._resolve_language_for_health(resolved, language)
         analysis = extract_elements(resolved, self.project_root)
@@ -195,14 +193,10 @@ class FileHealthTool(BaseMCPTool):
         # the agent doesn't see ``grade=A`` on broken syntax.
         syntax_response = _syntax_error_response(resolved, file_path, language)
         if syntax_response is not None:
-            return apply_output_format_to_response(
-                syntax_response, output_format
-            )
+            return apply_output_format_to_response(syntax_response, output_format)
 
         result = self._score_and_echo_metrics(resolved, file_path, language, analysis)
-        return apply_output_format_to_response(
-            result, output_format
-        )
+        return apply_output_format_to_response(result, output_format)
 
     def _check_early_exit_paths(
         self,

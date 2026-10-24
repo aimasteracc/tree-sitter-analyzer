@@ -87,9 +87,8 @@ class ReferenceVocabulary:
             entry = self._entries.get(path)
         if entry is None:
             return False
-        try:
-            current = _stat_key(os.stat(path))
-        except OSError:
+        current = _current_stamp(path)
+        if current is None:
             return False  # 交给照常读取：不可读由那里报告
         if current != entry[0]:
             return False
@@ -123,6 +122,24 @@ class ReferenceVocabulary:
         if total > MAX_TOTAL_BYTES:
             entries = {path: entries[path] for path in touched if path in entries}
         _save(self._root, entries)
+
+
+def _current_stamp(path: str) -> StatKey | None:
+    """``path`` 的当前 stat 证据；不可 stat 为 None。
+
+    RFC-0041：统一查询在一个答案里对许多名字各做一次引用扫描，同一批文件被逐一
+    重复 stat（TSA 自身约 2.7k 个文件 × 每个名字）。查询作用域内一个答案只对应
+    一个源码时刻，因此每个路径只 stat 一次；作用域外照旧每次实时 stat。
+    """
+    from ...query_scope import scoped
+
+    def compute() -> StatKey | None:
+        try:
+            return _stat_key(os.stat(path))
+        except OSError:
+            return None
+
+    return scoped(("reference_vocab.stat", path), compute)
 
 
 _LOCK = threading.Lock()

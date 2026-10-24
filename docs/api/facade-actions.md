@@ -3,7 +3,7 @@
 > **AUTO-GENERATED — do not edit by hand.** Regenerate with `uv run python scripts/generate_facade_actions_doc.py`.
 > Drift-gated by `tests/unit/docs/test_facade_actions_doc_drift.py` (regenerates in-memory and diffs).
 
-The MCP server exposes **8 facade tools** routing **85 actions** via the `action` parameter. This reference is generated from the live facade registry (`tree_sitter_analyzer/mcp/_tool_registry.py`) and each inner tool's `inputSchema` — the same schema the runtime strict-parameter guard enforces, so a wrong param guess in this table would fail at runtime too (and vice versa).
+The MCP server exposes **8 facade tools** routing **86 actions** via the `action` parameter. This reference is generated from the live facade registry (`tree_sitter_analyzer/mcp/_tool_registry.py`) and each inner tool's `inputSchema` — the same schema the runtime strict-parameter guard enforces, so a wrong param guess in this table would fail at runtime too (and vice versa).
 
 Reading the tables:
 
@@ -14,7 +14,7 @@ Runtime discovery: call a facade with `action=help` for its business action list
 - **CLI twin** — the CLI flag (or console script) covering the same capability, from the CLI-parity contract. 4 actions have no authoritative CLI mapping and show — (honest gap, not an omission).
 - *Bespoke routes* (closures with hand-rolled arg handling, e.g. `nav action=test_map`) have their params pinned in the generator with source provenance; the generator fails if the live route set drifts from those pins.
 
-## `search` — 10 actions
+## `search` — 11 actions
 
 | Action | Params (required `*`) | Response keys (top-level) | CLI twin |
 | --- | --- | --- | --- |
@@ -28,6 +28,7 @@ Runtime discovery: call a facade with `action=help` for its business action list
 | `tql_execute` | `selector`*, `max_results` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--tql` |
 | `tql_schema` | (none) | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--tql-schema` |
 | `unsubscribe` | `output_format`, `selector`, `sub_id` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | — |
+| `uql` | `query`*, `cursor`, `detail`, `limit`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--uql` |
 
 ## `nav` — 16 actions
 

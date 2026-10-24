@@ -45,7 +45,9 @@ _LITERAL_GETATTR = re.compile(
 #: ``type(<表达式>)``：调用它构造一个实例（#1759）。
 _TYPE_CONSTRUCTION = re.compile(r"^type\(\s*[A-Za-z_$][\w$.]*\s*\)$")
 #: 构造实例时可能执行的方法。
-_CONSTRUCTION_METHODS = frozenset({"__init__", "__new__", "__call__", "__init_subclass__"})
+_CONSTRUCTION_METHODS = frozenset(
+    {"__init__", "__new__", "__call__", "__init_subclass__"}
+)
 #: 调用文本末尾的名字：整个文本是标识符，或 ``.`` 之后的标识符。
 _TRAILING_NAME = re.compile(r"(?:^|\.)\s*([A-Za-z_$][\w$]*)$")
 #: 把调用转发给前缀对象本身的尾段名（``f.call(...)``、``f.__call__()``）：
