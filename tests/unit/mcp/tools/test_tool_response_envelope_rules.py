@@ -146,6 +146,17 @@ class TestCompleteness:
         assert [r for r, _ in found] == ["completeness-reason-code"]
         assert "MADE_UP" in found[0][1]
 
+    def test_uql_stage_prefixed_reason_accepted(self) -> None:
+        payload = ok(
+            completeness="incomplete",
+            completeness_reasons=[f"symbol:{REASON}"],
+        )
+        assert rules(payload) == []
+
+    def test_stage_prefix_does_not_launder_unknown_code(self) -> None:
+        payload = ok(completeness="incomplete", completeness_reasons=["symbol:MADE_UP"])
+        assert rules(payload) == ["completeness-reason-code"]
+
     def test_known_reasons_include_callers_and_uql(self) -> None:
         known = known_completeness_reasons()
         assert REASON in known

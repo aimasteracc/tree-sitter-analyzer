@@ -49,6 +49,9 @@ class AnalyzeScaleToolExecuteMixin:
             with pytest.raises(ValueError, match="Unsupported language"):
                 await tool.execute(arguments)
 
+    @pytest.mark.tool_response_unchecked(
+        reason="patches apply_output_format_to_response to return a sentinel"
+    )
     @pytest.mark.asyncio
     async def test_execute_json_file(self, tool):
         """Test execute handles JSON files specially."""
@@ -82,6 +85,9 @@ class AnalyzeScaleToolExecuteMixin:
             result = await tool.execute(arguments)
             assert "formatted" in result
 
+    @pytest.mark.tool_response_unchecked(
+        reason="patches apply_output_format_to_response to return a sentinel"
+    )
     @pytest.mark.asyncio
     async def test_execute_success_python(self, tool):
         """Test execute succeeds for Python file."""
@@ -129,6 +135,9 @@ class AnalyzeScaleToolExecuteMixin:
             result = await tool.execute(arguments)
             assert "formatted" in result
 
+    @pytest.mark.tool_response_unchecked(
+        reason="patches apply_output_format_to_response to return a sentinel"
+    )
     @pytest.mark.asyncio
     async def test_execute_with_include_details(self, tool):
         """Test execute with include_details=True."""
@@ -176,6 +185,9 @@ class AnalyzeScaleToolExecuteMixin:
             result = await tool.execute(arguments)
             assert "formatted" in result
 
+    @pytest.mark.tool_response_unchecked(
+        reason="patches apply_output_format_to_response to return a sentinel"
+    )
     @pytest.mark.asyncio
     async def test_execute_without_include_guidance(self, tool):
         """Test execute with include_guidance=False."""
@@ -223,6 +235,9 @@ class AnalyzeScaleToolExecuteMixin:
             result = await tool.execute(arguments)
             assert "formatted" in result
 
+    @pytest.mark.tool_response_unchecked(
+        reason="patches apply_output_format_to_response to return a sentinel"
+    )
     @pytest.mark.asyncio
     async def test_execute_with_json_output_format(self, tool):
         """Test execute with output_format='json'."""

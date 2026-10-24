@@ -161,3 +161,62 @@ def test_reported_rules_are_declared(state: guard._State) -> None:
     rules = {v.rule for v in state.found["node::test"]}
     assert rules == {"failure-verdict", "error-code", "truncation"}
     assert rules <= ENVELOPE_RULES
+
+
+class _Facade:
+    """Stands in for FacadeTool: production module, a facade name, inners."""
+
+    __module__ = "tree_sitter_analyzer.mcp.tools.facade_tool"
+
+    def __init__(self, name: str, inner: Any) -> None:
+        self.facade_name = name
+        self.action_map = {"x": inner}
+        self._bespoke_inners: list[Any] = []
+
+
+class _Inner:
+    __module__ = "tree_sitter_analyzer.mcp.tools.inner"
+
+    async def execute(self, arguments: Any) -> dict[str, Any]:
+        return GOOD
+
+
+def test_live_facade_is_production() -> None:
+    assert guard._is_production(_Facade("nav", _Inner())) is True
+
+
+def test_test_built_facade_is_not_production() -> None:
+    assert guard._is_production(_Facade("test_facade", _Inner())) is False
+
+
+def test_facade_with_mocked_inner_is_not_production() -> None:
+    from unittest.mock import AsyncMock
+
+    inner = _Inner()
+    inner.execute = AsyncMock(return_value=BAD)  # type: ignore[method-assign]
+    assert guard._is_production(_Facade("nav", inner)) is False
+
+
+class _Item:
+    nodeid = "t.py::test_x"
+
+    def __init__(self, marker: Any) -> None:
+        self._marker = marker
+
+    def get_closest_marker(self, name: str) -> Any:
+        return self._marker if name == guard.UNCHECKED_MARKER else None
+
+
+def test_unmarked_test_is_checked() -> None:
+    assert guard.unchecked(_Item(None)) is False  # type: ignore[arg-type]
+
+
+def test_unchecked_marker_with_reason_skips() -> None:
+    marker = pytest.mark.tool_response_unchecked(reason="mocked formatter").mark
+    assert guard.unchecked(_Item(marker)) is True  # type: ignore[arg-type]
+
+
+def test_unchecked_marker_requires_a_reason() -> None:
+    marker = pytest.mark.tool_response_unchecked().mark
+    with pytest.raises(pytest.UsageError, match="needs a reason"):
+        guard.unchecked(_Item(marker))  # type: ignore[arg-type]

@@ -16,7 +16,7 @@ from tree_sitter_analyzer.mcp.tools.tool_response import ENVELOPE_RULES
 
 #: Pinned entry count. Lower it when an entry is removed; never raise it to
 #: make a new violation pass. Fix the producer instead.
-MAX_ENTRIES = 0
+MAX_ENTRIES = 50
 
 _ISSUE = re.compile(r"^#\d+$")
 _KEYS = {"tool", "rule", "issue", "reason"}

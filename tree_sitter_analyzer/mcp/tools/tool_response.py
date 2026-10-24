@@ -271,7 +271,10 @@ def _completeness_violations(payload: dict[str, Any]) -> list[tuple[str, str]]:
                 f"completeness_reason={primary!r} is not completeness_reasons[0]",
             )
         )
-    unknown = sorted({str(r) for r in listed} - known_completeness_reasons())
+    known = known_completeness_reasons()
+    # UQL reports pipeline-level reasons as ``<stage>:<CODE>``; the code
+    # after the stage prefix must still come from the known set.
+    unknown = sorted({str(r) for r in listed if str(r).rpartition(":")[2] not in known})
     if unknown:
         found.append(
             ("completeness-reason-code", f"unknown completeness reason codes {unknown}")
