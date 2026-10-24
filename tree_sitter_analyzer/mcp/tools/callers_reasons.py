@@ -11,9 +11,11 @@ RFC-0028 §1.1 要求非 ``complete`` 的答案点名缺口。#1632 之前，调
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-from .callers_absence import ACCESSOR_REASON, NON_CALL_REASON
+from .callers_absence import (
+    ACCESSOR_REASON,
+    ACCESSOR_UNCHECKED_REASON,
+    NON_CALL_REASON,
+)
 from .callers_absence import UNCHECKED_REASON as NON_CALL_UNCHECKED_REASON
 from .callers_decorators import DECORATED_REASON
 from .callers_excluded import EXCLUDED_REASON
@@ -38,6 +40,10 @@ NAME_ONLY_REASON = "NAME_ONLY_INBOUND"
 #: 模块级调用点只计数不列出（#638）：目标确实被调用，只是答不出被谁调用，
 #: 因此列出 0 个也不是普查。
 UNATTRIBUTED_REASON = "UNATTRIBUTED_CALL_SITES"
+#: RFC-0040：同名入边检查未能运行（例如同名方法的定义无法从调用图读取）。
+NAME_ONLY_UNCHECKED_REASON = "NAME_ONLY_INBOUND_UNCHECKED"
+#: RFC-0040：模块级调用点无法计数。
+UNATTRIBUTED_UNCHECKED_REASON = "UNATTRIBUTED_CALL_SITES_UNCHECKED"
 #: 调用图不含任何调用边，0 无法区分“无人调用”与“从未填充”；图里别处有边时
 #: 0 才是关于本符号的事实。
 EMPTY_EVIDENCE_REASON = "EMPTY_EVIDENCE_BASE"
@@ -45,6 +51,8 @@ EMPTY_EVIDENCE_REASON = "EMPTY_EVIDENCE_BASE"
 #: 调用边层的全部原因码，按主因优先级排列。
 EDGE_REASONS = (
     UNCHECKED_REASON,
+    NAME_ONLY_UNCHECKED_REASON,
+    UNATTRIBUTED_UNCHECKED_REASON,
     UNRESOLVED_INBOUND_REASON,
     DECLARING_FILE_REASON,
     NAME_ONLY_REASON,
@@ -67,66 +75,7 @@ COMPLETENESS_REASONS = frozenset(
         NON_CALL_REASON,
         NON_CALL_UNCHECKED_REASON,
         ACCESSOR_REASON,
+        ACCESSOR_UNCHECKED_REASON,
         DECORATED_REASON,
     }
 )
-
-
-@dataclass(frozen=True)
-class EdgeEvidence:
-    """调用边层的计数；``None`` 表示无法读取。"""
-
-    total_callers: int
-    unresolved_inbound: int | None
-    unresolved_in_declaring_files: int | None
-    name_only_inbound: int
-    unattributed_call_sites: int
-    empty_evidence_base: bool
-
-
-def edge_completeness(edges: EdgeEvidence) -> tuple[str, tuple[str, ...]]:
-    """返回调用边层的 completeness 与全部成立的原因码（主因在首位）。"""
-    unchecked = (
-        edges.unresolved_inbound is None or edges.unresolved_in_declaring_files is None
-    )
-    flags = (
-        (UNCHECKED_REASON, unchecked),
-        (UNRESOLVED_INBOUND_REASON, bool(edges.unresolved_inbound)),
-        (DECLARING_FILE_REASON, bool(edges.unresolved_in_declaring_files)),
-        (NAME_ONLY_REASON, bool(edges.name_only_inbound)),
-        (UNATTRIBUTED_REASON, bool(edges.unattributed_call_sites)),
-        (EMPTY_EVIDENCE_REASON, edges.empty_evidence_base),
-    )
-    reasons = tuple(code for code, applies in flags if applies)
-    if not reasons:
-        return "complete", ()
-    if unchecked:
-        return "unknown", reasons
-    gated = reasons[0] in (
-        UNRESOLVED_INBOUND_REASON,
-        DECLARING_FILE_REASON,
-        NAME_ONLY_REASON,
-    )
-    if gated:
-        return ("incomplete" if edges.total_callers else "unknown"), reasons
-    if reasons[0] == UNATTRIBUTED_REASON:
-        return "incomplete", reasons
-    return "unknown", reasons
-
-
-def final_reasons(
-    completeness: str,
-    absence_reason: str | None,
-    edge_reasons: tuple[str, ...],
-    also: tuple[str, ...] = (),
-) -> list[str]:
-    """合并两层原因：复核门（新鲜度、非调用引用等）只在调用边层为 complete 时运行。
-
-    复核门的原因通常单独出现；#1672：引用扫描判定源码与索引不一致时，``also``
-    带上同一次扫描在未变文件里仍成立的原因（按表序排在主因之后）。
-    """
-    if completeness == "complete":
-        return []
-    if absence_reason is not None:
-        return [absence_reason, *also]
-    return list(edge_reasons)

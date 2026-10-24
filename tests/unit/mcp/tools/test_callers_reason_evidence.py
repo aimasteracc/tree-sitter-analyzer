@@ -250,12 +250,28 @@ async def test_unchanged_reference_keeps_its_old_diagnosis(tmp_path) -> None:
 
 
 def test_final_reasons_lists_the_scan_reasons_after_the_mismatch() -> None:
-    from tree_sitter_analyzer.mcp.tools.callers_reasons import final_reasons
+    # RFC-0040：引用扫描的不一致与仍成立的原因由同一道检查一并报告。
+    from tree_sitter_analyzer.mcp.tools.callers_checks import (
+        REQUIRED_CHECKS,
+        Ledger,
+        prove,
+    )
+    from tree_sitter_analyzer.mcp.tools.callers_outcomes import Checked
 
-    assert final_reasons(
-        "incomplete", "SOURCE_INDEX_MISMATCH", (), ("NON_CALL_REFERENCES",)
-    ) == ["SOURCE_INDEX_MISMATCH", "NON_CALL_REFERENCES"]
-    assert final_reasons("complete", None, (), ("NON_CALL_REFERENCES",)) == []
+    scope = ("f", None)
+    clean = Ledger(scope).record_all(
+        (spec.name, Checked(scope)) for spec in REQUIRED_CHECKS
+    )
+    stale = clean.record(
+        "reference_freshness",
+        Checked(scope, ("SOURCE_INDEX_MISMATCH", "NON_CALL_REFERENCES")),
+    )
+    proof = prove(stale, 2)
+    assert (proof.completeness, proof.reasons) == (
+        "incomplete",
+        ("SOURCE_INDEX_MISMATCH", "NON_CALL_REFERENCES"),
+    )
+    assert prove(clean, 2).reasons == ()
 
 
 def test_stamped_read_returns_the_stat_evidence_of_the_bytes(tmp_path) -> None:
