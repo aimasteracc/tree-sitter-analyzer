@@ -1,11 +1,10 @@
-"""Typed query errors and the ``Result`` type for the unified query language.
+"""统一查询语言的类型化查询错误与 ``Result`` 类型。
 
-RFC-0041 §4: unknown input is parsed at the boundary and every expected
-failure is a value, not an exception. A :class:`QueryError` names the failure
-with a code from the closed :data:`ERROR_CODES` set, points at the offending
-fragment, and carries a concrete suggested fix (often a corrected query the
-agent can resend as-is). Partial facts survive: an error raised after some
-stages ran carries them in ``partial``.
+RFC-0041 §4：未知输入在边界处解析，所有可预期的失败都是值而非异常。
+:class:`QueryError` 用封闭集合 :data:`ERROR_CODES` 中的错误码标识失败，
+指向出错的片段，并附带具体的修复建议 (通常是 agent 可原样重发的修正后
+查询)。部分结果不会丢失：在若干阶段执行之后产生的错误会把它们放在
+``partial`` 中。
 """
 
 from __future__ import annotations
@@ -15,44 +14,44 @@ from typing import Any, Generic, TypeVar
 
 T = TypeVar("T")
 
-#: The query text is empty or not a string.
+#: 查询文本为空或不是字符串。
 EMPTY_QUERY = "UQL_EMPTY_QUERY"
-#: The query is longer than the parser accepts.
+#: 查询长度超过解析器的上限。
 QUERY_TOO_LONG = "UQL_QUERY_TOO_LONG"
-#: Steps were joined with ``|`` (or another separator) instead of ``.``.
+#: 步骤之间用了 ``|`` (或其他分隔符) 而不是 ``.`` 连接。
 WRONG_SEPARATOR = "UQL_WRONG_SEPARATOR"
-#: Quotes or parentheses do not balance.
+#: 引号或括号不配对。
 UNBALANCED = "UQL_UNBALANCED"
-#: A step is not of the form ``name(args)``.
+#: 步骤不是 ``name(args)`` 形式。
 INVALID_STEP = "UQL_INVALID_STEP"
-#: A step name is not part of the language.
+#: 步骤名不属于本语言。
 UNKNOWN_STAGE = "UQL_UNKNOWN_STAGE"
-#: A step exists only in the legacy ``chain`` dialect.
+#: 步骤只存在于旧版 ``chain`` 方言中。
 CHAIN_ONLY_STAGE = "UQL_CHAIN_ONLY_STAGE"
-#: A keyword argument is not accepted by its stage.
+#: 该阶段不接受此关键字参数。
 UNKNOWN_ARGUMENT = "UQL_UNKNOWN_ARGUMENT"
-#: An argument has the wrong type or is out of range.
+#: 参数类型错误或超出范围。
 INVALID_ARGUMENT = "UQL_INVALID_ARGUMENT"
-#: The stage order is invalid (for example a relation before any source).
+#: 阶段顺序非法 (例如在任何源阶段之前出现关系阶段)。
 INVALID_ORDER = "UQL_INVALID_ORDER"
-#: A bare word was given where a query was expected.
+#: 在需要查询的位置只给了一个裸词。
 BARE_WORD = "UQL_BARE_WORD"
-#: The TQL selector inside ``select(...)`` (or a bare selector) is malformed.
+#: ``select(...)`` 内的 TQL 选择器 (或裸选择器) 格式错误。
 SELECTOR_SYNTAX = "UQL_SELECTOR_SYNTAX"
-#: The selector names a pseudo-class the evaluator does not implement.
+#: 选择器使用了求值器未实现的伪类。
 UNKNOWN_PSEUDO_CLASS = "UQL_UNKNOWN_PSEUDO_CLASS"
-#: Too many steps.
+#: 步骤数过多。
 TOO_MANY_STAGES = "UQL_TOO_MANY_STAGES"
-#: A continuation cursor is malformed, belongs to another query, or is stale.
+#: 续页游标格式错误、属于其他查询或已过期。
 INVALID_CURSOR = "UQL_INVALID_CURSOR"
-#: The source generation changed since the cursor was issued.
+#: 游标签发后源码代次 (generation) 已变化。
 STALE_CURSOR = "UQL_STALE_CURSOR"
-#: No usable index for the project.
+#: 项目没有可用的索引。
 INDEX_UNAVAILABLE = "UQL_INDEX_UNAVAILABLE"
-#: A tool argument outside the query text (limit, detail, ...) is invalid.
+#: 查询文本之外的工具参数 (limit、detail 等) 非法。
 INVALID_TOOL_ARGUMENT = "UQL_INVALID_TOOL_ARGUMENT"
 
-#: Closed set of error codes; tests pin it so a new code is a conscious change.
+#: 错误码的封闭集合；测试固定了其内容，新增错误码必须是有意识的变更。
 ERROR_CODES = frozenset(
     {
         EMPTY_QUERY,
@@ -79,7 +78,7 @@ ERROR_CODES = frozenset(
 
 @dataclass(frozen=True)
 class QueryError:
-    """One typed failure with the fragment it concerns and a suggested fix."""
+    """一个类型化失败，附带相关片段与修复建议。"""
 
     code: str
     message: str

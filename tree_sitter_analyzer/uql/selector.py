@@ -1,16 +1,13 @@
-"""TQL selector boundary: parse, validate, and classify predicates.
+"""TQL 选择器边界：解析、校验并对谓词分类。
 
-The Hyphae evaluator raises on an unknown pseudo-class only when it reaches
-it, and silently returns nothing for an unknown ``[attribute=...]`` (#RFC-0041
-§4 finding). This module rejects both at parse time with a did-you-mean fix,
-so a typo can never look like an empty answer.
+Hyphae 求值器只有在执行到未知伪类时才报错，而对未知的
+``[attribute=...]`` 则静默返回空结果 (#RFC-0041 §4 的发现)。本模块在解析阶段
+就拒绝这两种情况并给出 did-you-mean 修复，使拼写错误绝不会伪装成空答案。
 
-It also classifies each predicate for completeness (RFC-0041 §3): attribute,
-path, position and containment predicates are evaluated exhaustively over the
-indexed symbol rows; edge, temporal, rule and branch predicates read relation
-or history tables that carry no coverage proof, so a selector using them can
-never make its stage ``complete``. The relation stages (``callers()`` ...)
-are the proof-carrying way to ask those questions.
+本模块还按完整性对每个谓词分类 (RFC-0041 §3)：属性、路径、位置与包含类
+谓词会在已索引的符号行上穷尽求值；边、时间、规则与分支类谓词读取的关系表或
+历史表不带覆盖证明，因此使用它们的选择器永远无法让所在阶段成为
+``complete``。关系阶段 (``callers()`` 等) 才是带证明地回答这类问题的方式。
 """
 
 from __future__ import annotations
@@ -28,12 +25,11 @@ from .errors import (
     Result,
 )
 
-#: Pseudo-classes the evaluator implements and whose answer is exhaustive over
-#: the symbol rows of the index.
+#: 求值器已实现、且结果在索引符号行上是穷尽的伪类。
 EXHAUSTIVE_PSEUDOS = frozenset(
     {"in", "not", "has", "nth-child", "first-child", "only-child"}
 )
-#: Pseudo-classes backed by relation/history tables without a coverage proof.
+#: 依赖关系表/历史表、没有覆盖证明的伪类。
 UNPROVEN_PSEUDOS = frozenset(
     {
         "calls",
@@ -55,7 +51,7 @@ UNPROVEN_PSEUDOS = frozenset(
 KNOWN_PSEUDOS = EXHAUSTIVE_PSEUDOS | UNPROVEN_PSEUDOS
 KNOWN_ATTRIBUTES = frozenset({"file", "language", "class", "kind"})
 
-#: Relation stage that answers an unproven edge pseudo-class with coverage.
+#: 能带覆盖证明地回答无证明边伪类的关系阶段。
 _RELATION_FOR = {
     "calls": "symbol('X').callers()",
     "reaches": "symbol('X').callers(depth=N)",
@@ -64,11 +60,35 @@ _RELATION_FOR = {
 }
 
 
+#: 选择器括号嵌套上限：Hyphae 解析器是递归下降，过深的嵌套会耗尽递归栈。
+MAX_SELECTOR_NESTING = 32
+
+
+def _nesting(text: str) -> int:
+    depth = deepest = 0
+    for ch in text:
+        if ch == "(":
+            depth += 1
+            deepest = max(deepest, depth)
+        elif ch == ")":
+            depth -= 1
+    return deepest
+
+
 def parse_selector(text: str) -> Result[SelectorList]:
-    """Parse and validate a TQL selector."""
+    """解析并校验 TQL 选择器。"""
+    if _nesting(text) > MAX_SELECTOR_NESTING:
+        return Err(
+            QueryError(
+                SELECTOR_SYNTAX,
+                f"TQL syntax error: selector nesting exceeds {MAX_SELECTOR_NESTING}",
+                fragment=text[:200],
+                suggestion="Flatten nested :not(...) / :has(...) arguments.",
+            )
+        )
     try:
         selector = parse(text)
-    except (HyphaeSyntaxError, ValueError) as exc:
+    except (HyphaeSyntaxError, ValueError, RecursionError) as exc:
         return Err(
             QueryError(
                 SELECTOR_SYNTAX,
@@ -148,7 +168,7 @@ def _simple_selectors(selector: SelectorList) -> list[SimpleSelector]:
 
 
 def unproven_predicates(selector: SelectorList) -> tuple[str, ...]:
-    """Unproven pseudo-class names used anywhere in ``selector`` (sorted)."""
+    """``selector`` 中任意位置用到的无证明伪类名称 (已排序)。"""
     names = {
         pc.name
         for simple in _simple_selectors(selector)
@@ -159,7 +179,7 @@ def unproven_predicates(selector: SelectorList) -> tuple[str, ...]:
 
 
 def relation_hint(names: tuple[str, ...]) -> str | None:
-    """The proof-carrying relation stage for the first edge pseudo, if any."""
+    """第一个边伪类对应的带证明关系阶段提示 (若存在)。"""
     for name in names:
         if name in _RELATION_FOR:
             return (
@@ -171,7 +191,7 @@ def relation_hint(names: tuple[str, ...]) -> str | None:
 
 
 def name_selector(name: str, *, cls: str | None, file: str | None) -> SelectorList:
-    """``#name[class=cls][file=file]`` built as an AST (no text round-trip)."""
+    """直接以 AST 构造 ``#name[class=cls][file=file]`` (不经文本往返)。"""
     from ..hyphae.ast import AttributeSelector
 
     attrs: list[AttributeSelector] = []

@@ -1,4 +1,4 @@
-"""RFC-0041 parser + IR: one grammar, typed errors with a suggested fix."""
+"""RFC-0041 解析器 + IR：一套语法，类型化错误附带修复建议。"""
 
 from __future__ import annotations
 
@@ -163,7 +163,7 @@ def test_unknown_pseudo_class_gets_did_you_mean_fix() -> None:
 
 
 def test_unknown_attribute_is_rejected_not_silently_empty() -> None:
-    # RFC-0041 §4: the Hyphae evaluator returns [] for an unknown attribute.
+    # RFC-0041 §4：Hyphae 求值器遇到未知属性时会返回 []。
     error = _err(".function[fiel=src]")
     assert (error.code, error.fixed_query) == (E.SELECTOR_SYNTAX, ".function[file=src]")
 
@@ -195,3 +195,29 @@ def test_chain_dialect_keeps_plain_string_fallback() -> None:
     result = parse_chain("parse query")
     assert isinstance(result, Ok)
     assert [s.name for s in result.value] == ["explore", "related"]
+
+
+def test_extra_positional_source_argument_is_rejected() -> None:
+    # #1800 上的 Codex P2：symbol('a', 'b') 曾静默丢弃 'b'。
+    assert _err("symbol('a', 'b')").code == E.INVALID_ARGUMENT
+
+
+def test_positional_and_keyword_collision_is_rejected() -> None:
+    assert _err("symbol('a', name='b')").code == E.INVALID_ARGUMENT
+
+
+def test_sort_desc_must_be_boolean() -> None:
+    # #1800 上的 Codex P2：desc='false' 为真值，曾导致顺序被反转。
+    assert _err("symbol('x').sort(desc='false')").code == E.INVALID_ARGUMENT
+
+
+def test_excessive_selector_nesting_is_a_typed_error() -> None:
+    # #1800 上的 Codex P2：深层 :not() 嵌套曾抛出 RecursionError。
+    error = _err("*:not(" * 250 + "*" + ")" * 250)
+    assert error.code == E.SELECTOR_SYNTAX
+
+
+def test_pipe_repair_keeps_quoted_literals_intact() -> None:
+    # #1800 上的 Codex P2：修复逻辑曾改写字符串内的 'a . b'。
+    error = _err("symbol('x').filter(regex='a . b') | callers()")
+    assert error.fixed_query == "symbol('x').filter(regex='a . b').callers()"

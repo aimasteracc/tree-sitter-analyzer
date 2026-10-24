@@ -1,13 +1,12 @@
-"""Lexical layer shared by both dialects: split ``a(..).b(..)`` and parse args.
+"""两种方言共用的词法层：切分 ``a(..).b(..)`` 并解析参数。
 
-This is the one owner of step-level parsing (RFC-0041 §2). The legacy
-``chain`` DSL (``mcp/tools/_codegraph_query_dsl.py``) and the unified
-pipeline grammar both call it; neither re-splits query text. Arguments are
-literal-only (``ast.literal_eval`` plus JS-style ``true/false/null``); user
-input is never evaluated.
+这是步骤级解析的唯一负责者 (RFC-0041 §2)。旧版 ``chain`` DSL
+(``mcp/tools/_codegraph_query_dsl.py``) 与统一管道语法都调用它，二者都不会
+自行重新切分查询文本。参数只允许字面量 (``ast.literal_eval`` 加上 JS 风格的
+``true/false/null``)，用户输入绝不会被求值。
 
-Messages are kept byte-identical to the pre-RFC-0041 chain parser because
-existing callers and tests match on them.
+错误消息与 RFC-0041 之前的 chain 解析器保持逐字节一致，因为现有调用方和
+测试会按消息内容匹配。
 """
 
 from __future__ import annotations
@@ -33,10 +32,10 @@ MAX_LIST_ARGS = 8
 
 _STEP_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\((.*)\)", flags=re.S)
 
-# JS/JSON-style bare words LLM agents naturally write in this jQuery-style DSL.
-# Python's ast.literal_eval only knows True/False/None, so ``answer(compact=true)``
-# would otherwise blow up with a cryptic "malformed node or string" error and
-# push the agent off the cheap one-call chain back onto slow multi-call paths.
+# LLM agent 在这种 jQuery 风格 DSL 中会自然写出 JS/JSON 风格的裸词。
+# Python 的 ast.literal_eval 只认识 True/False/None，否则 ``answer(compact=true)``
+# 会报出晦涩的 "malformed node or string" 错误，把 agent 从低成本的单次 chain
+# 调用逼回缓慢的多次调用路径。
 _JS_BARE_LITERALS: dict[str, Any] = {
     "true": True,
     "false": False,
@@ -52,10 +51,10 @@ PIPE_MESSAGE = (
 
 
 def has_unquoted_pipe(query: str) -> bool:
-    """True when ``query`` has a ``|`` outside any single/double-quoted span.
+    """当 ``query`` 在单/双引号范围之外含有 ``|`` 时返回 True。
 
-    A top-level pipe is a wrong-separator attempt (#574); a pipe inside a
-    quoted arg — ``search('string | number')`` — is legitimate search text.
+    顶层的管道符是误用分隔符 (#574)；引号参数内的管道符
+    (如 ``search('string | number')``) 则是合法的搜索文本。
     """
     in_single = in_double = escaped = False
     for ch in query:
@@ -84,9 +83,11 @@ def pipe_error(query: str) -> QueryError:
 
 
 def _replace_unquoted_pipes(query: str) -> str:
+    """把引号外的 ``|`` 换成 ``.`` 并去掉它两侧的空白；引号内的字面量原样保留。"""
     out: list[str] = []
-    in_single = in_double = escaped = False
+    in_single = in_double = escaped = skip_space = False
     for ch in query:
+        quoted = in_single or in_double
         if escaped:
             escaped = False
         elif ch == "\\":
@@ -95,15 +96,21 @@ def _replace_unquoted_pipes(query: str) -> str:
             in_single = not in_single
         elif ch == '"' and not in_single:
             in_double = not in_double
-        elif ch == "|" and not in_single and not in_double:
+        elif ch == "|" and not quoted:
+            while out and out[-1].isspace():
+                out.pop()
             out.append(".")
+            skip_space = True
             continue
+        elif skip_space and not quoted and ch.isspace():
+            continue
+        skip_space = False
         out.append(ch)
-    return re.sub(r"\s*\.\s*", ".", "".join(out))
+    return "".join(out)
 
 
 def split_steps(query: str) -> Result[list[str]]:
-    """Split on top-level ``.`` (outside quotes and parentheses)."""
+    """按顶层 ``.`` (引号与括号之外) 切分。"""
     parts: list[str] = []
     start = 0
     depth = 0
@@ -158,10 +165,10 @@ def parse_step(
     allowed_kwargs: dict[str, frozenset[str]],
     unknown_step: Any,
 ) -> Result[RawStep]:
-    """Parse one ``name(args)`` step.
+    """解析一个 ``name(args)`` 步骤。
 
-    ``unknown_step(name, index, part)`` builds the dialect's error for a name
-    outside ``allowed_kwargs`` (the two dialects word it differently).
+    对不在 ``allowed_kwargs`` 中的名称，由 ``unknown_step(name, index, part)``
+    构造该方言的错误 (两种方言的措辞不同)。
     """
     match = _STEP_RE.fullmatch(part)
     if not match:
@@ -243,9 +250,9 @@ class _ArgError(Exception):
 
 
 def literal(node: ast.AST) -> Any:
-    """A literal argument value; raises ``ValueError`` for anything else."""
-    # Accept bare true/false/null (any case) before literal_eval, which rejects
-    # them as undefined names.
+    """返回字面量参数值；非字面量一律抛出 ``ValueError``。"""
+    # 在 literal_eval 之前接受裸 true/false/null (不区分大小写)，
+    # 否则 literal_eval 会把它们当作未定义的名称拒绝。
     if isinstance(node, ast.Name) and node.id.lower() in _JS_BARE_LITERALS:
         return _JS_BARE_LITERALS[node.id.lower()]
     value = ast.literal_eval(node)

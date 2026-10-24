@@ -1,6 +1,6 @@
-"""Parse query text into the unified IR — the single interpretation owner.
+"""把查询文本解析为统一 IR —— 查询语义的唯一解释者。
 
-RFC-0041 §2 grammar::
+RFC-0041 §2 语法::
 
     query     := selector | pipeline
     selector  := TQL selector               (first char in . # * [ :)
@@ -12,9 +12,9 @@ RFC-0041 §2 grammar::
     refinement:= filter(k=v, ...) | exclude(k=v, ...) | untested() | tested()
                  | take(n) | sort(by='name'|'file'|'line', desc=false)
 
-Both dialects share :mod:`.steps` for splitting and literal arguments.
-``parse_chain`` is the legacy ``search action=chain`` grammar (its own step
-vocabulary, same lexical owner); ``parse_query`` is the unified grammar.
+两种方言共用 :mod:`.steps` 完成切分与字面量参数解析。
+``parse_chain`` 是旧版 ``search action=chain`` 语法 (拥有自己的步骤词汇，
+但词法层相同)；``parse_query`` 是统一语法。
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ MAX_IMPACT_DEPTH = 10
 DEFAULT_IMPACT_DEPTH = 10
 SELECTOR_START = frozenset(".#*[:")
 
-# -- legacy chain vocabulary (unchanged surface) ------------------------------
+# -- 旧版 chain 词汇 (对外接口保持不变) ---------------------------------------
 _CHAIN_FILTER_KWARGS = frozenset(
     {"name", "kind", "file", "path", "language", "test", "generated", "regex", "case"}
 )
@@ -99,7 +99,7 @@ CHAIN_KWARGS: dict[str, frozenset[str]] = {
     "answer": frozenset({"compact"}),
 }
 
-# -- unified vocabulary --------------------------------------------------------
+# -- 统一词汇 ------------------------------------------------------------------
 _UQL_FILTER_KWARGS = frozenset(
     {"name", "kind", "file", "path", "language", "test", "regex", "case"}
 )
@@ -123,7 +123,7 @@ UQL_KWARGS: dict[str, frozenset[str]] = {
 _CHAIN_ONLY = frozenset(CHAIN_KWARGS) - frozenset(UQL_KWARGS)
 
 
-# -- chain dialect --------------------------------------------------------------
+# -- chain 方言 -----------------------------------------------------------------
 def _chain_unknown(name: str, index: int, part: str) -> QueryError:
     close = difflib.get_close_matches(name, sorted(CHAIN_KWARGS), n=1)
     return QueryError(
@@ -136,12 +136,12 @@ def _chain_unknown(name: str, index: int, part: str) -> QueryError:
 
 
 def parse_chain(query: str) -> Result[list[RawStep]]:
-    """Legacy chain grammar (``search action=chain``) as a ``Result``."""
+    """以 ``Result`` 形式返回的旧版 chain 语法 (``search action=chain``)。"""
     if len(query) > MAX_QUERY_LENGTH:
         return Err(
             QueryError(QUERY_TOO_LONG, f"query exceeds {MAX_QUERY_LENGTH} characters")
         )
-    # #574: '|' is the natural-but-wrong separator agents reach for.
+    # #574：'|' 是 agent 很自然会用、但实际错误的分隔符。
     if _steps.has_unquoted_pipe(query):
         return Err(_steps.pipe_error(query))
     if "(" not in query:
@@ -167,7 +167,7 @@ def parse_chain(query: str) -> Result[list[RawStep]]:
     return Ok(out)
 
 
-# -- unified dialect ------------------------------------------------------------
+# -- 统一方言 -------------------------------------------------------------------
 def _uql_unknown(name: str, index: int, part: str) -> QueryError:
     if name in _CHAIN_ONLY:
         return QueryError(
@@ -191,7 +191,7 @@ def _uql_unknown(name: str, index: int, part: str) -> QueryError:
 
 
 def parse_query(text: Any) -> Result[Query]:
-    """Parse the unified language: a bare TQL selector or a pipeline."""
+    """解析统一语言：裸 TQL 选择器或管道。"""
     if not isinstance(text, str) or not text.strip():
         return Err(
             QueryError(
@@ -274,7 +274,45 @@ def _int(step: RawStep, key: str, default: int) -> int | None:
     return value
 
 
+#: 每个阶段的第一个位置参数对应的关键字（无则不接受位置参数）。
+_POSITIONAL_KEY: dict[str, str] = {
+    "select": "selector",
+    "symbol": "name",
+    "search": "query",
+    "callers": "depth",
+    "impact": "depth",
+    "take": "limit",
+    "sort": "by",
+}
+
+
+def _arity_error(step: RawStep, index: int, part: str) -> Err | None:
+    """多余的位置参数或位置/关键字冲突是类型化错误，不能被静默丢弃。"""
+    key = _POSITIONAL_KEY.get(step.name)
+    allowed = 1 if key else 0
+    if len(step.args) > allowed:
+        hint = f"{step.name}({key}=...)" if key else f"{step.name}()"
+        return _bad(
+            index,
+            part,
+            f"{step.name}() takes {allowed} positional argument(s), got "
+            f"{len(step.args)}; pass a list for several names",
+            hint,
+        )
+    if key and step.args and key in step.kwargs:
+        return _bad(
+            index,
+            part,
+            f"{step.name}() got {key!r} both positionally and as a keyword",
+            f"{step.name}({key}=...)",
+        )
+    return None
+
+
 def _to_stage(step: RawStep, index: int, part: str) -> Result[Stage]:
+    arity = _arity_error(step, index, part)
+    if arity is not None:
+        return arity
     name = step.name
     if name == "select":
         value = step.args[0] if step.args else step.kwargs.get("selector")
@@ -345,7 +383,10 @@ def _to_stage(step: RawStep, index: int, part: str) -> Result[Stage]:
         return _bad(
             index, part, "sort() by must be 'name', 'file' or 'line'", "sort(by='file')"
         )
-    return Ok(Sort(by, bool(step.kwargs.get("desc", False))))
+    desc = step.kwargs.get("desc", False)
+    if not isinstance(desc, bool):
+        return _bad(index, part, "sort() desc must be true or false", "sort(desc=true)")
+    return Ok(Sort(by, desc))
 
 
 def _check_order(stages: list[Stage], parts: list[str]) -> QueryError | None:

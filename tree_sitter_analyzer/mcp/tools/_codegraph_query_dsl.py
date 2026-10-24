@@ -1,10 +1,10 @@
-"""Legacy ``search action=chain`` DSL — a thin adapter over the RFC-0041 parser.
+"""旧版 ``search action=chain`` DSL —— RFC-0041 解析器之上的薄适配层。
 
-RFC-0041 §2 gives step-level parsing one owner,
-:mod:`tree_sitter_analyzer.uql.steps` / :mod:`tree_sitter_analyzer.uql.parser`.
-This module keeps the chain dialect's historical surface — ``parse_chain``
-raising ``ValueError`` with the same messages, ``_ChainStep``, and the
-argument helpers — so ``codegraph_query_tool`` and its callers are unchanged.
+RFC-0041 §2 规定步骤级解析只有一个负责者：
+:mod:`tree_sitter_analyzer.uql.steps` / :mod:`tree_sitter_analyzer.uql.parser`。
+本模块保留 chain 方言的历史接口 —— 以相同消息抛出 ``ValueError`` 的
+``parse_chain``、``_ChainStep`` 以及各参数辅助函数 —— 使
+``codegraph_query_tool`` 及其调用方无需改动。
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from ...uql.ir import RawStep
 from ...uql.parser import CHAIN_KWARGS
 from ...uql.parser import parse_chain as _parse_chain_result
 
-#: The chain step type is the unified IR's raw step (one representation).
+#: chain 步骤类型即统一 IR 的原始步骤 (只有一种表示)。
 _ChainStep = RawStep
 
 _SUPPORTED_STEPS = frozenset(CHAIN_KWARGS)
@@ -24,7 +24,7 @@ _ALLOWED_KWARGS = CHAIN_KWARGS
 
 
 def parse_chain(query: str) -> list[_ChainStep]:
-    """Parse a safe chained query into steps (``ValueError`` on bad input)."""
+    """把安全的链式查询解析为步骤列表 (输入非法时抛出 ``ValueError``)。"""
     result = _parse_chain_result(query)
     if isinstance(result, Err):
         raise ValueError(result.error.message)
