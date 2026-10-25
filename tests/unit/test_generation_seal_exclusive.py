@@ -63,6 +63,48 @@ class _Tracker:
         return leaks
 
 
+@pytest.mark.parametrize("published", [False, True])
+def test_private_build_never_waits_on_a_lock_another_cache_holds(
+    tmp_path, monkeypatch, published
+):
+    # #1819：另一个缓存（同一数据库）持有读事务时，私有构建的 WAL 初始化、写入与
+    # 封存都不需要等它的锁：私有库是新文件，别的连接不知道它的路径。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.file_watcher import FileWatcherDaemon
+
+    source = tmp_path / "a.py"
+    source.write_text("def saved(): pass\n", encoding="utf-8")
+    cache = ASTCache(str(tmp_path))
+    other = ASTCache(str(tmp_path))
+    watcher = FileWatcherDaemon(cache)
+    try:
+        if published:
+            assert watcher.trigger_sync()["new_files"] == 1
+            other.release_thread_connection()  # 重新解析到已发布版本
+            source.write_text("def changed(): pass\n", encoding="utf-8")
+        reader = other.get_conn()
+        reader.execute("BEGIN")
+        reader.execute("SELECT COUNT(*) FROM sqlite_master").fetchone()
+        real_connect = sqlite3.connect
+
+        def no_wait(*args, **kwargs):
+            # 发布租约库按设计等待（LEASE_TIMEOUT_S）；其余连接一旦等锁立即失败。
+            if "publication.lock" not in str(args[0] if args else ""):
+                kwargs["timeout"] = 0
+            return real_connect(*args, **kwargs)
+
+        monkeypatch.setattr(sqlite3, "connect", no_wait)
+        result = watcher.trigger_sync()
+        assert (result["new_files"], result["updated_files"]) == (
+            (0, 1) if published else (1, 0)
+        )
+        reader.rollback()
+    finally:
+        watcher.stop()
+        other.close()
+        cache.close()
+
+
 @pytest.mark.parametrize("files", [1, 2])
 def test_seal_finds_no_other_connection_on_the_build_database(
     tmp_path, monkeypatch, files
