@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from tree_sitter_analyzer.incremental_sync_support import SyncResult
 from tree_sitter_analyzer.index_completeness import (
     INDEX_BUILD_IN_PROGRESS,
     INDEX_NOT_CERTIFIED,
@@ -11,7 +12,6 @@ from tree_sitter_analyzer.index_completeness import (
     PROJECT_ROOT_MISSING,
     snapshot_completeness_fields,
 )
-from tree_sitter_analyzer.incremental_sync_support import SyncResult
 from tree_sitter_analyzer.mcp.tools.tool_response import (
     COMPLETENESS_STATUSES,
     envelope_violations,
@@ -20,7 +20,7 @@ from tree_sitter_analyzer.mcp.tools.tool_response import (
 from tree_sitter_analyzer.mcp.utils.format_helper import (
     apply_output_format_to_response,
 )
-from tree_sitter_analyzer.uql.errors import QueryError
+from tree_sitter_analyzer.uql.errors import EMPTY_QUERY, QueryError
 from tree_sitter_analyzer.uql.output import error_payload
 
 
@@ -39,7 +39,12 @@ def test_complete_snapshot_has_no_reasons() -> None:
         ("unknown", "CONCURRENT_WRITER", "unknown", INDEX_BUILD_IN_PROGRESS),
         ("unknown", "MISSING_PROJECT_ROOT", "unknown", PROJECT_ROOT_MISSING),
         ("unknown", "SOURCE_INDEX_MISMATCH", "unknown", "SOURCE_INDEX_MISMATCH"),
-        ("unknown", "some free-form OSError text", "unknown", INDEX_SNAPSHOT_UNAVAILABLE),
+        (
+            "unknown",
+            "some free-form OSError text",
+            "unknown",
+            INDEX_SNAPSHOT_UNAVAILABLE,
+        ),
         ("unknown", None, "unknown", INDEX_SNAPSHOT_UNAVAILABLE),
         (None, None, "unknown", INDEX_SNAPSHOT_UNAVAILABLE),
         ("garbage", None, "unknown", INDEX_SNAPSHOT_UNAVAILABLE),
@@ -71,7 +76,7 @@ def test_incomplete_sync_names_its_reason() -> None:
 
 
 def test_failed_uql_query_names_its_reason() -> None:
-    payload = error_payload(QueryError("PARSE_ERROR", "bad query"), "x")
+    payload = error_payload(QueryError(EMPTY_QUERY, "empty query"), "x")
 
     assert payload["completeness"] == "unknown"
     assert payload["completeness_reasons"] == ["QUERY_NOT_EXECUTED"]
