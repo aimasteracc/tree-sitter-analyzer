@@ -18,6 +18,15 @@ updates:
       - "python"
     commit-message:
       prefix: "deps"
+    ignore:
+      # The build backend is pinned to hatchling==1.31.0 on purpose (#1540,
+      # tests/contracts/test_collect_no1_006b_baseline.py): Hatchling 1.32.x
+      # emits Core Metadata 2.5, and 1.31.0 is the last release that emits
+      # 2.4. A grouped bump (#1823) moves that pin and fails the contract
+      # test. This also covers the NO1-006B collector's own hatchling pin in
+      # [dependency-groups]; bump both by hand once Metadata 2.5 is accepted
+      # by every consumer of the built artifacts.
+      - dependency-name: "hatchling"
     groups:
       # Group minor and patch updates to reduce PR noise
       minor-and-patch:
