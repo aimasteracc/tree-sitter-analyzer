@@ -139,3 +139,92 @@ def test_seal_finds_no_other_connection_on_the_build_database(
         if enabled:
             gc.enable()
     assert leaks == []
+
+
+def _hold_build_database(monkeypatch, holders: list[sqlite3.Connection]) -> None:
+    """封存前在私有构建库上打开一个空闲读者（WAL 模式下持有 SHARED 锁）。"""
+    from tree_sitter_analyzer.cache import generation_store
+
+    seal = generation_store.GenerationStore.seal
+
+    def held_seal(self, selector):
+        reader = sqlite3.connect(
+            self.database(selector).as_uri() + "?mode=ro", uri=True
+        )
+        reader.execute("SELECT COUNT(*) FROM sqlite_master").fetchone()
+        holders.append(reader)
+        return seal(self, selector)
+
+    monkeypatch.setattr(generation_store.GenerationStore, "seal", held_seal)
+
+
+def test_seal_waits_for_a_transient_holder_instead_of_failing(tmp_path, monkeypatch):
+    # #1821：切回回滚日志不经 SQLite 忙处理器；持有者在期限内释放时封存照常完成。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cache import generation_seal
+
+    (tmp_path / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    holders: list[sqlite3.Connection] = []
+    _hold_build_database(monkeypatch, holders)
+    waits: list[float] = []
+
+    def release_then_wait(seconds: float) -> None:
+        waits.append(seconds)
+        holders[0].close()  # 第一次忙等待期间持有者释放
+
+    monkeypatch.setattr(generation_seal.time, "sleep", release_then_wait)
+    cache = ASTCache(str(tmp_path))
+    try:
+        assert cache.index_project()["published"] is True
+        assert cache.get_stats()["total_files"] == 1
+    finally:
+        cache.close()
+    assert len(waits) == 1
+
+
+def test_seal_still_held_after_the_wait_is_a_typed_busy_error(tmp_path, monkeypatch):
+    # #1821：期满仍被占用时报告类型化 INDEX_WRITER_BUSY，不发布、不跳过日志切换。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cache import generation_seal
+    from tree_sitter_analyzer.cache.admission import admission_failure_of
+    from tree_sitter_analyzer.cache.generation_routing import resolve_index_location
+
+    (tmp_path / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    holders: list[sqlite3.Connection] = []
+    _hold_build_database(monkeypatch, holders)
+    monkeypatch.setattr(generation_seal, "SEAL_BUSY_TIMEOUT_S", 0.05)
+    cache = ASTCache(str(tmp_path))
+    try:
+        with pytest.raises(generation_seal.SealBusy) as raised:
+            cache.index_project()
+    finally:
+        for holder in holders:
+            holder.close()
+        cache.close()
+    failure = admission_failure_of(raised.value)
+    assert failure is not None
+    assert (failure.code, failure.cause_code, failure.contract.retryable) == (
+        "INDEX_WRITER_BUSY",
+        "INDEX_GENERATION_SEAL_BUSY",
+        True,
+    )
+    assert isinstance(raised.value.__cause__, sqlite3.OperationalError)
+    assert resolve_index_location(str(tmp_path)).published is False
+    # 可重试：持有者释放后，同一调用重新建库并发布。
+    monkeypatch.undo()
+    retry = ASTCache(str(tmp_path))
+    try:
+        assert retry.index_project()["published"] is True
+    finally:
+        retry.close()
+
+
+def test_seal_does_not_retry_errors_other_than_busy():
+    from tree_sitter_analyzer.cache.generation_seal import leave_wal
+
+    class Broken:
+        def execute(self, _sql):
+            raise sqlite3.OperationalError("disk I/O error")
+
+    with pytest.raises(sqlite3.OperationalError, match="disk I/O error"):
+        leave_wal(Broken(), sleep=lambda _s: pytest.fail("must not wait"))
