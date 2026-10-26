@@ -66,8 +66,8 @@ def snapshot_completeness_fields(
     status = _RESPONSE_STATUS.get(str(snapshot_completeness), "unknown")
     if status == "complete":
         return {"completeness": "complete"}
-    default = INDEX_NOT_CERTIFIED if status == "incomplete" else (
-        INDEX_SNAPSHOT_UNAVAILABLE
+    default = (
+        INDEX_NOT_CERTIFIED if status == "incomplete" else INDEX_SNAPSHOT_UNAVAILABLE
     )
     code = _SNAPSHOT_REASON_CODES.get(str(reason), default)
     return {

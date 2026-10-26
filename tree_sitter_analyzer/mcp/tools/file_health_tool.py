@@ -13,12 +13,12 @@ from typing import Any
 
 from ...health_scorer import HealthScorer
 from ...utils import setup_logger
+from ._verdict import NOT_ANALYZED_EMPTY_FILE, NOT_ANALYZED_NON_CODE_FILE
 from .base_tool import (
     BaseMCPTool,
     detect_language_mismatch,
     language_mismatch_error_response,
 )
-from ._verdict import NOT_ANALYZED_EMPTY_FILE, NOT_ANALYZED_NON_CODE_FILE
 from .utils.element_extractor import extract_elements
 from .utils.file_health_response import (
     _build_signal as _build_signal,
