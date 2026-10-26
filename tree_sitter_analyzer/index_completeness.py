@@ -30,6 +30,9 @@ INDEX_BUILD_IN_PROGRESS = "INDEX_BUILD_IN_PROGRESS"
 PROJECT_ROOT_MISSING = "PROJECT_ROOT_MISSING"
 #: An index run did not cover the whole source scope.
 INDEX_SCOPE_INCOMPLETE = "INDEX_SCOPE_INCOMPLETE"
+#: Source files are left out of the index (e.g. their grammar is missing).
+#: Same code as ``mcp.tools.unindexed_sources.UNINDEXED_REASON``.
+UNINDEXED_SOURCE_FILES = "UNINDEXED_SOURCE_FILES"
 
 INDEX_COMPLETENESS_REASONS: frozenset[str] = frozenset(
     {
@@ -84,5 +87,6 @@ __all__ = [
     "INDEX_SCOPE_INCOMPLETE",
     "INDEX_SNAPSHOT_UNAVAILABLE",
     "PROJECT_ROOT_MISSING",
+    "UNINDEXED_SOURCE_FILES",
     "snapshot_completeness_fields",
 ]

@@ -8,7 +8,7 @@ from typing import Any
 from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 
 from . import index_lag, index_snapshot
-from .index_completeness import snapshot_completeness_fields
+from .index_completeness import UNINDEXED_SOURCE_FILES, snapshot_completeness_fields
 from .index_grammar_exclusions import explain_incomplete
 from .index_snapshot import ACTION_VERSION
 from .mcp.tools._response_builder import build_response
@@ -176,7 +176,7 @@ def build_index_status_response(
         # #1811: ``completeness`` speaks the RFC-0040 response vocabulary
         # (``partial`` -> ``incomplete``) with reason codes; the registry's own
         # value stays in ``snapshot_completeness``.
-        **snapshot_completeness_fields(snapshot.completeness, snapshot.reason),
+        **_completeness(snapshot.completeness, snapshot.reason, exclusions),
         snapshot_completeness=snapshot.completeness,
         oracle_reason=snapshot.reason,
         action_version=ACTION_VERSION,
@@ -211,6 +211,25 @@ def build_index_status_response(
             )
         )
     return apply_output_format_to_response(result, output_format)
+
+
+def _completeness(
+    snapshot_completeness: str | None, reason: str | None, exclusions: Any
+) -> dict[str, Any]:
+    """Response completeness; files left out for a missing grammar lead."""
+    fields = snapshot_completeness_fields(snapshot_completeness, reason)
+    if exclusions is None or fields["completeness"] == "complete":
+        return fields
+    reasons = [UNINDEXED_SOURCE_FILES] + [
+        code
+        for code in fields["completeness_reasons"]
+        if code != UNINDEXED_SOURCE_FILES
+    ]
+    return {
+        **fields,
+        "completeness_reason": reasons[0],
+        "completeness_reasons": reasons,
+    }
 
 
 def _storage_fields(stats: dict[str, Any] | None) -> dict[str, int]:

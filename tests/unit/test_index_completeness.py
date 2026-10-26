@@ -24,6 +24,13 @@ from tree_sitter_analyzer.uql.errors import EMPTY_QUERY, QueryError
 from tree_sitter_analyzer.uql.output import error_payload
 
 
+def test_unindexed_code_matches_the_shared_vocabulary() -> None:
+    from tree_sitter_analyzer.index_completeness import UNINDEXED_SOURCE_FILES
+    from tree_sitter_analyzer.mcp.tools.unindexed_sources import UNINDEXED_REASON
+
+    assert UNINDEXED_SOURCE_FILES == UNINDEXED_REASON
+
+
 def test_complete_snapshot_has_no_reasons() -> None:
     assert snapshot_completeness_fields("complete", None) == {
         "completeness": "complete"

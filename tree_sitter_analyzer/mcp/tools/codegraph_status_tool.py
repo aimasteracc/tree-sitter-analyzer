@@ -101,15 +101,26 @@ class CodeGraphStatusTool(BaseMCPTool):
         """Classify the P0.1 oracle without changing its action-specific fields."""
         # Production adds evidence inside the focused status boundary before
         # formatting. This fallback keeps older monkeypatch/test seams additive.
+        snapshot_completeness = result.get(
+            "snapshot_completeness", result.get("completeness")
+        )
         evidence = classify_index_access(
             snapshot_id=result.get("snapshot_id"),
             source_generation=result.get("source_generation"),
-            completeness=result.get(
-                "snapshot_completeness", result.get("completeness")
-            ),
+            completeness=snapshot_completeness,
             reason=result.get("oracle_reason"),
         )
         enriched = {**result, **evidence}
+        if "snapshot_completeness" not in result and "completeness" in result:
+            # #1811: an older payload still speaks the snapshot vocabulary.
+            from ...index_completeness import snapshot_completeness_fields
+
+            enriched.update(
+                snapshot_completeness_fields(
+                    snapshot_completeness, result.get("oracle_reason")
+                ),
+                snapshot_completeness=snapshot_completeness,
+            )
         from ..utils.format_helper import apply_output_format_to_response
 
         return apply_output_format_to_response(enriched, output_format)

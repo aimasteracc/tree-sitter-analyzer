@@ -34,6 +34,7 @@ are preserved for backward compatibility, but agents should now branch on
 ``error_type`` + ``agent_summary``.
 """
 
+import re
 from typing import Any
 
 from ..utils.error_sanitizer import (
@@ -558,6 +559,8 @@ def _mirror_verdict(response: dict[str, Any], agent_summary: dict[str, Any]) -> 
 
 #: Keys that already give a failure a machine-readable identity.
 _FAILURE_CODE_KEYS: tuple[str, ...] = ("error_code", "error_type")
+#: An ``UPPER_SNAKE`` code (two or more words) that opens a failure message.
+_LEADING_CODE = re.compile(r"^([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)(?::|$)")
 
 
 def _first_error_text(errors: Any) -> str | None:
@@ -627,7 +630,13 @@ def ensure_failure_identity(response: Any, tool_name: str = "tool") -> Any:
         for key in _FAILURE_CODE_KEYS
     )
     if not has_code:
-        response["error_type"] = _classify(str(error))[0]
+        # Producers often lead the message with their own code
+        # ("COMBINED_SCORE_UNAVAILABLE: ..."); that code beats a guess.
+        leading = _LEADING_CODE.match(str(error))
+        if leading:
+            response["error_code"] = leading.group(1)
+        else:
+            response["error_type"] = _classify(str(error))[0]
     return response
 
 

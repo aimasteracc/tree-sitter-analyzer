@@ -366,6 +366,8 @@ def test_execute_without_project_root_returns_setup_instruction() -> None:
     assert result == {
         "success": False,
         "error": "Project root not set. Call set_project_path first.",
+        # #1808: the execute boundary classifies the failure.
+        "error_type": "project_not_set",
         # RFC-0022 P0.5: wire owner echo on the missing-root envelope.
         "action_version": "edit.constraints/v1",
     }

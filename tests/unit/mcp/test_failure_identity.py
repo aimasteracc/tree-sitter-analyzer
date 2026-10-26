@@ -62,6 +62,31 @@ def test_error_type_is_classified_from_the_message() -> None:
     assert result["error_type"] == "project_not_set"
 
 
+@pytest.mark.parametrize(
+    ("error", "code"),
+    [
+        (
+            "COMBINED_SCORE_UNAVAILABLE: activation pending",
+            "COMBINED_SCORE_UNAVAILABLE",
+        ),
+        ("QUERY_EMBEDDING_DIMENSION_MISMATCH", "QUERY_EMBEDDING_DIMENSION_MISMATCH"),
+    ],
+)
+def test_a_leading_code_becomes_the_error_code(error: str, code: str) -> None:
+    result = ensure_failure_identity({"success": False, "error": error}, "demo")
+
+    assert result["error_code"] == code
+    assert "error_type" not in result
+
+
+@pytest.mark.parametrize("error", ["ERROR happened", "Sync failed: X_Y", "AB: x"])
+def test_prose_is_not_mistaken_for_a_code(error: str) -> None:
+    result = ensure_failure_identity({"success": False, "error": error}, "demo")
+
+    assert "error_code" not in result
+    assert result["error_type"]
+
+
 def test_empty_cache_is_an_index_not_ready_failure() -> None:
     result = ensure_failure_identity(
         {"success": False, "error": "AST cache is empty. Run ast_cache first."},

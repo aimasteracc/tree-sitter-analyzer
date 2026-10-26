@@ -289,7 +289,9 @@ async def test_legacy_v13_without_symbol_table_is_readable(tmp_path):
     cache.close()
 
     result = await CodeGraphStatusTool(str(tmp_path)).execute({"output_format": "json"})
-    assert result["completeness"] == "partial"
+    # #1811: the snapshot value ``partial`` is ``incomplete`` on the wire.
+    assert result["completeness"] == "incomplete"
+    assert result["snapshot_completeness"] == "partial"
     assert result["oracle_reason"] == "SYMBOL_PROJECTION_INCOMPLETE"
     assert result["fts5_available"] is False
     assert result["total_symbols"] == 1
@@ -369,6 +371,11 @@ async def test_explicit_mode_enriches_older_status_payload(monkeypatch) -> None:
 
     assert result == {
         **old_payload,
+        # #1811: the older snapshot vocabulary is mapped onto the response one.
+        "completeness": "incomplete",
+        "completeness_reason": "INDEX_NOT_CERTIFIED",
+        "completeness_reasons": ["INDEX_NOT_CERTIFIED"],
+        "snapshot_completeness": "partial",
         "access_mode": "read_existing",
         "access_state": "available",
         "access_reason": None,
@@ -411,7 +418,10 @@ async def _index_then_status(root) -> dict:
 async def test_status_with_missing_grammar_stays_partial(project_with_swift_file):
     # Issue #1581: 被排除的文件不入索引，绝不宣称 complete。
     result = await _index_then_status(project_with_swift_file)
-    assert (result["completeness"], result["total_files"]) == ("partial", 2)
+    # #1811: ``partial`` is reported as ``incomplete``; the left-out file leads.
+    assert (result["completeness"], result["total_files"]) == ("incomplete", 2)
+    assert result["snapshot_completeness"] == "partial"
+    assert result["completeness_reasons"][0] == "UNINDEXED_SOURCE_FILES"
 
 
 @pytest.mark.asyncio
