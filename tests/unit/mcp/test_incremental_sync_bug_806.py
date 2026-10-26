@@ -198,7 +198,7 @@ class TestMCPResponseEnvelopeOnPerFileError:
         # 3 files scanned total
         assert result["scanned"] == 3
 
-    async def test_partial_error_escalates_verdict_to_warn(self, mcp_tool, project):
+    async def test_partial_error_escalates_verdict_to_error(self, mcp_tool, project):
         controlled_result = _make_returned_parse_error()
 
         with patch.object(IncrementalSync, "sync", return_value=controlled_result):
@@ -206,7 +206,10 @@ class TestMCPResponseEnvelopeOnPerFileError:
                 {"mode": "sync", "max_files": 100, "output_format": "json"}
             )
 
-        assert (result["success"], result["verdict"]) == (False, "WARN")
+        # #1812: a failed sync carries a failure verdict (formerly WARN).
+        assert (result["success"], result["verdict"]) == (False, "ERROR")
+        assert result["error_code"] == "SYNC_INCOMPLETE"
+        assert result["error"].startswith("Sync incomplete: ")
 
     async def test_external_path_in_error_message_is_redacted(self, mcp_tool, project):
         controlled_result = _make_sync_result_with_one_error()

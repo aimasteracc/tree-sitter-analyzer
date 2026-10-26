@@ -56,6 +56,54 @@
 
 ### Fixed
 
+- **MCP tool responses now satisfy the envelope contract** (#1808–#1812). The
+  tool-response guard from #1807 ran with 50 allowlisted violations; the
+  allowlist is now empty. All changes add fields or move a value onto the
+  canonical vocabulary, and none makes an answer more confident:
+  - **Every failure carries `error` and a machine code** (#1808, #1809).
+    `BaseMCPTool.execute` now fills a missing `error` (from the response's
+    own `message`, `errors`, summary line or `status`) and a missing
+    `error_type` (classified from the message, as the MCP server already did
+    for MCP clients). Direct callers and MCP clients see the same fields, and
+    the MCP server's error envelope now always has `error` too. Producer-set
+    values are never overwritten. `pulse_batch` (`TARGETS_FAILED`),
+    `codegraph_incremental_sync` (`SYNC_INCOMPLETE`) and `verify_plan` /
+    `edit action=verify` now name the cause in `error`. Messages containing
+    "syntax error" classify as `validation`, and "AST cache is empty" as
+    `index_not_ready` (both were `internal`).
+  - **No `N/A` verdict** (#1810). `check_file_health` / `health action=file`
+    (empty and non-code files) and `code_patterns` (empty files) answer
+    `verdict: INFO` with `verdict_reason: EMPTY_FILE` or `NON_CODE_FILE`.
+    `grade: "N/A"` and `signal` are unchanged.
+  - **Completeness uses one vocabulary** (#1811). Index status
+    (`codegraph_status`, `index action=status`) maps the snapshot value
+    `partial` to `completeness: incomplete`, keeps the snapshot value in the
+    new `snapshot_completeness` field, and names a reason code whenever the
+    status is not `complete` (`INDEX_NOT_CERTIFIED`, `MISSING_INDEX`,
+    `INDEX_BUILD_IN_PROGRESS`, `PROJECT_ROOT_MISSING`,
+    `INDEX_SNAPSHOT_UNAVAILABLE`, …; the raw reason stays in `oracle_reason`).
+    `codegraph_full_index` (`INDEX_NOT_CERTIFIED`, `UNINDEXED_SOURCE_FILES`),
+    incremental sync (`INDEX_SCOPE_INCOMPLETE`) and failed `uql` /
+    `search action=uql` queries (`QUERY_NOT_EXECUTED`) now name their reasons.
+  - **Verdict agrees with `success` and `agent_summary`** (#1812).
+    - The syntax-error short circuit of `safe_to_edit`, `smart_context`,
+      `check_file_health` and `code_patterns`, and an `ast_diff` that could not
+      be computed, now answer `success: false` with `error` and `error_code`
+      (`SYNTAX_ERROR`, `LANGUAGE_UNSUPPORTED`, `AST_DIFF_FAILED`). They used
+      to answer `success: true` with `verdict: ERROR`. The rest of each
+      envelope is unchanged. On a `read_existing` route the snapshot was still
+      read, so `access_state` stays `available` for these failures.
+    - `check_constraints` with an unparseable rule file answers
+      `verdict: ERROR` / `error_code: CONSTRAINT_CONFIG_INVALID` instead of
+      `CAUTION`.
+    - A failed incremental sync answers `verdict: ERROR` instead of `WARN`.
+    - `advise_parser_readiness` failures no longer default to `verdict: INFO`.
+    - A success without a top-level verdict takes `agent_summary.verdict`
+      instead of `INFO`; `hyphae_select` on a missing index now says `WARN`
+      at both places.
+    - `codegraph_test_gap` returns `agent_summary` as a dict. The text it
+      used to hold is now `summary_line`.
+
 - **`nav action=callers` `complete` is now proof-carrying** (RFC-0040). It
   used to mean "no failure check fired", so any path that skipped a check
   answered `complete` (the #1740 / #1758 / #1759 / #1772 / #1644 class).

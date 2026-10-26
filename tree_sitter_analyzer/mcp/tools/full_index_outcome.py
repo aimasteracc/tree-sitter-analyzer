@@ -24,7 +24,9 @@ from ...cache.admission import (
     AdmissionFailure,
     admission_fields,
 )
+from ...index_completeness import INDEX_NOT_CERTIFIED
 from .full_index_grammar import missing_grammar_failures
+from .unindexed_sources import UNINDEXED_REASON
 
 #: 未发布且不属于准入失败的运行（阶段错误、回填错误、清单未认证）。
 INDEX_RUN_FAILED = "INDEX_RUN_FAILED"
@@ -61,10 +63,12 @@ RUN_FAILED_NEXT_STEP = (
 def published_result(result: dict[str, Any], *, stable_only: bool) -> dict[str, Any]:
     """已发布：成功；只缺可选语法时如实标注不完整并列出跳过的文件。"""
     published: dict[str, Any] = {**result, "success": True, "published": True}
+    reasons: list[str] = []
     if result.get("certification_deadline_only") is True:
         # #1684：已发布但未认证；如实标注，下一步见清单警告（一次刷新即可认证）。
         published["completeness"] = "incomplete"
         published["verdict"] = "WARN"
+        reasons.append(INDEX_NOT_CERTIFIED)
     if stable_only and not result.get("scope_complete"):
         skipped = [
             {"file": path, "reason": reason}
@@ -74,6 +78,11 @@ def published_result(result: dict[str, Any], *, stable_only: bool) -> dict[str, 
         published["skipped_files"] = skipped[:SKIPPED_FILES_CAP]
         published["skipped_files_total"] = len(skipped)
         published["skipped_files_truncated"] = len(skipped) > SKIPPED_FILES_CAP
+        reasons.append(UNINDEXED_REASON)
+    if reasons:
+        # #1811：非 complete 的答复总带原因码（主因在首位）。
+        published["completeness_reason"] = reasons[0]
+        published["completeness_reasons"] = reasons
     return published
 
 

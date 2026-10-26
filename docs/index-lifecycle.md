@@ -57,8 +57,10 @@ also publishes a generation, including the first write on a never-published proj
 into the first generation; read-only calls never create or copy one.
 A write still publishes when the only failures are stable per-file failures
 (`failure_kind: stable`: missing grammar or a parse failure on the captured bytes).
-Those files stay unindexed and uncertified, so completeness stays partial or
-unknown. Any transient failure keeps the previous generation active.
+Those files stay unindexed and uncertified, so the snapshot completeness stays
+partial or unknown. The status response reports it as `completeness: incomplete`
+or `unknown` with `completeness_reasons`, and keeps the snapshot value in
+`snapshot_completeness`. Any transient failure keeps the previous generation active.
 
 Legacy `.ast-cache/index.db` remains separate, so old writers cannot modify the
 published generation. TSA read connections and in-progress builds pin their

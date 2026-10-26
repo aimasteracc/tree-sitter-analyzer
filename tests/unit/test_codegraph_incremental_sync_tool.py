@@ -187,7 +187,7 @@ def test_candidate_less_incremental_response_is_not_authoritative_success(
 
     assert (result["success"], result["verdict"], result["completeness"]) == (
         False,
-        "WARN",
+        "ERROR",
         "incomplete",
     )
 
@@ -204,7 +204,7 @@ def test_parse_failure_makes_incremental_response_non_success(tool_with_root):
 
     assert (result["success"], result["verdict"], result["completeness"]) == (
         False,
-        "WARN",
+        "ERROR",
         "incomplete",
     )
 
@@ -228,7 +228,7 @@ def test_manifest_stamp_failure_makes_incremental_response_non_success(
         result["success"],
         result["verdict"],
         result["manifest_certification_failed"],
-    ) == (False, "WARN", True)
+    ) == (False, "ERROR", True)
 
 
 def test_pipeline_warning_makes_incremental_response_non_success(tool_with_root):
@@ -252,7 +252,7 @@ def test_pipeline_warning_makes_incremental_response_non_success(tool_with_root)
 
     assert (result["success"], result["verdict"], result["backfill_errors"]) == (
         False,
-        "WARN",
+        "ERROR",
         1,
     )
 

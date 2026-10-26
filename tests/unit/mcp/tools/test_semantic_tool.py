@@ -52,6 +52,8 @@ async def test_combined_score_rejects_unavailable_lazy_heat_before_provider(
         assert response == {
             "success": False,
             "error": "COMBINED_SCORE_UNAVAILABLE: activation pending or disabled",
+            # #1808: the code that leads the message becomes ``error_code``.
+            "error_code": "COMBINED_SCORE_UNAVAILABLE",
             "count": 0,
             "neighbors": [],
         }
@@ -158,6 +160,7 @@ async def test_nonfinite_stored_vector_is_corruption_not_zero_matches(
         assert result == {
             "success": False,
             "error": "semantic search failed: INVALID_STORED_EMBEDDING",
+            "error_type": "internal",
             "neighbors": [],
         }
     finally:

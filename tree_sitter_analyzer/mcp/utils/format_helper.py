@@ -46,10 +46,25 @@ def apply_output_format_to_response(
     result: dict[str, Any],
     output_format: str = "json",
 ) -> dict[str, Any]:
-    """Normalize every MCP response to the canonical JSON response shape."""
+    """Normalize every MCP response to the canonical JSON response shape.
+
+    A success without a top-level ``verdict`` gets the one its
+    ``agent_summary`` already states, and ``INFO`` only when there is none
+    (#1812: defaulting to ``INFO`` beside ``agent_summary.verdict='WARN'``
+    gave an agent two different answers).
+    """
     if result.get("success") is True and "verdict" not in result:
-        return {**result, "verdict": "INFO"}
+        return {**result, "verdict": _summary_verdict(result) or "INFO"}
     return result
+
+
+def _summary_verdict(result: dict[str, Any]) -> str | None:
+    """``agent_summary.verdict`` when it is a canonical verdict."""
+    from ..tools._response_builder import CANONICAL_VERDICTS
+
+    summary = result.get("agent_summary")
+    verdict = summary.get("verdict") if isinstance(summary, dict) else None
+    return verdict if verdict in CANONICAL_VERDICTS else None
 
 
 def format_for_file_output(

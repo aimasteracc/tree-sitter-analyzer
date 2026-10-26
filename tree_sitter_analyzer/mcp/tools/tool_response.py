@@ -174,13 +174,14 @@ def known_completeness_reasons() -> frozenset[str]:
     """The closed set of completeness reason codes producers may emit.
 
     Imported lazily: the reason vocabularies live next to their producers
-    (``nav action=callers`` and the unified query language) and this module
-    must stay importable without them.
+    (``nav action=callers``, the unified query language and the index
+    snapshot) and this module must stay importable without them.
     """
+    from ...index_completeness import INDEX_COMPLETENESS_REASONS
     from ...uql.coverage import UQL_REASONS
     from .callers_reasons import COMPLETENESS_REASONS
 
-    return frozenset(COMPLETENESS_REASONS | UQL_REASONS)
+    return frozenset(COMPLETENESS_REASONS | UQL_REASONS | INDEX_COMPLETENESS_REASONS)
 
 
 def _verdict_violations(payload: dict[str, Any]) -> list[tuple[str, str]]:

@@ -47,6 +47,12 @@ class SyncResult:
             publication["published"] = self.published
         if self.publication_reason is not None:
             publication["publication_reason"] = self.publication_reason
+        if not self.scope_complete:
+            # #1811: a non-complete answer always names its reason code.
+            from .index_completeness import INDEX_SCOPE_INCOMPLETE
+
+            publication["completeness_reason"] = INDEX_SCOPE_INCOMPLETE
+            publication["completeness_reasons"] = [INDEX_SCOPE_INCOMPLETE]
         return {
             **publication,
             "mode_used": "incremental",
