@@ -34,6 +34,7 @@ from .generation_pins import GenerationPin, pin_generation
 from .generation_reader_release import release_idle_readers
 from .generation_retirement import retire_generations, retire_unpublished
 from .generation_routing import read_selector
+from .generation_seal import leave_wal
 from .generation_selector import (
     GenerationSelector,
     InvalidGenerationSelector,
@@ -493,7 +494,8 @@ class GenerationStore:
             if checkpoint.fetchone()[0] != 0:
                 raise RuntimeError("INDEX_GENERATION_CHECKPOINT_BUSY")
             # 只读 WAL 库的读者会另建可写 -wal/-shm；切回回滚日志使版本只剩主库。
-            journal = connection.execute("PRAGMA journal_mode=DELETE").fetchone()[0]
+            # #1821：这一步 SQLite 不调用忙处理器，由 leave_wal 按忙等待期限重试。
+            journal = leave_wal(connection)
         finally:
             connection.close()
         if journal != "delete" or any(

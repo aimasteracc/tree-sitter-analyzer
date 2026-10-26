@@ -445,12 +445,30 @@ def _truncate_for_display(
     return source_matches, False
 
 
-def _matches_to_usages(matches: list[Any]) -> list[dict[str, Any]]:
+def _response_path(file_path: str, project_root: str | None) -> str:
+    """#1813：答复中的路径——项目内为仓库相对，一律正斜杠。
+
+    扫描器给出 OS 形式的绝对路径（Windows 上为反斜杠），而索引路径是仓库相对的
+    正斜杠形式；agent 跨调用比较、复用这些路径。项目外的扫描根（显式多根）保留
+    绝对路径，只统一分隔符。
+    """
+    path = Path(file_path)
+    if project_root:
+        try:
+            return path.resolve().relative_to(Path(project_root).resolve()).as_posix()
+        except (ValueError, OSError):
+            pass
+    return file_path.replace("\\", "/")
+
+
+def _matches_to_usages(
+    matches: list[Any], project_root: str | None = None
+) -> list[dict[str, Any]]:
     """将源码命中转换为保留两种路径字段的引用结果。"""
     usages: list[dict[str, Any]] = []
     for match in matches:
         line_no = match["line"]
-        file_path_val = match["file"]
+        file_path_val = _response_path(match["file"], project_root)
         usages.append(
             {
                 "file": file_path_val,
@@ -842,7 +860,7 @@ class TraceImpactTool(BaseMCPTool):
         source_total = len(source_matches)
 
         display_matches, truncated = _truncate_for_display(source_matches, max_results)
-        usages = _matches_to_usages(display_matches)
+        usages = _matches_to_usages(display_matches, self.project_root)
 
         return _build_trace_impact_result(
             symbol=symbol,

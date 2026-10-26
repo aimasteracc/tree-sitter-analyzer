@@ -457,29 +457,37 @@ def test_invalidate_removes_entry(project):
     cache.close()
 
 
-def test_score_project_warm_run_is_fast(project):
-    """The warm run MUST be substantially faster than the cold run.
+def test_score_project_warm_run_is_fast(project, monkeypatch):
+    """The warm run MUST reuse the cache instead of re-scoring.
 
-    We score 2 tiny files. Even on slow CI the cold run scores everything
-    fresh; the warm run must read from cache and be at least 2x faster.
+    The cost a warm run saves is the per-file ``score_file`` call. Counting
+    those calls pins the work exactly: the cold run scores every file once,
+    the warm run scores none. The previous wall-clock comparison
+    (``warm <= cold + 0.1``) could neither prove the cache helped nor stay
+    green on a loaded runner.
     """
     scorer = HealthScorer()
+    scored: list[str] = []
+    real_score_file = HealthScorer.score_file
 
-    cold_start = time.perf_counter()
+    def counting_score_file(self, file_path, *args, **kwargs):
+        scored.append(file_path)
+        return real_score_file(self, file_path, *args, **kwargs)
+
+    monkeypatch.setattr(HealthScorer, "score_file", counting_score_file)
+
     cold = scorer.score_project(str(project))
-    cold_elapsed = time.perf_counter() - cold_start
-
-    warm_start = time.perf_counter()
+    cold_scored = sorted(scored)
+    scored.clear()
     warm = scorer.score_project(str(project))
-    warm_elapsed = time.perf_counter() - warm_start
 
     assert {s.file_path for s in cold} == {s.file_path for s in warm}
     assert {s.grade for s in cold} == {s.grade for s in warm}
 
-    # The cache MUST help. On very small projects the absolute numbers are
-    # tiny; require warm <= cold + a generous floor so the test is robust
-    # against CI jitter.
-    assert warm_elapsed <= cold_elapsed + 0.1
+    # Cold: one score_file per scored file. Warm: zero, all served by cache.
+    assert cold_scored == sorted(s.file_path for s in cold)
+    assert len(cold_scored) == 2
+    assert scored == []
 
 
 def test_score_project_use_cache_false_still_works(project):
