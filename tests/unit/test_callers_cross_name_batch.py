@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -160,6 +161,32 @@ def test_join_choice_is_remembered_while_the_database_is_unchanged(
 # --------------------------------------------------------------------------- #
 
 _WORDS = st.text(alphabet="ab_$1é", min_size=0, max_size=6)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _no_local_constant_scan() -> Iterator[None]:
+    """Keep the test's work independent of what the worker imported before it.
+
+    Before drawing, Hypothesis harvests literal constants from every *local*
+    module in ``sys.modules`` by parsing its source
+    (``providers._get_local_constants``), and re-harvests whenever
+    ``sys.modules`` has grown. In a long xdist worker that has imported most
+    of ``tree_sitter_analyzer`` (~1,000 modules), the first draw parses all of
+    them; under coverage that alone was 8.8 s CPU against the 8 s unit budget
+    (CI run 40250133686) while the 60 examples cost well under a second. The
+    harvested constants are useless here: every drawn string is restricted to
+    a six-character alphabet, so nearly all of them are rejected anyway.
+    Serving an empty local-constant set makes the cost a function of
+    ``max_examples`` alone.
+    """
+    from hypothesis.internal.conjecture import providers
+
+    if not hasattr(providers, "_get_local_constants"):  # pragma: no cover
+        yield  # a Hypothesis release without the scan: nothing to bound
+        return
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(providers, "_get_local_constants", providers.Constants)
+        yield
 
 
 @settings(
