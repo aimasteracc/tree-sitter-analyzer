@@ -118,7 +118,12 @@ def test_evidence_handles_only_for_non_complete_inputs() -> None:
     assert out["evidence"] == [
         {
             "stage": "callers",
-            "nav": {"action": "callers", "function_name": "t"},
+            # #1798: a unique name is sent with its file (the unscoped workaround is gone).
+            "nav": {
+                "action": "callers",
+                "function_name": "t",
+                "file_path": "src/a.py",
+            },
             "r": ["X"],
         }
     ]

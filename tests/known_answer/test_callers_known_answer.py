@@ -134,11 +134,20 @@ def test_the_bare_answer_is_never_more_confident_than_the_qualified(
 
 
 def _defines_target_once(case: Case) -> bool:
-    """夹具里目标名恰有一处定义（``def`` / ``function`` / 方法头），独立于 TSA。"""
+    """夹具里目标名恰有一处定义（``def`` / ``function`` / 方法头），独立于 TSA。
+
+    覆盖形态不算“只定义一次”：父类的 ``abstract`` 声明、接口方法声明与覆盖方法
+    同名，各计一处定义（java-1743：``TypeAdapter.write`` 抽象声明 +
+    ``FooAdapter.write`` 覆盖）。虚分派目标不带范围时是并集问题，不属于 #1798 的
+    等价规则，所以修饰符列表必须包含 ``abstract`` / ``default`` 等，不能漏数。
+    """
     name = re.escape(case.target_name)
+    modifiers = (
+        r"public|private|protected|static|abstract|final|default|synchronized|native"
+    )
     definition = re.compile(
         rf"^[ \t]*(?:async[ \t]+)?(?:def|function)[ \t]+{name}\b"
-        rf"|^[ \t]*(?:(?:public|private|protected|static)[ \t]+)*[\w<>\[\]]+[ \t]+{name}\(",
+        rf"|^[ \t]*(?:(?:{modifiers})[ \t]+)*[\w<>\[\]]+[ \t]+{name}\(",
         re.MULTILINE,
     )
     return sum(len(definition.findall(text)) for text in case.files.values()) == 1
@@ -160,7 +169,11 @@ _UNIQUE = [case for case in CASES if _defines_target_once(case)]
 
 def test_the_scope_parity_corpus_covers_unique_names() -> None:
     # 判定器自检：#1798 用例必须在唯一名字集合里，否则下面的参数化静默为空。
-    assert "py-1798-unique-name-scope-parity" in {case.case_id for case in _UNIQUE}
+    unique = {case.case_id for case in _UNIQUE}
+    assert "py-1798-unique-name-scope-parity" in unique
+    # 覆盖形态（抽象声明 + 覆盖、接口声明 + 实现）不是“只定义一次”。
+    assert "java-1743-supertype-receiver-virtual-dispatch" not in unique
+    assert "java-1743-interface-receiver" not in unique
 
 
 @pytest.mark.parametrize("mode", MODES)

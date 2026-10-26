@@ -131,6 +131,56 @@ async def test_a_constructor_bound_caller_stays_listed_unscoped(tmp_path) -> Non
     assert result["completeness"] != "complete"
 
 
+_BASE = (
+    "from abc import ABC, abstractmethod\n"
+    "\n"
+    "\n"
+    "class Renderer(ABC):\n"
+    "    @abstractmethod\n"
+    "    def render_page(self):\n"
+    "        raise NotImplementedError\n"
+)
+_IMPL = (
+    "from .base import Renderer\n"
+    "\n"
+    "\n"
+    "class HtmlRenderer(Renderer):\n"
+    "    def render_page(self):\n"
+    "        return '<p/>'\n"
+    "\n"
+    "\n"
+    "def show(renderer: Renderer):\n"
+    "    return renderer.render_page()\n"
+)
+
+
+@pytest.mark.asyncio
+async def test_an_override_target_stays_unscoped(tmp_path) -> None:
+    # java-1743 shape: an abstract declaration plus its override are two
+    # definitions. Virtual dispatch through the base makes the unscoped bare
+    # name a union question, so it must not be narrowed to the override's file.
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    for rel_path, text in {
+        "ui/__init__.py": "",
+        "ui/base.py": _BASE,
+        "ui/html.py": _IMPL,
+    }.items():
+        path = tmp_path / rel_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    indexed = await CodeGraphFullIndexTool(str(tmp_path)).execute(
+        {"mode": "full", "max_files": 50}
+    )
+    assert indexed["published"] is True
+    tool = CodeGraphCallersTool(str(tmp_path))
+    graph = tool._graph_for(None)[0]
+
+    assert sole_definition_file(graph, tool._try_get_cache(), "render_page") is None
+    bare = await _ask(str(tmp_path), "render_page", None)
+    assert bare["function"] == "render_page"
+
+
 @pytest.mark.asyncio
 async def test_a_name_with_several_definitions_keeps_the_unscoped_union(
     tmp_path,
