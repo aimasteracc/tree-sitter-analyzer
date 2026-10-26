@@ -1162,7 +1162,8 @@ def _scan_file_for_definitions(
         return
     if not word_re.search(text):
         return
-    rel = str(file_path.relative_to(root))
+    # #1813：与索引路径同一形式（仓库相对、正斜杠），不随 OS 分隔符变化。
+    rel = file_path.relative_to(root).as_posix()
     for i, line in enumerate(text.splitlines(), start=1):
         if not line_re.match(line):
             continue
