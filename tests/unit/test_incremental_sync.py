@@ -2668,7 +2668,6 @@ def test_transient_candidate_failure_preserves_index_rows(
         cache.close()
 
 
-@pytest.mark.flaky(reruns=1)  # #1819: Windows runner I/O stall in WAL init
 @pytest.mark.parametrize("pause_at", ["capture", "commit"])
 @pytest.mark.parametrize("sharing", ["watcher", "cache", "database"])
 def test_watcher_serializes_capture_through_index_commit(
