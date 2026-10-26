@@ -331,7 +331,7 @@ def test_holder_evidence_without_a_database_is_still_bounded():
     evidence = holder_evidence(None)
     assert evidence["pid"] == os.getpid()
     assert threading.current_thread().name in evidence["threads"]
-    assert evidence["open_connections"] >= 0
+    assert type(evidence["open_connections"]) is int
     assert "posix_locks" not in evidence
 
 
