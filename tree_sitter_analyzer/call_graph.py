@@ -186,7 +186,9 @@ class CallGraph(PossibleEdgesMixin):
         rel_to_abs: dict[str, str] = {}
         for f in all_files:
             try:
-                rel = str(f.relative_to(self.project_root))
+                # #1813：图里每条路径都由此产生，统一为仓库相对的正斜杠形式，
+                # 与索引路径一致；按 OS 分隔符拼出的 `app\doc.py` 会进入每个答复。
+                rel = f.relative_to(self.project_root).as_posix()
                 rel_to_abs[rel] = str(f)
             except ValueError:
                 continue
