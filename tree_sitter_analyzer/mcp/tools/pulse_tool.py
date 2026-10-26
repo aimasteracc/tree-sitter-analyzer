@@ -337,7 +337,7 @@ class PulseBatchTool(BaseMCPTool):
         if truncated_count > 0:
             results.append({"warning": f"{truncated_count} targets truncated"})
 
-        return {
+        response: dict[str, Any] = {
             "success": error_count == 0,
             "results": results,
             "count": len(targets) - error_count,
@@ -345,6 +345,16 @@ class PulseBatchTool(BaseMCPTool):
             "truncated_count": truncated_count,
             "source_evidence": evidence,
         }
+        if error_count:
+            # #1809/#1808: the failure names its cause and carries a code; the
+            # per-target errors stay in ``results``.
+            failed = next(r for r in results if isinstance(r, dict) and "error" in r)
+            response["error"] = (
+                f"{error_count} of {len(targets)} targets failed; first: "
+                f"{failed['file']}:{failed['symbol']}: {failed['error']}"
+            )
+            response["error_code"] = "TARGETS_FAILED"
+        return response
 
 
 class GetProjectSchemaTool(BaseMCPTool):

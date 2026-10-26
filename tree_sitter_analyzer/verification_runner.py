@@ -14,6 +14,16 @@ import psutil
 
 from .verification_plan import _CAPTURE, decode_request, digest, pr_identity
 
+#: Wall-time cap on reaping a finished step's process tree. Cleanup needs two
+#: consecutive empty sweeps, and each sweep reads the environment of EVERY
+#: process on the host: measured at ~1.8-2.0 s per sweep on a Windows desktop
+#: with ~690 processes, and slower on a contended macOS runner. The former 2 s
+#: cap could not fit two sweeps there, so a step that exited 0 with nothing
+#: left behind was reported ``error`` (CI run 40116699185). Normal cleanup
+#: still returns after the second empty sweep; the cap only bounds the case of
+#: a process that will not die.
+_CLEANUP_DEADLINE_S = 30.0
+
 
 def rebuild_request(value: dict[str, Any], root: str) -> list[dict[str, Any]]:
     """调用同一分析编译路径，只收集 argv，不执行返回的命令文本。"""
@@ -82,7 +92,7 @@ def _cleanup(
     proc: subprocess.Popen[bytes], owned: dict[int, psutil.Process], token: str
 ) -> bool:
     """按进程身份与继承标记清理；两次空扫描后才认为测试树已退出。"""
-    deadline = time.monotonic() + 2
+    deadline = time.monotonic() + _CLEANUP_DEADLINE_S
     empty = 0
     while time.monotonic() < deadline:
         for process in psutil.process_iter():
@@ -191,7 +201,34 @@ def _run_step(
 def run_verification_request(
     request: str, project_root: str, cancel: threading.Event | None = None
 ) -> dict[str, Any]:
-    """只有描述符与重新发现的完整计划相符时，才启动第一个测试。"""
+    """只有描述符与重新发现的完整计划相符时，才启动第一个测试。
+
+    #1809：失败答复总带 ``error``（说明哪一步、什么状态），``status`` /
+    ``error_code`` 保持不变。
+    """
+    result = _run_verification_request(request, project_root, cancel)
+    if not result.get("success"):
+        result.setdefault("error", _failure_message(result))
+        if not result.get("error_code"):
+            # A step ran and did not pass (or the run was cut short).
+            result.setdefault("error_type", "verification_failed")
+    return result
+
+
+def _failure_message(result: dict[str, Any]) -> str:
+    status = result.get("status")
+    code = result.get("error_code")
+    if code:
+        return f"verification not run: {code}"
+    failed = result.get("first_failed_step")
+    if failed is not None:
+        return f"verification step {failed} ended with status {status!r}"
+    return f"verification stopped with status {status!r}"
+
+
+def _run_verification_request(
+    request: str, project_root: str, cancel: threading.Event | None = None
+) -> dict[str, Any]:
     result: dict[str, Any] = {
         "success": False,
         "verdict": "ERROR",

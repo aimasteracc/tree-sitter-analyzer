@@ -98,16 +98,18 @@ def test_read_only_corrupt_index_fails_closed(tmp_path: Path) -> None:
     )
 
 
-def test_read_only_malformed_config_is_structured_caution(tmp_path: Path) -> None:
+def test_read_only_malformed_config_is_structured_error(tmp_path: Path) -> None:
     (tmp_path / "architectural-constraints.yml").write_text("constraints: [")
 
     result = _run(_make_tool(tmp_path).execute({"persist": False}))
 
+    # #1812: no rule was evaluated, so the failure says ERROR, not CAUTION.
     assert (result["success"], result["verdict"], result["rule_count"]) == (
         False,
-        "CAUTION",
+        "ERROR",
         0,
     )
+    assert result["error_code"] == "CONSTRAINT_CONFIG_INVALID"
     assert result["violations"] == []
     assert "constraint parse error" in result["error"]
 

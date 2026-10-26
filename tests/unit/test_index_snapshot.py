@@ -906,7 +906,8 @@ class TestAuthoritativeSnapshotOracle:
             {"access_mode": "read_existing", "output_format": "json"}
         )
 
-        assert result["completeness"] == "partial"
+        assert result["completeness"] == "incomplete"
+        assert result["snapshot_completeness"] == "partial"
         assert result["oracle_reason"] == "NO_EXACT_FULL_INDEX_MANIFEST"
 
     @pytest.mark.parametrize(

@@ -53,9 +53,11 @@ def _delete_file_rows_if_table_present(
 #: `+kind` 让 kind 条件不可走索引：小表上规划器会改选低选择性的 idx_edges_kind
 #: （CI 的 SQLite 实测如此），这里强制两支分别走 resolved / callee_name 索引。
 INCOMING_RESOLUTION_ROWS_SQL = (
-    "SELECT id, metadata FROM edges "
+    "SELECT id, metadata, callee_resolution, callee_resolved_file, "
+    "callee_symbol_id FROM edges "
     "WHERE +kind = 'calls' AND callee_resolved_file = ? "
-    "UNION SELECT id, metadata FROM edges "
+    "UNION SELECT id, metadata, callee_resolution, callee_resolved_file, "
+    "callee_symbol_id FROM edges "
     "WHERE +kind = 'calls' AND callee_name IN ("
     "SELECT name FROM ast_symbol_rows WHERE file_path = ?)"
 )
@@ -70,20 +72,45 @@ def reset_call_edge_rows(conn: sqlite3.Connection, rows: list[Any]) -> None:
 
     #1696：解析写入的 ``receiver_binding`` / ``import_alias`` 也一并移除，否则重新
     解析为未知或别的目标时，旧来源会留在 metadata 里，与全新重建不同。
+
+    Rows that carry ``callee_resolution`` / ``callee_resolved_file`` /
+    ``callee_symbol_id`` and are already in that form are not rewritten: the
+    UPDATE would store the same values. On a first index almost every incoming
+    edge is still unresolved, so this skips thousands of identical writes.
     """
     for row in rows:
-        metadata = json.loads(row["metadata"] or "{}")
+        stored = row["metadata"]
+        metadata = json.loads(stored or "{}")
         metadata.update({"callee_resolution": "unknown", "callee_resolved_file": ""})
         # 与新提取的未解析边同形（无此键）：增量删除后的索引须与全新重建逐字节
         # 相同（#1671 等价门）；读者以缺键与 null 同义。
         for key in _RESOLUTION_METADATA_KEYS:
             metadata.pop(key, None)
+        encoded = json.dumps(metadata, ensure_ascii=False, sort_keys=True)
+        if _already_reset(row, stored, encoded):
+            continue
         conn.execute(
             "UPDATE edges SET callee_resolution = 'unknown', "
             "callee_resolved_file = '', callee_symbol_id = NULL, metadata = ? "
             "WHERE id = ?",
-            (json.dumps(metadata, ensure_ascii=False, sort_keys=True), row["id"]),
+            (encoded, row["id"]),
         )
+
+
+_RESET_COLUMNS = ("callee_resolution", "callee_resolved_file", "callee_symbol_id")
+
+
+def _already_reset(row: Any, stored: Any, encoded: str) -> bool:
+    """Whether ``row`` already holds exactly what the reset UPDATE would write."""
+    keys = row.keys() if hasattr(row, "keys") else ()
+    if not all(column in keys for column in _RESET_COLUMNS):
+        return False
+    return (
+        stored == encoded
+        and row["callee_resolution"] == "unknown"
+        and row["callee_resolved_file"] == ""
+        and row["callee_symbol_id"] is None
+    )
 
 
 def _reset_incoming_edge_resolutions(

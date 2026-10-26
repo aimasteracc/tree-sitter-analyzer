@@ -36,6 +36,8 @@ import threading
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from multiprocessing import TimeoutError as PoolTimeout
+from multiprocessing import pool as _mp_pool
+from multiprocessing.context import BaseContext
 from typing import Any
 
 #: Bound on the first result: worker start-up plus one chunk of files.
@@ -114,6 +116,101 @@ if sys.platform == "win32":  # pragma: no cover - Windows only (tested there)
             os.close(null_fd)
 
 
+class _ConcurrentStartPool(_mp_pool.Pool):
+    """``multiprocessing.pool.Pool`` that starts its workers concurrently.
+
+    ``Pool`` starts workers one after another, and with the ``spawn`` start
+    method each ``Process.start()`` returns only after the new interpreter has
+    booted far enough to read its preparation data from the parent's pipe. Pool
+    start-up therefore costs the *sum* of the workers' boot times. On Windows,
+    where process creation is slow (slower still under real-time scanning),
+    that sum dominated a cold index: 13 workers took 5.4 s to start on fastapi
+    (1,191 files), out of 14.8 s for the whole extraction. Starting each worker
+    from its own thread overlaps the boots, so start-up costs about one boot.
+
+    Only the construction-time population is concurrent. ``_maintain_pool``
+    replaces a dead worker through ``Pool._repopulate_pool_static`` (by class
+    name) and stays sequential. The workers are the ones ``Pool`` would create:
+    same ``Process`` factory, target, arguments, name and daemon flag.
+    """
+
+    @staticmethod
+    def _repopulate_pool_static(
+        ctx: Any,
+        Process: Any,  # noqa: N803 - mirrors the CPython signature
+        processes: int,
+        pool: list[Any],
+        inqueue: Any,
+        outqueue: Any,
+        initializer: Any,
+        initargs: Any,
+        maxtasksperchild: Any,
+        wrap_exception: Any,
+    ) -> None:
+        workers = []
+        for _ in range(processes - len(pool)):
+            worker = Process(
+                ctx,
+                target=_mp_pool.worker,  # type: ignore[attr-defined]
+                args=(
+                    inqueue,
+                    outqueue,
+                    initializer,
+                    initargs,
+                    maxtasksperchild,
+                    wrap_exception,
+                ),
+            )
+            worker.name = worker.name.replace("Process", "PoolWorker")
+            worker.daemon = True
+            workers.append(worker)
+        started, error = _start_concurrently(workers)
+        # Started workers join the pool even on failure: ``Pool.__init__`` then
+        # terminates and joins everything in ``pool`` before re-raising.
+        pool.extend(started)
+        if error is not None:
+            raise error
+
+
+def _start_concurrently(workers: list[Any]) -> tuple[list[Any], BaseException | None]:
+    """Call ``start()`` on every worker, each from its own thread, and wait.
+
+    Returns the workers that started (in their original order) and the first
+    failure, if any.
+    """
+    errors: list[BaseException] = []
+
+    def start(worker: Any) -> None:
+        try:
+            worker.start()
+        except BaseException as exc:  # handed back to the calling thread
+            errors.append(exc)
+
+    if len(workers) <= 1:
+        for worker in workers:
+            start(worker)
+    else:
+        threads = [
+            threading.Thread(target=start, args=(worker,), name="tsa-pool-start")
+            for worker in workers
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+    started = [worker for worker in workers if worker.pid is not None]
+    return started, (errors[0] if errors else None)
+
+
+def _make_pool(ctx: Any, workers: int, initializer: Callable[[], Any] | None) -> Any:
+    """A concurrently started pool for a real context; ``ctx.Pool`` otherwise."""
+    if isinstance(ctx, BaseContext):
+        return _ConcurrentStartPool(
+            processes=workers, initializer=initializer, context=ctx
+        )
+    return ctx.Pool(processes=workers, initializer=initializer)
+
+
 def _run_chunk(task: tuple[Callable[[Any], Any], list[Any]]) -> list[Any]:
     """Worker side: apply ``func`` to one chunk of items."""
     func, chunk = task
@@ -144,7 +241,7 @@ def run_pool(
     with isolated_std_handles():
         # Workers are created in the constructor (processes=workers), inside the
         # isolated-handle window; the window closes before any task runs.
-        pool = ctx.Pool(processes=workers, initializer=initializer)
+        pool = _make_pool(ctx, workers, initializer)
     try:
         # Chunks are sent as single tasks: ``imap_unordered`` with ``chunksize > 1``
         # returns a plain generator without ``next(timeout)``.

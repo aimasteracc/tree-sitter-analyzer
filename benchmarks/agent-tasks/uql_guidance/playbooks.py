@@ -195,10 +195,6 @@ def run_question(
 _NO_INDEX = ('"UQL_INDEX_UNAVAILABLE"', '"INDEX_MISSING"')
 
 
-def _normalized(answer: dict[str, set[str]]) -> dict[str, set[str]]:
-    # 无索引回退路径在 Windows 上返回反斜杠路径；按 agent 的理解两者等价。
-    return {k: {v.replace("\\", "/") for v in vals} for k, vals in answer.items()}
-
 
 def run_arm(arm: str, repo: str, root: str, truths: dict[str, Any]) -> dict[str, Any]:
     inner = TsaClient(root)
@@ -234,7 +230,7 @@ def run_arm(arm: str, repo: str, root: str, truths: dict[str, Any]) -> dict[str,
                 "request_bytes": trace.request_bytes,
                 "seconds": round(trace.seconds, 3),
                 "hint": hint,
-                "score": _score(_normalized(answer), claims, truths[q.qid]),
+                "score": _score(answer, claims, truths[q.qid]),
             }
         )
         r = rows[-1]

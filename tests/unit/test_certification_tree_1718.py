@@ -240,3 +240,60 @@ def test_full_tree_keeps_the_fingerprint_row_budget(monkeypatch) -> None:
     monkeypatch.setattr(schema, "_FINGERPRINT_ROW_BUDGET", 2)
     with pytest.raises(RuntimeError, match="INDEX_FINGERPRINT_BUDGET"):
         tree_mod.full_tree(_db([("a.py", "f"), ("b.py", "g")]), deadline=_deadline())
+
+
+def _reference_leaves(conn: sqlite3.Connection, table: str) -> dict[bytes, bytes]:
+    """Leaves computed the plain way: encode every row's group key and frame."""
+    import hashlib
+
+    from tree_sitter_analyzer.index_snapshot_schema import _frame, _typed
+
+    (rooted,) = [
+        t for t in tree_mod.rooted_tables(conn, _deadline()) if t.name == table
+    ]
+    index = rooted.columns.index(tree_mod.GROUP_COLUMN)
+    leaves: dict[bytes, object] = {}
+    for row in conn.execute(tree_mod._ordered_select(rooted)):
+        key = tree_mod.group_key(row[index])
+        digest = leaves.setdefault(key, hashlib.sha256(tree_mod._LEAF_DOMAIN))
+        _frame(digest, b"row", _typed(tuple(row)))
+    return {key: digest.digest() for key, digest in leaves.items()}  # type: ignore[attr-defined]
+
+
+def test_cached_group_keys_and_row_frames_match_the_plain_encoding() -> None:
+    # No column affinity: 1, "1", 1.5, b"1" and NULL are distinct groups.
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE mixed (file_path, v)")
+    values = [1, "1", 1.5, -0.0, 0.0, b"1", None, "a.py", "a.py", 2, "日本.py"]
+    conn.executemany(
+        "INSERT INTO mixed VALUES (?, ?)", [(v, i) for i, v in enumerate(values)]
+    )
+    tree = tree_mod.full_tree(conn, deadline=_deadline())
+    assert tree.leaves["mixed"] == _reference_leaves(conn, "mixed")
+
+
+def test_typed_fast_path_matches_the_reference_cell_encoding() -> None:
+    from tree_sitter_analyzer.index_snapshot_schema import _typed, _typed_cell
+
+    class _Text(str):
+        pass
+
+    values = (
+        None,
+        0,
+        -7,
+        2**70,
+        True,
+        1.5,
+        -0.0,
+        b"",
+        b"\x00b",
+        "",
+        "x",
+        "日本",
+        "\ud800",
+        _Text("t"),
+        bytearray(b"z"),
+    )
+    assert _typed(values) == b"".join(_typed_cell(v) for v in values)
+    assert _typed(()) == b""
