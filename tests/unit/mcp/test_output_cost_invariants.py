@@ -710,4 +710,6 @@ def test_uql_compact_rows_smaller_than_full_detail() -> None:
     fb = FakeBackends({"t": [sym("t")]}, {"t": callers_payload(*rows)})
     compact = asyncio.run(answer({"query": "symbol('t').callers()"}, fb))
     full = asyncio.run(answer({"query": "symbol('t').callers()", "detail": "full"}, fb))
-    assert (len(json.dumps(compact)), len(json.dumps(full))) == (1251, 4057)
+    # #1798: the full-detail evidence handle now carries the request's
+    # `"file_path": "src/a.py"` (+25 bytes); unique names are no longer sent unscoped.
+    assert (len(json.dumps(compact)), len(json.dumps(full))) == (1251, 4082)
