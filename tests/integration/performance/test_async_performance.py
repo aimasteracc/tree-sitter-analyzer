@@ -7,6 +7,7 @@ from tree_sitter_analyzer.api import get_engine
 from tree_sitter_analyzer.core.analysis_engine import (
     AnalysisRequest,
 )
+from tree_sitter_analyzer.core.parser import Parser
 
 
 @pytest.mark.asyncio
@@ -41,9 +42,9 @@ async def test_concurrent_analysis_performance(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_parser_cache_effectiveness(tmp_path):
+async def test_parser_cache_effectiveness(tmp_path, monkeypatch):
     """
-    Verify that repeated requests for the same file are faster due to caching.
+    Verify that a repeated request for the same file is served without re-parsing.
     Note: Currently UnifiedAnalysisEngine has a result cache, but Phase 2
     introduces a lower-level ParseResult cache.
     """
@@ -54,18 +55,25 @@ async def test_parser_cache_effectiveness(tmp_path):
     engine = get_engine()
     request = AnalysisRequest(file_path=file_path, language="python")
 
+    # Count parses instead of comparing two wall-clock durations: the cache's
+    # whole point is that the second request does not parse again, and a
+    # ``duration2 < duration1`` assertion flakes whenever the runner stalls.
+    parsed: list[str] = []
+    real_parse_file = Parser.parse_file
+
+    def counting_parse_file(self, path, *args, **kwargs):
+        parsed.append(str(path))
+        return real_parse_file(self, path, *args, **kwargs)
+
+    monkeypatch.setattr(Parser, "parse_file", counting_parse_file)
+
     # First time - should parse
-    start1 = time.perf_counter()
     res1 = await engine.analyze(request)
-    duration1 = time.perf_counter() - start1
+    assert parsed == [file_path]
 
-    # Second time - should hit cache
-    start2 = time.perf_counter()
+    # Second time - should hit the result cache, no further parse
     res2 = await engine.analyze(request)
-    duration2 = time.perf_counter() - start2
-
-    print(f"\nFirst call: {duration1:.4f}s, Second call (cached): {duration2:.4f}s")
-    assert duration2 < duration1
+    assert parsed == [file_path]
     assert res1.elements == res2.elements
 
 

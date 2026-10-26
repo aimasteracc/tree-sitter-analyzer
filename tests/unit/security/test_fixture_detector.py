@@ -8,8 +8,9 @@ Two responsibilities are tested independently:
   ``CAUTION`` / ``None``, the contract that ``safe_to_edit_helpers``
   consumes via ``_max_verdict``.
 
-The most important regression test in this file is
-``test_real_repo_finds_java_plugin`` — it pins the
+The most important regression test for this module is
+``test_fixture_detector_canary.py::test_real_repo_finds_java_plugin``: it
+pins the
 ``feedback_test-fixture-files`` incident class. If that test regresses,
 agents can refactor ``java_plugin.py`` again and re-burn a session.
 """
@@ -28,9 +29,6 @@ from tree_sitter_analyzer.security.fixture_detector import (
     is_fixture,
     list_fixtures,
 )
-
-REPO_ROOT = Path(__file__).resolve().parents[3]
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -244,24 +242,6 @@ class TestTier2Scan:
         )
         fact = is_fixture("tree_sitter_analyzer/foo.py", root)
         assert fact.is_fixture is False
-
-
-class TestRealRepoRegression:
-    # Issue #1206: this deliberate whole-repository scan can exceed the
-    # five-second unit budget on macOS runners.
-    @pytest.mark.slow_ok
-    def test_real_repo_finds_java_plugin(self) -> None:
-        # Regression test for feedback_test-fixture-files (memory):
-        # java_plugin.py IS a negative fixture in the real repo and the
-        # detector must flag it as UNSAFE-grade.
-        target = "tree_sitter_analyzer/languages/java_plugin.py"
-        fact = is_fixture(target, REPO_ROOT)
-        assert fact.is_fixture is True, (
-            f"Real-repo detection failed for {target}; got {fact!r}. "
-            "This is the canary for feedback_test-fixture-files."
-        )
-        # confidence must be high enough to escalate safe_to_edit to UNSAFE.
-        assert fact.confidence == 0.85
 
 
 # ---------------------------------------------------------------------------
