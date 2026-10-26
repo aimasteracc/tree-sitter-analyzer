@@ -27,7 +27,7 @@ from .utils.file_health_response import (
     build_file_health_result,
 )
 from .utils.file_health_smells import detect_code_smells
-from .utils.parse_validity import is_file_parse_broken
+from .utils.parse_validity import is_file_parse_broken, syntax_error_failure
 
 logger = setup_logger(__name__)
 
@@ -544,7 +544,8 @@ def _syntax_error_response(
     # so callers don't have to read the file again.
     line_count, is_binary = _file_metrics(resolved)
     return {
-        "success": True,
+        # #1812: the file could not be analyzed, so this is a failure.
+        **syntax_error_failure(file_path),
         "file_path": file_path,
         "language": language,
         # M3: keep the grade slot but mark it ``N/A`` — the dimension

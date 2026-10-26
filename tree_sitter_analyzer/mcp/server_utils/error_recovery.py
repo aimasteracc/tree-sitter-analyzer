@@ -122,6 +122,14 @@ _ERROR_RECOVERY_HINTS: list[tuple[str, str, str, str]] = [
         "",
     ),
     (
+        # Query / selector languages (hyphae, TQL, UQL) report malformed
+        # input as "... syntax error: ..."; that is the caller's input.
+        "syntax error",
+        "validation",
+        "The query or selector could not be parsed. Fix its syntax and retry.",
+        "",
+    ),
+    (
         "permission denied",
         "permission_denied",
         "Permission denied. Check file ownership and that the path is under project_root.",

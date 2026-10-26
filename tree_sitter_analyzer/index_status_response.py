@@ -8,6 +8,7 @@ from typing import Any
 from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
 
 from . import index_lag, index_snapshot
+from .index_completeness import snapshot_completeness_fields
 from .index_grammar_exclusions import explain_incomplete
 from .index_snapshot import ACTION_VERSION
 from .mcp.tools._response_builder import build_response
@@ -46,7 +47,8 @@ def build_index_status_response(
             source_fingerprint=None,
             index_fingerprint=None,
             source_generation=None,
-            completeness="unknown",
+            **snapshot_completeness_fields("unknown", "MISSING_PROJECT_ROOT"),
+            snapshot_completeness="unknown",
             oracle_reason="MISSING_PROJECT_ROOT",
             action_version=ACTION_VERSION,
             access_mode="read_existing",
@@ -171,7 +173,11 @@ def build_index_status_response(
         source_fingerprint=snapshot.source_fingerprint,
         index_fingerprint=snapshot.index_fingerprint,
         source_generation=snapshot.source_generation,
-        completeness=snapshot.completeness,
+        # #1811: ``completeness`` speaks the RFC-0040 response vocabulary
+        # (``partial`` -> ``incomplete``) with reason codes; the registry's own
+        # value stays in ``snapshot_completeness``.
+        **snapshot_completeness_fields(snapshot.completeness, snapshot.reason),
+        snapshot_completeness=snapshot.completeness,
         oracle_reason=snapshot.reason,
         action_version=ACTION_VERSION,
         access_mode="read_existing",

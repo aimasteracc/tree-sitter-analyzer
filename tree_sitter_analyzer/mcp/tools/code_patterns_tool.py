@@ -27,7 +27,7 @@ from .utils.anti_patterns import (
 )
 from .utils.element_extractor import extract_elements
 from .utils.file_health_smells import canonical_smell_type, detect_code_smells
-from .utils.parse_validity import is_file_parse_broken
+from .utils.parse_validity import is_file_parse_broken, syntax_error_failure
 
 # Backwards-compatible aliases for the previously-private helpers that
 # unit tests imported by name. The implementations now live in
@@ -606,7 +606,8 @@ def _syntax_error_response(
         return None
     summary_line = f"{file_path} signal=syntax_error verdict=ERROR"
     response: dict[str, Any] = {
-        "success": True,
+        # #1812: the file could not be analyzed, so this is a failure.
+        **syntax_error_failure(file_path),
         "file_path": file_path,
         "language": language,
         "verdict": "ERROR",

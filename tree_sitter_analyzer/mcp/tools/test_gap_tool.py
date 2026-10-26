@@ -149,7 +149,23 @@ class CodeGraphTestGapTool(BaseMCPTool):
         # SAFE when no gaps. result.gap_count is the canonical signal across
         # all three modes (summary/gaps/file).
         verdict = "WARN" if result.gap_count > 0 else "SAFE"
-        response = build_response(verdict=verdict, **payload)
+        # #1812: ``agent_summary`` is a dict on every tool. The one-line text
+        # it used to be now lives in ``summary_line`` (top level and inside).
+        line = payload.pop("agent_summary")
+        response = build_response(
+            verdict=verdict,
+            **payload,
+            summary_line=line,
+            agent_summary={
+                "summary_line": line,
+                "verdict": verdict,
+                "next_step": (
+                    "Write tests for the highest-priority gaps first."
+                    if result.gap_count
+                    else "No untested symbols found; nothing to add."
+                ),
+            },
+        )
         return apply_output_format_to_response(response, output_format)
 
     def _build_response(

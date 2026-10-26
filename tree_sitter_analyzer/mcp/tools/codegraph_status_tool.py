@@ -104,7 +104,9 @@ class CodeGraphStatusTool(BaseMCPTool):
         evidence = classify_index_access(
             snapshot_id=result.get("snapshot_id"),
             source_generation=result.get("source_generation"),
-            completeness=result.get("completeness"),
+            completeness=result.get(
+                "snapshot_completeness", result.get("completeness")
+            ),
             reason=result.get("oracle_reason"),
         )
         enriched = {**result, **evidence}

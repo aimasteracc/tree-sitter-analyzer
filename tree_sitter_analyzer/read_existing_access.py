@@ -204,7 +204,8 @@ def classify_index_access(
     # and read, not whether P0.1 considers its contents complete/fresh.  A
     # successfully read partial capability stays access-available while its
     # existing ``completeness``/``oracle_reason`` fields carry freshness.
-    available = acquired and completeness in {"complete", "partial"}
+    # ``incomplete`` is the response-vocabulary name of ``partial`` (#1811).
+    available = acquired and completeness in {"complete", "partial", "incomplete"}
     if available:
         state = "available"
         access_reason = None
