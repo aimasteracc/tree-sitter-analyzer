@@ -47,6 +47,26 @@ Highlights:
   response guard runs with an empty allowlist. Every failure has `error` and
   a machine code, completeness uses one vocabulary, and the verdict agrees
   with `success` and `agent_summary`.
+- **Release gate numbers** (dogfood round 13). The 7 pinned repos were rich,
+  pydantic, fastapi, axios, gson, zod and hono. Latency was measured against
+  the v3.0.0 wheel on the same machine in one session, ABBA order, with a
+  fresh index per run.
+  - Cold MCP `index action=full`, median of 2 runs:
+    - axios 42.8 → 23.6 s;
+    - gson 42.3 → 23.6 s;
+    - rich 31.2 → 18.7 s;
+    - pydantic 88.4 → 62.1 s.
+  - Warm `nav action=callers`:
+    - pydantic 0.31 → 0.12 s;
+    - fastapi 0.35 → 0.23 s;
+    - rich 0.12 → 0.09 s.
+  - Unscoped callers on unique names (#1798), over 424 targets: answers list
+    495 fewer callers. 493 of them had no proven binding to the target. All
+    18 ground-truth callers among them are still reported as evidence
+    (`NAME_ONLY_INBOUND` / `UNRESOLVED_INBOUND`).
+  - uql: 35 `symbol(...).callers(depth=2)` queries across the 7 repos, 18 of
+    them `complete`. Every row matched a nav-callers BFS, and no `complete`
+    answer missed a caller.
 
 ### Behaviour changes and migration
 
