@@ -14,11 +14,17 @@ TSA 其余写入语句都按连接的忙等待（10 s）等待短暂的锁，期
 
 from __future__ import annotations
 
+import gc
+import logging
+import os
 import sqlite3
 import time
 from collections.abc import Callable
 
 from .admission import INDEX_WRITER_BUSY, IndexWriteAdmissionError
+from .seal_diagnostics import holder_evidence
+
+logger = logging.getLogger(__name__)
 
 #: 与 ``ASTCache`` 写连接的 ``timeout`` 相同：短暂的锁在此期限内等待。
 SEAL_BUSY_TIMEOUT_S = 10.0
@@ -46,26 +52,54 @@ def _is_busy(exc: sqlite3.OperationalError) -> bool:
     return str(exc) in _BUSY_MESSAGES
 
 
+def _switch(connection: sqlite3.Connection) -> str | sqlite3.OperationalError:
+    """切回回滚日志并返回结果模式；忙时返回该忙错误，其他错误原样抛出。"""
+    try:
+        return str(connection.execute("PRAGMA journal_mode=DELETE").fetchone()[0])
+    except sqlite3.OperationalError as exc:
+        if not _is_busy(exc):
+            raise
+        return exc
+
+
 def leave_wal(
     connection: sqlite3.Connection,
     *,
+    database: str | os.PathLike[str] | None = None,
     timeout: float | None = None,
     clock: Callable[[], float] | None = None,
     sleep: Callable[[float], None] | None = None,
 ) -> str:
-    """执行 ``PRAGMA journal_mode=DELETE`` 并返回结果模式；忙时有界重试。"""
+    """执行 ``PRAGMA journal_mode=DELETE`` 并返回结果模式；忙时有界重试。
+
+    #1831：第一次忙时先记下持有者证据，再做一次循环回收——只被引用环引用、
+    尚未关闭的本进程连接在回收时关闭，不必等满期限。
+    """
     clock = clock or time.monotonic
     sleep = sleep or time.sleep
-    deadline = clock() + (SEAL_BUSY_TIMEOUT_S if timeout is None else timeout)
+    budget = SEAL_BUSY_TIMEOUT_S if timeout is None else timeout
+    deadline = clock() + budget
+    outcome = _switch(connection)
+    if isinstance(outcome, str):
+        return outcome
+    first = holder_evidence(database)
+    gc.collect()
+    outcome = _switch(connection)
+    if isinstance(outcome, str):
+        logger.warning("%s released by garbage collection: %s", SEAL_BUSY, first)
+        return outcome
     delay = _FIRST_DELAY_S
-    while True:
-        try:
-            return str(connection.execute("PRAGMA journal_mode=DELETE").fetchone()[0])
-        except sqlite3.OperationalError as exc:
-            if not _is_busy(exc):
-                raise
-            remaining = deadline - clock()
-            if remaining <= 0:
-                raise SealBusy() from exc
-            sleep(min(delay, remaining))
-            delay = min(delay * 2, _MAX_DELAY_S)
+    while (remaining := deadline - clock()) > 0:
+        sleep(min(delay, remaining))
+        delay = min(delay * 2, _MAX_DELAY_S)
+        outcome = _switch(connection)
+        if isinstance(outcome, str):
+            return outcome
+    logger.warning(
+        "%s after %.1f s: first busy %s; at deadline %s",
+        SEAL_BUSY,
+        budget,
+        first,
+        holder_evidence(database),
+    )
+    raise SealBusy() from outcome

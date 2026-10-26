@@ -20,6 +20,13 @@ class _Connection(Protocol):
     def execute(self, query: str, params: tuple[int, ...] = ()) -> _Cursor: ...
 
 
+def finish_cursor(cursor: object) -> None:
+    """结束游标上未读完的语句（无 `close` 的替身游标跳过）。"""
+    close = getattr(cursor, "close", None)
+    if callable(close):
+        close()
+
+
 def _read_admitted_count(
     connection: _Connection,
     *,
@@ -152,16 +159,22 @@ def read_recorded_source_rows(
             "FROM ast_index ORDER BY file_path",
             (cell_byte_budget,) * 3,
         )
-        # 生成器直接填充唯一保留的清单集合，避免额外排序副本。
-        return frozenset(
-            _iter_payload_rows(
-                cursor,
-                admitted_count=admitted_count,
-                check_deadline=check_deadline,
-                cell_byte_budget=cell_byte_budget,
-                total_byte_budget=total_byte_budget,
+        try:
+            # 生成器直接填充唯一保留的清单集合，避免额外排序副本。
+            return frozenset(
+                _iter_payload_rows(
+                    cursor,
+                    admitted_count=admitted_count,
+                    check_deadline=check_deadline,
+                    cell_byte_budget=cell_byte_budget,
+                    total_byte_budget=total_byte_budget,
+                )
             )
-        )
+        finally:
+            # #1831：期限或预算在两行之间中断时，未读完的语句仍持有读事务；异常的
+            # traceback 引用本帧，任何保留该异常的人（日志记录等）都会让游标存活，
+            # 连接关闭后成为僵尸、继续锁住库，私有版本因此无法封存。立即结束语句。
+            finish_cursor(cursor)
     except sqlite3.OperationalError as exc:
         if monotonic() > effective_deadline or "interrupt" in str(exc).lower():
             raise TimeoutError from exc
