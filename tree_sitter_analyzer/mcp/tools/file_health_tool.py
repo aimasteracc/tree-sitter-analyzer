@@ -18,6 +18,7 @@ from .base_tool import (
     detect_language_mismatch,
     language_mismatch_error_response,
 )
+from ._verdict import NOT_ANALYZED_EMPTY_FILE, NOT_ANALYZED_NON_CODE_FILE
 from .utils.element_extractor import extract_elements
 from .utils.file_health_response import (
     _build_signal as _build_signal,
@@ -360,7 +361,10 @@ def _empty_file_response(resolved: str, file_path: str) -> dict[str, Any] | None
         "success": True,
         "file_path": file_path,
         "grade": "N/A",
-        "verdict": "N/A",
+        # #1810: ``N/A`` is not a canonical verdict. Nothing was graded, so
+        # the verdict is informational; ``verdict_reason`` says why.
+        "verdict": "INFO",
+        "verdict_reason": NOT_ANALYZED_EMPTY_FILE,
         "signal": "empty_file",
         "recommendation": "File is empty; nothing to analyze.",
         "code_smells": [],
@@ -374,7 +378,7 @@ def _empty_file_response(resolved: str, file_path: str) -> dict[str, Any] | None
         "agent_summary": {
             "summary_line": f"{file_path} is {detail}",
             "next_step": "skip",
-            "verdict": "N/A",
+            "verdict": "INFO",
         },
         "agent_next_action": {
             "priority": "none",
@@ -401,11 +405,11 @@ def _non_code_file_response(resolved: str, file_path: str) -> dict[str, Any] | N
         "success": True,
         "file_path": file_path,
         "grade": "N/A",
-        # ``verdict`` mirrors safe_to_edit / modification_guard. Use
-        # ``N/A`` first; downstream code that requires one of the
-        # safety vocab strings should treat this as ``SAFE`` (nothing
-        # to break by skipping the analysis).
-        "verdict": "N/A",
+        # #1810: code-quality metrics do not apply, so nothing was graded.
+        # The verdict is informational (canonical ``INFO``, formerly the
+        # off-ladder ``N/A``); ``verdict_reason`` says why.
+        "verdict": "INFO",
+        "verdict_reason": NOT_ANALYZED_NON_CODE_FILE,
         "signal": "non_code_file",
         "recommendation": ("Markdown/config files are not code-quality scored."),
         "code_smells": [],
@@ -420,7 +424,7 @@ def _non_code_file_response(resolved: str, file_path: str) -> dict[str, Any] | N
         "agent_summary": {
             "summary_line": summary_line,
             "next_step": ("Markdown/config files are not code-quality scored."),
-            "verdict": "N/A",
+            "verdict": "INFO",
         },
         "agent_next_action": {
             "priority": "none",

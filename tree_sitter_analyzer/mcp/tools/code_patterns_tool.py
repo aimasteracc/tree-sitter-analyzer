@@ -13,6 +13,7 @@ from typing import Any
 
 from ...utils import setup_logger
 from ..utils.format_helper import apply_output_format_to_response
+from ._verdict import NOT_ANALYZED_EMPTY_FILE
 from .base_tool import BaseMCPTool, mirror_summary_line
 from .security_scanner import detect_security_issues
 from .utils.anti_patterns import (
@@ -553,7 +554,9 @@ def _empty_file_response(
         "success": True,
         "file_path": file_path,
         "language": None,
-        "verdict": "N/A",
+        # #1810: canonical ``INFO`` (formerly ``N/A``) plus the reason.
+        "verdict": "INFO",
+        "verdict_reason": NOT_ANALYZED_EMPTY_FILE,
         "signal": "empty_file",
         "total_patterns": 0,
         # J13 (round-22): ``patterns`` removed as a duplicate of
@@ -572,7 +575,7 @@ def _empty_file_response(
         "agent_summary": {
             "summary_line": summary_line,
             "next_step": "skip",
-            "verdict": "N/A",
+            "verdict": "INFO",
         },
     }
     return apply_output_format_to_response(response, output_format)
