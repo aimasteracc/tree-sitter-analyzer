@@ -1,5 +1,26 @@
 # Migration Guide
 
+## v3.0 → v3.1.0
+
+v3.1.0 adds `search action=uql` and changes no request shape, but several response values move onto the canonical envelope vocabulary. None of them makes an answer more confident. The full list, with the issue for each change, is in the [CHANGELOG](../CHANGELOG.md) under **3.1.0 → Behaviour changes and migration**.
+
+| Surface | v3.0 | v3.1.0 | What to do |
+|---|---|---|---|
+| `index action=status` / `codegraph_status` `completeness` | `partial` (snapshot value) | `incomplete` plus a reason code; snapshot value in `snapshot_completeness` | compare against `incomplete`, or read `snapshot_completeness` |
+| `health action=file` / `code_patterns` on empty or non-code files | `verdict: N/A` | `verdict: INFO` + `verdict_reason: EMPTY_FILE` / `NON_CODE_FILE` | branch on `verdict_reason` |
+| Syntax-error short circuit (`safe_to_edit`, `smart_context`, `check_file_health`, `code_patterns`), failed `ast_diff` | `success: true`, `verdict: ERROR` | `success: false` + `error` + `error_code` (`SYNTAX_ERROR`, `LANGUAGE_UNSUPPORTED`, `AST_DIFF_FAILED`) | treat `success: false` as the failure signal |
+| Unparseable constraint file / failed incremental sync | `CAUTION` / `WARN` | `ERROR` (`CONSTRAINT_CONFIG_INVALID` for constraints) | handle `ERROR` in gates |
+| `codegraph_test_gap` `agent_summary` | string | dict; the text is in `summary_line` | read `summary_line` |
+| Unscoped `nav action=callers` on a name with one definition | lists unproven same-name calls as callers | same answer as with its `file_path`; unproven sites move to `NAME_ONLY_INBOUND` / `NON_CALL_REFERENCES` evidence | read `name_only_sites` / `unresolved_inbound_sites` |
+| `search action=tql_execute` | no completeness; unknown pseudo-class fails at evaluation; unknown attribute returns `[]` | `completeness` + `completeness_reasons`; both rejected at parse time with `error_code` and `fixed_selector` | fix the selector; use `fixed_selector` |
+| `search action=chain` | documented | deprecated in the docs, still works, no warning | prefer `search action=uql` for multi-hop questions |
+| `nav` answers without an index on Windows | `app\doc.py`, absolute paths in `trace` | repo-relative, forward-slash | drop downstream backslash repair |
+| `dead_code` / overview orphans | functions used as values reported dead | not reported; findings carry `confidence` | filter on `confidence` |
+| Automatic index workers | `cpu_count - 1` for 64+ files | one per 64 files, 2 … `cpu_count - 1` | set `TSA_INDEX_WORKERS` |
+| Contributors: pytest `addopts` | `--reruns=1` | no global reruns | mark a genuinely flaky test `flaky(reruns=1)` with an issue |
+
+The extractor version moves from 53 to 54. The next refresh re-extracts every file automatically, so the first refresh after upgrading costs about one cold index.
+
 ## v2.x → v3.0.0
 
 v3.0.0 changes several default outputs and one CLI behaviour, and moves the index format forward. The full list, with the issue for each change, is in the [CHANGELOG](../CHANGELOG.md) under **3.0.0 → Breaking / behaviour changes and migration**.
