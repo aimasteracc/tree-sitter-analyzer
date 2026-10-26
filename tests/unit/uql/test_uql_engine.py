@@ -281,7 +281,7 @@ def test_a_local_callee_without_a_resolved_file_is_unresolved() -> None:
 def test_each_node_is_asked_once_per_query() -> None:
     fb = _backends(target=callers_payload(("a", "src/b.py", 3)))
     _run("symbol('target').callers().tests()", fb)
-    assert fb.calls.count(("callers", "target", None)) == 1
+    assert fb.calls.count(("callers", "target", "src/a.py")) == 1
 
 
 def test_filter_refinement_keeps_coverage_and_narrows_rows() -> None:
@@ -395,7 +395,7 @@ def test_repeated_relation_groups_get_numbered_names() -> None:
 def test_module_scope_rows_are_not_expanded() -> None:
     fb = _backends(target=callers_payload(("<module>", "src/b.py", 1)))
     _run("symbol('target').callers().callers()", fb)
-    assert fb.calls == [("callers", "target", None)]
+    assert fb.calls == [("callers", "target", "src/a.py")]
 
 
 def test_callers_bfs_stops_at_node_budget(monkeypatch) -> None:
@@ -455,4 +455,4 @@ def test_callees_stage_respects_the_node_budget(monkeypatch) -> None:
     assert (
         [c for c in fb.calls if c[0] == "callees"],
         C.RELATION_NODE_BUDGET in ex.stages[1].own.reasons,
-    ) == ([("callees", "t", None)], True)
+    ) == ([("callees", "t", "src/a.py")], True)

@@ -37,18 +37,21 @@ async def index_project(
 
 
 async def query_callers(
-    root: Path, function_name: str, file_path: str
+    root: Path, function_name: str, file_path: str | None
 ) -> dict[str, Any]:
-    """``nav action=callers``，不带函数体、不截断（limit 5000，与 dogfood 一致）。"""
+    """``nav action=callers``，不带函数体、不截断（limit 5000，与 dogfood 一致）。
+
+    ``file_path`` 为 ``None`` 时不带范围提问（#1798）。
+    """
     from tree_sitter_analyzer.mcp.tools.nav_facade import build_nav_facade
 
-    answer: dict[str, Any] = await build_nav_facade(str(root)).execute(
-        {
-            "action": "callers",
-            "function_name": function_name,
-            "file_path": file_path,
-            "include_bodies": False,
-            "limit": 5000,
-        }
-    )
+    arguments: dict[str, Any] = {
+        "action": "callers",
+        "function_name": function_name,
+        "include_bodies": False,
+        "limit": 5000,
+    }
+    if file_path is not None:
+        arguments["file_path"] = file_path
+    answer: dict[str, Any] = await build_nav_facade(str(root)).execute(arguments)
     return answer

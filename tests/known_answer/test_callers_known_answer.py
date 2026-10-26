@@ -13,13 +13,16 @@
 3. 已列出的真值调用点保持列出（``# gt listed``）；
 4. 不列出真值之外的调用方（拒绝虚假声明，#1766）；
 5. 未列出的真值调用点必须出现在证据字段里（不静默丢失，#1764）；
-6. 裸名回答不比限定名回答更有把握（#1740 不变量）。
+6. 裸名回答不比限定名回答更有把握（#1740 不变量）；
+7. 目标名只有一处定义时，带不带 ``file_path`` 答案相同（#1798）。
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import re
+from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -128,6 +131,49 @@ def test_the_bare_answer_is_never_more_confident_than_the_qualified(
         obs.answers["qualified"]["completeness"],
     )
     assert not (pair[0] == "complete" and pair[1] != "complete"), pair
+
+
+def _defines_target_once(case: Case) -> bool:
+    """夹具里目标名恰有一处定义（``def`` / ``function`` / 方法头），独立于 TSA。"""
+    name = re.escape(case.target_name)
+    definition = re.compile(
+        rf"^[ \t]*(?:async[ \t]+)?(?:def|function)[ \t]+{name}\b"
+        rf"|^[ \t]*(?:(?:public|private|protected|static)[ \t]+)*[\w<>\[\]]+[ \t]+{name}\(",
+        re.MULTILINE,
+    )
+    return sum(len(definition.findall(text)) for text in case.files.values()) == 1
+
+
+def _parity_shape(answer: Mapping[str, Any]) -> tuple[Any, ...]:
+    return (
+        answer["completeness"],
+        tuple(answer.get("completeness_reasons") or ()),
+        tuple(sorted((c["file"], c["name"]) for c in answer.get("callers") or [])),
+        tuple(
+            sorted((s["file"], s["line"]) for s in answer.get("name_only_sites") or [])
+        ),
+    )
+
+
+_UNIQUE = [case for case in CASES if _defines_target_once(case)]
+
+
+def test_the_scope_parity_corpus_covers_unique_names() -> None:
+    # 判定器自检：#1798 用例必须在唯一名字集合里，否则下面的参数化静默为空。
+    assert "py-1798-unique-name-scope-parity" in {case.case_id for case in _UNIQUE}
+
+
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize("case", _UNIQUE, ids=[case.case_id for case in _UNIQUE])
+def test_a_unique_name_gets_the_same_answer_with_or_without_file_path(
+    observed: Callable[[Case], Observation], case: Case, mode: str
+) -> None:
+    # 回归：#1798（rich ``Text.join``：不带范围列出 48 个调用方，带范围 7 个）。
+    obs = observed(case)
+    assert _parity_shape(obs.unscoped[mode]) == _parity_shape(obs.answers[mode]), (
+        obs.unscoped[mode],
+        obs.answers[mode],
+    )
 
 
 @pytest.mark.parametrize("case", CASES, ids=_IDS)
