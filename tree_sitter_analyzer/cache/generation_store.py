@@ -495,7 +495,7 @@ class GenerationStore:
                 raise RuntimeError("INDEX_GENERATION_CHECKPOINT_BUSY")
             # 只读 WAL 库的读者会另建可写 -wal/-shm；切回回滚日志使版本只剩主库。
             # #1821：这一步 SQLite 不调用忙处理器，由 leave_wal 按忙等待期限重试。
-            journal = leave_wal(connection)
+            journal = leave_wal(connection, database=database)
         finally:
             connection.close()
         if journal != "delete" or any(

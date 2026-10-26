@@ -261,6 +261,80 @@ def test_seal_still_held_after_the_wait_is_a_typed_busy_error(tmp_path, monkeypa
         retry.close()
 
 
+def test_seal_collects_a_holder_kept_alive_only_by_a_reference_cycle(
+    tmp_path, monkeypatch, caplog
+):
+    # #1831：本进程中已无人使用、只被引用环引用的连接仍持有 SHARED 锁，直到循环
+    # 回收运行；忙重试循环几乎不分配对象，回收可能 10 s 都不发生，于是封存等满
+    # 期限后不发布。第一次忙时回收一次，这样的持有者立即释放。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cache import generation_seal, generation_store
+
+    (tmp_path / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    seal = generation_store.GenerationStore.seal
+
+    def seal_after_abandoned_reader(self, selector):
+        reader = sqlite3.connect(
+            self.database(selector).as_uri() + "?mode=ro", uri=True
+        )
+        reader.execute("SELECT COUNT(*) FROM sqlite_master").fetchone()
+        cycle: list[object] = [reader]
+        cycle.append(cycle)
+        del reader, cycle  # 引用计数不归零：只有循环回收能关闭它
+        return seal(self, selector)
+
+    monkeypatch.setattr(
+        generation_store.GenerationStore, "seal", seal_after_abandoned_reader
+    )
+    monkeypatch.setattr(generation_seal, "SEAL_BUSY_TIMEOUT_S", 0.3)
+    enabled = gc.isenabled()
+    gc.disable()
+    cache = ASTCache(str(tmp_path))
+    try:
+        with caplog.at_level("WARNING", logger=generation_seal.__name__):
+            assert cache.index_project()["published"] is True
+    finally:
+        cache.close()
+        if enabled:
+            gc.enable()
+    assert "released by garbage collection" in caplog.text
+
+
+def test_seal_busy_logs_holder_evidence(tmp_path, monkeypatch, caplog):
+    # #1831：期满仍被占用时，警告日志写出持有者证据（本进程连接数、线程，Linux 上
+    # 还有该 inode 的 POSIX 锁与本进程描述符），CI 偶发时可据此定位持有者。
+    from tree_sitter_analyzer.ast_cache import ASTCache
+    from tree_sitter_analyzer.cache import generation_seal
+
+    (tmp_path / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    holders: list[sqlite3.Connection] = []
+    _hold_build_database(monkeypatch, holders)
+    monkeypatch.setattr(generation_seal, "SEAL_BUSY_TIMEOUT_S", 0.05)
+    cache = ASTCache(str(tmp_path))
+    try:
+        with caplog.at_level("WARNING", logger=generation_seal.__name__):
+            with pytest.raises(generation_seal.SealBusy):
+                cache.index_project()
+    finally:
+        for holder in holders:
+            holder.close()
+        cache.close()
+    assert generation_seal.SEAL_BUSY in caplog.text
+    assert "open_connections" in caplog.text
+    if os.path.exists("/proc/locks"):
+        assert f"POSIX READ {os.getpid()}" in caplog.text
+
+
+def test_holder_evidence_without_a_database_is_still_bounded():
+    from tree_sitter_analyzer.cache.seal_diagnostics import holder_evidence
+
+    evidence = holder_evidence(None)
+    assert evidence["pid"] == os.getpid()
+    assert threading.current_thread().name in evidence["threads"]
+    assert evidence["open_connections"] >= 0
+    assert "posix_locks" not in evidence
+
+
 def test_seal_does_not_retry_errors_other_than_busy():
     from tree_sitter_analyzer.cache.generation_seal import leave_wal
 
