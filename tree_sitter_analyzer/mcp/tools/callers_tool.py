@@ -59,7 +59,11 @@ from .callers_reasons import (
     UNRESOLVED_INBOUND_REASON,
 )
 from .callers_site_rank import rank_sites
-from .callers_target_set import target_set, unattributed_sites
+from .callers_target_set import (
+    sole_definition_file,
+    target_set,
+    unattributed_sites,
+)
 from .codegraph_relation_tool import (
     _STALE_CACHE_WARNING,
     CodeGraphRelationToolMixin,
@@ -527,6 +531,17 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             return func_name
         return f"{receiver}.{func_name}"
 
+    @staticmethod
+    def _sole_definition_file(
+        cache: Any, func_name: str, query_graph: "_QueryGraph"
+    ) -> str | None:
+        """The declaring file of ``func_name``'s only definition, else ``None``."""
+        try:
+            graph = query_graph.get()[0]
+        except Exception:  # noqa: BLE001 — unreadable graph: keep the question as asked
+            return None
+        return sole_definition_file(graph, cache, func_name)
+
     async def _execute_bound(
         self, arguments: dict[str, Any], bound_cache: Any, source_reader: Any
     ) -> dict[str, Any]:
@@ -570,6 +585,12 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         query_graph = _BATCH_GRAPH.get() or _QueryGraph(
             lambda: self._graph_for(bound_cache)
         )
+        cache = bound_cache if bound_cache is not None else self._try_get_cache()
+        # #1798: a name with one definition in the project, asked without
+        # `file_path`, is the same question as asked with its declaring file —
+        # scope it so both go through the same rewrite and the same target set.
+        if not file_path and cache is not None:
+            file_path = self._sole_definition_file(cache, func_name, query_graph)
         func_name = self._single_method_name(
             bound_cache, func_name, file_path, query_graph
         )
@@ -592,7 +613,6 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         possible_callers: list[dict[str, Any]] = []
         # RFC-0038：本次查询涉及的定义；经注解绑定到它们的边对本查询已解析。
         bound_targets: frozenset[tuple[str, int]] = frozenset()
-        cache = bound_cache if bound_cache is not None else self._try_get_cache()
         refusal = self._parse_fallback_refusal(cache, "callers", function=func_name)
         if refusal is not None:
             from ..utils.format_helper import apply_output_format_to_response

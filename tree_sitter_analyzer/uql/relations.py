@@ -131,28 +131,15 @@ def _related_rows(
     return rows
 
 
-def _scope(backends: Backends, row: Row) -> str | None:
-    """为 ``row`` 发送生产者请求时附带的 ``file_path``。
-
-    只有一个已索引定义的裸名称已能唯一指向该定义，因此不带范围发送。
-    若带 ``file_path``，callers 工具会把单独的方法改写为 ``Class.method``
-    (#1759)，而该路径目前明显更不完整 (RFC-0041 §7：在 rich 上
-    ``get_truecolor`` 带范围时列出 2 个 callers (NAME_ONLY_INBOUND)，裸名称时
-    6 个；两者都不完整)。存在多个定义时保留文件，使答案针对这一个定义。
-    跟踪于 #1798 (带范围与裸名称 callers 结果不一致)。
-    """
-    return _target(backends, row)[1]
-
-
 def _target(backends: Backends, row: Row) -> tuple[str, str | None]:
     """针对 ``row`` 的生产者请求所用的 ``(function_name, file_path)``。
 
-    名称有多个定义时，已知所属类的行以 ``Class.method`` 发送：若用裸名称加上
-    含两个同名方法的文件，callers 工具会返回二者的并集 (#1801 上的 Codex)。
+    行有文件时总是带上范围：callers 工具对项目里唯一定义的名字，带不带范围
+    经同一目标集回答、答案相同 (#1798)，不再为唯一名字改发不带范围的请求。
+    已知所属类的行以 ``Class.method`` 发送：若用裸名称加上含两个同名方法的
+    文件，callers 工具会返回二者的并集 (#1801 上的 Codex)。
     """
     if not row.file:
-        return row.name, None
-    if backends.definition_count(row.name) == 1:
         return row.name, None
     if row.cls:
         return f"{row.cls}.{row.name}", row.file

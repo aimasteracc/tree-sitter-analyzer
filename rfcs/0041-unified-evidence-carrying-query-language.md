@@ -119,10 +119,11 @@ Relations consume the RFC-0040 payload unchanged: `completeness`,
 the stage's examined-input evidence under `detail="full"`).
 
 Two producer-request rules keep relation answers faithful to `nav callers`:
-a bare name with exactly one indexed definition is sent unscoped (§7 found
-the `file_path`-scoped form, which `nav callers` rewrites to `Class.method`
-per #1759, measurably less complete; tracked as #1798), and a set holding every definition of a
-name is one unscoped union request. Within one query each (relation, name,
+a row with a file is always sent with that `file_path` (`nav callers` answers a
+name with one definition in the project identically with or without its file,
+#1798; the "send unique names unscoped" workaround §7 was measured with is
+removed), and a set holding every definition of a name is one unscoped union
+request. Within one query each (relation, name,
 file) is asked once.
 
 ### 4. Output, paging, errors
@@ -497,7 +498,7 @@ Hyphae (RFC-0003); jQuery-style chaining (TSA chain DSL).
 Answered by the owner (2026-10-24): `uql` joins the answer cache with an
 IR + index-identity + generation + paging/detail key (done, §5b);
 `tql_execute` reports derived completeness (done, §6); the scoped/bare
-callers divergence is #1798 (workaround kept, RFC-0040 owns the fix);
+callers divergence is #1798 (fixed through the RFC-0040 target set; workaround removed);
 `chain` is deprecated in docs only (done, §6).
 
 1. Tool wall time is above today's best multi-call workflow on most
