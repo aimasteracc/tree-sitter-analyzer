@@ -204,7 +204,8 @@ def classify_index_access(
     # and read, not whether P0.1 considers its contents complete/fresh.  A
     # successfully read partial capability stays access-available while its
     # existing ``completeness``/``oracle_reason`` fields carry freshness.
-    available = acquired and completeness in {"complete", "partial"}
+    # ``incomplete`` is the response-vocabulary name of ``partial`` (#1811).
+    available = acquired and completeness in {"complete", "partial", "incomplete"}
     if available:
         state = "available"
         access_reason = None
@@ -326,6 +327,7 @@ def attach_read_existing_evidence(
     result: dict[str, Any],
     *,
     records: list[dict[str, str]] | None = None,
+    read_completed: bool = False,
 ) -> dict[str, Any]:
     """Attach the exact P0.4 access-evidence fields to one classified result.
 
@@ -335,8 +337,12 @@ def attach_read_existing_evidence(
     capability was acquired. ``access_state`` is ``available`` on success
     and otherwise ``missing``/``unknown`` with the stable failure code as
     ``access_reason`` (RFC-0022 P0.4).
+
+    ``read_completed`` says the snapshot was acquired, read and re-certified
+    after the read. Access was then available even when the tool's own
+    answer is a failure (e.g. a syntax-error short circuit, #1812).
     """
-    if result.get("success") is True:
+    if read_completed or result.get("success") is True:
         state: str | None = "available"
         reason: str | None = None
     else:
@@ -492,6 +498,9 @@ def read_existing_index_consumer(
                         "source_generation": snapshot.source_generation,
                     }
                 ],
+                # The reader ran against the acquired snapshot; a failure it
+                # answers (e.g. SYNTAX_ERROR) is not an access failure.
+                read_completed=True,
             )
             return apply_output_format_to_response(result, output_format)
     except (

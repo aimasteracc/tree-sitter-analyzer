@@ -568,11 +568,11 @@ def test_file_health_empty_file(tmp_path) -> None:
 
     assert result["success"] is True
     assert result["grade"] == "N/A"
-    # J14 (round-22): align with the uppercase canonical casing every
-    # other verdict in the codebase uses. Pre-J14 file_health emitted
-    # lowercase ``n/a`` while code_patterns emitted uppercase ``N/A`` on
-    # the same input, forcing case-insensitive comparisons downstream.
-    assert result["verdict"] == "N/A"
+    # #1810: nothing was graded, so the verdict is the canonical INFO (it
+    # used to be the off-ladder ``N/A``) and ``verdict_reason`` says why.
+    assert result["verdict"] == "INFO"
+    assert result["agent_summary"]["verdict"] == "INFO"
+    assert result["verdict_reason"] == "EMPTY_FILE"
     assert result["signal"] == "empty_file"
     assert "empty" in result["recommendation"].lower()
     # The follow-up actions must be no-ops — agents must not chain refactor

@@ -66,7 +66,7 @@ async def test_new_file_inside_certified_scope_is_detected(tmp_path):
     (tmp_path / "new.py").write_text("value = 2\n")
     result = await CodeGraphStatusTool(str(tmp_path)).execute({"output_format": "json"})
 
-    assert (result["completeness"], result["oracle_reason"]) == (
+    assert (result["snapshot_completeness"], result["oracle_reason"]) == (
         "partial",
         "SOURCE_INDEX_MISMATCH",
     )
@@ -114,7 +114,7 @@ async def test_invalid_persisted_scope_cannot_certify_complete(tmp_path):
 
     result = await CodeGraphStatusTool(str(tmp_path)).execute({"output_format": "json"})
 
-    assert (result["completeness"], result["oracle_reason"]) == (
+    assert (result["snapshot_completeness"], result["oracle_reason"]) == (
         "partial",
         "SOURCE_SCOPE_DESCRIPTOR_INVALID",
     )
@@ -134,7 +134,7 @@ async def test_missing_scope_manifest_cannot_certify_complete(tmp_path):
 
     result = await CodeGraphStatusTool(str(tmp_path)).execute({"output_format": "json"})
 
-    assert (result["completeness"], result["oracle_reason"]) == (
+    assert (result["snapshot_completeness"], result["oracle_reason"]) == (
         "partial",
         "SOURCE_SCOPE_DESCRIPTOR_MISSING",
     )

@@ -24,7 +24,7 @@ from ...read_existing_access import (
 from ...utils import setup_logger
 from ...wire_owner import EDIT_SAFE_ACTION_VERSION
 from .base_tool import BaseMCPTool, mirror_summary_line
-from .utils.parse_validity import is_file_parse_broken
+from .utils.parse_validity import is_file_parse_broken, syntax_error_failure
 from .utils.safe_to_edit_helpers import (
     SafeToEditContext,
     build_file_dependency_view,
@@ -393,7 +393,8 @@ def _syntax_error_response(
         return None
     summary_line = f"{file_path} signal=syntax_error verdict=ERROR"
     return {
-        "success": True,
+        # #1812: the file could not be analyzed, so this is a failure.
+        **syntax_error_failure(file_path),
         "action_version": EDIT_SAFE_ACTION_VERSION,
         "file_path": file_path,
         "edit_type": edit_type,

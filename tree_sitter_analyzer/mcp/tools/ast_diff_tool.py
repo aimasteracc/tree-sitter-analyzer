@@ -30,6 +30,13 @@ from ..utils.format_helper import (
     preformat_diff_snapshot_publish_errors,
 )
 from .base_tool import BaseMCPTool
+from .utils.parse_validity import SYNTAX_ERROR_CODE
+
+#: ``error_code`` for each error-sentinel hunk ``ASTDiffer`` emits (#1812).
+_SENTINEL_ERROR_CODES: dict[str, str] = {
+    "Both sources failed to parse": SYNTAX_ERROR_CODE,
+    "Unsupported language": "LANGUAGE_UNSUPPORTED",
+}
 
 logger = setup_logger(__name__)
 
@@ -404,7 +411,9 @@ class ASTDiffTool(BaseMCPTool):
                 verdict = "NOT_FOUND"
 
             response: dict[str, Any] = {
-                "success": True,
+                # #1812: a diff that could not be computed is a failure, not
+                # a successful answer carrying verdict ERROR.
+                "success": not is_error_hunk,
                 "verdict": verdict,
                 "action_version": EDIT_AST_DIFF_ACTION_VERSION,
                 "summary_line": agent_summary_line,
@@ -421,6 +430,11 @@ class ASTDiffTool(BaseMCPTool):
                 },
                 **result_dict,
             }
+            if is_error_hunk:
+                response["error"] = agent_summary_line
+                response["error_code"] = _SENTINEL_ERROR_CODES.get(
+                    agent_summary_line, "AST_DIFF_FAILED"
+                )
 
             # Issue #552 — apply byte budget when include_node_bodies=True.
             # When the hunks serialise to more than NODE_BODIES_BUDGET bytes,

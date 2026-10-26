@@ -34,6 +34,7 @@ are preserved for backward compatibility, but agents should now branch on
 ``error_type`` + ``agent_summary``.
 """
 
+import re
 from typing import Any
 
 from ..utils.error_sanitizer import (
@@ -119,6 +120,22 @@ _ERROR_RECOVERY_HINTS: list[tuple[str, str, str, str]] = [
         "regex parse error",
         "subprocess",
         "The regex pattern is invalid. Use a valid pattern or pass `glob=True` to match literal globs.",
+        "",
+    ),
+    (
+        # Tools that need the AST cache say "AST cache is empty" before an
+        # index exists; the remedy is building it.
+        "cache is empty",
+        "index_not_ready",
+        "The index has not been built. Run index action=auto, then retry.",
+        "index",
+    ),
+    (
+        # Query / selector languages (hyphae, TQL, UQL) report malformed
+        # input as "... syntax error: ..."; that is the caller's input.
+        "syntax error",
+        "validation",
+        "The query or selector could not be parsed. Fix its syntax and retry.",
         "",
     ),
     (
@@ -540,6 +557,89 @@ def _mirror_verdict(response: dict[str, Any], agent_summary: dict[str, Any]) -> 
         response["verdict"] = agent_value
 
 
+#: Keys that already give a failure a machine-readable identity.
+_FAILURE_CODE_KEYS: tuple[str, ...] = ("error_code", "error_type")
+#: An ``UPPER_SNAKE`` code (two or more words) that opens a failure message.
+_LEADING_CODE = re.compile(r"^([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)(?::|$)")
+
+
+def _first_error_text(errors: Any) -> str | None:
+    """A message for the first entry of an ``errors`` list, if it has one."""
+    if not isinstance(errors, list) or not errors:
+        return None
+    first = errors[0]
+    if isinstance(first, dict):
+        texts = [first.get(key) for key in ("error", "message", "reason")]
+        first = next((t for t in texts if isinstance(t, str) and t), None)
+    if not isinstance(first, str) or not first:
+        return None
+    if len(errors) == 1:
+        return first
+    return f"{len(errors)} errors; first: {first}"
+
+
+def _derived_error_message(response: dict[str, Any], tool_name: str) -> str:
+    """Best available failure text for a response that set no ``error``.
+
+    Uses what the producer did say (a ``message``, its ``errors``, its summary
+    line, a ``status``) before falling back to a generic sentence, so the
+    agent still reads the producer's own words.
+    """
+    message = response.get("message")
+    if isinstance(message, str) and message:
+        return message
+    listed = _first_error_text(response.get("errors"))
+    if listed:
+        return listed
+    summary = response.get("agent_summary")
+    for candidate in (
+        response.get("summary_line"),
+        summary.get("summary_line") if isinstance(summary, dict) else None,
+    ):
+        if isinstance(candidate, str) and candidate:
+            return candidate
+    status = response.get("status")
+    if isinstance(status, str) and status:
+        return f"{tool_name} failed with status {status!r}"
+    return f"{tool_name} failed without reporting an error message"
+
+
+def ensure_failure_identity(response: Any, tool_name: str = "tool") -> Any:
+    """Give a ``success: False`` response an ``error`` and a machine code.
+
+    The envelope contract (``tool_response.envelope_violations``) requires
+    every failure to carry a human ``error`` string (#1809) and a
+    machine-readable ``error_code`` / ``error_type`` (#1808). Producers that
+    already set them keep their values; a missing ``error`` is derived from
+    the response itself, and a missing code is classified from the message
+    with the same table the MCP boundary uses for raised exceptions.
+
+    Runs for every ``BaseMCPTool.execute`` call (see ``_strict_params``) and
+    inside :func:`ensure_canonical_error_envelope`, so direct callers and MCP
+    clients see the same fields. Mutates and returns ``response``; anything
+    that is not a failure dict is returned untouched.
+    """
+    if not isinstance(response, dict) or response.get("success") is not False:
+        return response
+    error = response.get("error")
+    if error is None or error == "":
+        error = _derived_error_message(response, tool_name)
+        response["error"] = error
+    has_code = any(
+        isinstance(response.get(key), str) and response.get(key)
+        for key in _FAILURE_CODE_KEYS
+    )
+    if not has_code:
+        # Producers often lead the message with their own code
+        # ("COMBINED_SCORE_UNAVAILABLE: ..."); that code beats a guess.
+        leading = _LEADING_CODE.match(str(error))
+        if leading:
+            response["error_code"] = leading.group(1)
+        else:
+            response["error_type"] = _classify(str(error))[0]
+    return response
+
+
 def ensure_canonical_error_envelope(
     tool_name: str,
     response: dict[str, Any],
@@ -557,6 +657,7 @@ def ensure_canonical_error_envelope(
     if response.get("success") is not False:
         return response
 
+    ensure_failure_identity(response, tool_name)
     error_msg = response.get("error") or response.get("message") or "Unknown error"
     if not isinstance(error_msg, str):
         error_msg = str(error_msg)

@@ -21,6 +21,7 @@ from typing import Any
 from .coverage import (
     CURSOR_GENERATION_UNVERIFIED,
     INCOMPLETE,
+    QUERY_NOT_EXECUTED,
     UPSTREAM_INCOMPLETE,
     UPSTREAM_UNKNOWN,
     Coverage,
@@ -285,6 +286,9 @@ def error_payload(error: QueryError, query: Any) -> dict[str, Any]:
         "error_detail": detail,
         "query": query if isinstance(query, str) else None,
         "completeness": "unknown",
+        # #1811: a non-complete answer always names its reason.
+        "completeness_reason": QUERY_NOT_EXECUTED,
+        "completeness_reasons": [QUERY_NOT_EXECUTED],
         "agent_summary": {
             "summary_line": f"uql: {error.code}",
             "verdict": "ERROR",

@@ -13,6 +13,7 @@ from typing import Any
 
 from ...utils import setup_logger
 from ..utils.format_helper import apply_output_format_to_response
+from ._verdict import NOT_ANALYZED_EMPTY_FILE
 from .base_tool import BaseMCPTool, mirror_summary_line
 from .security_scanner import detect_security_issues
 from .utils.anti_patterns import (
@@ -26,7 +27,7 @@ from .utils.anti_patterns import (
 )
 from .utils.element_extractor import extract_elements
 from .utils.file_health_smells import canonical_smell_type, detect_code_smells
-from .utils.parse_validity import is_file_parse_broken
+from .utils.parse_validity import is_file_parse_broken, syntax_error_failure
 
 # Backwards-compatible aliases for the previously-private helpers that
 # unit tests imported by name. The implementations now live in
@@ -553,7 +554,9 @@ def _empty_file_response(
         "success": True,
         "file_path": file_path,
         "language": None,
-        "verdict": "N/A",
+        # #1810: canonical ``INFO`` (formerly ``N/A``) plus the reason.
+        "verdict": "INFO",
+        "verdict_reason": NOT_ANALYZED_EMPTY_FILE,
         "signal": "empty_file",
         "total_patterns": 0,
         # J13 (round-22): ``patterns`` removed as a duplicate of
@@ -572,7 +575,7 @@ def _empty_file_response(
         "agent_summary": {
             "summary_line": summary_line,
             "next_step": "skip",
-            "verdict": "N/A",
+            "verdict": "INFO",
         },
     }
     return apply_output_format_to_response(response, output_format)
@@ -603,7 +606,8 @@ def _syntax_error_response(
         return None
     summary_line = f"{file_path} signal=syntax_error verdict=ERROR"
     response: dict[str, Any] = {
-        "success": True,
+        # #1812: the file could not be analyzed, so this is a failure.
+        **syntax_error_failure(file_path),
         "file_path": file_path,
         "language": language,
         "verdict": "ERROR",

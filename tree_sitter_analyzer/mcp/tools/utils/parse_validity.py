@@ -280,6 +280,28 @@ def _is_null_byte_false_positive(file_path: str, language: str) -> bool:
     return not is_parse_broken(retry.tree)
 
 
+#: ``error_code`` of every syntax-error short circuit (#1812).
+SYNTAX_ERROR_CODE = "SYNTAX_ERROR"
+
+
+def syntax_error_failure(file_path: str) -> dict[str, Any]:
+    """The failure identity every syntax-error short circuit carries.
+
+    #1812: these responses used to say ``success: True`` beside
+    ``verdict: ERROR``. The tool could not analyze the file, so the answer is
+    a failure with a human ``error`` and a machine ``error_code``; the rest of
+    each tool's envelope (``signal``, ``verdict``, its own keys) is unchanged.
+    """
+    return {
+        "success": False,
+        "error": (
+            f"{file_path} fails to parse (tree-sitter reported syntax errors); "
+            "fix the syntax before analyzing it"
+        ),
+        "error_code": SYNTAX_ERROR_CODE,
+    }
+
+
 def syntax_error_envelope(
     file_path: str,
     *,
@@ -304,7 +326,7 @@ def syntax_error_envelope(
     """
     summary_line = f"{file_path} signal=syntax_error verdict=ERROR"
     payload: dict[str, Any] = {
-        "success": True,
+        **syntax_error_failure(file_path),
         "file_path": file_path,
         "verdict": "ERROR",
         "signal": "syntax_error",
@@ -325,7 +347,9 @@ def syntax_error_envelope(
 
 
 __all__ = [
+    "SYNTAX_ERROR_CODE",
     "file_input_diagnostics",
+    "syntax_error_failure",
     "is_parse_broken",
     "is_file_parse_broken",
     "syntax_error_envelope",

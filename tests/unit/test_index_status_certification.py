@@ -365,7 +365,7 @@ async def test_call_graph_marker_requires_exact_sqlite_integers(
 
     result = await CodeGraphStatusTool(str(tmp_path)).execute({"output_format": "json"})
 
-    assert (result["completeness"], result["oracle_reason"]) == (
+    assert (result["snapshot_completeness"], result["oracle_reason"]) == (
         "partial",
         "CALL_GRAPH_INCOMPLETE",
     )
