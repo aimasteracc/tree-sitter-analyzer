@@ -20,6 +20,9 @@ from pathlib import Path
 from typing import Any
 
 _MAX_ITEMS = 20
+#: Linux 的锁表与本进程描述符目录；其他平台不存在，对应证据省略。
+PROC_LOCKS = Path("/proc/locks")
+PROC_FDS = Path("/proc/self/fd")
 
 
 def holder_evidence(database: str | os.PathLike[str] | None) -> dict[str, Any]:
@@ -27,46 +30,42 @@ def holder_evidence(database: str | os.PathLike[str] | None) -> dict[str, Any]:
     evidence: dict[str, Any] = {
         "pid": os.getpid(),
         "threads": [thread.name for thread in threading.enumerate()][:_MAX_ITEMS],
-        "open_connections": _open_connection_count(),
+        "open_connections": open_connection_count(),
     }
-    if database is None:
-        return evidence
-    path = Path(database)
     try:
-        inode = path.stat().st_ino
+        inode = Path(database).stat().st_ino if database is not None else None
     except OSError:
+        inode = None
+    if inode is None:
         return evidence
-    locks = _posix_locks(inode)
+    locks = posix_locks(inode)
     if locks is not None:
         evidence["posix_locks"] = locks
-    descriptors = _own_descriptors(path)
+    descriptors = own_descriptors(Path(str(database)))
     if descriptors is not None:
         evidence["own_descriptors"] = descriptors
     return evidence
 
 
-def _open_connection_count() -> int:
+def open_connection_count() -> int:
+    """本进程中尚未关闭的 ``sqlite3.Connection`` 数（含其他线程创建的）。"""
     count = 0
-    try:
-        objects = gc.get_objects()
-    except Exception:  # nosec B110 - 诊断尽力而为
-        return -1
-    for obj in objects:
+    for obj in gc.get_objects():
         if isinstance(obj, sqlite3.Connection):
             try:
                 obj.total_changes  # noqa: B018 - 已关闭的连接在此抛出
-            except sqlite3.ProgrammingError:
-                continue
-            except Exception:  # nosec B112 - 其他线程的连接等
-                pass
+            except sqlite3.ProgrammingError as exc:
+                # 其他线程创建的连接同样抛出 ProgrammingError，但它仍打开。
+                if "closed" in str(exc):
+                    continue
             count += 1
     return count
 
 
-def _posix_locks(inode: int) -> list[str] | None:
-    """``/proc/locks`` 中该 inode 的锁行（仅 Linux）；不可读时为 None。"""
+def posix_locks(inode: int) -> list[str] | None:
+    """锁表中该 inode 的锁（``类型 读写 进程号 起 止``）；锁表不可读时为 None。"""
     try:
-        lines = Path("/proc/locks").read_text(encoding="ascii").splitlines()
+        lines = PROC_LOCKS.read_text(encoding="ascii").splitlines()
     except (OSError, UnicodeDecodeError):
         return None
     # 行格式：``1: POSIX ADVISORY READ <pid> <maj>:<min>:<inode> <start> <end>``；
@@ -80,19 +79,17 @@ def _posix_locks(inode: int) -> list[str] | None:
     return found[:_MAX_ITEMS]
 
 
-def _own_descriptors(path: Path) -> int | None:
-    """本进程指向 ``path`` 的描述符数（仅有 ``/proc/self/fd`` 的平台）。"""
-    directory = Path("/proc/self/fd")
+def own_descriptors(path: Path) -> int | None:
+    """本进程指向 ``path`` 的描述符数；没有描述符目录时为 None。"""
     try:
-        entries = list(directory.iterdir())
-        target = os.path.realpath(path)
+        entries = list(PROC_FDS.iterdir())
     except OSError:
         return None
+    target = os.path.realpath(path)
     count = 0
     for entry in entries:
         try:
-            if os.path.realpath(os.readlink(entry)) == target:
-                count += 1
+            count += os.path.realpath(os.readlink(entry)) == target
         except OSError:
             continue
     return count
