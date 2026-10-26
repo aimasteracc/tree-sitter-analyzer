@@ -68,7 +68,11 @@ async def indexed_project(tmp_path):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
     result = await CodeGraphFullIndexTool(str(tmp_path)).execute({"mode": "full"})
-    assert result["published"] is True
+    # #1831：未发布时报告类型化原因，而不是只有 ``False is True``。
+    assert result["published"] is True, {
+        key: result.get(key)
+        for key in ("error_code", "error", "phase", "summary_line", "elapsed_seconds")
+    }
     call_graph_memo.clear()
     yield str(tmp_path)
     call_graph_memo.clear()

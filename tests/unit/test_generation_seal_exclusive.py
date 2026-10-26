@@ -141,6 +141,48 @@ def test_seal_finds_no_other_connection_on_the_build_database(
     assert leaks == []
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["full", "incremental"])
+async def test_full_index_tool_leaves_no_connection_on_the_build_database(
+    tmp_path, monkeypatch, mode
+):
+    # #1831：index action=full 走 run_full_index，而不是 ASTCache.index_project；
+    # 它的各阶段（共享缓存、增量同步、统计、清单盖戳）同样不得在封存时留下连接。
+    from tree_sitter_analyzer.cache import generation_store
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "__init__.py").write_text(
+        "from .core import helper\n", encoding="utf-8"
+    )
+    (tmp_path / "pkg" / "core.py").write_text(
+        "def helper(x):\n    return x + 1\n\nhelper(0)\n", encoding="utf-8"
+    )
+    (tmp_path / "app.py").write_text(
+        "from pkg.core import helper\n\ndef main():\n    return helper(3)\n",
+        encoding="utf-8",
+    )
+    tracker = _Tracker()
+    monkeypatch.setattr(sqlite3, "connect", tracker.connect)
+    seal = generation_store.GenerationStore.seal
+    leaks: list[str] = []
+
+    def checked_seal(self, selector):
+        leaks.extend(tracker.open_on(str(self.database(selector))))
+        return seal(self, selector)
+
+    monkeypatch.setattr(generation_store.GenerationStore, "seal", checked_seal)
+    enabled = gc.isenabled()
+    gc.disable()
+    try:
+        result = await CodeGraphFullIndexTool(str(tmp_path)).execute({"mode": mode})
+    finally:
+        if enabled:
+            gc.enable()
+    assert result["published"] is True, result.get("error")
+    assert leaks == [], "\n\n".join(leaks)
+
+
 def _hold_build_database(monkeypatch, holders: list[sqlite3.Connection]) -> None:
     """封存前在私有构建库上打开一个空闲读者（WAL 模式下持有 SHARED 锁）。"""
     from tree_sitter_analyzer.cache import generation_store
