@@ -91,7 +91,8 @@
       be computed, now answer `success: false` with `error` and `error_code`
       (`SYNTAX_ERROR`, `LANGUAGE_UNSUPPORTED`, `AST_DIFF_FAILED`). They used
       to answer `success: true` with `verdict: ERROR`. The rest of each
-      envelope is unchanged.
+      envelope is unchanged. On a `read_existing` route the snapshot was still
+      read, so `access_state` stays `available` for these failures.
     - `check_constraints` with an unparseable rule file answers
       `verdict: ERROR` / `error_code: CONSTRAINT_CONFIG_INVALID` instead of
       `CAUTION`.
