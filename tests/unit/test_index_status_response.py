@@ -216,7 +216,7 @@ class TestAuthoritativeSnapshotOracle:
             {"access_mode": "read_existing", "output_format": "json"}
         )
 
-        assert (result["completeness"], result["oracle_reason"]) == (
+        assert (result["snapshot_completeness"], result["oracle_reason"]) == (
             "partial",
             "CALL_GRAPH_INCOMPLETE",
         )
@@ -237,7 +237,7 @@ class TestAuthoritativeSnapshotOracle:
             {"access_mode": "read_existing", "output_format": "json"}
         )
 
-        assert (result["completeness"], result["oracle_reason"]) == (
+        assert (result["snapshot_completeness"], result["oracle_reason"]) == (
             "partial",
             "CALL_GRAPH_INCOMPLETE",
         )
