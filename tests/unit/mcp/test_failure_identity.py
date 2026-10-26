@@ -62,6 +62,15 @@ def test_error_type_is_classified_from_the_message() -> None:
     assert result["error_type"] == "project_not_set"
 
 
+def test_empty_cache_is_an_index_not_ready_failure() -> None:
+    result = ensure_failure_identity(
+        {"success": False, "error": "AST cache is empty. Run ast_cache first."},
+        "demo",
+    )
+
+    assert result["error_type"] == "index_not_ready"
+
+
 def test_query_syntax_errors_are_validation_failures() -> None:
     result = ensure_failure_identity(
         {"success": False, "error": "Hyphae syntax error: unexpected ')'"}, "demo"

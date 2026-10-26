@@ -69,7 +69,8 @@
     values are never overwritten. `pulse_batch` (`TARGETS_FAILED`),
     `codegraph_incremental_sync` (`SYNC_INCOMPLETE`) and `verify_plan` /
     `edit action=verify` now name the cause in `error`. Messages containing
-    "syntax error" classify as `validation`.
+    "syntax error" classify as `validation`, and "AST cache is empty" as
+    `index_not_ready` (both were `internal`).
   - **No `N/A` verdict** (#1810). `check_file_health` / `health action=file`
     (empty and non-code files) and `code_patterns` (empty files) answer
     `verdict: INFO` with `verdict_reason: EMPTY_FILE` or `NON_CODE_FILE`.

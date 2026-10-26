@@ -122,6 +122,14 @@ _ERROR_RECOVERY_HINTS: list[tuple[str, str, str, str]] = [
         "",
     ),
     (
+        # Tools that need the AST cache say "AST cache is empty" before an
+        # index exists; the remedy is building it.
+        "cache is empty",
+        "index_not_ready",
+        "The index has not been built. Run index action=auto, then retry.",
+        "index",
+    ),
+    (
         # Query / selector languages (hyphae, TQL, UQL) report malformed
         # input as "... syntax error: ..."; that is the caller's input.
         "syntax error",
