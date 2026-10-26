@@ -3,7 +3,7 @@
 ``java_plugin.py`` IS a negative fixture in this repository, and the detector
 must flag it UNSAFE-grade, or agents refactor it again and re-burn a session.
 
-The unit test ``tests/unit/security/test_fixture_detector.py::
+The unit test ``tests/unit/security/test_fixture_detector_canary.py::
 TestRealRepoRegression`` pins the same behaviour on a small tree that copies
 the deciding shapes. This test keeps the canary on the real repository. It
 scans every test file (~7 s locally, past 30 s on a loaded macOS runner,
