@@ -173,7 +173,7 @@ async def test_ambiguous_importlib_attribute_call_keeps_incomplete(tmp_path) -> 
 
 @pytest.mark.asyncio
 async def test_unique_importlib_attribute_call_is_listed(tmp_path) -> None:
-    # #1643：`collector.digest_bytes(...)` 按名字列出。#1669：`collector` 是
+    # #1643 / #1798：`collector.digest_bytes(...)` 作为证据报告。#1669：`collector` 是
     # `importlib.import_module` 的返回值，接收者未被证明，名字唯一也不能把它
     # 绑定为确定调用边——列表因此只是下界。
     support = (
@@ -189,10 +189,21 @@ async def test_unique_importlib_attribute_call_is_listed(tmp_path) -> None:
     root = await _index_files(tmp_path, {"support.py": support, "test_c.py": loader})
 
     result = await _callers(root, "digest_bytes")
+    scoped = await CodeGraphCallersTool(root).execute(
+        {
+            "function_name": "digest_bytes",
+            "file_path": "support.py",
+            "include_bodies": False,
+        }
+    )
 
-    assert sorted(c["name"] for c in result["callers"]) == ["bundle", "test_digest"]
+    # #1798: the unproven call is evidence, not a listed caller. Only the
+    # unscoped form used to list it; it now gets the scoped answer.
+    assert sorted(c["name"] for c in result["callers"]) == ["bundle"]
     assert result["completeness"] == "incomplete"
-    assert result["completeness_reasons"] == ["UNRESOLVED_INBOUND"]
+    assert result["completeness_reasons"] == scoped["completeness_reasons"]
+    assert result["callers"] == scoped["callers"]
+    assert "test_c.py" in repr(result)
 
 
 @pytest.mark.asyncio

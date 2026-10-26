@@ -2,7 +2,9 @@
 
 #1740 / #1759 / #1773：裸名与限定名各自做范围查找，三次出现分歧（裸名漏掉
 NAME_ONLY 门、限定名跳过声明文件守卫、两者列出的调用方不同）。这里是唯一的
-归一处：调用方先把唯一方法定义的裸名改写为 ``Class.method``（#1759），再由
+归一处：调用方先把不带范围、项目里唯一定义的名字补上其定义文件
+（:func:`sole_definition_file`，#1798），再把唯一方法定义的裸名改写为
+``Class.method``（#1759），再由
 :func:`target_set` 给出规范名、是否限定、按名计数的成员名与检查范围；之后每道
 检查都只读这个目标集，``Checked.scope`` 必须等于 :attr:`TargetSet.scope`。
 """
@@ -43,6 +45,44 @@ def is_qualified_name(name: str) -> bool:
     )
 
 
+def sole_definition_file(graph: Any, cache: Any, name: str) -> str | None:
+    """#1798：项目里唯一定义 ``name`` 的文件；不唯一或读不到时为 ``None``。
+
+    唯一定义的名字，不带 ``file_path`` 与带上其定义文件问的是同一个问题，答案
+    必须相同。此前不带范围的裸名走另一条路径：把接收者未被证明的同名调用
+    （``", ".join``、``os.path.join``）直接列为调用方（rich：``Text.join`` 48 个，
+    带范围时 7 个）。调用方据此把范围补成定义文件，四种问法（裸名 / 限定名 ×
+    带 / 不带范围）经同一次 #1759 改写与同一个目标集回答。
+
+    只在可证明唯一时补：调用图里成员名恰有一个函数 / 方法定义（限定名还须接收者
+    一致），且索引里声明该名字的文件（含变量等其他定义）只有这一个。
+    """
+    if graph is None or any(ch in name for ch in ":/\\"):
+        return None
+    qualified = is_qualified_name(name)
+    owner, _, member = name.rpartition(".") if qualified else ("", "", name)
+    if not member:
+        return None
+    try:
+        refs = list(graph.resolve_targets(member))
+        declaring = cache.symbol_declaring_files(member) if cache is not None else None
+    except Exception:  # noqa: BLE001 — unreadable graph or index: keep the question as asked
+        return None
+    if len(refs) != 1:
+        return None
+    ref = refs[0]
+    if getattr(ref, "name", None) != member:
+        return None
+    if qualified and getattr(ref, "receiver", None) != owner:
+        return None
+    file_path = str(getattr(ref, "file_path", "") or "").replace("\\", "/")
+    if not file_path or declaring is None:
+        return None
+    if {str(path).replace("\\", "/") for path in declaring} != {file_path}:
+        return None
+    return file_path
+
+
 def target_set(name: str, file_path: str | None) -> TargetSet:
     """规范名 ``name``（已做 #1759 改写）对应的目标集。"""
     qualified = is_qualified_name(name)
@@ -71,4 +111,10 @@ def unattributed_sites(cache: Any, target: TargetSet) -> int | None:
     )
 
 
-__all__ = ["TargetSet", "is_qualified_name", "target_set", "unattributed_sites"]
+__all__ = [
+    "TargetSet",
+    "is_qualified_name",
+    "sole_definition_file",
+    "target_set",
+    "unattributed_sites",
+]

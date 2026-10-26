@@ -6,7 +6,7 @@ import asyncio
 import json
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +32,8 @@ class Observation:
     #: RFC-0041 跨名批量：一次 ``execute_batch``（查询作用域内）与逐个单次调用的答复
     #: 不一致的输入；应为空。
     batch_mismatches: tuple[str, ...] = ()
+    #: #1798：同两种模式、但不带 ``file_path`` 的回答。
+    unscoped: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
 
     def callers(self, mode: str) -> list[ListedCaller]:
         """该模式列出的调用方（TS 缺失的 ``end_line`` 按源码补齐）。"""
@@ -121,11 +123,15 @@ async def _observe(case: Case, root: Path) -> Observation:
         mode: await query_callers(root, case.query_name(mode), case.target.file)
         for mode in MODES
     }
+    unscoped = {
+        mode: await query_callers(root, case.query_name(mode), None) for mode in MODES
+    }
     return Observation(
         case=case,
         answers=answers,
         sites=oracle_sites(case),
         batch_mismatches=await _batch_mismatches(root, case),
+        unscoped=unscoped,
     )
 
 

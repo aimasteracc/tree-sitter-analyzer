@@ -184,6 +184,34 @@ OVERLOAD = Case(
     },
 )
 
+# #1798（rich ``Text.join`` / ``Color.get_truecolor``）：项目里唯一定义的方法，与
+# ``str.join`` / ``os.path.join`` 同名。不带 ``file_path`` 的裸名曾把这些同名调用
+# 列为调用方（rich 48 个 vs 带范围 7 个）；四种问法必须给出同一个答案。
+UNIQUE_NAME_SCOPE_PARITY = Case(
+    case_id="py-1798-unique-name-scope-parity",
+    issue="#1798",
+    target_name="join",
+    owner="Text",
+    files={
+        "rich/__init__.py": "",
+        "rich/text.py": (
+            "class Text:\n    def join(self, lines):  # target\n        return lines\n"
+        ),
+        "rich/render.py": (
+            "import os\n\n"
+            "from .text import Text\n\n\n"
+            "def bound(lines):\n"
+            "    return Text().join(lines)  # gt listed\n\n\n"
+            "def untyped(text, lines):\n"
+            "    return text.join(lines)  # gt\n\n\n"
+            "def strings(parts):\n"
+            '    return ", ".join(parts)\n\n\n'
+            "def paths(root):\n"
+            '    return os.path.join(root, "x")\n'
+        ),
+    },
+)
+
 PYTHON_CASES: tuple[Case, ...] = (
     RICH_ALIAS,
     RICH_ATTRIBUTE,
@@ -191,4 +219,5 @@ PYTHON_CASES: tuple[Case, ...] = (
     COMPUTED_IN_DECLARING_FILE,
     *PROTOCOL_CASES,
     OVERLOAD,
+    UNIQUE_NAME_SCOPE_PARITY,
 )
