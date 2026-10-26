@@ -275,7 +275,6 @@ class TestGinSmokeQualification:
         with pytest.raises(gin_smoke.QualificationError, match="JSON object required"):
             self._validate(bundle)
 
-    @pytest.mark.flaky(reruns=1)  # #1819: Windows runner I/O stall in write_bytes
     def test_embedded_oracle_field_is_rejected(self, tmp_path: Path):
         bundle = self._bundle(tmp_path)
         path = "manifest.json"

@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -461,7 +462,7 @@ class TestCacheHitIsHonestlyMeasured:
         assert _warm_row(recorder).count == 1
 
     def test_the_measured_hit_cost_includes_the_key_derivation(
-        self, edit_facade, tmp_path
+        self, edit_facade, monkeypatch
     ) -> None:
         """Review P2-1: ``p50_ns > 0`` did not guard anything.
 
@@ -470,30 +471,41 @@ class TestCacheHitIsHonestlyMeasured:
         sub-microsecond dict lookup and ``deepcopy`` left inside the window
         satisfy ``> 0``, so the assertion could not tell the bug from the fix.
 
-        The real invariant is a RELATIONSHIP between two measured quantities:
-        the recorded warm cost must be at least the same order as a separately
-        timed ``build_answer_key``, because that derivation is the dominant
-        cost of serving a hit. No wall-clock ceiling is asserted.
+        The invariant is structural: the key derivation runs INSIDE the
+        measured window of the hit. The first fix compared the warm p50 with a
+        separately wall-clocked ``build_answer_key`` (``>= key_ns / 2``), which
+        flaked on loaded CI runners. Here the recorder reads an injected clock
+        that only the key derivation advances, so the recorded warm cost is
+        exactly the derivation cost when the wiring is right and exactly zero
+        when the derivation is moved outside the window.
         """
+        from tree_sitter_analyzer import latency
+        from tree_sitter_analyzer.mcp.tools import facade_tool
+
+        key_cost_ns = 7_000_000
+        clock = {"now": 0}
+        derivations: list[tuple[str, str]] = []
+        real_build_answer_key = facade_tool.build_answer_key
+
+        def counting_build_answer_key(tool, action, arguments, project_root):
+            derivations.append((tool, action))
+            clock["now"] += key_cost_ns
+            return real_build_answer_key(tool, action, arguments, project_root)
+
+        monkeypatch.setattr(
+            latency, "time", SimpleNamespace(perf_counter_ns=lambda: clock["now"])
+        )
+        monkeypatch.setattr(facade_tool, "build_answer_key", counting_build_answer_key)
+
         recorder = _reset_recorder()
         _run_edit_safe(edit_facade)
         second = _run_edit_safe(edit_facade)
         assert second["provenance"]["served_from"] == "cache"
 
-        # Time the key derivation on its own, same root, best of several.
-        samples = []
-        for _ in range(5):
-            started = time.perf_counter_ns()
-            build_answer_key("edit", "safe", {"file_path": "target.py"}, str(tmp_path))
-            samples.append(time.perf_counter_ns() - started)
-        key_ns = sorted(samples)[len(samples) // 2]
-
-        measured_ns = _warm_row(recorder).p50_ns
-        print(f"measured_value: warm_p50_ns={measured_ns} key_derivation_ns={key_ns}")
-        # Half of the standalone derivation is a generous floor for scheduling
-        # noise while still being orders of magnitude above the ~1us that the
-        # reverted (key-outside-window) wiring records.
-        assert measured_ns >= key_ns / 2
+        # One derivation per call: the cold compute and the warm hit.
+        assert derivations == [("edit", "safe"), ("edit", "safe")]
+        # The hit's recorded cost is exactly its one key derivation.
+        assert _warm_row(recorder).p50_ns == key_cost_ns
 
 
 # --------------------------------------------------------------------------
