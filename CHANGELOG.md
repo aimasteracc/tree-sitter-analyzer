@@ -47,24 +47,30 @@ Highlights:
   response guard runs with an empty allowlist. Every failure has `error` and
   a machine code, completeness uses one vocabulary, and the verdict agrees
   with `success` and `agent_summary`.
-- **Release gate numbers** (dogfood round 13). The 7 pinned repos were rich,
-  pydantic, fastapi, axios, gson, zod and hono. Latency was measured against
-  the v3.0.0 wheel on the same machine in one session, ABBA order, with a
-  fresh index per run.
+- **Release gate numbers** (dogfood round 14). The 7 pinned repos were rich,
+  pydantic, fastapi, axios, gson, zod and hono. 0 wrong `complete` in bare and
+  qualified mode, by the ground truth and by the in-repo oracle
+  (`scripts/wrong_complete`) over every stored Python answer. Latency was
+  measured against the v3.0.0 wheel on the same machine in one session, ABBA
+  order, with a fresh index per run. A laptop suspend during the run discarded
+  and redid the affected runs.
   - Cold MCP `index action=full`, median of 2 runs:
-    - axios 42.8 → 23.6 s;
-    - gson 42.3 → 23.6 s;
-    - rich 31.2 → 18.7 s;
-    - pydantic 88.4 → 62.1 s.
+    - axios 23.6 → 14.0 s;
+    - gson 46.4 → 28.8 s;
+    - rich 23.9 → 14.8 s;
+    - pydantic 79.9 → 64.8 s (noisy: individual runs ranged 36–119 s).
   - Warm `nav action=callers`:
-    - pydantic 0.31 → 0.12 s;
-    - fastapi 0.35 → 0.23 s;
-    - rich 0.12 → 0.09 s.
+    - pydantic 0.18 → 0.14 s;
+    - fastapi 0.12 → 0.11 s;
+    - rich 0.15 → 0.08 s.
+  - First `nav action=callers` in a fresh process, processes 2–4 (persisted
+    stores hit): fastapi 3.4 → 2.9 s, with 44% fewer `lstat` calls
+    (17.9k → 10.0k). On the other 6 repos it was within noise of v3.0.0.
   - Unscoped callers on unique names (#1798), over 424 targets: answers list
     495 fewer callers. 493 of them had no proven binding to the target. All
-    18 ground-truth callers among them are still reported as evidence
+    10 ground-truth callers among them are still reported as evidence
     (`NAME_ONLY_INBOUND` / `UNRESOLVED_INBOUND`).
-  - uql: 35 `symbol(...).callers(depth=2)` queries across the 7 repos, 18 of
+  - uql: 39 `symbol(...).callers(depth=2)` queries across the 7 repos, 23 of
     them `complete`. Every row matched a nav-callers BFS, and no `complete`
     answer missed a caller.
 
@@ -291,6 +297,15 @@ explicit.
 
 ### Fixed
 
+- **An ambiguous Python base class no longer drops override dispatch**
+  (#1834, #1836). When a base class was imported through a package re-export
+  and another class in the project had the same name, the `extends` edge stayed
+  a `class:Name` placeholder. Inherited `self.m()` calls in the base were then
+  not recorded as possibly dispatching to a subclass override, and
+  `nav action=callers` answered `complete` with 0 callers for the override
+  (fastapi `HTTPBearer403.make_not_authenticated_error`, 3 sites in
+  `fastapi/security/http.py`). The answer is now `unknown` with
+  `NAME_ONLY_INBOUND`. The bug was already present in v3.0.0.
 - **A unique name gets the same callers with or without `file_path`** (#1798).
   `nav action=callers` gives a name with one definition in the project its
   declaring file (`callers_target_set.sole_definition_file`) before the #1759
