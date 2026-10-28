@@ -2,6 +2,222 @@
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-10-29
+
+v3.1.0 is a minor release. It adds one MCP action (`search action=uql`), makes
+the `complete` answer of `nav action=callers` proof-carrying, and moves every
+MCP tool response onto one envelope contract. No request shape changes and no
+action is removed, but several response values change. Read **Behaviour
+changes and migration** below before upgrading an agent or script that
+branches on `completeness`, `verdict`, `success` or `agent_summary`. The index
+is rebuilt automatically on the next refresh (extractor version 53 → 54).
+
+Highlights:
+
+- **One query language for multi-hop questions: `search action=uql`**
+  (RFC-0041, #1800, #1801, #1802, #1804, #1814, #1820). A pipeline such as
+  `symbol('X').callers(depth=2).untested()` runs in one call. Every stage
+  reports its own completeness and reason codes, and the total is `complete`
+  only when every stage is. Relations reuse `nav action=callers` and pass its
+  completeness through unchanged. On the RFC-0041 benchmark (8 questions × 2
+  repos) uql needed 8 calls instead of 21–22 and about half the tokens
+  (−49% on TSA, −56% on rich), with 0 wrong `complete` in every arm. CLI
+  parity: `--uql`.
+- **Proof-carrying `complete`** (RFC-0040, #1799). `nav action=callers`
+  answers `complete` only when all 12 checks in a closed registry ran over the
+  queried target set and found nothing. A check that was skipped fails closed,
+  and the answer names it.
+- **A wrong-`complete` oracle suite in CI** (#1796). A 15-case known-answer
+  corpus built from real bugs, an oracle that never imports TSA, Hypothesis
+  properties on generated projects, and a nightly sweep of rich and gson. Each
+  case is checked in both bare and qualified form.
+- **Text search completes on Windows** (#1783). `search action=text` on cold
+  clones: rich 30.4 s → 2.9 s, axios 27.9 s → 3.0 s. Both used to fail with
+  `SOURCE_SCAN_BUDGET_EXCEEDED`.
+- **Faster cold index** (#1825). Pool workers start concurrently, the
+  certification tree encodes faster, no-op edge resets are skipped, and the
+  automatic worker count scales with the file count. Cold index, median of
+  3: rich 25.8 → 16.5 s, fastapi 59.2 → 40.1 s. The index contents and the
+  certification root are byte-identical.
+- **Far fewer dead-code false positives** (#1790). Functions used as values
+  (dispatch tables, arguments, decorators, implicit entry points, module-scope
+  uses) are no longer reported dead. On this repository: 1,874 → 202 reported
+  functions, none new. Findings now carry `confidence`.
+- **One envelope contract for every MCP tool response** (#1807–#1812). The
+  response guard runs with an empty allowlist. Every failure has `error` and
+  a machine code, completeness uses one vocabulary, and the verdict agrees
+  with `success` and `agent_summary`.
+- **Release gate numbers** (dogfood round 14). The 7 pinned repos were rich,
+  pydantic, fastapi, axios, gson, zod and hono. 0 wrong `complete` in bare and
+  qualified mode, by the ground truth and by the in-repo oracle
+  (`scripts/wrong_complete`) over every stored Python answer. Latency was
+  measured against the v3.0.0 wheel on the same machine in one session, ABBA
+  order, with a fresh index per run. A laptop suspend during the run discarded
+  and redid the affected runs.
+  - Cold MCP `index action=full`, median of 2 runs:
+    - axios 23.6 → 14.0 s;
+    - gson 46.4 → 28.8 s;
+    - rich 23.9 → 14.8 s;
+    - pydantic 79.9 → 64.8 s (noisy: individual runs ranged 36–119 s).
+  - Warm `nav action=callers`:
+    - pydantic 0.18 → 0.14 s;
+    - fastapi 0.12 → 0.11 s;
+    - rich 0.15 → 0.08 s.
+  - First `nav action=callers` in a fresh process, processes 2–4 (persisted
+    stores hit): fastapi 3.4 → 2.9 s, with 44% fewer `lstat` calls
+    (17.9k → 10.0k). On the other 6 repos it was within noise of v3.0.0.
+  - Unscoped callers on unique names (#1798), over 424 targets: answers list
+    495 fewer callers. 493 of them had no proven binding to the target. All
+    10 ground-truth callers among them are still reported as evidence
+    (`NAME_ONLY_INBOUND` / `UNRESOLVED_INBOUND`).
+  - uql: 39 `symbol(...).callers(depth=2)` queries across the 7 repos, 23 of
+    them `complete`. Every row matched a nav-callers BFS, and no `complete`
+    answer missed a caller.
+
+### Behaviour changes and migration
+
+None of these makes an answer more confident than before. Each one either adds
+a field, moves a value onto the canonical vocabulary, or makes a failure
+explicit.
+
+- **Index status says `incomplete`, not `partial`** (#1811).
+  - **What changed:** `codegraph_status` / `index action=status` report
+    `completeness: incomplete` where they used to pass the snapshot value
+    `partial` through. The snapshot value moves to the new
+    `snapshot_completeness` field. A status that is not `complete` names a
+    reason code (`INDEX_NOT_CERTIFIED`, `MISSING_INDEX`,
+    `INDEX_BUILD_IN_PROGRESS`, …), and the raw reason stays in
+    `oracle_reason`.
+  - **Migration:** compare against `incomplete`, or read
+    `snapshot_completeness` for the old value.
+- **No `N/A` verdict** (#1810).
+  - **What changed:** `health action=file` / `check_file_health` (empty and
+    non-code files) and `code_patterns` (empty files) answer `verdict: INFO`
+    with `verdict_reason: EMPTY_FILE` or `NON_CODE_FILE`. `grade: "N/A"` and
+    `signal` are unchanged.
+  - **Migration:** branch on `verdict_reason` instead of `verdict == "N/A"`.
+- **Syntax errors answer `success: false`** (#1812).
+  - **What changed:** the syntax-error short circuit of `safe_to_edit`,
+    `smart_context`, `check_file_health` and `code_patterns`, and an
+    `ast_diff` that could not be computed, answer `success: false` with
+    `error` and `error_code` (`SYNTAX_ERROR`, `LANGUAGE_UNSUPPORTED`,
+    `AST_DIFF_FAILED`). They used to answer `success: true` with
+    `verdict: ERROR`. The rest of the envelope is unchanged.
+  - **Migration:** treat `success: false` + `error_code` as the failure
+    signal. Code that only read `verdict` still sees `ERROR`.
+- **Failures are `ERROR`, not `CAUTION` / `WARN`** (#1812).
+  - **What changed:** `check_constraints` with an unparseable rule file answers
+    `verdict: ERROR` / `error_code: CONSTRAINT_CONFIG_INVALID` (was
+    `CAUTION`). A failed incremental sync answers `verdict: ERROR` (was
+    `WARN`). `advise_parser_readiness` failures no longer default to `INFO`.
+    A success without a top-level verdict takes `agent_summary.verdict`
+    instead of `INFO`.
+  - **Migration:** gates that treated `CAUTION` / `WARN` as "proceed with
+    care" for these tools must handle `ERROR`.
+- **Every failure carries `error` and `error_type`** (#1808, #1809).
+  - **What changed:** missing `error` / `error_type` fields are filled from the
+    response's own message. Messages containing "syntax error" classify as
+    `validation`, and "AST cache is empty" as `index_not_ready` (both were
+    `internal`). Values set by the tool are never overwritten.
+  - **Migration:** none, unless you matched `error_type: internal` for those
+    two cases.
+- **`codegraph_test_gap` `agent_summary` is a dict** (#1812).
+  - **What changed:** like every other tool, `agent_summary` is now a dict. The
+    text it used to hold is in `summary_line`.
+  - **Migration:** read `summary_line` for the old string.
+- **Unscoped `nav action=callers` on a unique name no longer lists unproven
+  same-name calls** (#1798).
+  - **What changed:** a name with exactly one definition in the project, asked
+    without `file_path`, is now answered exactly as if its declaring file had
+    been given (all four forms, bare / qualified × scoped / unscoped, share one
+    target set). Before, the unscoped bare form listed every same-name call
+    whose receiver was not proven, so rich `Text.join` listed 48 callers
+    (`", ".join`, `os.path.join`, …) against 7 when scoped. Those sites now
+    appear as evidence (`NAME_ONLY_INBOUND`, `NON_CALL_REFERENCES`) instead of
+    as callers.
+  - **Migration:** read `name_only_sites` / `unresolved_inbound_sites` if you
+    relied on the longer unscoped list. Names with several definitions are
+    unchanged.
+- **Index format: extractor version 53 → 54** (#1773).
+  - **What changed:** Python `@overload` stubs are marked in `symbols_json`.
+  - **Migration:** nothing to do. The next refresh re-extracts every file
+    written by extractor 53, so the first refresh after the upgrade costs
+    about a cold index.
+- **`tql_execute` reports completeness, and rejects bad selectors at parse
+  time** (RFC-0041 §6).
+  - **What changed:** `search action=tql_execute` keeps its request and
+    response shape and gains `completeness` and `completeness_reasons`.
+    Edge, history, rule and branch predicates answer `unknown` with
+    `SELECTOR_PREDICATE_UNPROVEN`. An unknown pseudo-class is rejected when the
+    selector is parsed (`error: "TQL syntax error: unknown pseudo-class ..."`,
+    `error_code`, `fixed_selector`); it used to fail at evaluation with
+    `"TQL evaluation failed: ..."`. An unknown attribute is now rejected; it
+    used to evaluate to `[]`. `#name` rows carry `class` when the per-file
+    function rows have it.
+  - **Migration:** a selector with a typo now fails instead of returning no
+    rows. Use `fixed_selector` where it is given.
+- **`search action=chain` is deprecated in the docs** (RFC-0041 §6).
+  - **What changed:** nothing at run time. `chain` keeps working, emits no
+    warning, and parses through the same UQL parser. Docs and skills route
+    multi-hop questions to `search action=uql`.
+  - **Migration:** prefer `uql` for the questions it covers. `chain`'s
+    answer-pack steps (`explore`, `include`, `uml`, `semantic`, …) have no UQL
+    equivalent yet; the UQL parser rejects them with `UQL_CHAIN_ONLY_STAGE`.
+- **Forward-slash paths in every `nav` answer** (#1813).
+  - **What changed:** without an index on Windows, `nav` answers named files as
+    `app\doc.py`, and `trace` returned absolute OS paths. They now use
+    repo-relative, forward-slash paths, like indexed answers. File-scoped
+    lookups such as `file_path="app/util.py"` now match on Windows instead of
+    falling back to every definition.
+  - **Migration:** none, unless you repaired backslashes downstream.
+- **Dead-code results** (#1790).
+  - **What changed:** `dead_code` and `codegraph_overview` orphans drop
+    functions that are used as values, and each finding has `confidence`
+    (`high` / `low`) and `confidence_reason`, with high/low counts.
+    Low-confidence findings are sorted last.
+  - **Migration:** expect much shorter lists; filter on `confidence` if you
+    want only high-confidence findings.
+- **Automatic index worker count scales with the project** (#1825).
+  - **What changed:** the automatic count is one worker per 64 files, at least
+    2 and at most `cpu_count - 1` (was `cpu_count - 1` for every project of 64+
+    files). Explicit counts and `TSA_INDEX_WORKERS` are unchanged.
+  - **Migration:** set `TSA_INDEX_WORKERS` to keep the old count.
+- **No global pytest reruns** (#1806). Contributors only: `--reruns=1` is gone
+  from `addopts`, and the runtime contract rejects it. A test that really
+  needs a retry opts in with `@pytest.mark.flaky(reruns=1)` and an issue
+  reference. Installed packages are not affected.
+
+### Added
+
+- **`search action=uql`: the unified, evidence-carrying query language**
+  (RFC-0041, #1800, #1801). One grammar and IR replace the separate TQL and
+  chain parsers. A query is a TQL selector or a pipeline of stages:
+  - sources `symbol(...)` / `select(...)`;
+  - relations `callers(depth)`, `tests()`, `impact(depth)`, `callees()`;
+  - refinements `filter` / `exclude` / `untested()` / `tested()` / `take` /
+    `sort`.
+
+  Each stage reports its own and its effective completeness. Output is
+  compact by default (`detail="full"` for structured rows with `depth` /
+  `via` provenance). Paging uses stateless, generation-pinned cursors (`limit`
+  1–500, default 50). Errors are typed values from a closed set of 18 codes
+  with `fixed_query` where the fix is mechanical. Source stages revalidate
+  every indexed file within a 2 s deadline (`SOURCE_RECHECK_DEADLINE`). The
+  answer cache admits uql answers. CLI: `--uql`, `--uql-limit`,
+  `--uql-cursor`, `--uql-detail`. Discovery: `search action=help
+  target_action=uql`.
+- **Batched `nav callers` for uql relation stages** (#1802, #1820).
+  `execute_batch` answers a stage's requests under one certified index read
+  and one call graph, and the work that does not depend on the name (alias
+  imports, ES alias edges, the reference-vocabulary prefilter, `stat`) is
+  shared across names within one answer. Every input still runs all RFC-0040
+  checks, and its payload is byte-identical to a single call. Single `nav`
+  calls outside a query are unchanged.
+- **Multi-hop routing** (#1804). The `search` and `nav` descriptions, help
+  text, `caller_tree` `next_step` and the skills point multi-hop questions at
+  `search action=uql`. After a callers answer, `test_map` or callers on a
+  listed caller appends a uql follow-up hint.
+
 ### Tests
 
 - **Wrong-`complete` detection for `nav action=callers` now runs in CI.** Until
@@ -33,8 +249,33 @@
     - it sweeps rich and gson at the commits pinned by the dogfood rounds, and
       fails on any wrong `complete` that a reviewed exclusion does not cover;
     - it uploads the scores as an artifact.
+- **No global `--reruns=1`** (#1806, #1818, #1829). A global rerun hid flaky
+  tests and flipped mutation detections. Tests that relied on it were fixed
+  or marked `flaky(reruns=1)` with an issue (#1815, #1816). The unit-test time
+  budget is judged on CPU time as well as wall time, Windows CI keeps pytest
+  temp on the runner work disk (Windows suite 650–740 s → 307–470 s), and
+  timing-ratio assertions became exact work counts.
+- **Fail-closed CI quality gate and mutation ratchet** (#1803).
+  `scripts/ci_required_gate.py` fails the gate when a selected lane is
+  skipped, cancelled or missing. The mutation baseline runs one job per
+  module, fails on mutmut errors, and ratchets the unkilled count per module
+  (`tests/effectiveness/mutation_ratchet.json`).
 
 ### Performance
+
+- **Faster cold index** (#1825). Index contents are identical (canonical dumps
+  match table by table, and the certification root is byte-identical):
+  - spawn-pool workers start concurrently instead of one after another
+    (13 workers, construction plus first task: 7.22 s → 3.92 s);
+  - the certification tree encodes `str` / `int` / `None` cells on a fast path
+    and re-encodes a group key only when it changes;
+  - edge-resolution resets that would write identical values are skipped
+    (fastapi: 65.9k–72.9k → 52.4k writer calls);
+  - the automatic worker count scales with the file count (see Behaviour
+    changes).
+
+  End to end, median of 3 interleaved runs on fresh clones: rich cold index
+  25.8 → 16.5 s, fastapi 59.2 → 40.1 s. No-op refresh is unchanged.
 
 - **First `nav action=callers` after an edit + refresh is faster on Windows**
   (#1778). Profiling showed that #1776 did not cause the slower first query
@@ -56,6 +297,51 @@
 
 ### Fixed
 
+- **An ambiguous Python base class no longer drops override dispatch**
+  (#1834, #1836). When a base class was imported through a package re-export
+  and another class in the project had the same name, the `extends` edge stayed
+  a `class:Name` placeholder. Inherited `self.m()` calls in the base were then
+  not recorded as possibly dispatching to a subclass override, and
+  `nav action=callers` answered `complete` with 0 callers for the override
+  (fastapi `HTTPBearer403.make_not_authenticated_error`, 3 sites in
+  `fastapi/security/http.py`). The answer is now `unknown` with
+  `NAME_ONLY_INBOUND`. The bug was already present in v3.0.0.
+- **A unique name gets the same callers with or without `file_path`** (#1798).
+  `nav action=callers` gives a name with one definition in the project its
+  declaring file (`callers_target_set.sole_definition_file`) before the #1759
+  rewrite, so the bare, qualified, scoped and unscoped forms share one RFC-0040
+  target set. The scope is added only when it is provable: exactly one
+  function or method definition in the call graph, and exactly one declaring
+  file in the index. uql drops its workaround of sending unique names
+  unscoped. See Behaviour changes.
+- **Forward-slash repo-relative paths in every `nav` answer** (#1813).
+  `CallGraph.build`, `query_symbol_search`, the lineage grep fallback and
+  `trace` normalise paths once where they are produced.
+- **`dead_code` no longer reports functions used as values** (#1790). A
+  lexical scan finds non-call uses of the still-dead candidates: a use inside
+  a function becomes a reference edge, and a module-scope use or a
+  registering decorator becomes a root. Implicit entry points (`__init__`,
+  `__call__`, `visit_*`) are roots. Findings in files whose dotted module path
+  cannot be resolved are `confidence: low` and sorted last; the dogfood
+  backlog ignores them. The reference index is cached while source mtimes and
+  sizes are unchanged.
+- **uql `callees()` lists same-file callees** (#1814). Callees resolved to a
+  definition in the caller's file (`callee_resolution: "local"`) were dropped
+  and the stage was labelled `CALLEE_UNRESOLVED`.
+- **Seal honours the busy timeout when leaving WAL** (#1821, #1822). SQLite's
+  WAL → DELETE switch never calls the busy handler, so any other connection
+  holding the private build database made seal fail at once with a raw
+  `database is locked`. `leave_wal()` now retries within the same 10 s budget,
+  and a holder still present at the deadline raises the typed, retryable
+  `INDEX_GENERATION_SEAL_BUSY` → `INDEX_WRITER_BUSY`. Nothing is published.
+- **Interrupted certification reads no longer leave a zombie lock** (#1831).
+  When a deadline fired between two rows of the manifest certification read,
+  the cursor stayed active, and anything that kept the exception (log capture,
+  a log record with `exc_info`) kept the read lock, so the run was not
+  published. `read_recorded_source_rows`, `validate_snapshot_schema` and
+  `_query_visible_columns` finish their cursor in `finally`, and `leave_wal`
+  collects reference cycles once before waiting and logs bounded holder
+  evidence when it gives up.
 - **MCP tool responses now satisfy the envelope contract** (#1808–#1812). The
   tool-response guard from #1807 ran with 50 allowlisted violations; the
   allowlist is now empty. All changes add fields or move a value onto the
