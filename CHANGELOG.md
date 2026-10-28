@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## [3.1.0] - 2026-10-26
+## [3.1.0] - 2026-10-29
 
 v3.1.0 is a minor release. It adds one MCP action (`search action=uql`), makes
 the `complete` answer of `nav action=callers` proof-carrying, and moves every
