@@ -47,6 +47,7 @@ class SubclassIndex:
         self._children: dict[str, set[str]] | None = None
         self._parents: dict[str, set[str]] | None = None
         self._class_counts: dict[str, int] | None = None
+        self._counts_loaded = False
         self._anonymous: dict[str, list[tuple[str, int, int]]] | None = None
 
     def anonymous_spans(self, class_names: set[str]) -> list[tuple[str, int, int]]:
@@ -87,6 +88,11 @@ class SubclassIndex:
                         # #1743：Java 的 extends / implements 目标以 ``class:Name``
                         # 占位（名字未解析到节点）；按类名记入子类关系。
                         parent = _placeholder_class(target)
+                    elif not parent and _is_python_node(source):
+                        # #1834：第二遍解析留下的 Python 占位——基类名在项目里有歧义
+                        # （同名类不止一个）。哪个都可能是基类，按类名记入子类关系，
+                        # 覆写因此仍是可能目标；静默丢弃它会让覆写答 complete。
+                        parent = self._project_class(_python_placeholder_class(target))
                     if child and parent and child != parent:
                         children[parent].add(child)
             except Exception:  # nosec B110 — 缺表 / 旧索引：没有子类证据。
@@ -106,18 +112,32 @@ class SubclassIndex:
 
     def unique_class(self, class_name: str) -> bool:
         """#1765：项目里恰有一个名为 ``class_name`` 的类（读库失败视为否）。"""
-        if self._class_counts is None:
-            counts: dict[str, int] = {}
+        counts = self._counts()
+        return counts is not None and counts.get(class_name, 0) == 1
+
+    def _project_class(self, class_name: str) -> str:
+        """#1834：项目里可能有名为 ``class_name`` 的类时返回它，否则（外部基类）为空串。
+
+        读不到类表时无法排除，按可能处理（失败即关闭）。
+        """
+        if not class_name:
+            return ""
+        counts = self._counts()
+        return class_name if counts is None or counts.get(class_name) else ""
+
+    def _counts(self) -> dict[str, int] | None:
+        """项目类名 -> 定义个数；读库失败为 None。"""
+        if not self._counts_loaded:
+            self._counts_loaded = True
             try:
                 rows = self._cache.get_conn().execute(
                     "SELECT name, count(*) FROM ast_symbol_rows "
                     "WHERE kind = 'class' GROUP BY name"
                 )
-                counts = {str(name): int(count) for name, count in rows}
+                self._class_counts = {str(name): int(count) for name, count in rows}
             except Exception:  # nosec B110 — 缺表 / 旧索引：没有类证据。
-                counts = {}
-            self._class_counts = counts
-        return self._class_counts.get(class_name, 0) == 1
+                self._class_counts = None
+        return self._class_counts
 
     def ancestors(self, class_name: str) -> set[str] | None:
         """#1765：``class_name`` 的全部传递基类名；没有任何基类证据时为 None。"""
@@ -199,6 +219,21 @@ _PLACEHOLDER_PARENT_SUFFIXES = (
 def _is_java_node(node_id: Any) -> bool:
     """Java（#1743）与 JS/TS（#1765）：第二遍解析不处理它们的 ``extends`` 占位。"""
     return str(node_id).rsplit(":", 2)[0].endswith(_PLACEHOLDER_PARENT_SUFFIXES)
+
+
+def _is_python_node(node_id: Any) -> bool:
+    """#1834：Python 类节点（其 ``class:`` 占位是第二遍解析未能定下的基类）。"""
+    return str(node_id).rsplit(":", 2)[0].endswith((".py", ".pyi"))
+
+
+def _python_placeholder_class(node_id: Any) -> str:
+    """``class:pkg.Name`` / ``class:Name[T]`` 占位中的简单类名；不是占位时为空串。"""
+    text = str(node_id)
+    if not text.startswith("class:"):
+        return ""
+    name = text[len("class:") :].split("[", 1)[0].split("(", 1)[0].strip()
+    simple = name.rsplit(".", 1)[-1]
+    return simple if simple.isidentifier() else ""
 
 
 def _placeholder_class(node_id: Any) -> str:
