@@ -58,6 +58,9 @@ CACHEABLE_ACTIONS: frozenset[tuple[str, str]] = frozenset(
     {
         ("edit", "safe"),
         ("health", "file"),
+        # RFC-0041：一次管道回答会扇出为许多次 nav callers 调用 (热缓存下也要
+        # 数秒)；其缓存键额外加入解析后的 IR 与索引身份 (见 ``_route_key_args``)。
+        ("search", "uql"),
     }
 )
 
@@ -344,6 +347,32 @@ def extra_inputs_digest(project_root: str) -> str:
     )
 
 
+def _route_key_args(
+    tool: str, action: str, arguments: dict[str, Any], project_root: str
+) -> dict[str, Any] | None:
+    """原始参数之外、按路由区分的缓存键输入 (返回 ``None`` 表示不可缓存)。
+
+    RFC-0041 ``search action=uql``：答案取决于*解析后*的查询 (同一 IR 的两种
+    写法共享一个条目；无法解析的查询永不缓存)、``limit`` / ``cursor`` /
+    ``detail``，以及索引内容 —— 未改源码但改变了行的刷新必须未命中，因此索引
+    身份 (``relation_freshness.index_identity``) 是键的一部分。源码新鲜度由
+    generation 分量负责，每次查找时重新计算。
+    """
+    if (tool, action) != ("search", "uql"):
+        return arguments
+    from ..mcp.tools.relation_freshness import index_identity
+    from ..uql.errors import Err
+    from ..uql.parser import parse_query
+
+    parsed = parse_query(arguments.get("query"))
+    if isinstance(parsed, Err):
+        return None
+    keyed = {k: v for k, v in arguments.items() if k != "query"}
+    keyed["query_ir"] = repr(parsed.value.stages)
+    keyed["index_identity"] = repr(index_identity(project_root))
+    return keyed
+
+
 def build_answer_key(
     tool: str,
     action: str,
@@ -370,10 +399,13 @@ def build_answer_key(
             # this as a stamp is what made every answer permanently cacheable
             # for the 11 extensions outside GRAPH_SOURCE_EXTS.
             return None
+        routed = _route_key_args(tool, action, arguments, project_root)
+        if routed is None:
+            return None
         return AnswerKey(
             tool=tool,
             action=action,
-            normalized_args=normalize_args(arguments, project_root),
+            normalized_args=normalize_args(routed, project_root),
             generation=generation,
             producer_version=producer_version(tool, action),
             extra_inputs=extra_inputs_digest(project_root),

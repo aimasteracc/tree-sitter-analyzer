@@ -140,13 +140,17 @@ def after_publish(project_root: str) -> dict[str, Any] | None:
     # #1723：刷新的范围回填有界时，按同一范围增量更新上一张图——显式刷新同样适用，
     # 因为增量的工作量与改动成正比，紧接着的第一次调用只需等它很短的时间。
     plan = call_graph_incremental.take_plan(project_root)
-    incremental = plan is not None and _has_base(project_root, plan)
+    refusal = _base_refusal(project_root, plan) if plan is not None else None
+    incremental = plan is not None and refusal is None
     full = _watcher_driven() or _always()
     if not enabled() or not (full or incremental):
         return None
     key = _key(project_root)
     previous = last_outcome(project_root)
     job = _Job(plan if incremental else None, full)
+    status: dict[str, Any] = {"incremental": incremental}
+    if refusal is not None:
+        status["incremental_reason"] = refusal
     with _lock:
         if _closed:
             return None
@@ -154,7 +158,7 @@ def after_publish(project_root: str) -> dict[str, Any] | None:
         if running is not None and running.is_alive():
             # 在途构建结束后为当时的活动版本再构图一次；增量基础那时已是新图。
             _again[key] = job
-            return {"scheduled": True, "queued": True, "previous": previous}
+            return {"scheduled": True, "queued": True, **status, "previous": previous}
         # 调度时即登记将要读取的库，使紧随其后的 ``nav`` 调用等这次构建。
         _building[key] = _active_database(project_root)
         _settled[key] = threading.Event()
@@ -166,20 +170,35 @@ def after_publish(project_root: str) -> dict[str, Any] | None:
         )
         _threads[key] = thread
         thread.start()
-    return {"scheduled": True, "incremental": incremental, "previous": previous}
+    return {"scheduled": True, **status, "previous": previous}
 
 
-def _has_base(project_root: str, plan: Any) -> bool:
-    """内存里有可作增量基础的图：读的正是刷新所基于的版本。"""
+def _base_refusal(project_root: str, plan: Any) -> str | None:
+    """内存里没有可作增量基础的图时的原因；有（读的正是刷新所基于的版本）时为 None。
+
+    原因与 ``call_graph_incremental.update`` 的同名原因一致；认证快照上的图明确不作
+    基础（#1793，``CERTIFIED_SNAPSHOT_NOT_A_BASE``）。
+    """
     from pathlib import Path
 
     from . import call_graph_memo
 
+    if not plan.files and not plan.names and not plan.changed:
+        return "BACKFILL_NOT_SCOPED:" + str(plan.reason)
     if plan.base_generation is None:
-        return False
+        # 范围有界，但刷新所基于的已发布版本未知（例如首次发布）。
+        return "BASE_GENERATION_UNKNOWN"
     previous = call_graph_memo.latest(str(Path(project_root).resolve()))
-    memo = previous.get("_incremental") if previous is not None else None
-    return isinstance(memo, dict) and memo.get("generation") == plan.base_generation
+    if previous is None:
+        return "NO_PREVIOUS_GRAPH"
+    memo = previous.get("_incremental")
+    if not isinstance(memo, dict):
+        return "PREVIOUS_GRAPH_NOT_ALIGNED"
+    if memo.get("refused"):
+        return str(memo["refused"])
+    if memo.get("generation") != plan.base_generation:
+        return "PREVIOUS_GRAPH_OTHER_GENERATION"
+    return None
 
 
 class _Job:

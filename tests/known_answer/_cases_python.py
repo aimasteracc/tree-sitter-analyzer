@@ -1,0 +1,290 @@
+"""Python 已知答案用例（#1740 / #1758 / #1759 / #1772 / #1773）。"""
+
+from __future__ import annotations
+
+from tests.known_answer._cases import Case
+
+# #1740（rich 形态）：局部类别名 ``_Style = Style`` 与未类型化的属性接收者 ``self.console``。
+RICH_ALIAS = Case(
+    case_id="py-1740-local-class-alias",
+    issue="#1740",
+    target_name="from_color",
+    owner="Style",
+    files={
+        "rich/__init__.py": "",
+        "rich/style.py": (
+            "class Style:\n"
+            "    @classmethod\n"
+            "    def from_color(cls, color=None):  # target\n"
+            "        return cls()\n"
+        ),
+        "rich/ansi.py": (
+            "from .style import Style\n\n\n"
+            "def decode(text):\n"
+            "    _Style = Style\n"
+            "    return _Style.from_color(text)  # gt\n\n\n"
+            "def direct(text):\n"
+            "    return Style.from_color(text)  # gt listed\n"
+        ),
+    },
+)
+
+RICH_ATTRIBUTE = Case(
+    case_id="py-1740-untyped-attribute-receiver",
+    issue="#1740",
+    target_name="set_alt_screen",
+    owner="Console",
+    files={
+        "rich/__init__.py": "",
+        "rich/console.py": (
+            "class Console:\n"
+            "    def set_alt_screen(self, enable=True):  # target\n"
+            "        return enable\n"
+        ),
+        "rich/live.py": (
+            "class Live:\n"
+            "    def __init__(self, console):\n"
+            "        self.console = console\n\n"
+            "    def start(self):\n"
+            "        self.console.set_alt_screen(True)  # gt\n"
+        ),
+        "rich/bound.py": (
+            "from .console import Console\n\n\n"
+            "def run():\n"
+            "    console = Console()\n"
+            "    return console.set_alt_screen(False)  # gt listed\n"
+        ),
+    },
+)
+
+# #1758（rich ``Live.process_renderables``）：切片拷贝后接收者无类型，同文件声明了抽象方法。
+UNRESOLVED_OVERRIDE = Case(
+    case_id="py-1758-unresolved-receiver-other-file-override",
+    issue="#1758",
+    target_name="process_renderables",
+    owner="Live",
+    files={
+        "rich/__init__.py": "",
+        "rich/console.py": (
+            "from abc import ABC, abstractmethod\n"
+            "from typing import List\n\n\n"
+            "class RenderHook(ABC):\n"
+            "    @abstractmethod\n"
+            "    def process_renderables(self, renderables):\n"
+            "        raise NotImplementedError\n\n\n"
+            "class Console:\n"
+            "    def __init__(self):\n"
+            "        self._render_hooks: List[RenderHook] = []\n\n"
+            "    def render(self, renderables):\n"
+            "        render_hooks = self._render_hooks[:]\n"
+            "        for hook in render_hooks:\n"
+            "            renderables = hook.process_renderables(renderables)  # gt\n"
+            "        return renderables\n"
+        ),
+        "rich/live.py": (
+            "from .console import RenderHook\n\n\n"
+            "class Live(RenderHook):\n"
+            "    def process_renderables(self, renderables):  # target\n"
+            "        return renderables\n"
+        ),
+    },
+)
+
+# #1759：声明文件里的计算调用（``_format_map[code](...)``）不能是方法的调用。
+COMPUTED_IN_DECLARING_FILE = Case(
+    case_id="py-1759-computed-call-in-declaring-file",
+    issue="#1759",
+    target_name="alt_screen",
+    owner="Control",
+    files={
+        "rich/__init__.py": "",
+        "rich/control.py": (
+            "_format_map = {1: str, 2: repr}\n\n\n"
+            "class Control:\n"
+            "    def alt_screen(self, *parameters):  # target\n"
+            "        return [_format_map[code](*parameters) for code in (1, 2)]\n\n"
+            "    def home(self):\n"
+            "        return self.alt_screen(1)  # gt listed\n"
+        ),
+    },
+)
+
+
+def _protocol_project(*, typed: bool, nested: bool) -> dict[str, str]:
+    """#1772 的 pydantic 形态：Protocol 存根 + 注解（或不注解）的分派循环 + 测试里的结构实现。"""
+    annotation = ": Iterable[PluginProtocol]" if typed else ""
+    impl = (
+        "from pkg.use import build\n\n\n"
+        "def test_structural():\n"
+        "    class Plugin1:\n"
+        "        def new_validator(self, schema):  # target\n"
+        "            return schema\n\n"
+        "    assert build({}, [Plugin1()]) == [{}]\n"
+        if nested
+        else "from pkg.use import build\n\n\n"
+        "class Plugin1:\n"
+        "    def new_validator(self, schema):  # target\n"
+        "        return schema\n\n\n"
+        "def test_structural():\n"
+        "    assert build({}, [Plugin1()]) == [{}]\n"
+    )
+    return {
+        "pkg/__init__.py": (
+            "from typing import Protocol\n\n\n"
+            "class PluginProtocol(Protocol):\n"
+            "    def new_validator(self, schema): ...\n"
+        ),
+        "pkg/use.py": (
+            "from typing import Iterable\n\nfrom . import PluginProtocol\n\n\n"
+            f"def build(schema, plugins{annotation}):\n"
+            "    out = []\n"
+            "    for plugin in plugins:\n"
+            "        out.append(plugin.new_validator(schema))  # gt\n"
+            "    return out\n"
+        ),
+        "tests/__init__.py": "",
+        "tests/test_plugins.py": impl,
+    }
+
+
+PROTOCOL_CASES = tuple(
+    Case(
+        case_id=f"py-1772-protocol-stub-test-shadow-{'typed' if typed else 'untyped'}-{'nested' if nested else 'module'}",
+        issue="#1772",
+        target_name="new_validator",
+        owner="Plugin1",
+        files=_protocol_project(typed=typed, nested=nested),
+    )
+    for typed in (True, False)
+    for nested in (False, True)
+)
+
+# #1773：``@overload`` 存根与实现是同一个可调用对象；``self.constrain`` 的兄弟方法都是调用方。
+OVERLOAD = Case(
+    case_id="py-1773-overload-stubs",
+    issue="#1773",
+    target_name="constrain",
+    owner="_Pipeline",
+    files={
+        "pydantic/__init__.py": "",
+        "pydantic/pipeline.py": (
+            "from typing import overload\n\n\n"
+            "class _Pipeline:\n"
+            "    @overload\n"
+            "    def constrain(self, c: int) -> int: ...\n\n"
+            "    @overload\n"
+            "    def constrain(self, c: str) -> str: ...\n\n"
+            "    def constrain(self, c):  # target\n"
+            "        return c\n\n"
+            "    def gt(self, value):\n"
+            "        return self.constrain(value)  # gt listed\n\n"
+            "    def lt(self, value):\n"
+            "        return self.constrain(value)  # gt listed\n"
+        ),
+    },
+)
+
+# #1798（rich ``Text.join`` / ``Color.get_truecolor``）：项目里唯一定义的方法，与
+# ``str.join`` / ``os.path.join`` 同名。不带 ``file_path`` 的裸名曾把这些同名调用
+# 列为调用方（rich 48 个 vs 带范围 7 个）；四种问法必须给出同一个答案。
+UNIQUE_NAME_SCOPE_PARITY = Case(
+    case_id="py-1798-unique-name-scope-parity",
+    issue="#1798",
+    target_name="join",
+    owner="Text",
+    files={
+        "rich/__init__.py": "",
+        "rich/text.py": (
+            "class Text:\n    def join(self, lines):  # target\n        return lines\n"
+        ),
+        "rich/render.py": (
+            "import os\n\n"
+            "from .text import Text\n\n\n"
+            "def bound(lines):\n"
+            "    return Text().join(lines)  # gt listed\n\n\n"
+            "def untyped(text, lines):\n"
+            "    return text.join(lines)  # gt\n\n\n"
+            "def strings(parts):\n"
+            '    return ", ".join(parts)\n\n\n'
+            "def paths(root):\n"
+            '    return os.path.join(root, "x")\n'
+        ),
+    },
+)
+
+# #1834（fastapi ``HTTPBearer403.make_not_authenticated_error``）：基类经包再导出导入，
+# 项目里另有同名的无关类 ``HTTPBase`` / ``HTTPBearer``（``openapi/models.py``）。基类名
+# 有歧义时继承边停在 ``class:HTTPBearer`` 占位，子类关系被静默丢弃，基类里继承的
+# ``self.m()`` 不再被记为可能分派到覆写，答案是错误的 ``complete, 0``。
+_AMBIGUOUS_BASE_LIB = {
+    "lib/__init__.py": "",
+    "lib/security/__init__.py": (
+        "from .http import HTTPBase as HTTPBase\n"
+        "from .http import HTTPBearer as HTTPBearer\n"
+    ),
+    "lib/security/http.py": (
+        "class HTTPBase:\n"
+        "    def make_not_authenticated_error(self) -> Exception:\n"
+        '        return ValueError("base")\n\n\n'
+        "class HTTPBearer(HTTPBase):\n"
+        "    async def __call__(self, token: str) -> str:\n"
+        "        if not token:\n"
+        "            raise self.make_not_authenticated_error()  # gt\n"
+        "        return token\n"
+    ),
+    "lib/openapi/__init__.py": "",
+    "lib/openapi/models.py": (
+        "class HTTPBase:\n"
+        '    scheme: str = "base"\n\n\n'
+        "class HTTPBearer(HTTPBase):\n"
+        '    scheme: str = "bearer"\n'
+    ),
+    "docs_src/__init__.py": "",
+    "docs_src/tut/__init__.py": "",
+}
+
+
+def _ambiguous_base_project(import_line: str, base: str) -> dict[str, str]:
+    return {
+        **_AMBIGUOUS_BASE_LIB,
+        "docs_src/tut/tutorial001.py": (
+            f"{import_line}\n\n\n"
+            f"class HTTPBearer403({base}):\n"
+            "    def make_not_authenticated_error(self) -> Exception:  # target\n"
+            '        return PermissionError("403")\n\n\n'
+            "security = HTTPBearer403()\n"
+        ),
+    }
+
+
+AMBIGUOUS_BASE_CASES = (
+    # 导入绑定能证明基类（``lib.security`` 再导出 ``.http.HTTPBearer``）。
+    Case(
+        case_id="py-1834-ambiguous-base-reexported",
+        issue="#1834",
+        target_name="make_not_authenticated_error",
+        owner="HTTPBearer403",
+        files=_ambiguous_base_project(
+            "from lib.security import HTTPBearer", "HTTPBearer"
+        ),
+    ),
+    # 导入绑定证明不了基类（模块别名的属性）：歧义必须失败即关闭。
+    Case(
+        case_id="py-1834-ambiguous-base-unbound",
+        issue="#1834",
+        target_name="make_not_authenticated_error",
+        owner="HTTPBearer403",
+        files=_ambiguous_base_project("import lib.security as sec", "sec.HTTPBearer"),
+    ),
+)
+
+PYTHON_CASES: tuple[Case, ...] = (
+    RICH_ALIAS,
+    RICH_ATTRIBUTE,
+    UNRESOLVED_OVERRIDE,
+    COMPUTED_IN_DECLARING_FILE,
+    *PROTOCOL_CASES,
+    OVERLOAD,
+    UNIQUE_NAME_SCOPE_PARITY,
+    *AMBIGUOUS_BASE_CASES,
+)

@@ -7,9 +7,11 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+from types import SimpleNamespace
 
 import pytest
 
+import tree_sitter_analyzer.bounded_graph_build as bounded_graph_build
 import tree_sitter_analyzer.health_scorer as health
 from tests.unit._ast_cache_helpers import legacy_cache
 from tree_sitter_analyzer.project_graph import DependencyGraph
@@ -33,6 +35,22 @@ def _blocked_builder(release: threading.Event, finished: list[bool]):
     return build
 
 
+def _release_after_timed_out_join(release: threading.Event) -> type[threading.Thread]:
+    """A Thread whose bounded ``join`` sets ``release`` once it has timed out.
+
+    The build can then only finish after ``build_within`` has observed the
+    timeout, whatever the scheduler does.
+    """
+
+    class _Thread(threading.Thread):
+        def join(self, timeout: float | None = None) -> None:
+            super().join(timeout)
+            if timeout is not None and self.is_alive():
+                release.set()
+
+    return _Thread
+
+
 def test_single_file_timeout_does_not_wait_for_discarded_graph(
     python_file, monkeypatch
 ) -> None:
@@ -54,20 +72,25 @@ def test_project_scope_timeout_still_waits_to_warm_the_graph(
     python_file, monkeypatch
 ) -> None:
     # #1602: 项目评分保持原语义，等构建完成以预热进程级缓存，但不写入本次作用域。
+    # 构建只在限时 join 已超时之后才放行：原先用 0.05 s 定时器放行，负载高的 CI
+    # runner 上主线程在 join(0.01) 前被挂起超过 0.05 s，构建便在预算内完成并写入
+    # graphs（macos-latest 3.13，run 40095395832）。
     release = threading.Event()
     finished: list[bool] = []
     monkeypatch.setattr(health, "_build_dep_graph", _blocked_builder(release, finished))
     monkeypatch.setattr(health, "_DEP_GRAPH_TIMEOUT_S", 0.01)
+    monkeypatch.setattr(
+        bounded_graph_build,
+        "threading",
+        SimpleNamespace(Thread=_release_after_timed_out_join(release)),
+    )
     graphs: dict[str, object] = {}
     token = health._PROJECT_DEPENDENCY_GRAPHS.set(graphs)
-    timer = threading.Timer(0.05, release.set)
-    timer.start()
     try:
         score = health.score_dependencies(str(python_file))
         observed = list(finished)
     finally:
         release.set()
-        timer.cancel()
         health._PROJECT_DEPENDENCY_GRAPHS.reset(token)
 
     assert (score, observed, graphs) == (100.0, [True], {})

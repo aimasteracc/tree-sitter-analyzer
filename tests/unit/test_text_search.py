@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import time
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -130,37 +131,64 @@ def test_text_search_budget_failure_never_returns_partial_results(
         search_text(_request(tmp_path))
 
 
-def test_shared_admission_streams_one_certified_file_at_a_time(
+class _RecordingReader:
+    """Fake batch reader: records reads and the single end-of-scan verify."""
+
+    instances: list[_RecordingReader] = []
+
+    def __init__(self, root: str, *, deadline: float) -> None:
+        self.root = root
+        self.reads: list[str] = []
+        self.verified = 0
+        _RecordingReader.instances.append(self)
+
+    def read(self, relative: str, *, limit: int):
+        self.reads.append(relative)
+        return SimpleNamespace(
+            kind="file", data=(Path(self.root) / relative).read_bytes()
+        )
+
+    def verify(self) -> None:
+        self.verified += 1
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        return None
+
+
+def test_shared_admission_streams_with_bounded_read_ahead(
     tmp_path, monkeypatch
 ) -> None:
+    # #1783: reads run ahead of the consumer on a bounded pool, so memory stays
+    # bounded by the read-ahead window and output keeps discovery order.
     from tree_sitter_analyzer import text_search
 
-    first = tmp_path / "a.py"
-    second = tmp_path / "b.py"
-    first.write_bytes(b"first")
-    second.write_bytes(b"second")
-    reads: list[str] = []
+    files = [tmp_path / f"f{number:02d}.py" for number in range(40)]
+    for path in files:
+        path.write_bytes(path.name.encode())
     monkeypatch.setattr(
         text_search,
         "walk_candidate_entries",
-        lambda *_args, **_kwargs: iter((str(first), str(second))),
+        lambda *_args, **_kwargs: iter(str(path) for path in files),
     )
-
-    def capture(_root: str, relative: str, **_kwargs):
-        reads.append(relative)
-        return SimpleNamespace(kind="file", data=(tmp_path / relative).read_bytes())
-
-    monkeypatch.setattr(text_search, "safe_index_source_path", capture)
-    request = _request(tmp_path)
+    _RecordingReader.instances.clear()
+    monkeypatch.setattr(text_search, "SourceBatchReader", _RecordingReader)
     iterator = text_search._admitted_sources(
-        request, tmp_path, tmp_path, time.monotonic() + 5
+        _request(tmp_path), tmp_path, tmp_path, time.monotonic() + 5
     )
 
-    assert reads == []
-    assert next(iterator).file == "a.py"
-    assert reads == ["a.py"]
-    assert next(iterator).file == "b.py"
-    assert reads == ["a.py", "b.py"]
+    assert _RecordingReader.instances == []
+    first = next(iterator)
+    (reader,) = _RecordingReader.instances
+    assert first.file == "f00.py"
+    assert first.data == b"f00.py"
+    assert len(reader.reads) <= text_search._READ_AHEAD
+    assert reader.verified == 0
+    rest = [source.file for source in iterator]
+    assert rest == [path.name for path in files[1:]]
+    assert reader.verified == 1
 
 
 def test_isolated_worker_preserves_unicode_and_complete_counts(tmp_path) -> None:

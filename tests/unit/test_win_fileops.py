@@ -9,6 +9,7 @@ import ctypes
 import stat
 import sys
 import threading
+import time
 from contextlib import contextmanager
 from types import SimpleNamespace
 
@@ -21,6 +22,11 @@ from tree_sitter_analyzer.cache.generation_store import GenerationStore, IndexWr
 windows_only = pytest.mark.skipif(
     sys.platform != "win32", reason="E4 共享冲突只存在于 Windows 原生句柄语义"
 )
+
+#: 并发发布契约测试的次数与墙钟界限（见 test_bounded_contention_...）。
+_MIN_CONTENDED_PUBLISHES = 40
+_MAX_CONTENDED_PUBLISHES = 200
+_CONTENTION_SECONDS = 2.0
 
 
 @pytest.fixture
@@ -102,10 +108,15 @@ def test_reader_opening_after_publish_sees_new_selector(store, monkeypatch):
 @windows_only
 def test_bounded_contention_has_no_publish_or_read_errors(store):
     # rfcs/evidence/0032-feasibility E4.2 (2026-10-13)：并发读写循环曾 1001/2000 发布失败。
+    # 每次发布都 fsync：本机 200 次约 6 s，负载高的 Windows runner 上超过 30 s 超时
+    # （PR #1807 run 40095406288，卡在 os.fsync，不是挂死，#1817）。原缺陷约一半发布
+    # 失败，几十次重叠发布已足以暴露；因此在墙钟预算内尽量多做，但至少做
+    # _MIN_CONTENDED_PUBLISHES 次，且读者必须与之并发运行过。
     first = store.sync()
     second = store.publish(next_generation(store))
     payloads = (first.encode(), second.encode())
     stop, outcomes = threading.Event(), {"errors": [], "torn": 0}
+    reads = [0]
 
     def read_loop():
         while not stop.is_set():
@@ -114,20 +125,29 @@ def test_bounded_contention_has_no_publish_or_read_errors(store):
                     outcomes["torn"] += 1
             except Exception as exc:
                 outcomes["errors"].append(repr(exc))
+            reads[0] += 1
 
     reader = threading.Thread(target=read_loop)
     reader.start()
     failures = []
+    publishes = 0
+    deadline = time.monotonic() + _CONTENTION_SECONDS
     try:
-        for index in range(200):
+        while publishes < _MAX_CONTENDED_PUBLISHES and (
+            publishes < _MIN_CONTENDED_PUBLISHES or time.monotonic() < deadline
+        ):
             try:
-                owner._write_atomic(store.selector_path, payloads[index % 2])
+                owner._write_atomic(store.selector_path, payloads[publishes % 2])
             except Exception as exc:
                 failures.append(repr(exc))
+            publishes += 1
     finally:
         stop.set()
         reader.join(10)
     assert (failures, outcomes) == ([], {"errors": [], "torn": 0})
+    assert reads[0] > 0, (  # ratchet: nondeterministic reader iteration count
+        "reader never ran concurrently with the publishes"
+    )
 
 
 @windows_only

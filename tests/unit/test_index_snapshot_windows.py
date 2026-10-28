@@ -41,8 +41,16 @@ class _Kernel:
             ("GetFileInformationByHandleEx", self.identifier),
             ("CloseHandle", self.close),
             ("GetFileType", lambda _handle: self.file_type),
+            # 进程存活探测（暂存目录回收）也走 Kernel32：替身必须提供完整接口。
+            ("OpenProcess", self.open_process),
+            ("GetExitCodeProcess", lambda _handle, _pointer: 0),
         ):
             setattr(self, name, _Call(method))
+
+    def open_process(self, _access, _inherit, _pid):
+        # 拒绝访问 = 进程存在：保守地不回收任何别的进程的目录。
+        self.error = 5
+        return 0
 
     def open(self, path, access, share, security, disposition, flags, template):
         self.requests.append(
@@ -100,6 +108,17 @@ class _Kernel:
         if not directory:
             os.close(handle)
         return 0 if self.fail == "close" else 1
+
+
+@pytest.fixture(autouse=True)
+def _private_stage_parent(tmp_path_factory, monkeypatch):
+    """私有 WAL 副本的暂存父目录放进本测试专属目录，而不是共享的系统临时目录。
+
+    否则 ``sweep_stale`` 会扫描并试图回收其他 xdist worker 的 ``tsa-wal-index-*``
+    目录（CI run 40095395832 的失败入口）。``TMPDIR`` 是
+    ``safe_external_temp_parent`` 的第一个候选，且位于项目根 ``tmp_path`` 之外。
+    """
+    monkeypatch.setenv("TMPDIR", str(tmp_path_factory.mktemp("stage-parent")))
 
 
 @pytest.fixture

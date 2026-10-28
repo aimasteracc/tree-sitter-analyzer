@@ -2,6 +2,7 @@
 
 Uses stdlib @dataclass + dataclasses.asdict() — no Pydantic dependency.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -20,13 +21,13 @@ class TestFocus:
 class HotspotEntry:
     rank: int
     file: str
-    severity: str          # "CRITICAL" | "REVIEW" | "OK"
+    severity: str  # "CRITICAL" | "REVIEW" | "OK"
     score: float
     ca_raw: int
     ca_alias: int
     max_cc: int
     test_focus: TestFocus
-    hops: int | None = None   # set only when --trace-from is active
+    hops: int | None = None  # set only when --trace-from is active
 
 
 @dataclass
@@ -64,7 +65,9 @@ class HotspotResult:
     alias_gap_summary: AliasDiffSummary | None = None
     error: str | None = None
     error_category: str | None = None  # "state"|"data"|"transient"|"configuration"
-    recovery_hint: str | None = None   # "retry"|"try_alternative"|"fix_then_retry"|"fix_argument"
+    recovery_hint: str | None = (
+        None  # "retry"|"try_alternative"|"fix_then_retry"|"fix_argument"
+    )
     # Canonical CLI envelope (required by test_cli_envelope_contract.py)
     summary_line: str | None = None
     verdict: str | None = None

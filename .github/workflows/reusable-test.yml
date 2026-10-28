@@ -99,6 +99,16 @@ jobs:
       run: uv run pytest -q
       shell: bash
 
+    - name: Keep pytest temp on the runner work disk (Windows)
+      # pytest_temp_hygiene defaults to %LOCALAPPDATA% on C:, the OS disk. On
+      # windows-latest, SQLite COMMIT/close and os.fsync there stalled for
+      # 20-30 s with the worker idle (0.03 s CPU) and tripped the 30 s
+      # per-test timeout in unrelated tests (#1817). RUNNER_TEMP is on D:,
+      # next to the checkout and the uv cache.
+      if: runner.os == 'Windows'
+      run: echo "TSA_PYTEST_TEMP_ROOT=${RUNNER_TEMP}\tsa-pytest" >> "$GITHUB_ENV"
+      shell: bash
+
     - name: Check Windows verification command execution
       if: runner.os == 'Windows'
       timeout-minutes: 3
@@ -257,6 +267,16 @@ jobs:
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == inputs.python-version
       timeout-minutes: 5
       run: uv run pytest -q
+      shell: bash
+
+    - name: Keep pytest temp on the runner work disk (Windows)
+      # pytest_temp_hygiene defaults to %LOCALAPPDATA% on C:, the OS disk. On
+      # windows-latest, SQLite COMMIT/close and os.fsync there stalled for
+      # 20-30 s with the worker idle (0.03 s CPU) and tripped the 30 s
+      # per-test timeout in unrelated tests (#1817). RUNNER_TEMP is on D:,
+      # next to the checkout and the uv cache.
+      if: runner.os == 'Windows'
+      run: echo "TSA_PYTEST_TEMP_ROOT=${RUNNER_TEMP}\tsa-pytest" >> "$GITHUB_ENV"
       shell: bash
 
     - name: Check Windows verification command execution

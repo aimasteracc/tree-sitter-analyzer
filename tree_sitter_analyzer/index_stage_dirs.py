@@ -32,6 +32,8 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 
+from .cache.build_state import _win_pid_alive as _bound_windows_pid_alive
+
 #: 暂存目录名前缀（旧版本为 ``tsa-wal-index-<随机>``，不含 PID）。
 PREFIX = "tsa-wal-index-"
 #: 无法确认归属的残留目录，超过此年龄才回收（秒）。
@@ -74,33 +76,14 @@ def pid_alive(pid: int) -> bool:
 
 
 def _windows_pid_alive(pid: int) -> bool:  # pragma: no cover - 仅 Windows
-    import ctypes
-    from ctypes import wintypes
+    """Windows 存活探测，复用 ``cache.build_state`` 导入时绑定的 Kernel32。
 
-    process_query_limited_information = 0x1000
-    still_active = 259
-    error_invalid_parameter = 87
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
-    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-    kernel32.OpenProcess.restype = wintypes.HANDLE
-    kernel32.GetExitCodeProcess.argtypes = [
-        wintypes.HANDLE,
-        ctypes.POINTER(wintypes.DWORD),
-    ]
-    kernel32.GetExitCodeProcess.restype = wintypes.BOOL
-    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
-    handle = kernel32.OpenProcess(process_query_limited_information, False, pid)
-    if not handle:
-        # 87 = 没有这个进程；其他错误（如拒绝访问）说明进程存在。
-        last_error = int(ctypes.get_last_error())  # type: ignore[attr-defined]
-        return last_error != error_invalid_parameter
-    try:
-        code = wintypes.DWORD()
-        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
-            return True
-        return code.value == still_active
-    finally:
-        kernel32.CloseHandle(handle)
+    原实现每次调用都 ``ctypes.WinDLL("kernel32")`` 延迟查找全局：进程内任何替换
+    ``ctypes.WinDLL`` 的代码（测试的 Kernel32 替身）都会让回收别的进程残留目录时
+    拿到替身（CI run 40095395832：``'_Kernel' object has no attribute
+    'OpenProcess'``）。语义不变：87（无此进程）为未存活，其他打开错误按存活。
+    """
+    return _bound_windows_pid_alive(pid)
 
 
 def _owner_pid(name: str) -> int | None:

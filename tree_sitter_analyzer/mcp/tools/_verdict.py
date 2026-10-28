@@ -101,7 +101,15 @@ def _canonicalize_verdict(value: str | None) -> str:
 # Public alias required by REQ-3-001.
 normalize_verdict = _canonicalize_verdict
 
+#: ``verdict_reason`` codes for an ``INFO`` verdict on input that was not
+#: analyzed at all (#1810). They replace the off-ladder ``N/A`` verdict that
+#: the file-level health and pattern tools used to emit for such input.
+NOT_ANALYZED_EMPTY_FILE = "EMPTY_FILE"
+NOT_ANALYZED_NON_CODE_FILE = "NON_CODE_FILE"
+
 __all__ = [
+    "NOT_ANALYZED_EMPTY_FILE",
+    "NOT_ANALYZED_NON_CODE_FILE",
     "_LEGAL_VERDICTS",
     "_VERDICT_ALIASES",
     "_canonicalize_verdict",

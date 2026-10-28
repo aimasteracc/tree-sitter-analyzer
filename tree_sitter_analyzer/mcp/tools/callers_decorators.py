@@ -145,18 +145,32 @@ def declaration_decorators(
     return _tree_sitter_decorators(text, line, language)
 
 
+def _parsed_python(text: str) -> tuple[ast.Module, dict[str, set[str]]] | None:
+    """The module tree and its bindings; one parse per text inside a query scope.
+
+    RFC-0041: a pipeline asks callers about several symbols declared in the
+    same file; outside a scope every call parses live, as before.
+    """
+    from ...query_scope import scoped
+
+    def compute() -> tuple[ast.Module, dict[str, set[str]]] | None:
+        try:
+            tree = ast.parse(text)
+        except (SyntaxError, ValueError):
+            return None
+        return tree, _python_bindings(tree)
+
+    return scoped(("callers_decorators.parse", text), compute)
+
+
 def _python_decorators(text: str, line: int) -> list[Decorator] | None:
-    try:
-        tree = ast.parse(text)
-    except (SyntaxError, ValueError):
+    parsed = _parsed_python(text)
+    if parsed is None:
         return None
-    bindings = _python_bindings(tree)
+    tree, bindings = parsed
     found: list[Decorator] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            continue
-        starts = [node.lineno, *(item.lineno for item in node.decorator_list)]
-        if not min(starts) <= line <= node.lineno:
+    for first, header, node in _python_definitions(text, tree):
+        if not first <= line <= header:
             continue
         for item in node.decorator_list:
             segment = ast.get_source_segment(text, item) or ast.unparse(item)
@@ -167,6 +181,33 @@ def _python_decorators(text: str, line: int) -> list[Decorator] | None:
                 )
             )
     return found
+
+
+#: 一个定义：(装饰器起始行与定义行中的最小者, 定义行, 定义节点)。
+_Definition = tuple[int, int, Any]
+
+
+def _python_definitions(text: str, tree: ast.Module) -> list[_Definition]:
+    """``tree`` 中每个函数 / 类定义的行范围（``ast.walk`` 顺序）。
+
+    RFC-0041 跨名批量：同一文件声明的多个名字各问一次时，查询作用域内只遍历一次
+    语法树（``tree`` 本身在作用域内按文本只解析一次）；逐名查找只扫这张定义表，
+    与逐次遍历按同样的顺序命中同样的定义。作用域外每次实时遍历。
+    """
+    from ...query_scope import scoped
+
+    def compute() -> list[_Definition]:
+        definitions: list[_Definition] = []
+        for node in ast.walk(tree):
+            if not isinstance(
+                node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef
+            ):
+                continue
+            starts = [node.lineno, *(item.lineno for item in node.decorator_list)]
+            definitions.append((min(starts), node.lineno, node))
+        return definitions
+
+    return scoped(("callers_decorators.definitions", text), compute)
 
 
 def _python_bindings(tree: ast.Module) -> dict[str, set[str]]:

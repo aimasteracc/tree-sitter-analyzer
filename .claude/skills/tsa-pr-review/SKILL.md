@@ -25,11 +25,13 @@ description: |
   - Right after `/ship` produced a diff and before `/land`
 
   Workflow: fan-out (edit action=pr + edit action=impact + edit action=constraints)
-  → per-file fan-out (edit action=safe) → per-symbol fan-out (nav action=callers
-  + nav action=callees) → fold into a verdict-ranked report.
+  → per-file fan-out (edit action=safe) → one search action=uql blast-radius
+  query for the changed signatures + nav action=callees → fold into a
+  verdict-ranked report.
 allowed-tools:
   - mcp__tree-sitter-analyzer__edit
   - mcp__tree-sitter-analyzer__nav
+  - mcp__tree-sitter-analyzer__search
   - Bash
   - Read
 ---
@@ -98,11 +100,17 @@ Pick `edit_type` from the dominant change category in Step 1's
 
 ### Step 3 — Per-symbol fan-out (parallel, ≤2N calls)
 
-For each *changed signature* (not body-only) symbol from Step 1, fan out
-two calls:
+For the *changed signature* (not body-only) symbols from Step 1, ask the
+blast radius once for all of them, then fan out callees:
 
-- `nav action=callers function_name="<sym>" language="<lang>" limit=20`
-  — who depends on this; the blast radius if its signature moved.
+- `search action=uql query="symbol(['<sym1>','<sym2>']).callers().tests()"`
+  — who depends on these and which tests cover those callers, in ONE call
+  (instead of a `nav action=callers` per symbol plus a `nav action=test_map`
+  per caller). Read `stages[].c`: an `incomplete` / `unknown` callers stage
+  means the blast radius is a lower bound — say so in the verdict. Use
+  `.untested()` instead of `.tests()` to list callers with no test at all.
+  With a single changed symbol and no test question, `nav action=callers
+  function_name="<sym>" language="<lang>" limit=20` is the faster one-hop call.
 - `nav action=callees function_name="<sym>" language="<lang>" limit=20`
   — what it calls; the regression surface if its body changed.
 
@@ -225,6 +233,7 @@ uv run tree-sitter-analyzer --check-constraints --constraint-path-filter "tree_s
 uv run tree-sitter-analyzer <file> --safe-to-edit --edit-type refactor --output-format json
 
 # Step 3 — Per-symbol
+uv run tree-sitter-analyzer --uql "symbol(['<FUNC1>','<FUNC2>']).callers().tests()"
 uv run tree-sitter-analyzer --callers <FUNC> --output-format toon
 uv run tree-sitter-analyzer --callees <FUNC> --output-format toon
 ```

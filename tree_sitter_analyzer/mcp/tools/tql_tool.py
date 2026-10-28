@@ -82,6 +82,13 @@ _TQL_SCHEMA_DOC = """\
   .method:hotspot
   .function:violates(no_direct_db)
   .function:branch(loop):calls(#expensive_fn)
+
+## Unified pipeline (RFC-0041)
+  search action=uql accepts any selector above as its source and composes
+  callers()/tests()/impact()/callees() + filter/untested/take, reporting
+  per-stage completeness. Edge pseudo-classes (:calls, :reaches, ...) carry
+  no coverage proof there; prefer symbol('X').callers(depth=N).
+  Grammar card: search action=help target_action=uql.
 """
 
 
@@ -190,39 +197,40 @@ class TqlExecuteTool(BaseMCPTool):
         max_results = arguments["max_results"]
         selector_echo = _cap_echo(selector)
 
-        from ...hyphae import Evaluator, parse
-        from ...hyphae.parser import HyphaeSyntaxError
+        # RFC-0041：选择器由统一语言的唯一负责者解析和校验，因此拼错的伪类或
+        # 属性在这里与 ``search action=uql`` 一样是语法错误 (未知的
+        # ``[attr=...]`` 过去会静默求值为空结果)。
+        from ...uql.backends import IndexBackends
+        from ...uql.errors import Err
+        from ...uql.selector import parse_selector
 
-        try:
-            ast = parse(selector)
-        except (HyphaeSyntaxError, ValueError) as exc:
-            return {
+        parsed = parse_selector(selector)
+        if isinstance(parsed, Err):
+            message = parsed.error.message
+            if not message.startswith("TQL syntax error"):
+                message = f"TQL syntax error: {message}"
+            response: dict[str, Any] = {
                 "success": False,
                 "selector": selector_echo,
-                "error": f"TQL syntax error: {exc}",
+                "error": message,
+                "error_code": parsed.error.code,
                 "symbols": [],
             }
+            if parsed.error.fixed_query:
+                response["fixed_selector"] = parsed.error.fixed_query
+            return response
 
         try:
             cache = self._get_cache()
         except Exception as exc:
             return {"success": False, "error": str(exc), "symbols": []}
 
-        # 部分旧 cache/evaluator 读路径会吞掉 SQL 错误；先验证读取所需表列。
-        try:
-            conn = cache.get_conn()
-            for query in (
-                "SELECT file_path, language, symbols_json FROM ast_index LIMIT 0",
-                "SELECT id, name, kind, file_path, language, line FROM ast_symbol_rows LIMIT 0",
-                "SELECT kind, caller_name, callee_name, file_path, caller_line, callee_symbol_id, callee_resolved_file, metadata FROM edges LIMIT 0",
-                "SELECT symbol_id, file_path, last_modified_at, mod_count_30d FROM ast_symbol_activation LIMIT 0",
-                "SELECT rule_id, caller_file, caller_name FROM ast_constraint_violations LIMIT 0",
-            ):
-                conn.execute(query)
-        except Exception as exc:
+        backends = IndexBackends(self.project_root or "", cache=cache)
+        probe = backends.index_state()
+        if probe.state == "unavailable":
             return {
                 "success": False,
-                "error": f"TQL_INDEX_UNAVAILABLE: {exc}",
+                "error": f"TQL_INDEX_UNAVAILABLE: {probe.detail}",
                 "count": 0,
                 "symbols": [],
             }
@@ -237,9 +245,8 @@ class TqlExecuteTool(BaseMCPTool):
                 "symbols": [],
             }
 
-        evaluator = Evaluator(cache, max_results=max_results)
         try:
-            matches = evaluator.eval(ast)
+            selection = backends.select(parsed.value, max_results)
         except Exception as exc:
             return {
                 "success": False,
@@ -248,6 +255,7 @@ class TqlExecuteTool(BaseMCPTool):
                 "count": 0,
                 "symbols": [],
             }
+        matches = selection.rows
         symbols = [
             {
                 "name": m.get("name"),
@@ -259,8 +267,8 @@ class TqlExecuteTool(BaseMCPTool):
             for m in matches
         ]
 
-        truncated = evaluator.was_truncated()
-        total_matches = evaluator.total_matches()
+        truncated = selection.truncated
+        total_matches = selection.total
 
         if truncated:
             verdict = "INFO"
@@ -278,6 +286,20 @@ class TqlExecuteTool(BaseMCPTool):
             verdict = "INFO"
             next_step = "Refine with :in(path) / [file=] / :not() to narrow if needed."
 
+        # RFC-0041 / owner 决定：TQL 答案携带与 uql select 阶段相同的推导完整性。
+        # 边、历史、规则与分支谓词没有覆盖证明，因此它们返回的 0 是
+        # ``unknown`` (即静默的 "0 of 10" 情形)，绝不暗示已全量统计。
+        from ...uql.engine import selection_coverage
+
+        coverage, coverage_note = selection_coverage(backends, parsed.value, selection)
+        if not coverage.complete:
+            caveat = (
+                f"completeness={coverage.status} "
+                f"({', '.join(coverage.reasons)}): not a census."
+            )
+            if coverage_note:
+                caveat += f" {coverage_note}"
+            next_step = f"{caveat} {next_step}"
         return {
             "success": True,
             "selector": selector_echo,
@@ -287,6 +309,8 @@ class TqlExecuteTool(BaseMCPTool):
             "symbols": symbols,
             "index_state": index_state,
             "indexed_files": indexed_files,
+            "completeness": coverage.status,
+            "completeness_reasons": list(coverage.reasons),
             "agent_summary": {
                 "summary_line": f"tql_execute: {len(symbols)} symbols for {selector_echo!r}",
                 "verdict": verdict,

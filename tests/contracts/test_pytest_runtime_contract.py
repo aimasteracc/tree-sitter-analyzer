@@ -183,6 +183,11 @@ def _assert_pytest_runtime_contract(
 
     missing = [option for option in sorted(required) if option not in addopts_list]
     assert missing == []
+    # No global retry: a rerun hides a flaky test (and a mutation that only
+    # sometimes fails). A test that really needs one says so with
+    # ``@pytest.mark.flaky(reruns=1)`` and an issue reference.
+    global_reruns = [o for o in addopts_list if o.startswith("--reruns")]
+    assert global_reruns == []
     marker_index = addopts_list.index("-m")
     assert (
         addopts_list[marker_index + 1]

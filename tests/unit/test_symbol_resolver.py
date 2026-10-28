@@ -483,6 +483,8 @@ class TestCodeGraphSymbolResolveExecution:
             "success": False,
             "verdict": "ERROR",
             "error": "AST cache is empty. Run ast_cache mode=index first.",
+            # #1808: the execute boundary classifies the failure.
+            "error_type": "index_not_ready",
             "hint": (
                 "Use codegraph_symbol_search or ast_cache mode=index to build the index."
             ),

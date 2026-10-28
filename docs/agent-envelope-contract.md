@@ -119,16 +119,25 @@ machine-readable reason, so you can branch on a code instead of parsing prose
 
 Source of truth: `COMPLETENESS_REASONS` in
 [`tree_sitter_analyzer/mcp/tools/callers_reasons.py`](../tree_sitter_analyzer/mcp/tools/callers_reasons.py).
-The first six come from the call-edge layer and can combine; the rest come from
+The first eight come from the call-edge layer and can combine; the rest come from
 the gates that re-check an edge-level `complete` and appear alone, with one
 exception: when the non-call reference scan reports `SOURCE_INDEX_MISMATCH`, it
 is followed by `NON_CALL_REFERENCES` (and `ACCESSOR_NOT_CALL_EDGES`) if those
 still hold for the unchanged files (#1672).
 
+`complete` is proof-carrying (RFC-0040): it is returned only when every check in
+`REQUIRED_CHECKS` ([`callers_checks.py`](../tree_sitter_analyzer/mcp/tools/callers_checks.py))
+ran over the queried target set and found nothing. A check that did not run makes the
+answer `unknown` (or `incomplete` with callers listed) with a code naming it. The bounded
+`completeness_checks` field shows the proof: `{"required": 12, "checked": 12}` on a census;
+otherwise `not_checked` maps each check that did not run to its code, and `not_run` counts
+the gates skipped after an earlier gate decided.
 <!-- drift:completeness-reasons:start -->
 | Code | Meaning | What to do |
 |---|---|---|
 | `UNRESOLVED_INBOUND_UNCHECKED` | The unresolved-edge count or the declaring-file guard could not be read. | Retry; rebuild the index if it persists. |
+| `NAME_ONLY_INBOUND_UNCHECKED` | The name-only inbound check could not run (the same-name method definitions in the named file could not be read from the call graph; RFC-0040). | Retry; rebuild the index if it persists. |
+| `UNATTRIBUTED_CALL_SITES_UNCHECKED` | The module-level call sites could not be counted (RFC-0040). | Retry; rebuild the index if it persists. |
 | `UNRESOLVED_INBOUND` | Inbound edges name the target but did not resolve to its definition (`unresolved_inbound`). | Read `unresolved_inbound_sites`; qualify the name to narrow. |
 | `UNRESOLVED_IN_DECLARING_FILE` | A file that declares the target holds unresolved calls that could reach it (computed dispatch or same name; see `unresolved_sites`). | Read `unresolved_sites`. |
 | `NAME_ONLY_INBOUND` | Inbound edges match by name only and cannot be bound to this target (`name_only_inbound` callers; `name_only_sites`). | Read `name_only_sites` (`next_step` names them); a site calls the target only if its receiver is an instance of the target's class; qualify the name. |
@@ -145,6 +154,7 @@ still hold for the unchanged files (#1672).
 | `NON_CALL_REFERENCES` | The name is used without a call (callback, attribute, string, config, JSON, notebook, template, doctest). | Read `non_call_reference_sites`. |
 | `NON_CALL_REFERENCES_UNCHECKED` | The non-call reference scan did not finish within budget. | Retry, or search the name directly. |
 | `ACCESSOR_NOT_CALL_EDGES` | The target is a property/accessor; reads are not call edges. | Search attribute reads. |
+| `ACCESSOR_UNCHECKED` | The declaration could not be read, so a property/accessor (whose reads are not call edges) cannot be ruled out (RFC-0040). | Read the declaration; search attribute reads. |
 | `DECORATOR_MAY_REGISTER` | A decorator may register the target for dispatch. | Inspect the decorator. |
 <!-- drift:completeness-reasons:end -->
 
@@ -318,7 +328,7 @@ Source of truth: `ADMISSION_CODES` and `CAUSE_CODES` in
 | Code | retryable | retry_after_ms | next_action | Causes | What to do |
 |---|---|---|---|---|---|
 | `INDEX_CANDIDATE_SUPERSEDED` | true | 5000 | `recapture` | `INDEX_GENERATION_SUPERSEDED`, `INDEX_GENERATION_SOURCE_CHANGED`, `INDEX_GENERATION_DIRECTORY_CHANGED`, `INDEX_GENERATION_FOREIGN_STORE`, `INDEX_GENERATION_RETIRING`, `INDEX_WRITER_REVISION_SUPERSEDED`, `INDEX_WRITER_CACHE_REPLACED` (custom `db_path`) | Retry the same call; it captures a fresh candidate. Never replay the old candidate. |
-| `INDEX_WRITER_BUSY` | true | 5000 | `recapture` | `INDEX_WRITER_BUSY` (publication lease wait timed out, or Windows could not replace the selector atomically) | Wait `retry_after_ms`, then retry; if it stays busy, stop the other writer for this project. |
+| `INDEX_WRITER_BUSY` | true | 5000 | `recapture` | `INDEX_WRITER_BUSY` (publication lease wait timed out, or Windows could not replace the selector atomically), `INDEX_GENERATION_SEAL_BUSY` (another connection still held the private build database for the whole 10 s seal wait; nothing was published) | Wait `retry_after_ms`, then retry; if it stays busy, stop the other writer for this project. |
 | `INDEX_CANDIDATE_UNBOUND` | false | 0 | `obtain_bound_candidate` | `INDEX_CANDIDATE_UNBOUND` (Python API only: a `candidate_snapshot` passed to a default-locator write was not captured by `build_index_candidate_snapshot`; custom `db_path` caches still accept unbound candidates) | Do not replay that candidate. Capture a fresh one with `build_index_candidate_snapshot`, or omit `candidate_snapshot`, then retry. |
 | `INDEX_RECOVERY_REQUIRED` | false | 0 | `recover_index` | `INDEX_GENERATION_SELECTOR_INVALID`, `INDEX_GENERATION_SELECTOR_MISSING`, `INDEX_GENERATION_PATH_UNSAFE`, `INDEX_GENERATION_LOCK_UNSAFE`, `INDEX_WRITER_STATE_MISSING` (custom `db_path`) | Do not retry. Stop every TSA process for the project, move `.ast-cache` (or the custom database) aside, replacing a linked `.ast-cache` with a real directory, then rebuild with `index action=full mode=full`. |
 <!-- drift:index-admission-codes:end -->

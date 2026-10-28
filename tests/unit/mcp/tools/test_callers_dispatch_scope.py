@@ -14,6 +14,12 @@ import re
 
 import pytest
 
+from tree_sitter_analyzer.mcp.tools.callers_checks import (
+    REQUIRED_CHECKS,
+    Ledger,
+    prove,
+    prove_edges,
+)
 from tree_sitter_analyzer.mcp.tools.callers_decorators import DECORATED_REASON
 from tree_sitter_analyzer.mcp.tools.callers_dispatch import (
     NAMES_OTHER_REASON,
@@ -21,12 +27,8 @@ from tree_sitter_analyzer.mcp.tools.callers_dispatch import (
     partition_by_target,
     trailing_segment,
 )
-from tree_sitter_analyzer.mcp.tools.callers_reasons import (
-    COMPLETENESS_REASONS,
-    EdgeEvidence,
-    edge_completeness,
-    final_reasons,
-)
+from tree_sitter_analyzer.mcp.tools.callers_outcomes import Checked, checked
+from tree_sitter_analyzer.mcp.tools.callers_reasons import COMPLETENESS_REASONS
 from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
 
 #: 只有内建/局部变量属性调用的模块：没有任何东西能点名 ``lonely``。
@@ -568,6 +570,8 @@ _INVARIANT_PROJECTS = {
 #: 原因码闭集（与 docs/agent-envelope-contract.md 的表一致）。
 _CLOSED_REASONS = {
     "UNRESOLVED_INBOUND_UNCHECKED",
+    "NAME_ONLY_INBOUND_UNCHECKED",
+    "UNATTRIBUTED_CALL_SITES_UNCHECKED",
     "UNRESOLVED_INBOUND",
     "UNRESOLVED_IN_DECLARING_FILE",
     "NAME_ONLY_INBOUND",
@@ -584,6 +588,7 @@ _CLOSED_REASONS = {
     "NON_CALL_REFERENCES",
     "NON_CALL_REFERENCES_UNCHECKED",
     "ACCESSOR_NOT_CALL_EDGES",
+    "ACCESSOR_UNCHECKED",
     "DECORATOR_MAY_REGISTER",
 }
 
@@ -670,15 +675,38 @@ def test_closed_reason_set_matches_the_source_of_truth() -> None:
     assert set(COMPLETENESS_REASONS) == _CLOSED_REASONS
 
 
+_SCOPE = ("f", None)
+
+
+def _edges(callers, unresolved, declaring, name_only, unattributed, empty) -> Ledger:
+    """RFC-0040：按旧 EdgeEvidence 的六个输入构造调用边层检查记录。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import _edge_ledger
+
+    return _edge_ledger(
+        _SCOPE,
+        unresolved_inbound=unresolved,
+        unresolved_in_declaring_files=declaring,
+        name_only_inbound=name_only,
+        name_only_check=None,
+        unattributed_call_sites=unattributed,
+        empty_evidence_base=empty,
+    )
+
+
+def _all_review_checks_pass(ledger: Ledger) -> Ledger:
+    return ledger.record_all(
+        (spec.name, Checked(_SCOPE))
+        for spec in REQUIRED_CHECKS
+        if spec.layer == "review"
+    )
+
+
 @pytest.mark.parametrize(
     ("edges", "expected"),
     [
+        ((0, 0, 0, 0, 2, False), ("incomplete", ("UNATTRIBUTED_CALL_SITES",))),
         (
-            EdgeEvidence(0, 0, 0, 0, 2, False),
-            ("incomplete", ("UNATTRIBUTED_CALL_SITES",)),
-        ),
-        (
-            EdgeEvidence(0, None, 0, 1, 0, True),
+            (0, None, 0, 1, 0, True),
             (
                 "unknown",
                 (
@@ -688,18 +716,19 @@ def test_closed_reason_set_matches_the_source_of_truth() -> None:
                 ),
             ),
         ),
-        (EdgeEvidence(3, 1, 0, 0, 0, False), ("incomplete", ("UNRESOLVED_INBOUND",))),
-        (EdgeEvidence(0, 0, 0, 0, 0, False), ("complete", ())),
+        ((3, 1, 0, 0, 0, False), ("incomplete", ("UNRESOLVED_INBOUND",))),
+        ((0, 0, 0, 0, 0, False), ("complete", ())),
     ],
 )
 def test_edge_completeness_lists_every_applicable_reason(edges, expected) -> None:
     # #1632：主因在首位；全部成立的原因按固定顺序列出。
-    assert edge_completeness(edges) == expected
+    proof = prove_edges(_edges(*edges), edges[0])
+    assert (proof.completeness, proof.reasons) == expected
 
 
 def test_absence_gate_reason_replaces_empty_edge_reasons() -> None:
     # #1632：复核门只在调用边层为 complete 时运行，其原因即为唯一原因。
-    assert final_reasons("unknown", "NON_CALL_REFERENCES", ()) == [
-        "NON_CALL_REFERENCES"
-    ]
-    assert final_reasons("complete", None, ()) == []
+    clean = _all_review_checks_pass(_edges(0, 0, 0, 0, 0, False))
+    found = clean.record("non_call_references", checked(_SCOPE, "NON_CALL_REFERENCES"))
+    assert prove(found, 0).reasons == ("NON_CALL_REFERENCES",)
+    assert (prove(clean, 0).completeness, prove(clean, 0).reasons) == ("complete", ())

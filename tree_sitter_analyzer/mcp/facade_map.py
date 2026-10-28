@@ -217,6 +217,8 @@ NEW_ACTION_PARITY: dict[str, tuple[str, str, str]] = {
     "search_semantic": ("search", "semantic", "--semantic-neighbors"),
     # RFC-0037：实时字面量检索从诞生起就是 facade action。
     "search_text": ("search", "text", "--text-search"),
+    # RFC-0041：统一查询语言从诞生起就是 facade action。
+    "search_uql": ("search", "uql", "--uql"),
 }
 
 # 保留兼容导入；本次补全的三个动作均已有 CLI 路由。

@@ -24,6 +24,47 @@ from benchmarks.codegraph_compare.gin_smoke import (
 )
 from benchmarks.codegraph_compare.integrity import _sha256
 
+#: Manifest fields that must equal one fixed value.
+_MANIFEST_CONSTANTS: tuple[tuple[str, Any], ...] = (
+    ("schema_version", SCHEMA_VERSION),
+    ("objective_id", OBJECTIVE_ID),
+    ("mode", "fixture"),
+    ("expected_arms", list(EXPECTED_ARMS)),
+    ("network", "disabled"),
+    ("allowed_native_tools", ["read", "search"]),
+    ("retry_policy", {"kind": "none", "selective_reruns": False}),
+)
+_MANIFEST_SHA256_FIELDS = (
+    "question_sha256",
+    "config_fingerprint",
+    "repository_fingerprint",
+)
+_MANIFEST_NONEMPTY_STR_FIELDS = ("model", "repository_path")
+_CELL_BOOLEAN_KEYS = frozenset({"backend_executed", "index_created", "model_executed"})
+_CELL_SHA256_FIELDS = (
+    "input_fingerprint",
+    "config_fingerprint",
+    "tool_policy_fingerprint",
+)
+_NAMESPACE_KEYS = (
+    "checkout_namespace",
+    "mcp_namespace",
+    "index_namespace",
+    "artifact_namespace",
+)
+_EXPECTED_QUALIFICATION = {
+    "schema_version": 1,
+    "objective_id": OBJECTIVE_ID,
+    "evidence_level": "E0",
+    "publishable": False,
+    "qualification_only": True,
+    "backend_executed": False,
+    "index_created": False,
+    "model_executed": False,
+    "dominance_allowed": False,
+    "winner": None,
+}
+
 
 def _read_json(path: Path) -> Any:
     try:
@@ -43,13 +84,15 @@ def _read_object(path: Path) -> dict[str, Any]:
 
 def _reject_forbidden_keys(payload: Any) -> None:
     if isinstance(payload, dict):
-        for key, value in payload.items():
-            if str(key).casefold() in FORBIDDEN_NAMES:
-                raise QualificationError("oracle material is forbidden")
-            _reject_forbidden_keys(value)
+        if any(str(key).casefold() in FORBIDDEN_NAMES for key in payload):
+            raise QualificationError("oracle material is forbidden")
+        children = list(payload.values())
     elif isinstance(payload, (list, tuple)):
-        for value in payload:
-            _reject_forbidden_keys(value)
+        children = list(payload)
+    else:
+        return
+    for value in children:
+        _reject_forbidden_keys(value)
 
 
 def _regular_files(root: Path) -> tuple[str, ...]:
@@ -91,33 +134,31 @@ def validate_bundle(
     if _digest_bytes((root / "checksums.json").read_bytes()) != expected_bundle_digest:
         raise QualificationError("external bundle digest mismatch")
     _reject_forbidden_keys((manifest, qualification, checksum_doc))
-    if (
-        manifest.get("benchmark_git_sha") != expected_git_sha
-        or not _is_git_sha(expected_git_sha)
+    _validate_manifest(manifest, expected_git_sha)
+    _validate_checksums(root, checksum_doc)
+
+    cells = [_read_object(root / "cells" / f"{arm}.json") for arm in EXPECTED_ARMS]
+    policies = [
+        _read_object(root / "policies" / f"{arm}.json") for arm in EXPECTED_ARMS
+    ]
+    _reject_forbidden_keys((cells, policies))
+    for arm, cell, policy in zip(EXPECTED_ARMS, cells, policies, strict=True):
+        _validate_cell(root, arm, cell, policy, manifest)
+    namespaces = [cell[key] for cell in cells for key in _NAMESPACE_KEYS]
+    if len(namespaces) != len(set(namespaces)):
+        raise QualificationError("namespace collision")
+    if qualification != _EXPECTED_QUALIFICATION:
+        raise QualificationError("qualification claim exceeds E0")
+    return qualification
+
+
+def _validate_manifest(manifest: dict[str, Any], expected_git_sha: str) -> None:
+    """Check the Git anchor, the manifest contract and its config fingerprint."""
+    if manifest.get("benchmark_git_sha") != expected_git_sha or not _is_git_sha(
+        expected_git_sha
     ):
         raise QualificationError("wrong benchmark Git SHA")
-    if (
-        set(manifest) != MANIFEST_KEYS
-        or manifest.get("schema_version") != SCHEMA_VERSION
-        or manifest.get("objective_id") != OBJECTIVE_ID
-        or manifest.get("mode") != "fixture"
-        or manifest.get("expected_arms") != list(EXPECTED_ARMS)
-        or manifest.get("network") != "disabled"
-        or manifest.get("allowed_native_tools") != ["read", "search"]
-        or not _is_sha256(manifest.get("question_sha256"))
-        or not _is_sha256(manifest.get("config_fingerprint"))
-        or type(manifest.get("timeout_seconds")) is not int
-        or manifest["timeout_seconds"] <= 0
-        or not isinstance(manifest.get("model"), str)
-        or not manifest["model"]
-        or not isinstance(manifest.get("repository_path"), str)
-        or not manifest["repository_path"]
-        or not _is_git_sha(manifest.get("repository_commit"))
-        or not _is_sha256(manifest.get("repository_fingerprint"))
-        or manifest.get("oracle_material_in_bundle") is not False
-        or manifest.get("retry_policy")
-        != {"kind": "none", "selective_reruns": False}
-    ):
+    if not _manifest_contract_holds(manifest):
         raise QualificationError("invalid manifest contract")
     shared = {
         "question_sha256": manifest.get("question_sha256"),
@@ -128,6 +169,29 @@ def validate_bundle(
     }
     if manifest.get("config_fingerprint") != _sha256(shared):
         raise QualificationError("config fingerprint mismatch")
+
+
+def _manifest_contract_holds(manifest: dict[str, Any]) -> bool:
+    """Return whether the manifest has exactly the fixture-mode contract."""
+    if set(manifest) != MANIFEST_KEYS:
+        return False
+    timeout = manifest.get("timeout_seconds")
+    return (
+        all(manifest.get(key) == value for key, value in _MANIFEST_CONSTANTS)
+        and all(_is_sha256(manifest.get(key)) for key in _MANIFEST_SHA256_FIELDS)
+        and all(
+            isinstance(manifest.get(key), str) and bool(manifest[key])
+            for key in _MANIFEST_NONEMPTY_STR_FIELDS
+        )
+        and type(timeout) is int
+        and timeout > 0
+        and _is_git_sha(manifest.get("repository_commit"))
+        and manifest.get("oracle_material_in_bundle") is False
+    )
+
+
+def _validate_checksums(root: Path, checksum_doc: dict[str, Any]) -> None:
+    """Check the checksum inventory shape and every listed file digest."""
     expected_checksums = checksum_doc.get("sha256")
     if (
         set(checksum_doc) != {"sha256"}
@@ -140,90 +204,67 @@ def validate_bundle(
     if actual != expected_checksums:
         raise QualificationError("checksum mismatch")
 
-    cells = [
-        _read_object(root / "cells" / f"{arm}.json") for arm in EXPECTED_ARMS
-    ]
-    policies = [
-        _read_object(root / "policies" / f"{arm}.json") for arm in EXPECTED_ARMS
-    ]
-    _reject_forbidden_keys((cells, policies))
+
+def _cell_shape_holds(arm: str, cell: dict[str, Any], policy: Any) -> bool:
+    """Return whether one cell has its arm's exact shape and namespaces."""
     cell_keys = {field.name for field in fields(Cell)}
-    for arm, cell, policy in zip(EXPECTED_ARMS, cells, policies, strict=True):
-        slug = arm.replace("-", "_")
-        boolean_keys = {"backend_executed", "index_created", "model_executed"}
-        if (
-            set(cell) != cell_keys
-            or any(
-                not isinstance(cell[key], str) for key in cell_keys - boolean_keys
-            )
-            or cell.get("arm") != arm
-            or cell.get("checkout_namespace") != f"checkout/{slug}"
-            or cell.get("mcp_namespace") != f"mcp/{slug}"
-            or cell.get("index_namespace") != f"index/{slug}"
-            or cell.get("artifact_namespace") != f"artifact/{slug}"
-            or not _is_sha256(cell.get("input_fingerprint"))
-            or not _is_sha256(cell.get("config_fingerprint"))
-            or not _is_sha256(cell.get("tool_policy_fingerprint"))
-            or policy != _policy(arm)
-        ):
-            raise QualificationError("mixed or invalid cell")
-        if cell.get("repository_path") != manifest.get("repository_path"):
-            raise QualificationError("wrong repository")
-        if (
-            cell.get("repository_commit") != manifest.get("repository_commit")
-            or cell.get("repository_fingerprint")
-            != manifest.get("repository_fingerprint")
-        ):
-            raise QualificationError("wrong repository provenance")
-        expected_input = _sha256(
-            {
-                "question_sha256": manifest.get("question_sha256"),
-                "repository_commit": manifest.get("repository_commit"),
-                "repository_fingerprint": manifest.get("repository_fingerprint"),
-            }
-        )
-        if cell.get("input_fingerprint") != expected_input:
-            raise QualificationError("input fingerprint mismatch")
-        if cell.get("config_fingerprint") != manifest.get("config_fingerprint"):
-            raise QualificationError("config fingerprint mismatch")
-        if cell.get("tool_policy_fingerprint") != _sha256(policy):
-            raise QualificationError("tool policy fingerprint mismatch")
-        if any(cell.get(flag) is not False for flag in boolean_keys):
-            raise QualificationError("qualification executed forbidden work")
-        transcript = _read_object(root / "transcripts" / f"{arm}.jsonl")
-        _reject_forbidden_keys(transcript)
-        if transcript != {
-            "arm": arm,
-            "event": "qualification_only",
-            "backend_executed": False,
-            "index_created": False,
-            "model_executed": False,
-        }:
-            raise QualificationError("invalid qualification transcript")
-    namespaces = [
-        cell[key]
-        for cell in cells
-        for key in (
-            "checkout_namespace",
-            "mcp_namespace",
-            "index_namespace",
-            "artifact_namespace",
-        )
-    ]
-    if len(namespaces) != len(set(namespaces)):
-        raise QualificationError("namespace collision")
-    expected_qualification = {
-        "schema_version": 1,
-        "objective_id": OBJECTIVE_ID,
-        "evidence_level": "E0",
-        "publishable": False,
-        "qualification_only": True,
+    if set(cell) != cell_keys or any(
+        not isinstance(cell[key], str) for key in cell_keys - _CELL_BOOLEAN_KEYS
+    ):
+        return False
+    slug = arm.replace("-", "_")
+    expected_values = {
+        "arm": arm,
+        "checkout_namespace": f"checkout/{slug}",
+        "mcp_namespace": f"mcp/{slug}",
+        "index_namespace": f"index/{slug}",
+        "artifact_namespace": f"artifact/{slug}",
+    }
+    return (
+        all(cell.get(key) == value for key, value in expected_values.items())
+        and all(_is_sha256(cell.get(key)) for key in _CELL_SHA256_FIELDS)
+        and policy == _policy(arm)
+    )
+
+
+def _validate_cell(
+    root: Path,
+    arm: str,
+    cell: dict[str, Any],
+    policy: Any,
+    manifest: dict[str, Any],
+) -> None:
+    """Validate one arm's cell, its provenance bindings and its transcript."""
+    if not _cell_shape_holds(arm, cell, policy):
+        raise QualificationError("mixed or invalid cell")
+    if cell.get("repository_path") != manifest.get("repository_path"):
+        raise QualificationError("wrong repository")
+    if cell.get("repository_commit") != manifest.get("repository_commit") or cell.get(
+        "repository_fingerprint"
+    ) != manifest.get("repository_fingerprint"):
+        raise QualificationError("wrong repository provenance")
+    expected_input = _sha256(
+        {
+            "question_sha256": manifest.get("question_sha256"),
+            "repository_commit": manifest.get("repository_commit"),
+            "repository_fingerprint": manifest.get("repository_fingerprint"),
+        }
+    )
+    if cell.get("input_fingerprint") != expected_input:
+        raise QualificationError("input fingerprint mismatch")
+    if cell.get("config_fingerprint") != manifest.get("config_fingerprint"):
+        raise QualificationError("config fingerprint mismatch")
+    if cell.get("tool_policy_fingerprint") != _sha256(policy):
+        raise QualificationError("tool policy fingerprint mismatch")
+    if any(cell.get(flag) is not False for flag in _CELL_BOOLEAN_KEYS):
+        raise QualificationError("qualification executed forbidden work")
+    transcript = _read_object(root / "transcripts" / f"{arm}.jsonl")
+    _reject_forbidden_keys(transcript)
+    if transcript != {
+        "arm": arm,
+        "event": "qualification_only",
         "backend_executed": False,
         "index_created": False,
         "model_executed": False,
-        "dominance_allowed": False,
-        "winner": None,
-    }
-    if qualification != expected_qualification:
-        raise QualificationError("qualification claim exceeds E0")
-    return qualification
+    }:
+        raise QualificationError("invalid qualification transcript")

@@ -99,15 +99,23 @@ def _health_item(file_data: dict[str, Any]) -> WorkItem:
 
 
 def _dead_code_items(dead_code: dict[str, Any]) -> list[WorkItem]:
-    dead_functions = dead_code.get("data", {}).get("dead_functions") or []
+    data = dead_code.get("data", {})
+    # #1790：低置信度（模块路径无法解析）的结论不能进入待办，否则可能诱导 agent 删除活代码。
+    dead_functions = [
+        function
+        for function in data.get("dead_functions") or []
+        if function.get("confidence", "high") == "high"
+    ]
     if not dead_functions:
         return []
+    stats = data.get("stats") or {}
+    total = stats.get("dead_functions_high_confidence", len(dead_functions))
     names = ", ".join(function.get("name", "?") for function in dead_functions[:10])
     return [
         {
             "priority": "P3",
             "category": "dead_code",
-            "title": f"{len(dead_functions)} potentially dead function(s) detected",
+            "title": f"{total} potentially dead function(s) detected",
             "details": names,
             "verification_command": (
                 "uv run python -m tree_sitter_analyzer --dead-code --output-format json"

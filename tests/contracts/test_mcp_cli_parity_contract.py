@@ -438,6 +438,7 @@ def test_facade_delegation_routes_each_action_to_expected_inner() -> None:
         ("index", "schema"): "GetProjectSchemaTool",
         ("search", "tql_schema"): "TqlSchemaTool",
         ("search", "tql_execute"): "TqlExecuteTool",
+        ("search", "uql"): "UqlTool",
         ("search", "semantic"): "SemanticNeighborsTool",
         ("viz", "uml"): "CodeGraphUMLTool",
         ("viz", "graph"): "CodeGraphVisualizeTool",

@@ -111,9 +111,20 @@ class ParserReadinessTool(BaseMCPTool):
 
 def _build_json_response(result: dict[str, Any]) -> dict[str, Any]:
     """Return the structured JSON MCP response."""
+    success = result.get("success", False)
+    summary = result.get("agent_summary")
+    summary_verdict = summary.get("verdict") if isinstance(summary, dict) else None
+    # #1812: a failure without a top-level verdict used to default to INFO,
+    # contradicting both ``success: False`` and ``agent_summary.verdict``.
+    # Fall back to the summary's verdict, then to the success-appropriate one.
+    default_verdict = (
+        summary_verdict
+        if isinstance(summary_verdict, str) and summary_verdict
+        else ("INFO" if success else "ERROR")
+    )
     response = {
-        "success": result.get("success", False),
-        "verdict": result.get("verdict", "INFO"),
+        "success": success,
+        "verdict": result.get("verdict", default_verdict),
         "format": "json",
         "advisor": result.get("advisor", "parser readiness"),
         "project_root": result.get("project_root", ""),

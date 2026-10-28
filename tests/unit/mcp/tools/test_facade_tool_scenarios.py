@@ -540,7 +540,7 @@ class TestActionSchemaDiscovery:
         assert second["action_schema"]["properties"]["query"]["type"] == "string"
 
 
-def test_agent核心profile路由存在且业务动作仍为85() -> None:
+def test_agent核心profile路由存在且业务动作仍为86() -> None:
     """五步 profile 只组合既有业务动作，不扩大公开业务能力数量。"""
     from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
 
@@ -554,7 +554,7 @@ def test_agent核心profile路由存在且业务动作仍为85() -> None:
         )
     assert (
         sum(len(facade.action_map) + len(facade.bespoke_map) for _, facade in facades)
-        == 85
+        == 86
     )
 
 
@@ -589,7 +589,7 @@ def test_全部direct_action_schema均为有效JSONSchema() -> None:
 
     # #1562：nav 的 callers/callees/context 曾返回 ACTION_SCHEMA_UNAVAILABLE。
     assert (direct_count, sorted(declared), unavailable_count) == (
-        76,
+        77,
         ["nav.callees", "nav.callers", "nav.context"],
         6,
     )

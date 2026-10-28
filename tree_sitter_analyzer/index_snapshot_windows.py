@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+import threading
 import time
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack, contextmanager
@@ -137,14 +138,8 @@ def _read_descriptor(fd: int, size: int) -> bytes:
     return os.read(fd, size)
 
 
-def read_pinned_workspace_file(
-    project_root: str,
-    relative_path: str,
-    *,
-    deadline: float,
-    limit: int,
-) -> tuple[bytes, tuple[bytes, ...]]:
-    """用原生句柄固定工作区层级，并在同一 deadline 内读取普通文件。"""
+def _workspace_parts(relative_path: str, limit: int) -> tuple[str, ...]:
+    """在打开任何句柄前拒绝绝对、越界、驱动器或空组件路径。"""
     normalized = relative_path.replace("\\", "/")
     parts = tuple(normalized.split("/"))
     if (
@@ -154,6 +149,155 @@ def read_pinned_workspace_file(
         or any(part in {"", ".", ".."} or ":" in part for part in parts)
     ):
         raise ValueError("INDEX_PATH_UNSAFE")
+    return parts
+
+
+def _read_bounded(fd: int, limit: int, check: Callable[[], None]) -> bytes:
+    data = bytearray()
+    while True:
+        check()
+        chunk = _read_descriptor(fd, min(64 * 1024, limit - len(data) + 1))
+        if not chunk:
+            return bytes(data)
+        data.extend(chunk)
+        if len(data) > limit:
+            raise OverflowError("INDEX_SOURCE_CAPACITY")
+
+
+class PinnedWorkspaceReader:
+    """一次扫描内共享目录句柄的批量读取器（#1783）。
+
+    ``read_pinned_workspace_file`` 每读一个文件都要重新打开并复核根到父目录的整条
+    链：深度为 d 的文件需要 2·(d+2) 次 ``CreateFileW``。批量扫描时同一目录被反复
+    打开数百次，在开启实时防护的 Windows 上把 500 个文件的扫描拖到数秒以上。
+
+    这里每个目录只固定一次，句柄在整个扫描期间持有且不共享 DELETE，因此目录不能被
+    重命名或删除，路径到目录的绑定在扫描期间保持不变；``verify`` 在扫描结束时再按
+    路径重开全部目录并比较卷与 File ID。文件仍逐个在固定句柄上读取，并在读取后
+    重开路径、复核完整身份（大小、时间、属性）。调用方必须在 ``verify`` 成功后才
+    发布结果；任一失败都使整次扫描失败关闭。``read`` 可被多个线程并发调用。
+    """
+
+    def __init__(self, project_root: str, *, deadline: float) -> None:
+        self._api = NativeFiles()
+        self._root = os.path.realpath(os.path.abspath(project_root))
+        self._deadline = deadline
+        self._lock = threading.Lock()
+        self._directories: dict[tuple[str, ...], tuple[str, int, tuple[Any, ...]]] = {}
+        self._closed = False
+        self._pin_directory(())
+
+    def _check(self) -> None:
+        if time.monotonic() >= self._deadline:
+            raise TimeoutError("INDEX_SNAPSHOT_DEADLINE")
+
+    def _pin_directory(self, key: tuple[str, ...]) -> tuple[Any, ...]:
+        pinned = self._directories.get(key)
+        if pinned is not None:
+            return pinned[2]
+        self._check()
+        path = os.path.join(self._root, *key) if key else self._root
+        handle = self._api.open(path, True)
+        try:
+            identity = self._api.identity(handle)
+        except BaseException:
+            self._api.close(handle)
+            raise
+        self._directories[key] = (path, handle, identity)
+        return identity
+
+    def _pin_chain(self, directories: tuple[str, ...]) -> list[tuple[Any, ...]]:
+        with self._lock:
+            if self._closed:
+                raise ValueError("INDEX_SOURCE_CHANGED")
+            return [
+                self._pin_directory(directories[:depth])
+                for depth in range(len(directories) + 1)
+            ]
+
+    def read(
+        self, relative_path: str, *, limit: int
+    ) -> tuple[bytes, tuple[bytes, ...]]:
+        """读取一个普通文件；缺失时抛出 ``FileNotFoundError``。"""
+        parts = _workspace_parts(relative_path, limit)
+        self._check()
+        chain = self._pin_chain(parts[:-1])
+        path = os.path.join(self._root, *parts)
+        handle = self._api.open(path, False)
+        try:
+            fd = self._api.reader_fd(handle)
+        except BaseException:
+            self._api.close(handle)
+            raise
+        try:
+            expected = self._api.identity(handle)
+            data = _read_bounded(fd, limit, self._check)
+            self._check()
+            try:
+                reopened = self._api.open(path, False)
+                try:
+                    if (
+                        self._api.identity(reopened) != expected
+                        or self._api.identity(handle) != expected
+                    ):
+                        raise ValueError("INDEX_SOURCE_CHANGED")
+                finally:
+                    self._api.close(reopened)
+            except OSError as exc:
+                raise ValueError("INDEX_SOURCE_CHANGED") from exc
+        finally:
+            os.close(fd)
+        metadata = tuple(repr(item).encode("ascii") for item in [*chain, expected])
+        return data, metadata
+
+    def verify(self) -> None:
+        """按路径重开每个固定目录；卷或 File ID 漂移即拒绝整次扫描。"""
+        with self._lock:
+            try:
+                for path, handle, expected in self._directories.values():
+                    reopened = self._api.open(path, True)
+                    try:
+                        if (
+                            self._api.identity(reopened)[:2] != expected[:2]
+                            or self._api.identity(handle)[:2] != expected[:2]
+                        ):
+                            raise ValueError("INDEX_SOURCE_CHANGED")
+                    finally:
+                        self._api.close(reopened)
+            except OSError as exc:
+                raise ValueError("INDEX_SOURCE_CHANGED") from exc
+
+    def close(self) -> None:
+        """释放全部目录句柄；即使某个关闭失败也继续释放其余句柄。"""
+        with self._lock:
+            self._closed = True
+            directories = list(self._directories.values())
+            self._directories.clear()
+        failure: OSError | None = None
+        for _path, handle, _expected in directories:
+            try:
+                self._api.close(handle)
+            except OSError as exc:
+                failure = failure or exc
+        if failure is not None:
+            raise failure
+
+    def __enter__(self) -> PinnedWorkspaceReader:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+
+def read_pinned_workspace_file(
+    project_root: str,
+    relative_path: str,
+    *,
+    deadline: float,
+    limit: int,
+) -> tuple[bytes, tuple[bytes, ...]]:
+    """用原生句柄固定工作区层级，并在同一 deadline 内读取普通文件。"""
+    parts = _workspace_parts(relative_path, limit)
 
     def check() -> None:
         if time.monotonic() >= deadline:
@@ -208,18 +352,10 @@ def read_pinned_workspace_file(
             except OSError as exc:
                 raise ValueError("INDEX_SOURCE_CHANGED") from exc
 
-        data = bytearray()
-        while True:
-            check()
-            chunk = _read_descriptor(source_fd, min(64 * 1024, limit - len(data) + 1))
-            if not chunk:
-                break
-            data.extend(chunk)
-            if len(data) > limit:
-                raise OverflowError("INDEX_SOURCE_CAPACITY")
+        data = _read_bounded(source_fd, limit, check)
         verify()
         metadata = tuple(repr(expected).encode("ascii") for _, _, expected, _ in pinned)
-        return bytes(data), metadata
+        return data, metadata
 
 
 @contextmanager

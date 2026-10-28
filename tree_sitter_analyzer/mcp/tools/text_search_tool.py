@@ -180,7 +180,7 @@ class TextSearchTool(BaseMCPTool):
         try:
             report = await asyncio.to_thread(search_text_bounded, request)
         except TextSearchError as exc:
-            return self._error_response(arguments["query"], exc.code)
+            return self._error_response(arguments["query"], exc.code, exc.details)
 
         limit = arguments.get("limit", DEFAULT_TEXT_SEARCH_LIMIT)
         displayed = report.hits[:limit]
@@ -261,11 +261,18 @@ class TextSearchTool(BaseMCPTool):
         return "SOURCE_ROOT_UNAVAILABLE"
 
     @staticmethod
-    def _error_response(query: str, code: str) -> dict[str, Any]:
+    def _error_response(
+        query: str, code: str, details: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         next_step = (
             "Narrow the root/globs or resolve the reported source error, then retry."
         )
-        return {
+        summary_line = f"text search failed: {code}"
+        budget = details.get("budget") if isinstance(details, dict) else None
+        progress = details.get("progress") if isinstance(details, dict) else None
+        if isinstance(budget, dict):
+            summary_line, next_step = _budget_explanation(code, budget, progress)
+        result: dict[str, Any] = {
             "success": False,
             "verdict": "ERROR",
             "error_code": code,
@@ -277,10 +284,48 @@ class TextSearchTool(BaseMCPTool):
                 "index_used": False,
                 "scan_complete": False,
             },
-            "agent_summary": {
-                "verdict": "ERROR",
-                "summary_line": f"text search failed: {code}",
-                "next_step": next_step,
-            },
+        }
+        if isinstance(budget, dict):
+            result["budget"] = budget
+        if isinstance(progress, dict):
+            # 只是失败时的进度，不是部分结果：results 恒为空、scan_complete=false。
+            result["scan_progress"] = progress
+        result["agent_summary"] = {
+            "verdict": "ERROR",
+            "summary_line": summary_line,
             "next_step": next_step,
         }
+        result["next_step"] = next_step
+        return result
+
+
+def _budget_explanation(
+    code: str, budget: dict[str, Any], progress: Any
+) -> tuple[str, str]:
+    """把预算失败说成可行动的一句话：哪个预算、上限、扫描到哪里。"""
+    name = budget.get("name", "unknown")
+    limit = budget.get("limit")
+    unit = budget.get("unit", "")
+    summary = f"text search failed: {code} ({name} budget {limit} {unit} exceeded"
+    if isinstance(progress, dict):
+        summary += (
+            f" after scanning {progress.get('files_scanned', 0)} of "
+            f"{progress.get('candidates_discovered', 0)} candidate file(s) discovered "
+            f"so far, {progress.get('bytes_scanned', 0)} bytes in "
+            f"{progress.get('elapsed_seconds', 0)}s"
+        )
+    if budget.get("file"):
+        summary += f"; at {budget['file']}"
+    summary += "); no partial results are returned"
+    if name == "file_bytes":
+        next_step = "Exclude the oversized file with exclude_globs, then retry."
+    elif name == "matches":
+        next_step = (
+            "Use a more specific query or narrow root/include_globs, then retry."
+        )
+    else:
+        next_step = (
+            "Retry (a first scan pays one-time OS file-open costs), or narrow "
+            "root/include_globs so the scan fits the budget."
+        )
+    return summary, next_step

@@ -216,7 +216,7 @@ class TestAuthoritativeSnapshotOracle:
             {"access_mode": "read_existing", "output_format": "json"}
         )
 
-        assert (result["completeness"], result["oracle_reason"]) == (
+        assert (result["snapshot_completeness"], result["oracle_reason"]) == (
             "partial",
             "CALL_GRAPH_INCOMPLETE",
         )
@@ -237,7 +237,7 @@ class TestAuthoritativeSnapshotOracle:
             {"access_mode": "read_existing", "output_format": "json"}
         )
 
-        assert (result["completeness"], result["oracle_reason"]) == (
+        assert (result["snapshot_completeness"], result["oracle_reason"]) == (
             "partial",
             "CALL_GRAPH_INCOMPLETE",
         )
@@ -452,7 +452,9 @@ def test_partial_completeness_hint_is_returned(monkeypatch):
         "/logical/project", "json", include_lag=False
     )
 
-    assert result["completeness"] == "partial"
+    # #1811: the snapshot value ``partial`` is ``incomplete`` on the wire.
+    assert result["completeness"] == "incomplete"
+    assert result["snapshot_completeness"] == "partial"
     # partial hint はユーザーに部分認証状態を説明する
     assert "partial" in result["hint"].lower()
 

@@ -153,13 +153,20 @@ def safe_index_source_path(
 
     from .index_snapshot_windows import read_pinned_workspace_file
 
-    try:
-        data, metadata = read_pinned_workspace_file(
+    return _windows_capture(
+        lambda: read_pinned_workspace_file(
             root,
             normalized,
             deadline=deadline,
             limit=limit,
         )
+    )
+
+
+def _windows_capture(read: Callable[[], tuple[bytes, tuple[bytes, ...]]]) -> SafePath:
+    """把 Windows 原生读取器的异常稳定映射为 oracle 错误码。"""
+    try:
+        data, metadata = read()
     except FileNotFoundError:
         return SafePath(None, (b"missing",), "missing")
     except OverflowError as exc:
@@ -176,6 +183,66 @@ def safe_index_source_path(
     except OSError as exc:
         raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_PATH") from exc
     return SafePath(data, tuple(metadata), "file")
+
+
+class SourceBatchReader:
+    """一次扫描内复用认证状态的读取器；``verify`` 成功前不得发布任何结果。
+
+    POSIX 上每个文件仍走完整的 no-follow descriptor 链（openat 代价很低）；Windows
+    上共享固定的目录句柄（#1783），避免每个文件重复打开整条祖先链。``read`` 线程
+    安全，可由有界线程池并发调用。
+    """
+
+    def __init__(self, root: str, *, deadline: float) -> None:
+        self._root = root
+        self._deadline = deadline
+        self._windows: Any = None
+        if not _supports_nofollow():
+            if os.name != "nt":
+                raise SourceOracleError("DIFF_SNAPSHOT_WORKSPACE_UNSUPPORTED")
+            from .index_snapshot_windows import PinnedWorkspaceReader
+
+            try:
+                self._windows = PinnedWorkspaceReader(root, deadline=deadline)
+            except TimeoutError as exc:
+                raise SourceOracleError("DIFF_SNAPSHOT_TIMEOUT") from exc
+            except (OSError, ValueError) as exc:
+                raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_PATH") from exc
+
+    def read(self, path: str, *, limit: int) -> SafePath:
+        normalized = normalize_repo_path(path)
+        if self._windows is None:
+            return safe_workspace_path(
+                self._root, normalized, deadline=self._deadline, limit=limit
+            )
+        windows = self._windows
+        return _windows_capture(lambda: windows.read(normalized, limit=limit))
+
+    def verify(self) -> None:
+        if self._windows is None:
+            return
+        try:
+            self._windows.verify()
+        except ValueError as exc:
+            raise SourceOracleError("DIFF_SNAPSHOT_SOURCE_CHANGED") from exc
+
+    def close(self) -> None:
+        if self._windows is not None:
+            try:
+                self._windows.close()
+            except OSError as exc:
+                raise SourceOracleError("DIFF_SNAPSHOT_UNSAFE_PATH") from exc
+
+    def __enter__(self) -> SourceBatchReader:
+        return self
+
+    def __exit__(self, exc_type: object, *_exc: object) -> None:
+        try:
+            self.close()
+        except SourceOracleError:
+            # 已有失败在传播时保留原始原因；清理失败只在成功路径上暴露。
+            if exc_type is None:
+                raise
 
 
 def safe_workspace_path(

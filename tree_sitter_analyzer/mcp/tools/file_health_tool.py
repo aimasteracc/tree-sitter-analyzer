@@ -13,6 +13,7 @@ from typing import Any
 
 from ...health_scorer import HealthScorer
 from ...utils import setup_logger
+from ._verdict import NOT_ANALYZED_EMPTY_FILE, NOT_ANALYZED_NON_CODE_FILE
 from .base_tool import (
     BaseMCPTool,
     detect_language_mismatch,
@@ -26,7 +27,7 @@ from .utils.file_health_response import (
     build_file_health_result,
 )
 from .utils.file_health_smells import detect_code_smells
-from .utils.parse_validity import is_file_parse_broken
+from .utils.parse_validity import is_file_parse_broken, syntax_error_failure
 
 logger = setup_logger(__name__)
 
@@ -178,9 +179,7 @@ class FileHealthTool(BaseMCPTool):
             resolved, file_path, language, output_format
         )
         if early is not None:
-            return apply_output_format_to_response(
-                early, output_format
-            )
+            return apply_output_format_to_response(early, output_format)
 
         language = self._resolve_language_for_health(resolved, language)
         analysis = extract_elements(resolved, self.project_root)
@@ -195,14 +194,10 @@ class FileHealthTool(BaseMCPTool):
         # the agent doesn't see ``grade=A`` on broken syntax.
         syntax_response = _syntax_error_response(resolved, file_path, language)
         if syntax_response is not None:
-            return apply_output_format_to_response(
-                syntax_response, output_format
-            )
+            return apply_output_format_to_response(syntax_response, output_format)
 
         result = self._score_and_echo_metrics(resolved, file_path, language, analysis)
-        return apply_output_format_to_response(
-            result, output_format
-        )
+        return apply_output_format_to_response(result, output_format)
 
     def _check_early_exit_paths(
         self,
@@ -366,7 +361,10 @@ def _empty_file_response(resolved: str, file_path: str) -> dict[str, Any] | None
         "success": True,
         "file_path": file_path,
         "grade": "N/A",
-        "verdict": "N/A",
+        # #1810: ``N/A`` is not a canonical verdict. Nothing was graded, so
+        # the verdict is informational; ``verdict_reason`` says why.
+        "verdict": "INFO",
+        "verdict_reason": NOT_ANALYZED_EMPTY_FILE,
         "signal": "empty_file",
         "recommendation": "File is empty; nothing to analyze.",
         "code_smells": [],
@@ -380,7 +378,7 @@ def _empty_file_response(resolved: str, file_path: str) -> dict[str, Any] | None
         "agent_summary": {
             "summary_line": f"{file_path} is {detail}",
             "next_step": "skip",
-            "verdict": "N/A",
+            "verdict": "INFO",
         },
         "agent_next_action": {
             "priority": "none",
@@ -407,11 +405,11 @@ def _non_code_file_response(resolved: str, file_path: str) -> dict[str, Any] | N
         "success": True,
         "file_path": file_path,
         "grade": "N/A",
-        # ``verdict`` mirrors safe_to_edit / modification_guard. Use
-        # ``N/A`` first; downstream code that requires one of the
-        # safety vocab strings should treat this as ``SAFE`` (nothing
-        # to break by skipping the analysis).
-        "verdict": "N/A",
+        # #1810: code-quality metrics do not apply, so nothing was graded.
+        # The verdict is informational (canonical ``INFO``, formerly the
+        # off-ladder ``N/A``); ``verdict_reason`` says why.
+        "verdict": "INFO",
+        "verdict_reason": NOT_ANALYZED_NON_CODE_FILE,
         "signal": "non_code_file",
         "recommendation": ("Markdown/config files are not code-quality scored."),
         "code_smells": [],
@@ -426,7 +424,7 @@ def _non_code_file_response(resolved: str, file_path: str) -> dict[str, Any] | N
         "agent_summary": {
             "summary_line": summary_line,
             "next_step": ("Markdown/config files are not code-quality scored."),
-            "verdict": "N/A",
+            "verdict": "INFO",
         },
         "agent_next_action": {
             "priority": "none",
@@ -546,7 +544,8 @@ def _syntax_error_response(
     # so callers don't have to read the file again.
     line_count, is_binary = _file_metrics(resolved)
     return {
-        "success": True,
+        # #1812: the file could not be analyzed, so this is a failure.
+        **syntax_error_failure(file_path),
         "file_path": file_path,
         "language": language,
         # M3: keep the grade slot but mark it ``N/A`` — the dimension

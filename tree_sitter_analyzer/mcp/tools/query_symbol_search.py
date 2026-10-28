@@ -264,7 +264,8 @@ async def _search_one_file_for_symbol(
                 {
                     "name": name,
                     "type": etype,
-                    "file": str(fp.relative_to(root)),
+                    # #1813：仓库相对、正斜杠，与索引路径同一形式。
+                    "file": fp.relative_to(root).as_posix(),
                     "start_line": getattr(e, "start_line", 0),
                     "end_line": getattr(e, "end_line", 0),
                 }
@@ -486,7 +487,7 @@ async def _scan_file_for_references(
         result = await engine.analyze(req)
         if not result or not result.success:
             return defs, refs
-        rel = str(fp.relative_to(root))
+        rel = fp.relative_to(root).as_posix()  # #1813
         for e in result.elements:
             _classify_element_for_references(e, rel, bare_name, seen_refs, refs, defs)
     except Exception:  # nosec B110

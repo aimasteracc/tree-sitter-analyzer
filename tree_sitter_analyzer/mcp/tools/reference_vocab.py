@@ -27,6 +27,7 @@
 
 from __future__ import annotations
 
+import bisect
 import hashlib
 import marshal
 import os
@@ -87,15 +88,61 @@ class ReferenceVocabulary:
             entry = self._entries.get(path)
         if entry is None:
             return False
-        try:
-            current = _stat_key(os.stat(path))
-        except OSError:
+        current = _current_stamp(path)
+        if current is None:
             return False  # 交给照常读取：不可读由那里报告
         if current != entry[0]:
             return False
         with self._lock:
             self._touched.add(path)
         return needle not in entry[1]
+
+    def lacking(self, paths: list[str], needle: bytes) -> set[str]:
+        """``paths`` 中词表证明不含 ``needle`` 的路径（查询作用域内批量判定）。
+
+        RFC-0041：每个路径的 stat 证据在一个查询作用域内只核对一次（按需、只核对
+        被问到的路径），之后每个名字的判定只是字典查找与字节包含测试。与逐个
+        :meth:`lacks` 的结论相同。
+        """
+        if not searchable(needle):
+            return set()
+        from ...query_scope import scoped
+
+        # RFC-0041 跨名批量：同一组路径的有效词表在作用域内只拼接一次；之后每个名字
+        # 是一次（C 层的）字节查找，命中后直接跳到下一个文件，而不是逐路径做包含测试。
+        joined: _JoinedVocab = scoped(
+            ("reference_vocab.joined", self._root, tuple(paths)),
+            lambda: self._joined(paths),
+        )
+        out = joined.lacking(needle)
+        with self._lock:
+            self._touched.update(out)
+        return out
+
+    def _joined(self, paths: list[str]) -> _JoinedVocab:
+        """``paths`` 中 stat 证据仍成立的词表，拼接为一段（每个路径只核对一次）。"""
+        from ...query_scope import scoped, scoped_stats
+
+        valid: dict[str, bytes | None] = scoped(
+            ("reference_vocab.valid", self._root), dict
+        )
+        with self._lock:
+            pending = [p for p in paths if p not in valid and p in self._entries]
+        # 尚未核对的路径一次（并行）stat；之后的 ``_current_stamp`` 只是查记忆。
+        scoped_stats(pending)
+        with self._lock:
+            entries = self._entries
+            for path in paths:
+                if path not in valid:
+                    entry = entries.get(path)
+                    if entry is None:
+                        valid[path] = None
+                    else:
+                        valid[path] = (
+                            entry[1] if _current_stamp(path) == entry[0] else None
+                        )
+        known = [(path, words) for path in paths if (words := valid[path]) is not None]
+        return _JoinedVocab(known)
 
     def learn(self, path: str, data: bytes, stamp: StatKey | None) -> None:
         """记录一次完整读取的词表；读取期间被改写或处于竞争窗口时不记录。"""
@@ -123,6 +170,59 @@ class ReferenceVocabulary:
         if total > MAX_TOTAL_BYTES:
             entries = {path: entries[path] for path in touched if path in entries}
         _save(self._root, entries)
+
+
+#: 拼接词表时文件之间的分隔字节：不是词字节，名字的出现不会跨越它。
+_FILE_SEPARATOR = b"\n"
+
+
+class _JoinedVocab:
+    """一组文件的有效词表拼接为一段字节，供作用域内的许多名字共用（RFC-0041）。
+
+    ``needle in words_i`` 对每个文件逐一测试与“在拼接段中查找、命中落在第 i 段”
+    等价：名字只含词字节，而段内以 ``\\0``、段间以 :data:`_FILE_SEPARATOR` 分隔，
+    二者都不是词字节，因此任何一次出现都完整落在某一段之内。
+    """
+
+    __slots__ = ("_blob", "_ends", "_paths", "_starts")
+
+    def __init__(self, known: list[tuple[str, bytes]]) -> None:
+        self._paths = [path for path, _words in known]
+        self._starts: list[int] = []
+        self._ends: list[int] = []
+        offset = 0
+        for _path, words in known:
+            self._starts.append(offset)
+            offset += len(words)
+            self._ends.append(offset)
+            offset += len(_FILE_SEPARATOR)
+        self._blob = _FILE_SEPARATOR.join(words for _path, words in known)
+
+    def lacking(self, needle: bytes) -> set[str]:
+        """词表证明不含 ``needle`` 的路径（``needle`` 须为 :func:`searchable`）。"""
+        containing: set[int] = set()
+        blob, starts, ends = self._blob, self._starts, self._ends
+        at = blob.find(needle)
+        while at != -1:
+            index = bisect.bisect_right(starts, at) - 1
+            containing.add(index)
+            at = blob.find(needle, ends[index])
+        return {
+            path for index, path in enumerate(self._paths) if index not in containing
+        }
+
+
+def _current_stamp(path: str) -> StatKey | None:
+    """``path`` 的当前 stat 证据；不可 stat 为 None。
+
+    RFC-0041：统一查询在一个答案里对许多名字各做一次引用扫描，同一批文件被逐一
+    重复 stat（TSA 自身约 2.7k 个文件 × 每个名字）。查询作用域内一个答案只对应
+    一个源码时刻，因此每个路径只 stat 一次；作用域外照旧每次实时 stat。
+    """
+    from ...query_scope import scoped_stats
+
+    info = scoped_stats((path,))[0]
+    return None if info is None else _stat_key(info)
 
 
 _LOCK = threading.Lock()

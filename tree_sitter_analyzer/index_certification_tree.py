@@ -45,6 +45,10 @@ _LEAF_DOMAIN = b"tsa-index-leaf-v1\0"
 _ROOT_DOMAIN = b"tsa-index-merkle-v1\0"
 #: FTS5 影子表后缀（虚表 ``X`` 的 ``X_data`` 等）。
 _FTS5_SHADOW_SUFFIXES = ("_data", "_idx", "_docsize", "_config", "_content")
+#: Sentinel "no previous group value" (never equal to a SQLite value).
+_NO_VALUE = object()
+#: ``_frame``'s label header for a row: 4-byte label length, then the label.
+_ROW_FRAME = len(b"row").to_bytes(4, "big") + b"row"
 
 
 @dataclass(frozen=True)
@@ -153,7 +157,6 @@ def _hash_table(
     from .index_snapshot_schema import (
         _check_deadline,
         _deadline_ordered_rows,
-        _frame,
         _preflight_table_rows,
         _quote_identifier,
         _typed,
@@ -166,15 +169,29 @@ def _hash_table(
     leaves: dict[bytes, bytes] = {}
     current: bytes | None = None
     digest = None
+    # Rows arrive ordered by ``file_path``: re-encode the group key only when the
+    # value (or its type: 1 and "1" are different groups) changes. Floats are
+    # always re-encoded (0.0 == -0.0 but their encodings differ).
+    last_value: object = _NO_VALUE
+    last_key = WHOLE_TABLE_GROUP
     for row in _deadline_ordered_rows(conn, _ordered_select(table), deadline):
         _check_deadline(deadline)
-        key = group_key(row[index]) if table.grouped else WHOLE_TABLE_GROUP
+        if table.grouped:
+            value = row[index]
+            kind = type(value)
+            if kind is float or kind is not type(last_value) or value != last_value:
+                last_value, last_key = value, group_key(value)
+            key = last_key
+        else:
+            key = WHOLE_TABLE_GROUP
         if key != current:
             if digest is not None and current is not None:
                 leaves[current] = digest.digest()
             current, digest = key, hashlib.sha256(_LEAF_DOMAIN)
         assert digest is not None
-        _frame(digest, b"row", _typed(tuple(row)))
+        # One update with the bytes ``_frame(digest, b"row", ...)`` would feed.
+        encoded = _typed(tuple(row))
+        digest.update(_ROW_FRAME + len(encoded).to_bytes(8, "big") + encoded)
     if digest is not None and current is not None:
         leaves[current] = digest.digest()
     return leaves

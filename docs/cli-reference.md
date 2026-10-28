@@ -276,6 +276,14 @@ uv run tree-sitter-analyzer --codegraph-sitemap --codegraph-sitemap-mode flat --
 uv run tree-sitter-analyzer --trace-impact --trace-impact-symbol authenticate --format json
 ```
 
+The text action scans the whole admitted scope within a 30 s budget (worker start-up
+is not counted). If any budget is exceeded it returns `success: false`,
+`scan_complete: false` and empty `results`; it never returns a partial scan as a
+result or as `NOT_FOUND`. The `budget` field names the limit that was hit (`time`,
+`total_bytes`, `file_bytes`, `matches`, `entries` or `path_bytes`) with its `limit` and
+`unit`, and `scan_progress` shows how far the scan got (`files_scanned`,
+`candidates_discovered`, `bytes_scanned`, `elapsed_seconds`).
+
 ## Information Commands
 
 ### Help and Version

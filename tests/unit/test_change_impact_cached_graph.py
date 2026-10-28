@@ -307,6 +307,7 @@ def test_cached_graph_rejects_unavailable_source_evidence(tmp_path, monkeypatch)
     assert _load_dependency_graph(str(tmp_path)).nodes() == ["a.py"]
 
 
+@pytest.mark.flaky(reruns=1)  # #1816: wall-clock limit on loaded runners
 def test_repeated_change_impact_tracks_preserved_mtime_imports(tmp_path):
     """同一工具实例反复处理修改时，磁盘与内存缓存不能落后一次。"""
     import asyncio

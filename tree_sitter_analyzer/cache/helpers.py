@@ -45,6 +45,9 @@ def _build_function_entry(
     }
     if sym.get("class"):
         entry["class"] = sym["class"]
+    if sym.get("overload"):
+        # #1773：``@overload`` 存根（构图时由唯一的实现代表）。
+        entry["overload"] = True
     return entry
 
 

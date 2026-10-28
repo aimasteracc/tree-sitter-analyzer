@@ -182,7 +182,11 @@ class ConstraintCheckTool(BaseMCPTool):
             return apply_output_format_to_response(
                 {
                     "success": False,
-                    "verdict": "CAUTION",
+                    # #1812: an unreadable rule file means no rule was
+                    # evaluated. A failure must not carry a proceed-with-care
+                    # verdict, so it is ERROR (formerly CAUTION).
+                    "verdict": "ERROR",
+                    "error_code": "CONSTRAINT_CONFIG_INVALID",
                     "error": f"constraint parse error: {exc}",
                     "violations": [],
                     "rule_count": 0,

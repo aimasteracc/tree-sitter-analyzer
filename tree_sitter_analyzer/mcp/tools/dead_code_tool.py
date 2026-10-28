@@ -15,6 +15,7 @@ but extends it with transitive analysis and unused import detection.
 from typing import Any
 
 from ...dead_code_analyzer import (
+    CONFIDENCE_HIGH,
     DeadFunction,
     UnreferencedVariable,
     UnusedImport,
@@ -161,6 +162,9 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
 
         # Totals BEFORE the display cap — used for truncation signals.
         total_dead_funcs = len(result.dead_functions)
+        low_confidence_dead = sum(
+            1 for df in result.dead_functions if df.confidence != CONFIDENCE_HIGH
+        )
         total_unused_imports = len(result.unused_imports)
         total_unref_vars = len(result.unreferenced_variables)
 
@@ -199,6 +203,8 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
             "candidates_after_filters": total_dead_funcs,  # filter = transitive reachability
             "dead_functions_listed": listed_dead,
             "dead_functions_cap": max_dead,
+            "dead_functions_high_confidence": total_dead_funcs - low_confidence_dead,
+            "dead_functions_low_confidence": low_confidence_dead,
             "total_unused_imports": total_unused_imports,
             "unused_imports_listed": listed_imports,
             "unused_imports_cap": max_imports,
@@ -246,6 +252,13 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
                     f"{listed_vars} unreferenced variables) — static analysis can miss "
                     "dynamic refs (reflection, plugins, __all__). Run edit action=guard "
                     "on a symbol to confirm zero callers before deleting it."
+                )
+            if dead_visible and low_confidence_dead:
+                next_step += (
+                    f" {low_confidence_dead} dead function(s) are confidence=low "
+                    "(module path unresolvable, e.g. a hyphenated directory): "
+                    "cross-file uses may be missing, so do not delete them on "
+                    "this evidence alone."
                 )
 
         response: dict[str, Any] = {
@@ -307,6 +320,10 @@ def _serialize_dead_function(df: DeadFunction) -> dict[str, Any]:
         "reason": df.reason,
         "dead_callee_count": len(df.dead_callees),
         "dead_callees": df.dead_callees[:10],
+        # #1790：``low`` 表示文件的模块路径无法解析，来自其他文件的调用 / 引用可能缺失，
+        # 不能据此删除。
+        "confidence": df.confidence,
+        "confidence_reason": df.confidence_reason,
     }
 
 

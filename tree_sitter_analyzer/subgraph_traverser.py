@@ -3,6 +3,7 @@
 Forward traversal: entry -> files it imports (directly or transitively).
 Accepts a pre-built DependencyMatrix to avoid double-indexing.
 """
+
 from __future__ import annotations
 
 import sys

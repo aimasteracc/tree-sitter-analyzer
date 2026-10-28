@@ -34,6 +34,25 @@ from .full_index_tool import CodeGraphFullIndexTool, _resolve_exclude_patterns
 
 logger = setup_logger(__name__)
 
+#: ``error_code`` of a sync that ran but did not certify the index (#1808).
+SYNC_INCOMPLETE = "SYNC_INCOMPLETE"
+
+
+def _sync_failure_message(sync_result: Any, payload: dict[str, Any]) -> str:
+    """Name every condition that kept a finished sync from certifying."""
+    causes: list[str] = []
+    if sync_result.errors:
+        causes.append(f"{sync_result.errors} file error(s)")
+    if sync_result.backfill_errors:
+        causes.append(f"{sync_result.backfill_errors} backfill error(s)")
+    if not sync_result.scope_complete:
+        causes.append("the source scope was not fully synced")
+    if sync_result.manifest_certification_failed:
+        causes.append("the index manifest could not be certified")
+    if not causes and payload.get("completeness") != "complete":
+        causes.append(f"completeness is {payload.get('completeness')!r}")
+    return "Sync incomplete: " + ("; ".join(causes) or "the index was not certified")
+
 
 def _safe_close_cache(cache: Any) -> None:
     """Close an owned cache without masking the primary tool result."""
@@ -234,8 +253,13 @@ class CodeGraphIncrementalSyncTool(BaseMCPTool):
             and payload.get("completeness") == "complete"
             and not sync_result.manifest_certification_failed
         )
+        if not sync_complete:
+            # #1809/#1808/#1812: a failed sync says why, carries a machine
+            # code, and uses a failure verdict (formerly WARN).
+            payload.setdefault("error", _sync_failure_message(sync_result, payload))
+            payload.setdefault("error_code", SYNC_INCOMPLETE)
         result = build_response(
-            verdict="INFO" if sync_complete else "WARN",
+            verdict="INFO" if sync_complete else "ERROR",
             success=sync_complete,
             project_root=self.project_root,
             mode="sync",

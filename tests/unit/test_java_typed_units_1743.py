@@ -156,9 +156,11 @@ def test_subclass_index_reads_java_placeholders_and_tolerates_failures() -> None
                 "extends",
                 "b/sub.py:Sub:1",
                 "class:Base",
-            ),  # Python placeholders stay ignored
+            ),  # Python placeholder of an external base (no project class `Base`)
         ],
     )
+    # #1834: a Python placeholder counts only when a project class has that name.
+    conn.execute("CREATE TABLE ast_symbol_rows (name TEXT, kind TEXT)")
     index = SubclassIndex(SimpleNamespace(get_conn=lambda: conn))
     assert index.subclasses("Shape") == {"Circle", "Square"}
     assert index.subclasses("Base") == set()

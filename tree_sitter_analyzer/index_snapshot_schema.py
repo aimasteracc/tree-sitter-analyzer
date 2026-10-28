@@ -11,6 +11,7 @@ import struct
 import time
 from typing import Any
 
+from ._recorded_source_rows import finish_cursor
 from .cache.schema_extensions import CURRENT_SCHEMA_VERSION, schema_update
 from .index_snapshot_capability import strict_call_graph_marker
 from .index_source_snapshot import (
@@ -354,6 +355,7 @@ def validate_snapshot_schema(
         return int(time.monotonic() > deadline)
 
     conn.set_progress_handler(expired, 1_000)
+    cursor: Any = None
     try:
         cursor = conn.execute(
             "SELECT typeof(version), length(CAST(version AS BLOB)), "
@@ -448,6 +450,9 @@ def validate_snapshot_schema(
             raise RuntimeError("INDEX_FINGERPRINT_DEADLINE") from exc
         raise
     finally:
+        # #1831：期限或校验在两行之间中断时结束未读完的语句，不让保留异常的
+        # traceback 借游标继续持有读事务（连接关闭后成为僵尸，私有版本无法封存）。
+        finish_cursor(cursor)
         conn.set_progress_handler(None, 0)
 
 
@@ -528,21 +533,25 @@ def _query_visible_columns(
 ) -> tuple[str, ...]:
     """Return SELECT-visible columns and reject generated expressions."""
     columns: list[str] = []
+    # #1831：中断时同样立即结束语句（见 validate_snapshot_schema）。
     cursor = conn.execute(f"PRAGMA table_xinfo({_quote_identifier(table)})")
-    while True:
-        _check_deadline(deadline)
-        row = cursor.fetchone()
-        if row is None:
-            break
-        if len(row) < 7 or not isinstance(row[1], str):
-            raise RuntimeError("INDEX_FINGERPRINT_UNSUPPORTED_SCHEMA")
-        hidden = row[6]
-        if hidden in (2, 3):
-            raise RuntimeError("INDEX_FINGERPRINT_UNSUPPORTED_SCHEMA")
-        if hidden == 0:
-            columns.append(row[1])
-        elif hidden != 1:
-            raise RuntimeError("INDEX_FINGERPRINT_UNSUPPORTED_SCHEMA")
+    try:
+        while True:
+            _check_deadline(deadline)
+            row = cursor.fetchone()
+            if row is None:
+                break
+            if len(row) < 7 or not isinstance(row[1], str):
+                raise RuntimeError("INDEX_FINGERPRINT_UNSUPPORTED_SCHEMA")
+            hidden = row[6]
+            if hidden in (2, 3):
+                raise RuntimeError("INDEX_FINGERPRINT_UNSUPPORTED_SCHEMA")
+            if hidden == 0:
+                columns.append(row[1])
+            elif hidden != 1:
+                raise RuntimeError("INDEX_FINGERPRINT_UNSUPPORTED_SCHEMA")
+    finally:
+        finish_cursor(cursor)
     if not columns:
         raise RuntimeError("INDEX_FINGERPRINT_UNSUPPORTED_SCHEMA")
     return tuple(columns)
@@ -616,23 +625,49 @@ def _quote_identifier(value: str) -> str:
     return '"' + value.replace('"', '""') + '"'
 
 
+#: ``_typed`` encoding of ``None``: tag ``n`` and a zero length.
+_NULL_CELL = b"n" + bytes(8)
+
+
 def _typed(values: tuple[Any, ...]) -> bytes:
-    result = bytearray()
+    """Tagged, length-prefixed encoding of each value (hashed into fingerprints).
+
+    The certification tree encodes every row of every rooted table with this, so
+    the common exact types (``str``, ``int``, ``None``) take a fast path; every
+    other value goes through ``_typed_cell``. Both produce the same bytes.
+    """
+    parts: list[bytes] = []
+    append = parts.append
     for value in values:
-        if value is None:
-            tag, raw = b"n", b""
-        elif isinstance(value, bytes):
-            tag, raw = b"b", value
-        elif isinstance(value, int):
-            tag, raw = b"i", str(value).encode("ascii")
-        elif isinstance(value, float):
-            tag, raw = b"f", struct.pack(">d", value)
+        kind = type(value)
+        if kind is str:
+            raw = value.encode("utf-8", "surrogatepass")
+            append(b"t" + len(raw).to_bytes(8, "big"))
+            append(raw)
+        elif kind is int:
+            raw = str(value).encode("ascii")
+            append(b"i" + len(raw).to_bytes(8, "big"))
+            append(raw)
+        elif value is None:
+            append(_NULL_CELL)
         else:
-            tag, raw = b"t", str(value).encode("utf-8", "surrogatepass")
-        result.extend(tag)
-        result.extend(len(raw).to_bytes(8, "big"))
-        result.extend(raw)
-    return bytes(result)
+            append(_typed_cell(value))
+    return b"".join(parts)
+
+
+def _typed_cell(value: Any) -> bytes:
+    """``_typed`` encoding of one value of any type (the reference rules)."""
+    if value is None:
+        tag, raw = b"n", b""
+    elif isinstance(value, bytes):
+        tag, raw = b"b", value
+    elif isinstance(value, int):
+        tag, raw = b"i", str(value).encode("ascii")
+    elif isinstance(value, float):
+        tag, raw = b"f", struct.pack(">d", value)
+    else:
+        tag, raw = b"t", str(value).encode("utf-8", "surrogatepass")
+    return tag + len(raw).to_bytes(8, "big") + raw
 
 
 def _frame(digest: Any, label: bytes, raw: bytes) -> None:

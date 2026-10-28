@@ -58,10 +58,26 @@ def wrap_execute_with_strict_params(cls_execute: Any) -> Any:
         from ...cache.generation_reads import generation_read_scope
 
         with generation_read_scope():
-            return await cls_execute(self, arguments)  # type: ignore[no-any-return]
+            result = await cls_execute(self, arguments)
+        if isinstance(result, dict) and result.get("success") is False:
+            # #1808/#1809: every failure leaves the tool with an ``error``
+            # and a machine code, for direct callers as well as MCP clients.
+            from ..server_utils.error_recovery import ensure_failure_identity
+
+            ensure_failure_identity(result, _tool_name(self))
+        return result  # type: ignore[no-any-return]
 
     setattr(_wrapped, _F5_WRAPPED_ATTR, True)
     return _wrapped
+
+
+def _tool_name(tool: Any) -> str:
+    """The tool's MCP name for a failure message; the class name as fallback."""
+    try:
+        name = tool.get_tool_definition().get("name")
+    except Exception:  # noqa: BLE001 - the name only labels a message
+        name = None
+    return name if isinstance(name, str) and name else type(tool).__name__
 
 
 __all__ = [

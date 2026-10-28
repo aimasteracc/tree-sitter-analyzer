@@ -50,7 +50,8 @@ def test_schema_rejects_unknown_trust_boundary_field(tmp_path: Path) -> None:
 
 def test_candidate_never_claims_native_axes_qualified(tmp_path: Path) -> None:
     result, value = aggregate(tmp_path, reports(tmp_path))
-    assert result.returncode == 0
+    # 失败原因只写在 aggregate.json：一并断言，CI 偶发失败时才看得到原因。
+    assert (result.returncode, value["failures"]) == (0, [])
     assert (
         value["native_axes_qualified"],
         value["qualified"],

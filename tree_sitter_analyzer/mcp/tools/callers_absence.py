@@ -18,6 +18,7 @@ RFC-0028 §1.1 的单向不变式要求：答案不得把无法证明的不存�
 from __future__ import annotations
 
 import bisect
+import contextvars
 import os
 import re
 import sqlite3
@@ -37,17 +38,19 @@ from .callers_alias_refs import alias_reference_check
 from .callers_call_lines import call_edge_lines
 from .callers_decorators import (
     DECORATED_REASON,
+    UNREADABLE,
     registered_hint,
     registering_decorator,
 )
 from .callers_excluded import EXCLUDED_REASON, excluded_definition, excluded_hint
 from .callers_import_bindings import mask_import_bindings
+from .callers_outcomes import Checked, CheckOutcome, NotChecked, Scope, checked
 from .callers_reference_freshness import stale_reference_files
 from .callers_target import NOT_DEFINED_REASON, not_defined_hint, resolve_target
 from .callers_target import UNCHECKED_REASON as TARGET_UNCHECKED_REASON
 from .evidence_file_cache import FILE_CACHE, StatKey
 from .reference_vocab import ReferenceVocabulary
-from .relation_freshness import SCOPED_REASON, STALE_REASON
+from .relation_freshness import SCOPED_REASON, STALE_REASON, UNKNOWN_REASON
 from .unindexed_sources import FILES_CAP as UNINDEXED_FILES_CAP
 from .unindexed_sources import UNCHECKED_REASON as UNINDEXED_UNCHECKED_REASON
 from .unindexed_sources import (
@@ -63,6 +66,8 @@ NON_CALL_REASON = "NON_CALL_REFERENCES"
 UNCHECKED_REASON = "NON_CALL_REFERENCES_UNCHECKED"
 #: 目标是 @property 等访问器：读取是属性访问，不是调用边。
 ACCESSOR_REASON = "ACCESSOR_NOT_CALL_EDGES"
+#: RFC-0040：声明读不到，无法排除访问器（读取不是调用边）。
+ACCESSOR_UNCHECKED_REASON = "ACCESSOR_UNCHECKED"
 
 #: 响应中点名的引用位置上限；总数始终与列表并列给出。
 _SITES_CAP = 5
@@ -128,6 +133,9 @@ class AbsenceVerdict:
     also: tuple[str, ...] = ()
     #: 引用扫描发现已与索引不一致的文件（#1672）；非空时答案的证据为 stale。
     stale_files: tuple[str, ...] = ()
+    #: RFC-0040：本次运行过（或未能运行）的复核门 ``(检查名, 结果)``，按运行顺序。
+    #: ``complete`` 由 ``callers_checks.prove`` 依据它们构成，而不是依据 ``completeness``。
+    checks: tuple[tuple[str, CheckOutcome], ...] = ()
 
 
 def assess_completeness(
@@ -142,19 +150,31 @@ def assess_completeness(
     """在调用边已给出 ``complete`` 时，复核新鲜度与非调用引用两道门。"""
     if completeness != "complete":
         return AbsenceVerdict(completeness)
+    scope: Scope = (func_name, file_path)
     downgraded = "incomplete" if total_callers else "unknown"
     freshness_reason = _freshness_gap(evidence)
+    freshness = _freshness_outcome(scope, evidence, freshness_reason)
     if freshness_reason is not None:
         return AbsenceVerdict(
-            downgraded, freshness_reason, _freshness_hint(func_name, evidence)
+            downgraded,
+            freshness_reason,
+            _freshness_hint(func_name, evidence),
+            checks=(("freshness", freshness),),
         )
     if not project_root:
-        return AbsenceVerdict(completeness)
+        # RFC-0040：没有项目根就读不到源码，其余复核门都无法运行——不是 complete。
+        return AbsenceVerdict(
+            downgraded,
+            TARGET_UNCHECKED_REASON,
+            _no_root_hint(func_name),
+            checks=(("freshness", freshness),),
+        )
     # #1643：调用方列表同样须通过这些门才是普查——别名、回调、登记型装饰器、
     # 未入索引的新文件都可能是列表之外的调用方。有调用方时降级为 incomplete。
     verdict = _assess_absence(
         cache, project_root, func_name, file_path, with_callers=bool(total_callers)
     )
+    verdict = replace(verdict, checks=(("freshness", freshness), *verdict.checks))
     if total_callers and verdict.completeness != "complete":
         return replace(verdict, completeness=downgraded)
     return verdict
@@ -169,6 +189,17 @@ def _freshness_gap(evidence: dict[str, Any]) -> str | None:
     return None
 
 
+def _freshness_outcome(
+    scope: Scope, evidence: dict[str, Any], gap: str | None
+) -> CheckOutcome:
+    """新鲜度门：stale 是复核后发现的问题；无法复核则是未能运行。"""
+    if gap is None:
+        return checked(scope)
+    if evidence.get("freshness") == "stale":
+        return checked(scope, gap)
+    return NotChecked(gap)
+
+
 def _freshness_hint(func_name: str, evidence: dict[str, Any]) -> str:
     if evidence.get("freshness") == "stale":
         state = "the index is stale for this answer"
@@ -177,6 +208,22 @@ def _freshness_hint(func_name: str, evidence: dict[str, Any]) -> str:
     return (
         f"No resolved caller for {func_name!r}, but {state}, so this is not "
         "evidence of absence."
+    )
+
+
+def _no_root_hint(func_name: str) -> str:
+    return (
+        f"No resolved caller for {func_name!r}, and no project root is set, so "
+        "its definition and non-call references could not be checked; this is "
+        "not evidence of absence."
+    )
+
+
+def _budget_hint(func_name: str) -> str:
+    return (
+        f"No resolved caller for {func_name!r}, and its non-call references "
+        "(attribute access, bare name, or string name) could not be checked "
+        "within budget, so this is not evidence of absence."
     )
 
 
@@ -193,56 +240,87 @@ def _assess_absence(
     ``with_callers``（#1643）：已有调用方时，未改名的导入行只是绑定，不计为引用。
     0 调用方时导入行仍计入——``__init__`` 中的再导出可能是仓库外调用的公开 API，
     “0 个调用方、complete”会被当作可删除的死代码。
+
+    RFC-0040：每道门把结果记入 ``checks``，门的顺序与 ``callers_checks`` 的登记表
+    一致；首个未通过（或未能运行）的门决定原因。
     """
+    scope: Scope = (func_name, file_path)
+    checks: list[tuple[str, CheckOutcome]] = []
+    fields: dict[str, Any] = {}
+
+    def verdict(
+        completeness: str, reason: str | None, hint: str | None
+    ) -> AbsenceVerdict:
+        return AbsenceVerdict(completeness, reason, hint, fields, checks=tuple(checks))
+
     # #1606：精确（限定）目标必须解析到已索引定义，否则 0 不是不存在的证据。
     target = resolve_target(cache, project_root, func_name, file_path)
-    fields: dict[str, Any] = {
-        "target_defined": target.defined,
-        "close_matches": list(target.close_matches),
-    }
+    fields.update(
+        {"target_defined": target.defined, "close_matches": list(target.close_matches)}
+    )
     if not target.defined:
         if target.defined is False:
             # #1635：定义在被索引排除的文件里时，刷新无济于事，须点名文件与规则。
             excluded = excluded_definition(cache, project_root, func_name, file_path)
             if excluded is not None:
                 fields["excluded_definition"] = excluded.to_dict()
-                hint = excluded_hint(func_name, excluded)
-                return AbsenceVerdict("unknown", EXCLUDED_REASON, hint, fields)
-        reason = (
-            TARGET_UNCHECKED_REASON if target.defined is None else NOT_DEFINED_REASON
-        )
-        return AbsenceVerdict(
-            "unknown", reason, not_defined_hint(func_name, target), fields
-        )
+                checks.append(("target_defined", checked(scope, EXCLUDED_REASON)))
+                return verdict(
+                    "unknown", EXCLUDED_REASON, excluded_hint(func_name, excluded)
+                )
+            checks.append(("target_defined", checked(scope, NOT_DEFINED_REASON)))
+            reason = NOT_DEFINED_REASON
+        else:
+            checks.append(("target_defined", NotChecked(TARGET_UNCHECKED_REASON)))
+            reason = TARGET_UNCHECKED_REASON
+        return verdict("unknown", reason, not_defined_hint(func_name, target))
+    checks.append(("target_defined", checked(scope)))
     bare = func_name.rpartition(".")[2]
     owner = func_name.rpartition(".")[0]
     declarations = _declarations(cache, bare, owner, file_path)
-    scan = None
-    if declarations is not None:
-        new_files_verdict, config_files = _new_files_gap(
-            cache, project_root, func_name, declarations, fields
-        )
-        if new_files_verdict is not None:
-            return new_files_verdict
-        scan = _reference_scan(
-            cache,
-            project_root,
-            bare,
-            declarations,
-            config_files,
-            mask_imports=with_callers,
-        )
+    if not declarations:
+        # 声明行读不到（或一行也没有）：没有可扫描的语言与文件，其后各门都无从运行。
+        fields["non_call_references"] = None
+        fields["non_call_reference_sites"] = None
+        checks.append(("unindexed_sources", NotChecked(UNCHECKED_REASON)))
+        return verdict("unknown", UNCHECKED_REASON, _budget_hint(func_name))
+    new_files_verdict, config_files, unindexed = _new_files_gap(
+        cache, project_root, scope, declarations, fields
+    )
+    checks.append(("unindexed_sources", unindexed))
+    if new_files_verdict is not None:
+        return replace(new_files_verdict, checks=tuple(checks))
+    scan = _reference_scan(
+        cache,
+        project_root,
+        bare,
+        declarations,
+        config_files,
+        mask_imports=with_callers,
+    )
     sites = None if scan is None else scan[0]
     fields["non_call_references"] = None if sites is None else len(sites)
     fields["non_call_reference_sites"] = None if sites is None else sites[:_SITES_CAP]
-    accessor = bool(declarations) and _is_accessor(
-        project_root, declarations or [], bare
+    if scan is None or sites is None:
+        checks.append(("reference_freshness", NotChecked(UNCHECKED_REASON)))
+        return verdict("unknown", UNCHECKED_REASON, _budget_hint(func_name))
+    accessor = _is_accessor(project_root, declarations, bare)
+    stale, freshness = _stale_verdict(
+        cache, project_root, scope, scan, accessor is True, fields
     )
-    if scan is not None:
-        stale = _stale_verdict(cache, project_root, func_name, scan, accessor, fields)
-        if stale is not None:
-            return stale
+    checks.append(("reference_freshness", freshness))
+    if stale is not None:
+        return replace(stale, checks=tuple(checks))
+    if accessor is None:
+        checks.append(("accessor", NotChecked(ACCESSOR_UNCHECKED_REASON)))
+        hint = (
+            f"No resolved caller for {func_name!r}, and its declaration could not "
+            "be read to rule out a property/accessor (whose reads are not call "
+            "edges), so this is not evidence of absence."
+        )
+        return verdict("unknown", ACCESSOR_UNCHECKED_REASON, hint)
     if accessor:
+        checks.append(("accessor", checked(scope, ACCESSOR_REASON)))
         hint = (
             f"{func_name!r} is a property/accessor: it is read by attribute "
             "access, which the call graph does not record, so 0 callers is not "
@@ -250,81 +328,100 @@ def _assess_absence(
         )
         if sites:
             hint += f" Non-call references: {_describe(sites)}."
-        return AbsenceVerdict("unknown", ACCESSOR_REASON, hint, fields)
-    if sites is None:
-        hint = (
-            f"No resolved caller for {func_name!r}, and its non-call references "
-            "(attribute access, bare name, or string name) could not be checked "
-            "within budget, so this is not evidence of absence."
-        )
-        return AbsenceVerdict("unknown", UNCHECKED_REASON, hint, fields)
+        return verdict("unknown", ACCESSOR_REASON, hint)
+    checks.append(("accessor", checked(scope)))
     if sites:
+        checks.append(("non_call_references", checked(scope, NON_CALL_REASON)))
         hint = (
             f"No resolved caller for {func_name!r}, but {len(sites)} non-call "
             "reference(s) (attribute access, bare name, or string name) could "
             f"reach it: {_describe(sites)}. Read those sites before treating "
             "this as absence."
         )
-        return AbsenceVerdict("unknown", NON_CALL_REASON, hint, fields)
+        return verdict("unknown", NON_CALL_REASON, hint)
+    checks.append(("non_call_references", checked(scope)))
     # #1596：守卫按名收窄后，注册表分发须由装饰器登记门兜底。
-    decorator = registering_decorator(project_root, declarations or [])
+    decorator = registering_decorator(project_root, declarations)
+    if decorator == UNREADABLE:
+        checks.append(("registering_decorator", NotChecked(DECORATED_REASON)))
+        return verdict(
+            "unknown", DECORATED_REASON, registered_hint(func_name, decorator)
+        )
     if decorator is not None:
-        hint = registered_hint(func_name, decorator)
-        return AbsenceVerdict("unknown", DECORATED_REASON, hint, fields)
-    return AbsenceVerdict("complete", None, None, fields)
+        checks.append(("registering_decorator", checked(scope, DECORATED_REASON)))
+        return verdict(
+            "unknown", DECORATED_REASON, registered_hint(func_name, decorator)
+        )
+    checks.append(("registering_decorator", checked(scope)))
+    return verdict("complete", None, None)
 
 
 def _stale_verdict(
     cache: Any,
     project_root: str,
-    func_name: str,
+    scope: Scope,
     scan: tuple[list[dict[str, Any]], dict[str, StatKey | None]],
     accessor: bool,
     fields: dict[str, Any],
-) -> AbsenceVerdict | None:
+) -> tuple[AbsenceVerdict | None, CheckOutcome]:
     """#1672：引用命中的文件已与索引不一致时，原因是源码与索引不一致。
 
     这样的命中可能是刷新前新增的调用（还没有调用边），称它为非调用引用是误诊；
     未变文件里的命中仍是非调用引用，按表序列在主因之后。
+
+    RFC-0040：索引戳记读不到时比对没有运行（``SOURCE_SCOPE_UNKNOWN``），不再当作
+    “没有不一致的文件”。
     """
     sites, stamps = scan
+    func_name = scope[0]
     stale = stale_reference_files(cache, project_root, sites, stamps)
     fields["stale_reference_files"] = None if stale is None else stale[:_SITES_CAP]
     fields["stale_reference_files_total"] = None if stale is None else len(stale)
+    if stale is None:
+        hint = (
+            f"No resolved caller for {func_name!r}, and the files that reference "
+            "it could not be compared with the index, so this is not evidence of "
+            "absence."
+        )
+        unread = AbsenceVerdict("unknown", UNKNOWN_REASON, hint, fields)
+        return unread, NotChecked(UNKNOWN_REASON)
     if not stale:
-        return None
+        return None, Checked(scope)
     stale_set = frozenset(stale)
     flags = (
         (NON_CALL_REASON, any(site["file"] not in stale_set for site in sites)),
         (ACCESSOR_REASON, accessor),
     )
+    also = tuple(code for code, applies in flags if applies)
     in_stale = [site for site in sites if site["file"] in stale_set]
     hint = (
         f"No resolved caller for {func_name!r}, but it is referenced in file(s) "
         f"that changed since the index was built: {_describe(in_stale)}. The "
         "index may be missing those calls, so this is not evidence of absence."
     )
-    return AbsenceVerdict(
+    found = AbsenceVerdict(
         "unknown",
         STALE_REASON,
         hint,
         fields,
-        also=tuple(code for code, applies in flags if applies),
+        also=also,
         stale_files=tuple(stale[:_SITES_CAP]),
     )
+    return found, Checked(scope, (STALE_REASON, *also))
 
 
 def _new_files_gap(
     cache: Any,
     project_root: str,
-    func_name: str,
+    scope: Scope,
     declarations: list[tuple[str, int, str]],
     fields: dict[str, Any],
-) -> tuple[AbsenceVerdict | None, list[str]]:
+) -> tuple[AbsenceVerdict | None, list[str], CheckOutcome]:
     """#1607：同语言中尚未入索引的新文件可能就是调用方；无新文件时判定为 None。
 
-    同一次遍历顺带返回需扫描的配置文件（#1624）。
+    同一次遍历顺带返回需扫描的配置文件（#1624），以及本门的检查结果（RFC-0040）。
     """
+    func_name = scope[0]
     languages = frozenset(language for _file, _line, language in declarations)
     walked = project_files(cache, project_root, languages)
     new_files = None if walked is None else walked.unindexed
@@ -338,11 +435,12 @@ def _new_files_gap(
     if new_files is None:
         hint = unchecked_hint(func_name)
         verdict = AbsenceVerdict("unknown", UNINDEXED_UNCHECKED_REASON, hint, fields)
-        return verdict, config_files
+        return verdict, config_files, NotChecked(UNINDEXED_UNCHECKED_REASON)
     if new_files:
         hint = unindexed_hint(func_name, languages, new_files)
-        return AbsenceVerdict("unknown", UNINDEXED_REASON, hint, fields), config_files
-    return None, config_files
+        verdict = AbsenceVerdict("unknown", UNINDEXED_REASON, hint, fields)
+        return verdict, config_files, Checked(scope, (UNINDEXED_REASON,))
+    return None, config_files, Checked(scope)
 
 
 def _describe(sites: list[dict[str, Any]]) -> str:
@@ -427,15 +525,9 @@ def _reference_scan(
     started = time.monotonic()
     try:
         conn = cache.get_conn()
-        marks = ",".join("?" * len(languages))
-        files = sorted(
-            (str(row[0]), str(row[1]))
-            for row in conn.execute(
-                "SELECT file_path, language FROM ast_index "  # nosec B608
-                f"WHERE language IN ({marks})",
-                languages,
-            )
-        ) + [(path, text_language(path) or CONFIG_LANGUAGE) for path in config_files]
+        files = _indexed_files(conn, project_root, languages) + [
+            (path, text_language(path) or CONFIG_LANGUAGE) for path in config_files
+        ]
         declared_lines = {
             (str(row[0]), int(row[1]))
             for row in conn.execute(
@@ -499,6 +591,28 @@ def _reference_scan(
     return _with_foreign(sites, foreign), stamps
 
 
+def _indexed_files(
+    conn: Any, project_root: str, languages: list[str]
+) -> list[tuple[str, str]]:
+    """给定语言的已索引文件（有序）；RFC-0041 查询作用域内每个语言集只读一次。"""
+    from ...query_scope import scoped
+
+    def compute() -> list[tuple[str, str]]:
+        marks = ",".join("?" * len(languages))
+        return sorted(
+            (str(row[0]), str(row[1]))
+            for row in conn.execute(
+                "SELECT file_path, language FROM ast_index "  # nosec B608
+                f"WHERE language IN ({marks})",
+                languages,
+            )
+        )
+
+    return list(
+        scoped(("absence.indexed_files", project_root, tuple(languages)), compute)
+    )
+
+
 def _with_foreign(
     sites: list[dict[str, Any]], foreign: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
@@ -546,15 +660,44 @@ def _files_containing(
     开销主导耗时且会释放 GIL，因此用线程池并行读取。
     """
     hits: list[tuple[str, str, bytes, StatKey | None]] = []
+    vocab = reference_vocab.for_root(project_root)
+    from ...query_scope import in_scope, scoped
+
+    if in_scope():
+        # RFC-0041：作用域内词表判定只是字典查找，先在本线程筛掉词表证明不含名字
+        # 的文件，只把仍须读取的文件交给线程池；逐个判定由线程执行时 GIL 争用
+        # 反而更慢。结果与逐个读取相同（被筛掉的文件本就返回空字节）。
+        # 跨名批量：同一组文件的绝对路径在作用域内只拼接一次。
+        rel_paths = tuple(entry[0] for entry in files)
+        paths = scoped(
+            ("absence.abs_paths", project_root, rel_paths),
+            lambda: [os.path.join(project_root, rel) for rel in rel_paths],
+        )
+        lacking = vocab.lacking(paths, needle)
+        files = [
+            entry
+            for entry, path in zip(files, paths, strict=True)
+            if path not in lacking
+        ]
+        if not files:
+            vocab.flush()
+            return hits
     # dogfood 第 7 轮：逐文件提交 future 的调度开销与（已缓存的）读取相当；
     # 改为按块提交、块内顺序读取。期限与“任一不可读即 None”的判定不变。
     size = max(1, -(-len(files) // (_READ_WORKERS * _CHUNKS_PER_WORKER)))
     chunks = [files[start : start + size] for start in range(0, len(files), size)]
-    vocab = reference_vocab.for_root(project_root)
     executor = ThreadPoolExecutor(max_workers=_READ_WORKERS)
     try:
+        # RFC-0041：工作线程继承调用方的上下文（含查询作用域的记忆）。
         futures = [
-            executor.submit(_read_chunk, project_root, chunk, needle, vocab)
+            executor.submit(
+                contextvars.copy_context().run,
+                _read_chunk,
+                project_root,
+                chunk,
+                needle,
+                vocab,
+            )
             for chunk in chunks
         ]
         for chunk, future in zip(chunks, futures, strict=True):
@@ -660,21 +803,30 @@ def _reference_lines(
 
 def _is_accessor(
     project_root: str, declarations: list[tuple[str, int, str]], bare: str
-) -> bool:
-    """声明是否为访问器：Python 访问器装饰器，或 JS/TS 的 get/set 访问器。"""
+) -> bool | None:
+    """声明是否为访问器：Python 访问器装饰器，或 JS/TS 的 get/set 访问器。
+
+    RFC-0040：读不到的声明（文件不可读，或声明行已不在文件内）无法排除访问器；
+    其余声明也都不是访问器时返回 ``None``——读不到不是“不是访问器”的证据。
+    """
+    from ...query_scope import scoped
+
     getter = re.compile(r"\b(?:get|set)\s+" + re.escape(bare) + r"\s*\(")
+    unread = False
     for rel_path, line, _language in declarations:
         text = FILE_CACHE.read_text(os.path.join(project_root, rel_path))
-        if text is None:
-            continue
-        source = text.splitlines()
-        if not 0 < line <= len(source):
+        # RFC-0041 跨名批量：作用域内同一文本只切分一次（作用域外照常每次切分）。
+        source = (
+            None if text is None else scoped(("absence.lines", text), text.splitlines)
+        )
+        if source is None or not 0 < line <= len(source):
+            unread = True
             continue
         if getter.search(source[line - 1]):
             return True
         if any(_ACCESSOR_DECORATOR.match(text) for text in _decorators(source, line)):
             return True
-    return False
+    return None if unread else False
 
 
 def _decorators(source: list[str], line: int) -> list[str]:

@@ -180,7 +180,7 @@ class TestSnapshotProjectionCompleteness:
             {"output_format": "json"}
         )
 
-        assert (result["completeness"], result["oracle_reason"]) == (
+        assert (result["snapshot_completeness"], result["oracle_reason"]) == (
             "partial",
             "SYMBOL_PROJECTION_INCOMPLETE",
         )

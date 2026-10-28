@@ -176,9 +176,7 @@ class ProjectHealthTool(BaseMCPTool):
             cost_fields(query_cost("health", "project", self.project_root, arguments))
         )
 
-        return apply_output_format_to_response(
-            result, output_format
-        )
+        return apply_output_format_to_response(result, output_format)
 
 
 _GRADE_RECOMMENDATIONS = {

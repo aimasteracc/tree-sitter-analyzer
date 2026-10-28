@@ -16,6 +16,8 @@ import pytest
 from tree_sitter_analyzer import verification_runner as runner
 
 
+# Spawns two real pytest sessions (each with -n 4) to prove tier selection.
+@pytest.mark.slow_ok
 def test_explicit_pytest_targets_execute_excluded_tiers(tmp_path, monkeypatch):
     """2026-09-09：显式选择必须执行层级测试，并保留默认门禁及外部限制。"""
     from tree_sitter_analyzer.mcp.tools.utils.verification_command import (
@@ -228,11 +230,20 @@ def test_ordered_execution_stops_at_first_failed_step(tmp_path, monkeypatch, fai
         code = f"from pathlib import Path; Path('step-{index}').write_text('ran'); raise SystemExit({7 if failure == index else 0})"
         steps.append(python_step(code, "default_gate" if index == 2 else "focused"))
     monkeypatch.setattr(runner, "rebuild_request", lambda *_: steps)
-    result = runner.run_verification_request(request_token(tmp_path), str(tmp_path))
+    # The request's timeout is ONE deadline shared by all three interpreter
+    # launches. The 10 s default let a contended macOS runner time out step 1
+    # of the all-passing case (CI run 40116699185: files [True, False, False]).
+    # This test is about ordering and stopping, not about the deadline (the
+    # timeout tests below drive an injected clock), so the deadline is set far
+    # beyond any launch latency.
+    token = request_token(tmp_path, timeout=600)
+    result = runner.run_verification_request(token, str(tmp_path))
     count = 3 if failure is None else failure + 1
-    assert [Path(tmp_path / f"step-{index}").exists() for index in range(3)] == [
-        index < count for index in range(3)
-    ]
+    ran = [Path(tmp_path / f"step-{index}").exists() for index in range(3)]
+    assert ran == [index < count for index in range(3)], (
+        result["status"],
+        [(step["index"], step["status"]) for step in result["executed_steps"]],
+    )
     assert len(result["executed_steps"]) == count
     assert result["unexecuted_steps"] == 3 - count
     assert result["status"] == ("passed" if failure is None else "failed")
@@ -410,12 +421,13 @@ def test_cleanup_never_claims_success_for_live_unreaped_process(monkeypatch, fai
         status=lambda: psutil.STATUS_RUNNING,
         kill=kill,
     )
+    late = runner._CLEANUP_DEADLINE_S + 1
     ticks = iter(
-        [0, 3]
+        [0, late]
         if failure == "deadline"
-        else [0, 0, 3]
+        else [0, 0, late]
         if failure == "scan_deadline"
-        else [0, 0, 0, 3]
+        else [0, 0, 0, late]
         if failure == "denied"
         else [0, 0, 0, 0, 0, 0, 0]
     )

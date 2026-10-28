@@ -35,7 +35,9 @@ _SEARCH_ANNOTATIONS: dict[str, Any] = {
 }
 
 _SEARCH_DESCRIPTION = (
-    "Code-intelligence (codegraph-compatible) search facade. "
+    "Code-intelligence (codegraph-compatible) search facade; multi-hop graph "
+    "questions (callers then tests, untested callers, impact, depth/path "
+    "filters) take ONE action=uql call with completeness. "
     "Covers live text, codegraph_symbol_search (BM25), codegraph_query (tree-sitter AST), "
     "codegraph_query chain DSL, TQL, and semantic symbol retrieval. "
     "Pick a capability via `action`:\n"
@@ -53,7 +55,8 @@ _SEARCH_DESCRIPTION = (
     "\"explore('parse').related()\"; a plain string with no parentheses is "
     "treated as explore(string).related(). "
     "Params: query (required — the chain string), max_symbols, max_files, "
-    "include_code, compact.\n"
+    "include_code, compact. Deprecated (RFC-0041) for search/callers/callees/"
+    "filter/take questions: prefer action=uql, which reports completeness.\n"
     "- action=select — Hyphae DSL, a CSS-selector-style graph query (RFC-0003). "
     "ONE selector replaces chains of navigate/callers/search: #name, .kind "
     "(.function/.method/.class), *, :calls(#X), :callees(#X), :not(sel), "
@@ -72,7 +75,23 @@ _SEARCH_DESCRIPTION = (
     "Hyphae extended with DepthQuantifier {n,m} bounded BFS, temporal "
     "pseudo-classes, reachability, architecture violations, and branch "
     "context. Call action=tql_schema first for the grammar. "
-    "Params: selector (required), max_results.\n"
+    "Params: selector (required), max_results. Edge predicates such as "
+    ":calls(#X){1,2} report completeness unknown; for callers to a depth "
+    "prefer action=uql.\n"
+    "- action=uql — RFC-0041 unified query: one call composes a source "
+    "(symbol('Name') or a TQL selector) with relations (callers(depth=N), "
+    "tests(), impact(), callees()) and refinements (filter/exclude/untested/"
+    "take/sort); every stage reports completeness + reason codes and the total "
+    "is complete only if every stage is. Compact by default; paged via cursor. "
+    "Grammar: action=help target_action=uql. "
+    "Params: query (required), limit, cursor, detail (compact|full). "
+    "Use it when a question needs two or more hops or a filter over a "
+    "traversal — e.g. symbol('X').callers().tests(), "
+    "symbol('Y').callers().filter(file='m.py').untested(), "
+    "symbol('X').callers(depth=2).filter(path='src/'), symbol('X').impact() — "
+    "it replaces one nav call per caller. For a single one-hop lookup, nav "
+    "action=callers/callees/test_map is faster (test_map and callees make no "
+    "completeness claim).\n"
     "- action=semantic — find symbols semantically similar to a natural-"
     "language query via vector embeddings (requires numpy + embedding "
     "pipeline). Params: query (required), top_k, min_similarity, language, "
@@ -97,6 +116,7 @@ def build_search_facade(
     from .symbol_search_tool import SYMBOL_SEARCH_KINDS, CodeGraphSymbolSearchTool
     from .text_search_tool import TextSearchTool
     from .tql_tool import TqlExecuteTool, TqlSchemaTool
+    from .uql_tool import UqlTool
 
     facade = FacadeTool(
         facade_name="search",
@@ -121,6 +141,9 @@ def build_search_facade(
             # pseudo-classes.
             "tql_schema": TqlSchemaTool(project_root),
             "tql_execute": TqlExecuteTool(project_root),
+            # RFC-0041：统一、携带证据的查询语言。一次调用组合
+            # select -> relate -> refine，并报告各阶段的完整性。
+            "uql": UqlTool(project_root),
             # Semantic search — vector similarity over indexed symbol embeddings.
             "semantic": SemanticNeighborsTool(project_root),
         },

@@ -1,14 +1,17 @@
 ---
 name: tsa-graph
-version: 2.0.0
+version: 2.1.0
 description: |
   Code archaeology via call graph + symbol resolution. Answer "who calls X",
   "what does Y call", "where is Z defined", "what's the path from A to B" in
   one MCP call instead of multi-step grep + read. Uses persisted cross-file
   resolution (Synapse) so cross-module edges are precise, not regex-guessed.
+  Multi-hop questions ("who calls X and which tests cover them", "untested
+  callers of Y in M", "impact of X") are ONE `search action=uql` call.
 
   Use when:
   - User asks "what calls this function" / "what does this function call"
+  - "Which tests cover the callers of X" / "which callers are untested"
   - Tracing a bug through layers (impact → caller chain)
   - Planning refactor of a function/class (need full fanout)
   - "Where is this symbol defined" / "find all references to X"
@@ -39,9 +42,14 @@ Pick the right tool by question shape:
 
 | Question                              | Tool                              |
 |---------------------------------------|-----------------------------------|
+| Who calls X **and** which tests cover those callers? | `search action=uql query="symbol('X').callers().tests()"` |
+| Which callers of Y in module M have no tests? | `search action=uql query="symbol('Y').callers().filter(file='M').untested()"` |
+| Callers of X to depth N, only under `src/`? | `search action=uql query="symbol('X').callers(depth=2).filter(path='src/')"` |
+| Impact of changing X (transitive callers + tests + files)? | `search action=uql query="symbol('X').impact()"` |
 | Need search + snippets + callers/callees together? | `search action=chain` |
 | What does FUNCTION call?              | `nav action=callees`              |
-| What calls FUNCTION?                  | `nav action=callers`              |
+| What calls FUNCTION? (one hop)        | `nav action=callers`              |
+| Which tests exercise FUNCTION? (one symbol) | `nav action=test_map`       |
 | Where is SYMBOL defined?              | `search action=symbol`            |
 | What references SYMBOL anywhere?      | `nav action=xref`                 |
 | Path from CALLER to CALLEE?           | `nav action=call_path`            |
@@ -68,8 +76,32 @@ Returns: `callers: [{name, file, line, callee_resolution, callee_resolved_file},
 The `callee_resolution` field tells you `local` / `project` / `stdlib` /
 `unknown` so you can filter out noise.
 
-When a question needs several graph hops plus source snippets, prefer the
-chain surface:
+### Multi-hop case: one `uql` call, not one call per caller
+
+If the answer to the first call would make you call `nav` again **for each
+row** (test_map per caller, callers of each caller, a path filter you would
+apply by hand), ask the whole question as one `search action=uql` query:
+
+```
+search action=uql query="symbol('score_file').callers().tests()"
+```
+
+Measured on the 8 RFC-0041 benchmark questions (TSA + rich): 1 call instead
+of up to 13, about half the tokens per task, and every stage carries its own
+completeness (`stages[].c` = complete / incomplete / unknown, with reason
+codes) — `test_map`, `caller_tree` and TQL make no claim at all. Grammar: one
+`search action=help target_action=uql` call. Read the total `completeness`
+before saying "all" or "none"; `untested()` rows marked ` ?` are undecided,
+not untested. Call-graph tests are not coverage (CLAUDE.md rule 5).
+
+**Stay on the single tools when** the question is one hop and you do not
+need a claim: `nav action=callers` (carries its own completeness), `nav
+action=test_map` for one symbol's tests and `nav action=callees` are faster
+and, for tests/callees, smaller than the uql answer. uql pays ~0.5–1.5 s more
+tool time per question for the per-input proof.
+
+For search plus source snippets (`explore`, `include`), keep the chain
+surface — uql has no snippet stages:
 
 ```
 search action=chain query="search('score_file').explore(max_files=3).callers(depth=1).callees(depth=1)"
@@ -78,7 +110,8 @@ search action=chain query="search('score_file').explore(max_files=3).callers(dep
 ### Multi-step case (refactor planning)
 
 Fan out 3 in parallel:
-1. `nav action=callers` (who depends on this — blast radius)
+1. `search action=uql query="symbol('X').impact()"` (who depends on this,
+   transitively, with the tests and files to re-check — blast radius)
 2. `nav action=callees` (what this depends on — what may need updating)
 3. `search action=symbol` with the symbol name (find aliases / shadows)
 
@@ -110,6 +143,7 @@ Filter rules of thumb:
 ```bash
 uv run tree-sitter-analyzer --callees <FUNC> --output-format toon
 uv run tree-sitter-analyzer --callers <FUNC> --output-format toon
+uv run tree-sitter-analyzer --uql "symbol('<FUNC>').callers().tests()"
 uv run tree-sitter-analyzer --symbol-search <NAME> --output-format toon
 uv run tree-sitter-analyzer --codegraph-xref <SYMBOL> --output-format toon
 uv run tree-sitter-analyzer --call-path --call-path-source X --call-path-target Y
@@ -120,6 +154,9 @@ uv run tree-sitter-analyzer --uml class --output-format toon
 
 - Don't `grep -rn "def X" tree_sitter_analyzer/` — use `search action=symbol` (10x faster, precise)
 - Don't read 5 files to trace a call chain — use `nav action=call_path`
+- Don't loop `nav action=test_map` / `nav action=callers` over the rows of a
+  callers answer — that is one `search action=uql` query (nav appends this
+  hint when it sees the loop)
 - Don't ignore `callee_resolution` — `unknown` entries are noise, filter them
 
 ## Decision surface

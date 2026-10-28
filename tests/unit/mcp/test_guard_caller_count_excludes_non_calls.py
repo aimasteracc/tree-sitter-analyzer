@@ -254,14 +254,14 @@ class TestTraceImpactExcludesImportAndStringMatches:
         # callers_by_file must not contain the import or string-literal files.
         by_file = result.get("usages", [])
         files_found = {u["file"] for u in by_file}
-        assert str(imports_f) not in files_found, (
+        # #1813: usages name repo-relative, forward-slash paths.
+        assert "imports.py" not in files_found, (
             "imports.py (import line) must not appear in callers"
         )
-        assert str(string_f) not in files_found, (
+        assert "string_ref.py" not in files_found, (
             "string_ref.py (string literal) must not appear in callers"
         )
-        assert str(calls_a) in files_found
-        assert str(calls_b) in files_found
+        assert files_found == {"calls_a.py", "calls_b.py"}
 
     @pytest.mark.asyncio
     async def test_reconciliation_invariant_guard_matches_nav_callers(

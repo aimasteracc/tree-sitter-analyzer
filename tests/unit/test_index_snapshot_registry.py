@@ -279,7 +279,7 @@ class TestAuthoritativeSnapshotTransitions:
         )
 
         assert before["completeness"] == "complete"
-        assert after["completeness"] == "partial"
+        assert after["snapshot_completeness"] == "partial"
         assert after["oracle_reason"] == "SOURCE_INDEX_MISMATCH"
         assert after["source_generation"] != before["source_generation"]
 
@@ -296,7 +296,7 @@ class TestAuthoritativeSnapshotTransitions:
         )
 
         assert before["completeness"] == "complete"
-        assert after["completeness"] == "partial"
+        assert after["snapshot_completeness"] == "partial"
         assert after["oracle_reason"] == "SOURCE_INDEX_MISMATCH"
         assert after["source_generation"] != before["source_generation"]
 
@@ -309,7 +309,7 @@ class TestAuthoritativeSnapshotTransitions:
             {"output_format": "json"}
         )
 
-        assert result["completeness"] == "partial"
+        assert result["snapshot_completeness"] == "partial"
         assert result["oracle_reason"] == "SOURCE_INDEX_MISMATCH"
 
     @pytest.mark.asyncio
@@ -390,7 +390,7 @@ class TestAuthoritativeSnapshotTransitions:
         )
 
         assert before["completeness"] == "complete"
-        assert after["completeness"] == "partial"
+        assert after["snapshot_completeness"] == "partial"
         # RFC-0039（owner decision 2026-10-20）：FTS5 不进入认证根，由逐文件投影摘要与
         # 投影精确性核验绑定——认证根不变，完整性降为 partial。
         assert after["index_fingerprint"] == before["index_fingerprint"]
@@ -438,7 +438,7 @@ class TestAuthoritativeSnapshotTransitions:
             {"output_format": "json"}
         )
 
-        assert (result["total_files"], result["completeness"], result["indexed"]) == (
+        assert (result["total_files"], result["snapshot_completeness"], result["indexed"]) == (
             0,
             "partial",
             False,

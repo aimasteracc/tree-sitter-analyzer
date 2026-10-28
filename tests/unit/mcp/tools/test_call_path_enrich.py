@@ -444,7 +444,8 @@ def test_tool_path_found_inlines_bodies_and_deterrent(tmp_path):
             "output_format": "json",
         },
     )
-    assert result["verdict"] == "PATH_FOUND"
+    assert result["verdict"] == "INFO"
+    assert result["path_status"] == "PATH_FOUND"
     assert "source_bodies" in result
     assert result["source_bodies"] == []
     assert "no Read needed" not in result["next_step"]
@@ -494,7 +495,8 @@ def test_tool_dead_end_inlines_endpoints_and_deterrent(tmp_path):
             "output_format": "json",
         },
     )
-    assert result["verdict"] == "NO_PATH"
+    assert result["verdict"] == "NOT_FOUND"
+    assert result["path_status"] == "NO_PATH"
     assert "dead_end" in result
     de = result["dead_end"]
     assert "body" not in de["source_endpoint"]

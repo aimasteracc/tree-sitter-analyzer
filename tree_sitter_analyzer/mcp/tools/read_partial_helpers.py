@@ -384,9 +384,7 @@ def _summary_next_step(
         return "Use surrounding lines if the column slice lacks enough context."
     if content_format == "json":
         return "Use line metadata to choose the next exact range or query_code target."
-    return (
-        "Inspect the content, then use query_code or CC Grep tool for related code."
-    )
+    return "Inspect the content, then use query_code or CC Grep tool for related code."
 
 
 def _summary_suggested_tool(

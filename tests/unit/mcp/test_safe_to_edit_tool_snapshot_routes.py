@@ -253,7 +253,9 @@ async def test_edit_safe_read_existing_syntax_error_short_circuits(
             "output_format": "json",
         }
     )
-    assert result["success"] is True
+    # #1812: an unparseable file is a failure, not a success with ERROR.
+    assert result["success"] is False
+    assert result["error_code"] == "SYNTAX_ERROR"
     assert result["verdict"] == "ERROR"
     assert result["access_state"] == "available"
     causal = result["causal_envelope"]

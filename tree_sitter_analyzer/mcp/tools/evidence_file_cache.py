@@ -112,13 +112,19 @@ class EvidenceFileCache:
 
         文本模式的通用换行：``\\r\\n`` 与单独的 ``\\r`` 都转换为 ``\\n``。
         """
-        data = self.read_bytes(path)
-        if data is None:
+        found = self.read_stamped(path)
+        if found is None:
             return None
-        text = data.decode("utf-8", "replace")
-        if "\r" in text:
-            text = text.replace("\r\n", "\n").replace("\r", "\n")
-        return text
+        data, key = found
+        from ...query_scope import in_scope, scoped
+
+        if key is not None and in_scope():
+            # RFC-0041 跨名批量：同一声明文件在一次回答里被多个名字的访问器 / 装饰器门
+            # 读取；同一份 stat 证据下的字节只解码一次（每次取用仍重新 stat）。
+            return scoped(
+                ("evidence_file_cache.text", path, key), lambda: _decode(data)
+            )
+        return _decode(data)
 
     def _racy(self, info: os.stat_result) -> bool:
         return time.time_ns() - int(info.st_mtime_ns) < RACY_WINDOW_NS
@@ -142,6 +148,13 @@ class EvidenceFileCache:
             while self._total > self._max_total and self._entries:
                 _evicted, (_key, payload) = self._entries.popitem(last=False)
                 self._total -= len(payload)
+
+
+def _decode(data: bytes) -> str:
+    text = data.decode("utf-8", "replace")
+    if "\r" in text:
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+    return text
 
 
 #: 进程级共享实例（nav callers 的各道完整性门共用）。

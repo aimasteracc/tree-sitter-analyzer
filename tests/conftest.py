@@ -17,10 +17,21 @@ if str(PROJECT_ROOT) not in sys.path:
 import pytest  # noqa: E402
 from hypothesis import settings as hypothesis_settings  # noqa: E402
 
-from tests import pytest_hang_watchdog  # noqa: E402
+from tests import (  # noqa: E402
+    pytest_crash_guard,
+    pytest_hang_watchdog,
+    pytest_tool_response_guard,
+)
 from tests.pytest_temp_hygiene import (  # noqa: E402
     cleanup_pytest_temp_root,
     configure_pytest_temp_root,
+)
+from tests.unit_time_budget import (  # noqa: E402
+    EXCUSED_PROPERTY,
+    budget_for,
+    budget_violation,
+    excused_summary_lines,
+    is_excused,
 )
 
 QUARANTINED_TESTS: list[str] = []
@@ -81,6 +92,12 @@ def pytest_configure(config):
     # #1638: a test stuck past the hard deadline dumps every thread stack and
     # fails fast instead of holding the CI step until its timeout.
     pytest_hang_watchdog.install(config)
+    # #1779: a per-test timeout stays a normal failed report naming the test,
+    # never a worker INTERNALERROR (exit 3) or a context-free worker crash.
+    pytest_crash_guard.install(config)
+    # Every MCP tool response produced in a test is checked against the
+    # envelope contract; a violation fails the test that produced it.
+    pytest_tool_response_guard.install(config)
 
     # Suppress SQLite connection finalizer warnings that fire when gc.collect()
     # in one xdist worker collects objects from other workers. These are benign
@@ -233,6 +250,10 @@ def pytest_unconfigure(config):
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
     """Warn if memory usage is dangerously high at end of session."""
+    if _BUDGET_EXCUSED:
+        terminalreporter.write_sep("-", "unit time budget: excused wall-time overruns")
+        for line in excused_summary_lines(UNIT_TIME_BUDGET, _BUDGET_EXCUSED):
+            terminalreporter.write_line(line)
     try:
         import psutil
     except ImportError:
@@ -602,12 +623,11 @@ def verify_test_isolation():
 # blocks CI. ``slow_ok`` is the escape hatch for known-slow tests
 # (file_watcher polling, real-process file_output, etc.).
 
-SLOW_TEST_BUDGET_S: float = 8.0 if sys.platform == "win32" else 5.0
-# CI 共享 runner 的墙钟方差约 1.6×（#1364 家族第三形态：macos 轴上同一测试
-# 两次以 5.41s/6.02s 刷过 5s 预算——本机快、CI 慢，不是回归）。GitHub Actions
-# 自带 CI=true；本地保持严格 5s 不变，CI 自动放宽到 8s 与 Windows 对齐。
-if os.environ.get("CI"):
-    SLOW_TEST_BUDGET_S *= 1.6
+# The limit, its CI scaling and the CPU-time rule live in one place:
+# tests/unit_time_budget.py (read it before changing the budget). GitHub
+# Actions sets CI=true; local runs keep the strict wall-clock limit.
+UNIT_TIME_BUDGET = budget_for(sys.platform, on_ci=bool(os.environ.get("CI")))
+SLOW_TEST_BUDGET_S: float = UNIT_TIME_BUDGET.limit_s
 
 
 @pytest.hookimpl(wrapper=True)
@@ -639,6 +659,7 @@ def pytest_runtest_call(item):
         or "integration" in item.keywords
     )
     started = time.monotonic()
+    cpu_started = time.process_time()
     # With wrapper=True, ``yield`` returns the wrapped hook's result and
     # re-raises the test's own exception here if the test failed. When
     # the test already failed, that exception propagates straight out of
@@ -646,28 +667,37 @@ def pytest_runtest_call(item):
     # a test that raised on its own.
     result = yield
     elapsed = time.monotonic() - started
+    cpu_elapsed = time.process_time() - cpu_started
 
     # Only enforce on unit tests (tests/unit/...). Other suites are
     # allowed to take longer.
     is_unit = "/tests/unit/" in str(item.fspath).replace("\\", "/")
 
-    if is_unit and not opted_out and elapsed > SLOW_TEST_BUDGET_S:
-        pytest.fail(
-            f"Unit test exceeded per-test budget: {elapsed:.2f}s > "
-            f"{SLOW_TEST_BUDGET_S:.1f}s.\n"
-            f"Common causes (see tests/conftest.py for the full history):\n"
-            f"  • Accidentally scanning the whole repo "
-            f"(project_root='/tmp' or =None when cwd is the repo)\n"
-            f"  • Per-call O(file_size) work in a tight loop "
-            f"(e.g. source.encode() inside a node-text helper)\n"
-            f"  • Real subprocess / network / sleep without a mock\n"
-            f"Fix the perf, or — if the cost is real and documented — add "
-            f"@pytest.mark.slow_ok with a justifying comment.",
-            pytrace=False,
+    if is_unit and not opted_out:
+        violation = budget_violation(
+            UNIT_TIME_BUDGET, wall_s=elapsed, cpu_s=cpu_elapsed
         )
+        if violation is not None:
+            pytest.fail(violation, pytrace=False)
+        if is_excused(UNIT_TIME_BUDGET, wall_s=elapsed, cpu_s=cpu_elapsed):
+            # user_properties travel with the report to the xdist controller.
+            item.user_properties.append((EXCUSED_PROPERTY, (elapsed, cpu_elapsed)))
 
     # New-style wrappers must return the wrapped hook's result.
     return result
+
+
+_BUDGET_EXCUSED: list[tuple[str, float, float]] = []
+
+
+def pytest_runtest_logreport(report):
+    if report.when != "call":
+        return
+    for key, value in report.user_properties:
+        if key == EXCUSED_PROPERTY:
+            wall, cpu = value
+            _BUDGET_EXCUSED.append((report.nodeid, float(wall), float(cpu)))
+
 
 @pytest.fixture(autouse=True)
 def _certification_tree_verified():

@@ -8,6 +8,7 @@ CodeGraph parity: equivalent to codegraph_callers.
 Simpler and more discoverable than the monolithic codegraph_call_graph tool.
 """
 
+import contextvars
 import os
 import sqlite3
 from collections.abc import Callable
@@ -29,17 +30,40 @@ from .callers_annotated import (
     name_bound_targets,
 )
 from .callers_call_lines import call_edge_lines
+from .callers_checks import (
+    Ledger,
+    NotChecked,
+    edge_outcome,
+    not_checked_hint,
+    prove,
+    prove_edges,
+)
 from .callers_dispatch import narrow_to_target
 from .callers_external_producers import drop_external_producers
 from .callers_name_only import name_only_fields, name_only_sites, name_only_step
+from .callers_outcomes import CheckOutcome, Scope
 from .callers_reason_steps import (
     read_unresolved_inbound,
     reason_step,
     unresolved_inbound_fields,
     unresolved_sites_clause,
 )
-from .callers_reasons import EdgeEvidence, edge_completeness, final_reasons
+from .callers_reasons import (
+    DECLARING_FILE_REASON,
+    EMPTY_EVIDENCE_REASON,
+    NAME_ONLY_REASON,
+    NAME_ONLY_UNCHECKED_REASON,
+    UNATTRIBUTED_REASON,
+    UNATTRIBUTED_UNCHECKED_REASON,
+    UNCHECKED_REASON,
+    UNRESOLVED_INBOUND_REASON,
+)
 from .callers_site_rank import rank_sites
+from .callers_target_set import (
+    sole_definition_file,
+    target_set,
+    unattributed_sites,
+)
 from .codegraph_relation_tool import (
     _STALE_CACHE_WARNING,
     CodeGraphRelationToolMixin,
@@ -52,6 +76,7 @@ from .index_rebuild_signal import (
     rebuild_in_progress_next_step,
 )
 from .relation_freshness import (
+    MISSING_REASON,
     STALE_REASON,
     apply_source_evidence,
     not_in_index_hint,
@@ -68,6 +93,12 @@ _UNRESOLVED_SITES_CAP = 20
 
 #: RFC-0038 caller-entry fields of an edge bound only through an annotation.
 _PROVENANCE_FIELDS = ("resolution_kind", "receiver_type", "type_source", "confidence")
+
+#: RFC-0040 not-checked codes that no other next_step explains: with callers
+#: listed, the step names the check that did not run.
+_UNCHECKED_STEP_REASONS = frozenset(
+    {NAME_ONLY_UNCHECKED_REASON, UNATTRIBUTED_UNCHECKED_REASON}
+)
 
 #: How many sites the next_step names inline. Small on purpose: the hint is there
 #: to make the work bounded, not to duplicate the payload.
@@ -89,14 +120,21 @@ def _same_name_definitions(graph: Any, func_name: str, file_path: str) -> list[A
     ]
 
 
-def _sibling_methods(graph: Any, func_name: str, file_path: str | None) -> list[str]:
-    """``Class.name`` for each method named ``func_name`` in ``file_path`` (bare queries)."""
+def _sibling_methods(
+    graph: Any, func_name: str, file_path: str | None
+) -> list[str] | None:
+    """``Class.name`` for each method named ``func_name`` in ``file_path`` (bare queries).
+
+    RFC-0040: ``None`` when the graph cannot be read. An unreadable graph is not
+    "no sibling methods": the bare union would silently skip their callers and
+    name-only edges, so the name-only check reports that it did not run.
+    """
     if not file_path or any(ch in func_name for ch in ".:/\\"):
         return []
     try:
         refs = _same_name_definitions(graph, func_name, file_path)
-    except Exception:  # noqa: BLE001 — unreadable graph: nothing to add
-        return []
+    except Exception:  # noqa: BLE001 — unreadable graph: the check did not run
+        return None
     return sorted(
         {
             f"{ref.receiver}.{func_name}"
@@ -357,8 +395,22 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
+        return (await self.execute_batch([arguments]))[0]
+
+    async def execute_batch(
+        self, requests: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """逐个回答 ``requests``，共享一次认证读与一张调用图（RFC-0041 跟进）。
+
+        每个输入照旧走完整的 RFC-0040 检查，答复与逐次 ``execute`` 逐字节相同：
+        批量只共享与输入无关的部分——同一次认证索引读取（同一快照）与据此构建的
+        调用图。单输入的 ``execute`` 就是一元素的批量。
+        """
+        for arguments in requests:
+            self.validate_arguments(arguments)
         if is_index_rebuilding(self.project_root):
-            return await self._execute_bound(arguments, None, None)
+            rebuilding = await self._answer_all(requests, None, None)
+            return [r for r in rebuilding if r is not None]
         if self.project_root and not _certification_ruled_out(self.project_root):
             # #1710：同一索引与源码状态下捕获已在期限内完成不了时，直接走与捕获
             # 超时相同的未认证回退，不再每次白付约 10 s。
@@ -368,6 +420,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                     certified_index_read,
                 )
 
+                bound: list[dict[str, Any] | None] = []
                 try:
                     with certified_index_read(self.project_root) as owner:
                         certification_timeouts.record(
@@ -377,12 +430,58 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                             else _certified_index_read_reason(),
                         )
                         if owner is not None:
-                            return await self._execute_bound(
-                                arguments, owner.query_cache(), owner.read_source
+                            bound = await self._answer_all(
+                                requests,
+                                owner.query_cache(),
+                                owner.read_source,
+                                fallible=True,
                             )
+                    if owner is not None:
+                        # 与逐次 execute 相同：绑定读取失败的输入单独走未认证回退。
+                        missing = [i for i, r in enumerate(bound) if r is None]
+                        fallback = await self._answer_all(
+                            [requests[i] for i in missing], None, None
+                        )
+                        for index, answer in zip(missing, fallback, strict=True):
+                            bound[index] = answer
+                        return [r for r in bound if r is not None]
                 except (OSError, ValueError, RuntimeError, sqlite3.DatabaseError):
                     pass
-        return await self._execute_bound(arguments, None, None)
+        return [
+            r for r in await self._answer_all(requests, None, None) if r is not None
+        ]
+
+    async def _answer_all(
+        self,
+        requests: list[dict[str, Any]],
+        bound_cache: Any,
+        source_reader: Any,
+        *,
+        fallible: bool = False,
+    ) -> list[dict[str, Any] | None]:
+        """同一绑定下依次回答；调用图在首次使用时构建一次，所有输入共用。
+
+        ``fallible``：认证绑定下单个输入的读取失败记为 ``None``，由调用方按单次
+        ``execute`` 的规则改走未认证回退，其余输入不受影响。
+        """
+        token = _BATCH_GRAPH.set(_QueryGraph(lambda: self._graph_for(bound_cache)))
+        answers: list[dict[str, Any] | None] = []
+        try:
+            for arguments in requests:
+                if not fallible:
+                    answers.append(
+                        await self._execute_bound(arguments, bound_cache, source_reader)
+                    )
+                    continue
+                try:
+                    answers.append(
+                        await self._execute_bound(arguments, bound_cache, source_reader)
+                    )
+                except (OSError, ValueError, RuntimeError, sqlite3.DatabaseError):
+                    answers.append(None)
+        finally:
+            _BATCH_GRAPH.reset(token)
+        return answers
 
     def _graph_for(self, bound_cache: Any) -> tuple[Any, str]:
         """限定名与裸名共用的调用图（及其数据来源标签）。"""
@@ -432,6 +531,17 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             return func_name
         return f"{receiver}.{func_name}"
 
+    @staticmethod
+    def _sole_definition_file(
+        cache: Any, func_name: str, query_graph: "_QueryGraph"
+    ) -> str | None:
+        """The declaring file of ``func_name``'s only definition, else ``None``."""
+        try:
+            graph = query_graph.get()[0]
+        except Exception:  # noqa: BLE001 — unreadable graph: keep the question as asked
+            return None
+        return sole_definition_file(graph, cache, func_name)
+
     async def _execute_bound(
         self, arguments: dict[str, Any], bound_cache: Any, source_reader: Any
     ) -> dict[str, Any]:
@@ -450,6 +560,10 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 data_source="cache_rebuilding",
                 function=func_name,
                 index_rebuilding=True,
+                # #1644 / RFC-0040：没有可用索引的答复同样声明 completeness。
+                completeness="unknown",
+                completeness_reason=MISSING_REASON,
+                completeness_reasons=[MISSING_REASON],
                 next_step=rebuild_next_step,
                 agent_summary={
                     "summary_line": f"callers: {func_name!r} unavailable during full rebuild",
@@ -467,29 +581,38 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # same evidence, same completeness. A bare name with several definitions
         # keeps the union path below (#1740), never more confident than any one.
         # #1774：本次查询只取一次调用图，裸名改写与下方两条路径共用它。
-        query_graph = _QueryGraph(lambda: self._graph_for(bound_cache))
+        # 批量回答时同一绑定下的输入共用一张图（见 ``_answer_all``）。
+        query_graph = _BATCH_GRAPH.get() or _QueryGraph(
+            lambda: self._graph_for(bound_cache)
+        )
+        cache = bound_cache if bound_cache is not None else self._try_get_cache()
+        # #1798: a name with one definition in the project, asked without
+        # `file_path`, is the same question as asked with its declaring file —
+        # scope it so both go through the same rewrite and the same target set.
+        if not file_path and cache is not None:
+            file_path = self._sole_definition_file(cache, func_name, query_graph)
         func_name = self._single_method_name(
             bound_cache, func_name, file_path, query_graph
         )
 
+        # RFC-0040: one target set, resolved before any check runs; every check
+        # below reads it and reports its outcome over `target.scope`.
         # Detect "ClassName.method_name" qualified lookup.  The SQL fast-path
         # stores bare callee names and can't filter by receiver class, so we
         # fall through to the in-memory CallGraph which does handle qualified
         # names via the FunctionRef.receiver field.
-        is_qualified = (
-            "." in func_name
-            and ":" not in func_name
-            and "/" not in func_name
-            and "\\" not in func_name
-            and func_name.rpartition(".")[0]  # non-empty class part
-        )
+        target = target_set(func_name, file_path)
+        is_qualified = target.qualified
+        scope = target.scope
 
-        unattributed_call_sites = 0
+        unattributed_call_sites: int | None = 0
+        # RFC-0040: the name-only check did not run when the sibling methods of a
+        # bare union could not be read.
+        name_only_check: CheckOutcome | None = None
         name_only_inbound = 0
         possible_callers: list[dict[str, Any]] = []
         # RFC-0038：本次查询涉及的定义；经注解绑定到它们的边对本查询已解析。
         bound_targets: frozenset[tuple[str, int]] = frozenset()
-        cache = bound_cache if bound_cache is not None else self._try_get_cache()
         refusal = self._parse_fallback_refusal(cache, "callers", function=func_name)
         if refusal is not None:
             from ..utils.format_helper import apply_output_format_to_response
@@ -533,7 +656,10 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             # #1759: several same-named definitions in the file — the union must
             # also cover each *method* among them; the bare lookup above resolves
             # to the module-level function only.
-            for method in _sibling_methods(graph, func_name, file_path):
+            siblings = _sibling_methods(graph, func_name, file_path)
+            if siblings is None:
+                name_only_check = NotChecked(NAME_ONLY_UNCHECKED_REASON)
+            for method in siblings or ():
                 callers = callers + label_graph_relations(
                     graph,
                     method,
@@ -556,6 +682,9 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             callers = label_graph_relations(
                 graph, func_name, file_path, callers, inbound=True
             )
+            # RFC-0040: the cache-built graph drops module-level edges without a
+            # call line, so this path used to fix the count at 0 without looking.
+            unattributed_call_sites = unattributed_sites(cache, target)
             # #981 defense-in-depth: the built marker can be a false-negative
             # (e.g. cleared while the index actually holds 125K call edges).
             # Trust an actual edge probe in addition to the marker so a missing
@@ -602,7 +731,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # unknown, never complete — a failed read is not evidence of absence.
         # #1559：限定名 `Class.method` 的未解析入边按裸方法名计数——
         # `target.publish` 这类接收者未知的调用可能指向任何同名方法。
-        count_name = func_name.rpartition(".")[2] if is_qualified else func_name
+        count_name = target.count_name
         # #1706：计数由调用点得出，答复同时点名它们（按接近程度排序后截断）。
         unresolved_inbound, unresolved_list = read_unresolved_inbound(
             cache, count_name, file_path, bound_targets
@@ -657,31 +786,31 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # #1706：截断前先把声明文件与导入了目标的文件排在前面。
         name_only_list = rank_sites(cache, name_only_list, func_name, file_path)
 
-        # #1632：调用边层的降级（#638 模块级调用点、空证据基等）同时给出原因码。
-        completeness, edge_reasons = edge_completeness(
-            EdgeEvidence(
-                total_callers=total_callers,
-                unresolved_inbound=unresolved_inbound,
-                unresolved_in_declaring_files=unresolved_in_declaring_files,
-                name_only_inbound=name_only_inbound,
-                unattributed_call_sites=unattributed_call_sites,
-                empty_evidence_base=empty_evidence_base,
-            )
+        # #1632 / RFC-0040：每道调用边检查报告 Checked 或 NotChecked；complete 只能
+        # 由 prove() 在全部必需检查都通过时构成——漏记的检查按未运行处理。
+        ledger = _edge_ledger(
+            scope,
+            unresolved_inbound=unresolved_inbound,
+            unresolved_in_declaring_files=unresolved_in_declaring_files,
+            name_only_inbound=name_only_inbound,
+            name_only_check=name_only_check,
+            unattributed_call_sites=unattributed_call_sites,
+            empty_evidence_base=None if cache is None else empty_evidence_base,
         )
-        # #1593 / #1594：调用边给出的 complete 还须通过新鲜度与非调用引用两道门。
+        edges = prove_edges(ledger, total_callers)
+        # #1593 / #1594：调用边通过后，还须通过新鲜度与非调用引用等复核门。
         absence = assess_completeness(
             cache,
             self.project_root,
             func_name,
             file_path,
-            completeness,
+            edges.completeness,
             total_callers,
             evidence,
         )
-        completeness = absence.completeness
-        reasons = final_reasons(
-            completeness, absence.reason, edge_reasons, absence.also
-        )
+        proof = prove(ledger.record_all(absence.checks), total_callers)
+        completeness = proof.completeness
+        reasons = list(proof.reasons)
         if absence.stale_files:
             # #1672：引用扫描在已与索引不一致的文件里命中——源码与索引不一致，
             # 不是非调用引用；与 0 调用方路径给出同一诊断与刷新步骤。
@@ -700,6 +829,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             completeness=completeness,
             completeness_reason=reasons[0] if reasons else None,
             completeness_reasons=reasons,
+            completeness_checks=proof.checks,
             **absence.fields,
             unresolved_inbound=unresolved_inbound,
             **unresolved_inbound_fields(unresolved_list),
@@ -752,6 +882,10 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 unresolved_sites=unresolved_list,
                 declaring_sites=declaring_sites,
                 absence_hint=absence.hint,
+            ) or (
+                not_checked_hint(func_name, proof, listed=total_callers)
+                if proof.primary in _UNCHECKED_STEP_REASONS
+                else None
             )
             if evidence_step:
                 next_step = (
@@ -825,11 +959,13 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                         "distinguish 'nothing calls it' from 'never populated', "
                         "so do not treat this as absence."
                     )
-                else:
+                elif proof.primary == UNCHECKED_REASON:
                     index_hint = (
                         f"No resolved caller for {func_name!r} and its inbound "
                         "edges could not be read. Do not treat this as absence."
                     )
+                else:
+                    index_hint = not_checked_hint(func_name, proof)
             else:
                 index_hint = not_in_index_hint(
                     func_name, evidence, indexed=_symbol_indexed(cache, func_name)
@@ -1001,6 +1137,12 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         return results, unattributed
 
 
+#: 批量回答期间共享的调用图（按任务隔离；单次 execute 时为一元素批量）。
+_BATCH_GRAPH: contextvars.ContextVar["_QueryGraph | None"] = contextvars.ContextVar(
+    "callers_batch_graph", default=None
+)
+
+
 class _QueryGraph:
     """#1774：一次 callers 查询内共用的调用图（及其数据来源标签）。
 
@@ -1035,3 +1177,66 @@ def _unlisted(
         if (str(c.get("file") or "").replace("\\", "/"), c.get("name"), c.get("line"))
         not in seen
     ]
+
+
+def _edge_ledger(
+    scope: Scope,
+    *,
+    unresolved_inbound: int | None,
+    unresolved_in_declaring_files: int | None,
+    name_only_inbound: int,
+    name_only_check: CheckOutcome | None,
+    unattributed_call_sites: int | None,
+    empty_evidence_base: bool | None,
+) -> Ledger:
+    """RFC-0040：调用边层五道检查的结果（``None`` 计数即该检查未能运行）。"""
+    return Ledger(scope).record_all(
+        (
+            (
+                "unresolved_inbound",
+                edge_outcome(
+                    scope,
+                    unresolved_inbound,
+                    UNRESOLVED_INBOUND_REASON,
+                    UNCHECKED_REASON,
+                ),
+            ),
+            (
+                "declaring_file",
+                edge_outcome(
+                    scope,
+                    unresolved_in_declaring_files,
+                    DECLARING_FILE_REASON,
+                    UNCHECKED_REASON,
+                ),
+            ),
+            (
+                "name_only",
+                name_only_check
+                or edge_outcome(
+                    scope,
+                    name_only_inbound,
+                    NAME_ONLY_REASON,
+                    NAME_ONLY_UNCHECKED_REASON,
+                ),
+            ),
+            (
+                "unattributed",
+                edge_outcome(
+                    scope,
+                    unattributed_call_sites,
+                    UNATTRIBUTED_REASON,
+                    UNATTRIBUTED_UNCHECKED_REASON,
+                ),
+            ),
+            (
+                "evidence_base",
+                edge_outcome(
+                    scope,
+                    None if empty_evidence_base is None else int(empty_evidence_base),
+                    EMPTY_EVIDENCE_REASON,
+                    UNCHECKED_REASON,
+                ),
+            ),
+        )
+    )

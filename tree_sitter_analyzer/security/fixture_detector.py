@@ -532,6 +532,9 @@ def _scan_tests(
     """Walk ``tests_dir`` and merge signals from every ``*.py`` file."""
 
     aggregator: dict[str, _Aggregator] = {}
+    # One source-tree walk per scan (#1779): resolving every ``*.py`` literal
+    # with its own ``rglob`` made a cold whole-repo scan O(literals x files).
+    source_index = _SourceIndex(project_root, inventory=inventory)
     for path in _iter_test_files(tests_dir):
         if (
             inventory is not None
@@ -549,14 +552,7 @@ def _scan_tests(
             # broken test files just get skipped.
             continue
         relative_test = _safe_relative(path, project_root)
-        _walk_module(
-            tree,
-            source,
-            relative_test,
-            project_root,
-            aggregator,
-            inventory=inventory,
-        )
+        _walk_module(tree, source, relative_test, source_index, aggregator)
 
     result: dict[str, FixtureFact] = {}
     for rel_path, agg in aggregator.items():
@@ -601,10 +597,8 @@ def _walk_module(
     tree: ast.Module,
     source: str,
     relative_test: str,
-    project_root: Path,
+    source_index: _SourceIndex,
     aggregator: dict[str, _Aggregator],
-    *,
-    inventory: frozenset[str] | None = None,
 ) -> None:
     """Inspect the top-level nodes of ``tree`` and update ``aggregator``."""
 
@@ -616,41 +610,39 @@ def _walk_module(
         if isinstance(node, ast.Assign):
             _record_path_binding(node, path_names)
 
-    # Identify plugin-manifest lists / tuples first so the basenames
-    # they contain get suppressed even if a different signal later
-    # tries to escalate them.
-    for descendant in ast.walk(tree):
-        if isinstance(descendant, (ast.List, ast.Tuple)):
-            basenames = _plugin_manifest_basenames(descendant)
-            for basename in basenames:
-                rel = _basename_to_repo_relative(
-                    basename, project_root, inventory=inventory
-                )
-                if rel:
-                    agg = aggregator.setdefault(rel, _Aggregator())
-                    agg.suppressed = True
-
-    # Second pass — the actual signal collection at module level only.
+    # Second pass — one walk per top-level statement (#1779: the tree used to
+    # be walked twice). Plugin-manifest lists / tuples mark their basenames
+    # suppressed; ``_scan_tests`` drops suppressed entries after the whole
+    # scan, so a signal recorded before its suppression is still discarded.
     for node in tree.body:
+        is_assign = isinstance(node, ast.Assign)
+        constants: list[ast.Constant] = []
+        for descendant in ast.walk(node):
+            if isinstance(descendant, (ast.List, ast.Tuple)):
+                _suppress_plugin_manifest(descendant, source_index, aggregator)
+            elif not is_assign and isinstance(descendant, ast.Constant):
+                constants.append(descendant)
         if isinstance(node, ast.Assign):
             _process_assign(
-                node,
-                source,
-                path_names,
-                relative_test,
-                project_root,
-                aggregator,
-                inventory=inventory,
+                node, source, path_names, relative_test, source_index, aggregator
             )
         else:
             _process_repo_relative_literals(
-                node,
-                source,
-                relative_test,
-                project_root,
-                aggregator,
-                inventory=inventory,
+                constants, source, relative_test, source_index, aggregator
             )
+
+
+def _suppress_plugin_manifest(
+    node: ast.List | ast.Tuple,
+    source_index: _SourceIndex,
+    aggregator: dict[str, _Aggregator],
+) -> None:
+    """Suppress every basename of a plugin-manifest list (Idiom C)."""
+
+    for basename in _plugin_manifest_basenames(node):
+        rel = source_index.resolve(basename)
+        if rel:
+            aggregator.setdefault(rel, _Aggregator()).suppressed = True
 
 
 def _record_path_binding(node: ast.Assign, path_names: set[str]) -> None:
@@ -690,10 +682,8 @@ def _process_assign(
     source: str,
     path_names: set[str],
     relative_test: str,
-    project_root: Path,
+    source_index: _SourceIndex,
     aggregator: dict[str, _Aggregator],
-    *,
-    inventory: frozenset[str] | None = None,
 ) -> None:
     """Extract signals from a top-level ``name = ...`` statement."""
 
@@ -708,7 +698,7 @@ def _process_assign(
         basename = os.path.basename(literal.replace("\\", "/"))
         if not basename.endswith(".py"):
             continue
-        rel = _basename_to_repo_relative(basename, project_root, inventory=inventory)
+        rel = source_index.resolve(basename)
         if not rel:
             continue
         agg = aggregator.setdefault(rel, _Aggregator())
@@ -723,26 +713,26 @@ def _process_assign(
 
 
 def _process_repo_relative_literals(
-    node: ast.AST,
+    constants: list[ast.Constant],
     source: str,
     relative_test: str,
-    project_root: Path,
+    source_index: _SourceIndex,
     aggregator: dict[str, _Aggregator],
-    *,
-    inventory: frozenset[str] | None = None,
 ) -> None:
-    """Catch repo-relative string literals outside of fixture-style assigns."""
+    """Catch repo-relative string literals outside of fixture-style assigns.
 
-    for child in ast.walk(node):
-        if not isinstance(child, ast.Constant):
-            continue
+    ``constants`` are the statement's ``ast.Constant`` nodes in ``ast.walk``
+    order, which keeps the recorded evidence order stable.
+    """
+
+    for child in constants:
         value = child.value
         if not isinstance(value, str):
             continue
         if not _REPO_RELATIVE_PATTERN.match(value):
             continue
         basename = os.path.basename(value)
-        rel = _basename_to_repo_relative(basename, project_root, inventory=inventory)
+        rel = source_index.resolve(basename)
         if not rel:
             continue
         agg = aggregator.setdefault(rel, _Aggregator())
@@ -844,31 +834,81 @@ def _basename_to_repo_relative(
 ) -> str | None:
     """Find the project-relative path for ``basename`` if exactly one exists.
 
+    One-shot form of :meth:`_SourceIndex.resolve`; a whole-``tests/`` scan
+    builds one :class:`_SourceIndex` and reuses it for every literal.
+    """
+
+    return _SourceIndex(project_root, inventory=inventory).resolve(basename)
+
+
+class _SourceIndex:
+    """Basename -> source-file lookup over ``tree_sitter_analyzer/``.
+
     Tier-2 hits the basename layer; we need to map it back to the
     canonical project-relative path. Multiple matches resolve to
     ``None`` because we cannot disambiguate without more context. On a
     certified read, ``inventory`` restricts the lookup to snapshot-covered
     files — an oracle-excluded duplicate (e.g. ``vendor/foo.py``) added
     after publication must not flip the result (Codex P1 #1299 round-8).
+
+    The source tree is walked once, lazily, on the first lookup, and each
+    basename's answer is memoised (#1779). Matching follows ``Path.rglob``:
+    case-insensitive where the platform's paths are (``os.path.normcase``).
     """
 
-    if not basename or "/" in basename or "\\" in basename:
-        # The string already included path separators — caller already
-        # has the relative form.
-        return (
-            basename.replace("\\", "/") if "/" in basename or "\\" in basename else None
-        )
-    src_dir = project_root / "tree_sitter_analyzer"
-    if not src_dir.is_dir():
-        return None
-    matches = [path for path in src_dir.rglob(basename) if path.is_file()]
-    if inventory is not None:
+    def __init__(
+        self, project_root: Path, *, inventory: frozenset[str] | None = None
+    ) -> None:
+        self._project_root = project_root
+        self._inventory = inventory
+        self._by_name: dict[str, list[Path]] | None = None
+        self._resolved: dict[str, str | None] = {}
+
+    def resolve(self, basename: str) -> str | None:
+        if not basename or "/" in basename or "\\" in basename:
+            # The string already included path separators — caller already
+            # has the relative form.
+            return (
+                basename.replace("\\", "/")
+                if "/" in basename or "\\" in basename
+                else None
+            )
+        if basename not in self._resolved:
+            self._resolved[basename] = self._lookup(basename)
+        return self._resolved[basename]
+
+    def _lookup(self, basename: str) -> str | None:
+        by_name = self._load()
+        if by_name is None:
+            return None
         matches = [
-            path for path in matches if _safe_relative(path, project_root) in inventory
+            path
+            for path in by_name.get(os.path.normcase(basename), ())
+            if path.is_file()
         ]
-    if len(matches) != 1:
-        return None
-    return _safe_relative(matches[0], project_root)
+        if self._inventory is not None:
+            matches = [
+                path
+                for path in matches
+                if _safe_relative(path, self._project_root) in self._inventory
+            ]
+        if len(matches) != 1:
+            return None
+        return _safe_relative(matches[0], self._project_root)
+
+    def _load(self) -> dict[str, list[Path]] | None:
+        if self._by_name is None:
+            src_dir = self._project_root / "tree_sitter_analyzer"
+            if not src_dir.is_dir():
+                return None
+            by_name: dict[str, list[Path]] = {}
+            for dirpath, _dirnames, filenames in os.walk(src_dir):
+                for filename in filenames:
+                    by_name.setdefault(os.path.normcase(filename), []).append(
+                        Path(dirpath) / filename
+                    )
+            self._by_name = by_name
+        return self._by_name
 
 
 __all__ = [
