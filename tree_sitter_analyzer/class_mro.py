@@ -62,6 +62,19 @@ class Hierarchy:
 
     parents: dict[ClassKey, list[ClassKey | str]] = field(default_factory=dict)
     methods: dict[ClassKey, dict[str, int]] = field(default_factory=dict)
+    #: 项目类名（惰性建立；``parents`` 填充完成后才会被读取）。
+    _names: frozenset[str] | None = field(default=None, repr=False, compare=False)
+
+    def _external(self, base_text: str, name: str) -> bool:
+        """未解析的基类确认是外部类且没有 ``name``。
+
+        #1834：名字与项目类相同的未解析基类是第二遍解析定不下来的歧义基类
+        （同名类不止一个），不是外部类——即使标准库里恰有同名类也不能确认。
+        """
+        if self._names is None:
+            self._names = frozenset(key.name for key in self.parents)
+        simple = base_text.split("[", 1)[0].strip().rsplit(".", 1)[-1]
+        return simple not in self._names and external_lacks(base_text, name)
 
     def nearest(self, owner: ClassKey, name: str) -> tuple[ClassKey | None, bool]:
         """``owner`` 的 MRO 中第一个定义 ``name`` 的类，以及 MRO 是否完全已知。"""
@@ -93,7 +106,7 @@ class Hierarchy:
         direct: list[ClassKey] = []
         for parent in self.parents.get(klass, []):
             if isinstance(parent, str):
-                known = known and external_lacks(parent, name)
+                known = known and self._external(parent, name)
                 continue
             order, parent_known = self._linearize(parent, name, (*stack, klass))
             known = known and parent_known

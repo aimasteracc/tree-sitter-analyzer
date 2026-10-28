@@ -28,6 +28,7 @@ from ..languages.language_family import languages_compatible
 from ..receiver_proof import has_unproven_receiver
 from ..utils.test_detection import is_test_file
 from .inherited_self_calls import resolve_inherited_self_calls
+from .reexported_base import imported_class_file
 
 logger = logging.getLogger(__name__)
 
@@ -510,6 +511,7 @@ def _choose_candidate(
         ]
     if not eligible:
         return None
+    import_hints = _with_reexported_base(conn, row, eligible, import_hints)
     source_dir = os.path.dirname(source_file)
     # A call in production code must not bind to a test-only definition just
     # because the test file sorts earlier alphabetically. ``fts_search`` /
@@ -654,6 +656,29 @@ def _import_target_hints(
             continue
         hints.update(_module_path_candidates(str(item.get("module_path") or "")))
     return hints
+
+
+def _with_reexported_base(
+    conn: sqlite3.Connection,
+    row: dict[str, Any],
+    eligible: list[dict[str, Any]],
+    hints: set[str],
+) -> set[str]:
+    """#1834：导入点名的模块没有定义该基类时，加入经包再导出证明的定义文件。
+
+    ``from lib.security import HTTPBearer`` 的提示是 ``lib/security/__init__.py``，类却
+    定义在它再导出的 ``http.py`` 中；同名的无关类存在时两者得分相同，继承边停在
+    占位上。只对基类引用、且没有候选命中已有提示时才追踪（不改变其余排序）。
+    """
+    if row.get("reference_kind") not in {
+        EdgeKind.EXTENDS.value,
+        EdgeKind.IMPLEMENTS.value,
+    }:
+        return hints
+    if any(_matches_import_hint(str(item["file_path"]), hints) for item in eligible):
+        return hints
+    bound = imported_class_file(conn, str(row["file_path"]), str(row["reference_name"]))
+    return hints if bound is None else {*hints, bound}
 
 
 def _module_path_candidates(module_path: str) -> set[str]:

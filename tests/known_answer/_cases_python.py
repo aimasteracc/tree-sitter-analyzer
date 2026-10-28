@@ -212,6 +212,72 @@ UNIQUE_NAME_SCOPE_PARITY = Case(
     },
 )
 
+# #1834（fastapi ``HTTPBearer403.make_not_authenticated_error``）：基类经包再导出导入，
+# 项目里另有同名的无关类 ``HTTPBase`` / ``HTTPBearer``（``openapi/models.py``）。基类名
+# 有歧义时继承边停在 ``class:HTTPBearer`` 占位，子类关系被静默丢弃，基类里继承的
+# ``self.m()`` 不再被记为可能分派到覆写，答案是错误的 ``complete, 0``。
+_AMBIGUOUS_BASE_LIB = {
+    "lib/__init__.py": "",
+    "lib/security/__init__.py": (
+        "from .http import HTTPBase as HTTPBase\n"
+        "from .http import HTTPBearer as HTTPBearer\n"
+    ),
+    "lib/security/http.py": (
+        "class HTTPBase:\n"
+        "    def make_not_authenticated_error(self) -> Exception:\n"
+        '        return ValueError("base")\n\n\n'
+        "class HTTPBearer(HTTPBase):\n"
+        "    async def __call__(self, token: str) -> str:\n"
+        "        if not token:\n"
+        "            raise self.make_not_authenticated_error()  # gt\n"
+        "        return token\n"
+    ),
+    "lib/openapi/__init__.py": "",
+    "lib/openapi/models.py": (
+        "class HTTPBase:\n"
+        '    scheme: str = "base"\n\n\n'
+        "class HTTPBearer(HTTPBase):\n"
+        '    scheme: str = "bearer"\n'
+    ),
+    "docs_src/__init__.py": "",
+    "docs_src/tut/__init__.py": "",
+}
+
+
+def _ambiguous_base_project(import_line: str, base: str) -> dict[str, str]:
+    return {
+        **_AMBIGUOUS_BASE_LIB,
+        "docs_src/tut/tutorial001.py": (
+            f"{import_line}\n\n\n"
+            f"class HTTPBearer403({base}):\n"
+            "    def make_not_authenticated_error(self) -> Exception:  # target\n"
+            '        return PermissionError("403")\n\n\n'
+            "security = HTTPBearer403()\n"
+        ),
+    }
+
+
+AMBIGUOUS_BASE_CASES = (
+    # 导入绑定能证明基类（``lib.security`` 再导出 ``.http.HTTPBearer``）。
+    Case(
+        case_id="py-1834-ambiguous-base-reexported",
+        issue="#1834",
+        target_name="make_not_authenticated_error",
+        owner="HTTPBearer403",
+        files=_ambiguous_base_project(
+            "from lib.security import HTTPBearer", "HTTPBearer"
+        ),
+    ),
+    # 导入绑定证明不了基类（模块别名的属性）：歧义必须失败即关闭。
+    Case(
+        case_id="py-1834-ambiguous-base-unbound",
+        issue="#1834",
+        target_name="make_not_authenticated_error",
+        owner="HTTPBearer403",
+        files=_ambiguous_base_project("import lib.security as sec", "sec.HTTPBearer"),
+    ),
+)
+
 PYTHON_CASES: tuple[Case, ...] = (
     RICH_ALIAS,
     RICH_ATTRIBUTE,
@@ -220,4 +286,5 @@ PYTHON_CASES: tuple[Case, ...] = (
     *PROTOCOL_CASES,
     OVERLOAD,
     UNIQUE_NAME_SCOPE_PARITY,
+    *AMBIGUOUS_BASE_CASES,
 )
