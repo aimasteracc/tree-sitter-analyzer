@@ -2578,7 +2578,6 @@ def test_encoding_rehash_rejects_source_over_index_byte_limit(tmp_path, monkeypa
         file_content_hash(str(path))
 
 
-@pytest.mark.flaky(reruns=1)  # #1816: wall-clock limit on loaded runners
 def test_unchanged_content_refreshes_indexed_metadata(tmp_path):
     """#1405：纯元数据保存仍更新索引元数据，且不重新解析相同内容。"""
     path = tmp_path / "app.py"
