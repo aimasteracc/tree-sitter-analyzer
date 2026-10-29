@@ -14,6 +14,7 @@ import sqlite3
 from collections.abc import Callable
 from typing import Any
 
+from ...graph.edge_store import direct_callers_memo
 from ...member_names import unquote_member_name
 from ...module_scope_caller import is_module_caller, module_caller_entry
 from ...receiver_proof import has_unproven_receiver
@@ -470,18 +471,25 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             for arguments in requests:
                 if not fallible:
                     answers.append(
-                        await self._execute_bound(arguments, bound_cache, source_reader)
+                        await self._execute_one(arguments, bound_cache, source_reader)
                     )
                     continue
                 try:
                     answers.append(
-                        await self._execute_bound(arguments, bound_cache, source_reader)
+                        await self._execute_one(arguments, bound_cache, source_reader)
                     )
                 except (OSError, ValueError, RuntimeError, sqlite3.DatabaseError):
                     answers.append(None)
         finally:
             _BATCH_GRAPH.reset(token)
         return answers
+
+    async def _execute_one(
+        self, arguments: dict[str, Any], bound_cache: Any, source_reader: Any
+    ) -> dict[str, Any]:
+        """One answer; its identical direct-inbound reads are shared (#1840)."""
+        with direct_callers_memo():
+            return await self._execute_bound(arguments, bound_cache, source_reader)
 
     def _graph_for(self, bound_cache: Any) -> tuple[Any, str]:
         """限定名与裸名共用的调用图（及其数据来源标签）。"""
