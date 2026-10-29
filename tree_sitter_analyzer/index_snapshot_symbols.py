@@ -6,6 +6,7 @@ import json
 import sqlite3
 import time
 
+from ._recorded_source_rows import finish_cursors, track_cursor
 from .index_symbol_projection import (
     symbol_projection_is_exact as _symbol_projection_is_exact,
 )
@@ -40,6 +41,7 @@ def ordinary_symbol_counts(
         time.monotonic() + _ORDINARY_DEADLINE_SECONDS if deadline is None else deadline
     )
     output_bytes = 0
+    opened: list[object] = []
 
     def check_deadline() -> None:
         if time.monotonic() > deadline:
@@ -53,11 +55,14 @@ def ordinary_symbol_counts(
         result: dict[str, int] = {}
         groups = 0
         # CASE prevents an oversized key from crossing the SQLite/Python boundary.
-        cursor = conn.execute(
-            f"SELECT length(CAST({column} AS BLOB)), "
-            f"CASE WHEN length(CAST({column} AS BLOB)) <= ? THEN {column} END, "
-            f"COUNT(*) FROM ast_symbol_rows GROUP BY {column} ORDER BY {column}",
-            (_ORDINARY_CELL_BYTE_BUDGET,),
+        cursor = track_cursor(
+            opened,
+            conn.execute(
+                f"SELECT length(CAST({column} AS BLOB)), "
+                f"CASE WHEN length(CAST({column} AS BLOB)) <= ? THEN {column} END, "
+                f"COUNT(*) FROM ast_symbol_rows GROUP BY {column} ORDER BY {column}",
+                (_ORDINARY_CELL_BYTE_BUDGET,),
+            ),
         )
         while True:
             check_deadline()
@@ -100,6 +105,7 @@ def ordinary_symbol_counts(
         raise RuntimeError("SNAPSHOT_READ_FAILED") from exc
     finally:
         conn.set_progress_handler(None, 0)
+        finish_cursors(opened)
 
 
 def ordinary_edge_counts(
@@ -110,6 +116,7 @@ def ordinary_edge_counts(
         time.monotonic() + _ORDINARY_DEADLINE_SECONDS if deadline is None else deadline
     )
     output_bytes = 0
+    opened: list[object] = []
 
     def check_deadline() -> None:
         if time.monotonic() > deadline:
@@ -132,11 +139,14 @@ def ordinary_edge_counts(
             raise RuntimeError("SNAPSHOT_READ_FAILED")
 
         result: dict[str, int] = {}
-        cursor = conn.execute(
-            "SELECT length(CAST(kind AS BLOB)), "
-            "CASE WHEN length(CAST(kind AS BLOB)) <= ? THEN kind END, "
-            "COUNT(*) FROM edges GROUP BY kind ORDER BY kind",
-            (_ORDINARY_CELL_BYTE_BUDGET,),
+        cursor = track_cursor(
+            opened,
+            conn.execute(
+                "SELECT length(CAST(kind AS BLOB)), "
+                "CASE WHEN length(CAST(kind AS BLOB)) <= ? THEN kind END, "
+                "COUNT(*) FROM edges GROUP BY kind ORDER BY kind",
+                (_ORDINARY_CELL_BYTE_BUDGET,),
+            ),
         )
         groups = 0
         while True:
@@ -168,6 +178,7 @@ def ordinary_edge_counts(
         raise RuntimeError("SNAPSHOT_READ_FAILED") from exc
     finally:
         conn.set_progress_handler(None, 0)
+        finish_cursors(opened)
 
 
 def fallback_symbol_counts(
@@ -184,6 +195,7 @@ def fallback_symbol_counts(
     rows_seen = bytes_seen = total = output_bytes = 0
     by_kind: dict[str, int] = {}
     by_language: dict[str, int] = {}
+    opened: list[object] = []
 
     def check_budget() -> None:
         if (
@@ -220,9 +232,12 @@ def fallback_symbol_counts(
     try:
         # SQLite computes BLOB lengths without transferring the potentially large
         # values into Python.  Reject every oversized cell before json.loads.
-        preflight = conn.execute(
-            "SELECT length(CAST(symbols_json AS BLOB)), "
-            "length(CAST(language AS BLOB)) FROM ast_index ORDER BY file_path"
+        preflight = track_cursor(
+            opened,
+            conn.execute(
+                "SELECT length(CAST(symbols_json AS BLOB)), "
+                "length(CAST(language AS BLOB)) FROM ast_index ORDER BY file_path"
+            ),
         )
         while True:
             check_budget()
@@ -238,8 +253,11 @@ def fallback_symbol_counts(
             bytes_seen += sum(lengths)
             check_budget()
 
-        cursor = conn.execute(
-            "SELECT symbols_json, language FROM ast_index ORDER BY file_path"
+        cursor = track_cursor(
+            opened,
+            conn.execute(
+                "SELECT symbols_json, language FROM ast_index ORDER BY file_path"
+            ),
         )
         while True:
             check_budget()
@@ -280,6 +298,7 @@ def fallback_symbol_counts(
         raise
     finally:
         conn.set_progress_handler(None, 0)
+        finish_cursors(opened)
 
 
 _LEGACY_SYMBOL_MIGRATION_SECONDS = 5.0

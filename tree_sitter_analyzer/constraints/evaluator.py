@@ -36,6 +36,7 @@ import sqlite3
 import time
 from collections.abc import Callable, Iterator
 
+from .._recorded_source_rows import finishing_rows
 from .evaluator_bounds import MAX_MATERIALIZED_ITEMS, materialize_bounded
 from .evaluator_deduplication import claim_violation
 from .evaluator_import_resolution import (
@@ -190,8 +191,7 @@ def _iter_violations(
             check_callback=check_callback,
             capacity=capacity,
         )
-    cursor = db_conn.execute(select_sql, select_params)
-    for row in cursor:
+    for row in finishing_rows(db_conn.execute(select_sql, select_params)):
         if check_callback is not None:
             check_callback()
         caller_name, caller_file, caller_line, callee_name, callee_file = row
