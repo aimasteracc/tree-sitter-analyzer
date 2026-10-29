@@ -63,12 +63,29 @@ def test_trusted_develop_run_requires_external_attestation(tmp_path: Path) -> No
     result, value = aggregate(
         tmp_path, reports(tmp_path, "push"), event="push", trusted=True
     )
-    assert result.returncode == 0
+    # 失败原因只写在 aggregate.json：一并断言 (#1842)。
+    assert (result.returncode, value["failures"]) == (0, [])
     assert (
         value["native_axes_qualified"],
         value["qualified"],
         value["evidence_trust"],
     ) == (True, False, "EXTERNAL_ATTESTATION_REQUIRED")
+
+
+def test_fixture_wheel_bytes_do_not_depend_on_wall_clock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # #1842: the aggregate helper rebuilds the wheel; zip mtimes (2s resolution)
+    # must not make the two builds differ when a second boundary is crossed.
+    import time
+
+    from _test_native_qualification_helpers import make_wheel
+
+    digests = []
+    for now in (1_700_000_000.0, 1_700_000_004.0):
+        monkeypatch.setattr(time, "time", lambda now=now: now)
+        digests.append(make_wheel(tmp_path / "w.whl")["sha256"])
+    assert digests[0] == digests[1]
 
 
 def test_push_environment_cannot_promote_pr_reports(tmp_path: Path) -> None:
