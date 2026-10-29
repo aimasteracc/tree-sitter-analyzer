@@ -307,9 +307,14 @@ def test_cached_graph_rejects_unavailable_source_evidence(tmp_path, monkeypatch)
     assert _load_dependency_graph(str(tmp_path)).nodes() == ["a.py"]
 
 
-@pytest.mark.flaky(reruns=1)  # #1816: wall-clock limit on loaded runners
 def test_repeated_change_impact_tracks_preserved_mtime_imports(tmp_path):
-    """同一工具实例反复处理修改时，磁盘与内存缓存不能落后一次。"""
+    """同一工具实例反复处理修改时，磁盘与内存缓存不能落后一次。
+
+    #1816：每次 ``execute`` 要起 4 个真实 git 进程（约 1.2 s，Windows 上），
+    原来 5 轮 ``b,c,b,c,b`` 约 7.5 s 贴着预算。``c,b,c`` 三轮已覆盖：
+    首轮磁盘缓存过期（mtime 保留）、翻回、再翻转；任何“落后一次”都会在
+    其中某一轮的 ``direct_dependents`` 上失败。
+    """
     import asyncio
     import subprocess
 
@@ -341,7 +346,7 @@ def test_repeated_change_impact_tracks_preserved_mtime_imports(tmp_path):
     (tmp_path / "c.py").write_text("value = 3\n", encoding="utf-8")
     _index_project(tmp_path)
     tool = ChangeImpactTool(str(tmp_path))
-    for module in ("b", "c", "b", "c", "b"):
+    for module in ("c", "b", "c"):
         path = tmp_path / "a.py"
         before = path.stat()
         path.write_text(f"import {module}\n", encoding="utf-8")
