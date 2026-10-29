@@ -234,7 +234,6 @@ def test_file_invalidation_rolls_back_marker_clear_failure(tmp_path):
     assert after == before
 
 
-@pytest.mark.flaky(reruns=1)  # #1815: needs a rerun in ~1 of 5 CI jobs
 def test_scope_prune_failure_rolls_back_all_stale_rows(cache, monkeypatch):
     # PR #1253: scope 协调必须在认证之前原子完成。
     from tree_sitter_analyzer.cache import indexer
