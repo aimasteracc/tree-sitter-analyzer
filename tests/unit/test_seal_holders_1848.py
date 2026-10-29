@@ -46,7 +46,7 @@ def _zombie_cursor(database: Path) -> sqlite3.Cursor:
     cursor = reader.execute(
         "SELECT name FROM sqlite_master UNION ALL SELECT name FROM sqlite_master"
     )
-    assert cursor.fetchone() is not None
+    assert type(cursor.fetchone()[0]) is str  # 读出第一行，语句停在两行之间
     reader.close()
     return cursor
 
