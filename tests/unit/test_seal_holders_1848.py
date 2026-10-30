@@ -217,3 +217,106 @@ def test_holder_chain_stops_at_the_time_budget(tmp_path, monkeypatch):
         holder.held.close()  # type: ignore[attr-defined]
     assert holders[0]["kind"] == "open_connection"
     assert holders[0]["held_by"] == [seal_holders.CHAIN_TRUNCATED]
+
+
+def test_holder_chain_stops_after_the_step_limit(tmp_path):
+    from tree_sitter_analyzer.cache import seal_holders
+
+    database = tmp_path / "deep.db"
+    connection = sqlite3.connect(database)
+    nested: object = {"held": connection}  # 普通 dict：没有实例所有者
+    for _ in range(seal_holders.MAX_CHAIN + 3):
+        nested = [nested]
+    keep = _LeakedReaderOwner(nested)
+    try:
+        holders = seal_holders.holder_objects(database)
+    finally:
+        connection.close()
+    chain = holders[0]["held_by"]
+    assert len(chain) == seal_holders.MAX_CHAIN
+    assert chain == ["builtins.dict"] + ["builtins.list"] * (seal_holders.MAX_CHAIN - 1)
+    del keep
+
+
+class _ClassHolder:
+    held: object = None
+
+
+def test_holder_chain_ends_at_the_class_that_holds_it(tmp_path):
+    from tree_sitter_analyzer.cache.seal_holders import holder_objects
+
+    database = tmp_path / "class.db"
+    _ClassHolder.held = sqlite3.connect(database)
+    try:
+        holders = holder_objects(database)
+    finally:
+        _ClassHolder.held.close()  # type: ignore[attr-defined]
+        _ClassHolder.held = None
+    chain = holders[0]["held_by"]
+    assert chain[-1] == f"class {__name__}._ClassHolder"
+
+
+def test_describe_names_generators_coroutines_classes_and_exceptions():
+    from tree_sitter_analyzer.cache.seal_holders import _describe
+
+    def rows():
+        yield 1
+
+    async def answer():
+        return 1
+
+    generator = rows()
+    coroutine = answer()
+    try:
+        assert _describe(generator).startswith(
+            "generator test_describe_names_generators_coroutines_classes_and_"
+            "exceptions.<locals>.rows (tests/unit/test_seal_holders_1848.py:"
+        )
+        assert _describe(coroutine).startswith("coroutine ")
+        assert _describe(_ClassHolder) == f"class {__name__}._ClassHolder"
+        assert _describe(TimeoutError("late")) == "exception TimeoutError: late"
+        for _ in generator:
+            pass
+        assert _describe(generator) == (
+            "generator test_describe_names_generators_coroutines_classes_and_"
+            "exceptions.<locals>.rows"
+        )
+    finally:
+        coroutine.close()
+
+
+class _BrokenCursor(sqlite3.Cursor):
+    @property
+    def connection(self):  # type: ignore[override]
+        raise RuntimeError("no connection")
+
+
+class _BrokenTotalChanges:
+    @property
+    def total_changes(self):
+        raise RuntimeError("broken")
+
+
+def test_classify_skips_objects_it_cannot_inspect(tmp_path):
+    from tree_sitter_analyzer.cache import seal_holders
+
+    connection = sqlite3.connect(":memory:")
+    try:
+        cursor = _BrokenCursor(connection)
+        assert seal_holders._classify(cursor, None) is None
+        assert seal_holders._is_closed(_BrokenTotalChanges()) is False  # type: ignore[arg-type]
+        assert seal_holders._connection_kind(object(), None) is None  # type: ignore[arg-type]
+        # 行工厂返回不可索引的行：跳过该行，而不是抛出。
+        connection.row_factory = lambda _cursor, _row: object()
+        assert seal_holders._connection_kind(connection, str(tmp_path)) is None
+    finally:
+        connection.close()
+
+
+def test_dict_owner_is_none_for_a_plain_dict():
+    from tree_sitter_analyzer.cache.seal_holders import _dict_owner
+
+    mapping = {"x": 1}
+    holder = [mapping]
+    assert _dict_owner(mapping, set()) is None
+    del holder
