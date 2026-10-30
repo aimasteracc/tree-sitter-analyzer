@@ -15,6 +15,14 @@ from pathlib import Path
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _ample_chain_budget(monkeypatch):
+    """慢 CI 上每步扫描全堆可能用尽默认时间上限；用例断言的是链的形状，不是耗时。"""
+    from tree_sitter_analyzer.cache import seal_holders
+
+    monkeypatch.setattr(seal_holders, "CHAIN_BUDGET_S", 600.0)
+
+
 class _LeakedReaderOwner:
     """模拟泄漏连接或游标的代码：属性上挂着持有者。"""
 
