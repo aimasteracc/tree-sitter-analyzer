@@ -38,14 +38,20 @@ class CompactShape:
     hidden: int
 
 
+def _must_match(pattern: re.Pattern[str], line: str) -> re.Match[str]:
+    """``line`` 必须整行符合紧凑格式的某一行形态。"""
+    match = pattern.match(line)
+    if match is None:
+        raise AssertionError(f"not a compact line ({pattern.pattern}): {line!r}")
+    return match
+
+
 def parse_compact(answer: Mapping[str, Any]) -> CompactShape:
     """把 ``format=compact`` 的答复解析回结构；格式不符即断言失败。"""
     assert answer.get("format") == "compact", answer
     lines = str(answer["answer"]).split("\n")
-    header = _HEADER.match(lines[0])
-    assert header is not None, lines[0]
-    verdict = _VERDICT.match(lines[-1])
-    assert verdict is not None, lines[-1]
+    header = _must_match(_HEADER, lines[0])
+    verdict = _must_match(_VERDICT, lines[-1])
     body = lines[1:-1]
     hidden = 0
     if body and (more := _MORE.match(body[-1])) is not None:
@@ -53,8 +59,7 @@ def parse_compact(answer: Mapping[str, Any]) -> CompactShape:
         body = body[:-1]
     callers: list[CallerRow] = []
     for line in body:
-        row = _CALLER.match(line)
-        assert row is not None, line
+        row = _must_match(_CALLER, line)
         callers.append((row["name"], row["file"], int(row["line"]), row["kind"]))
     raw = [r.strip() for r in (verdict["reasons"] or "").split(",") if r.strip()]
     extra = 0
