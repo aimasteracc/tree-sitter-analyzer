@@ -140,7 +140,33 @@ def load(project_root: str) -> dict[str, Any]:
     from .. import call_graph_warm
 
     outcome["graph"] = call_graph_warm.warm_now(project_root)
+    if outcome["certified"] is None:
+        outcome["snapshot_graph"] = _bind_snapshot_graph(project_root)
     return outcome
+
+
+def _bind_snapshot_graph(project_root: str) -> str | None:
+    """Adopt the built graph once on the leased snapshot, as a request would.
+
+    A request on the certified snapshot finds its graph by the snapshot's
+    remembered input digest (#1774); a snapshot not seen before re-reads every
+    call edge to compute it. Running the request's own graph code here on the
+    same lease (rows read, digest computed, memo hit) records that digest, so
+    the first request adopts the graph without the re-read. ``None`` when bound.
+    """
+    from ..call_graph import CachedCallGraph
+    from ..index_snapshot import certified_index_read
+
+    with certified_index_read(project_root) as owner:
+        if owner is None:
+            return "INDEX_SNAPSHOT_UNKNOWN"
+        cache = owner.query_cache()
+        graph = CachedCallGraph(project_root, cache=cache, fallback=False, persist=True)
+        graph.build()
+        if not graph._built:
+            return "GRAPH_NOT_BUILT"
+        cache.call_graph_built()  # per-snapshot verdict the first request checks
+        return None
 
 
 def _lease(project_root: str) -> str | None:

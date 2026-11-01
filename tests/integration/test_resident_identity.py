@@ -166,10 +166,14 @@ class _Counter:
     """Counts snapshot captures and graph builds after a memo miss, per thread."""
 
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from tree_sitter_analyzer.cache import graph_input_rows
+
         self.captures: list[str] = []
         self.builds: list[str] = []
+        self.edge_reads: list[str] = []
         capture = index_snapshot._capture_existing_snapshot
         build = call_graph.CachedCallGraph._build_after_miss
+        read = graph_input_rows.read_edge_source
 
         def counted_capture(*args: Any, **kwargs: Any) -> Any:
             self.captures.append(threading.current_thread().name)
@@ -179,16 +183,22 @@ class _Counter:
             self.builds.append(threading.current_thread().name)
             return build(graph, *args, **kwargs)
 
+        def counted_read(*args: Any, **kwargs: Any) -> Any:
+            self.edge_reads.append(threading.current_thread().name)
+            return read(*args, **kwargs)
+
         monkeypatch.setattr(
             index_snapshot, "_capture_existing_snapshot", counted_capture
         )
         monkeypatch.setattr(
             call_graph.CachedCallGraph, "_build_after_miss", counted_build
         )
+        monkeypatch.setattr(graph_input_rows, "read_edge_source", counted_read)
 
     def reset(self) -> None:
         self.captures.clear()
         self.builds.clear()
+        self.edge_reads.clear()
 
 
 # --------------------------------------------------------------------------- #
@@ -225,6 +235,8 @@ async def test_the_first_query_after_the_load_neither_captures_nor_builds(
     assert answer == today[1]
     assert counter.captures == []  # the loader's lease is reused
     assert counter.builds == []  # the loader's graph is adopted
+    # ... through the leased snapshot's remembered digest (#1774): no edge re-read.
+    assert counter.edge_reads == []
 
 
 @pytest.mark.asyncio
