@@ -173,6 +173,31 @@ def after_publish(project_root: str) -> dict[str, Any] | None:
     return {"scheduled": True, **status, "previous": previous}
 
 
+def warm_now(project_root: str) -> dict[str, Any] | None:
+    """RFC-0042 P1：服务器启动后由常驻加载线程调用，在**当前线程**里为活动版本构图一次。
+
+    与发布后的预构图是同一个任务（``_run`` / ``_build``，``persist=True``），只是
+    时机从“发布之后”提前到“启动之后”：登记为在途构建，使紧随其后的 ``nav`` 等待
+    它（``adopt`` / ``call_graph_memo.claim``）而不是并行再构一份；构建期间又有发布
+    时照旧结束后再构一次。未启用、已停止或同一项目根已有在途构建时不做任何事，返回
+    ``None`` 或 ``{"in_flight": True}``；否则返回这次构图的结果（``warmed``、``seconds``）。
+    """
+    if not enabled():
+        return None
+    key = _key(project_root)
+    with _lock:
+        if _closed:
+            return None
+        running = _threads.get(key)
+        if running is not None and running.is_alive():
+            return {"in_flight": True}
+        _building[key] = _active_database(project_root)
+        _settled[key] = threading.Event()
+        _threads[key] = threading.current_thread()
+    _run(project_root, key, _Job(None, True))
+    return last_outcome(project_root)
+
+
 def _base_refusal(project_root: str, plan: Any) -> str | None:
     """内存里没有可作增量基础的图时的原因；有（读的正是刷新所基于的版本）时为 None。
 

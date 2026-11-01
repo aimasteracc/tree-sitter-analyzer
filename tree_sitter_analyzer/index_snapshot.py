@@ -761,10 +761,8 @@ def lease_reusable_snapshot(
 
 
 @contextmanager
-def _lease_certified_query_snapshot(
-    project_root: str, *, deadline: float
-) -> Iterator[IndexSnapshot]:
-    """优先复用已固定的私有数据库；仅在没有能力时重新捕获。"""
+def _pin_certified_reusable(project_root: str) -> Iterator[IndexSnapshot | None]:
+    """固定一个可直接复用的完整能力（同一活动数据库）；没有时为 None。"""
     from .cache.generation_routing import resolve_index_path
 
     with REGISTRY.pin_reusable(project_root) as reusable:
@@ -778,7 +776,31 @@ def _lease_certified_query_snapshot(
             and os.path.abspath(reusable.database_path) == active_database
         ):
             yield reusable
+        else:
+            yield None
+
+
+@contextmanager
+def _lease_certified_query_snapshot(
+    project_root: str, *, deadline: float
+) -> Iterator[IndexSnapshot]:
+    """优先复用已固定的私有数据库；仅在没有能力时重新捕获。
+
+    RFC-0042 P1：常驻加载线程正在捕获同一项目根时，本次捕获本来也要等它持有的
+    捕获锁，然后再捕获一遍同一状态；改为等它结束，按同一复用规则再查一次，
+    仍不可复用才自行捕获。
+    """
+    with _pin_certified_reusable(project_root) as reusable:
+        if reusable is not None:
+            yield reusable
             return
+    from .resident.loader import await_capture
+
+    if await_capture(project_root, deadline - _clock()):
+        with _pin_certified_reusable(project_root) as reusable:
+            if reusable is not None:
+                yield reusable
+                return
     with lease_existing_snapshot(project_root, deadline=deadline) as captured:
         yield captured
 
