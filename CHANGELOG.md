@@ -14,6 +14,13 @@
   open-source repos (rich, pydantic, fastapi, gson, axios, hono, zod; 138
   questions) the median answer drops from 2,282 to 116 cl100k tokens (19.6x).
   The default (`format=verbose`) is unchanged.
+- **RFC-0042 measurement harness** (#1855, Phase 0). `benchmarks/resident/`
+  holds portable versions of the RFC's profiling scripts: in-process stage
+  buckets of `nav callers` (`prof_callers.py`), latency through a real MCP
+  stdio server with the first query after start, warm, after idle and the
+  MCP-layer share (`mcp_latency.py`), graph size and memory
+  (`graph_size.py`), the idle-cliff probe and the host's `stat` cost. hono and
+  zod graph sizes are measured and recorded in the RFC. No product change.
 - **Per-caller confidence for `nav action=callers`** (#1854). Each caller
   carries `confidence_tier`: `proven` / `inferred` / `unconfirmed_receiver`,
   derived from `callee_resolution` and `resolution_kind` (table in
