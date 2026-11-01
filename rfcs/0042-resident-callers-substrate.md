@@ -652,7 +652,10 @@ They must fail on a naive "global dict keyed by root" implementation.
     4.8 × and 2.7 × the warm median, not yet ≤ 2 ×. What remains is the first `query_cost` index
     open (40–70 ms, P2a's handle) and the `nav` facade construction on the event loop (about
     0.14 s on rich; no phase covers it yet).
-- [ ] P1b: after-idle query ≤ 2 × warm
+- [x] P1b: after-idle query ≤ 2 × warm
+  - P1b PR: MCP ABBA medians after 40 s idle, off → on: rich 342 → 56 ms (warm after idle 48 ms),
+    hono 884 → 147 ms (162 ms). A renewal keeps the same snapshot ID when nothing changed. V1 on
+    vs off is 0 differing rows on rich, hono and zod (601 rows).
 - [ ] P2a/P2b: V1 0 diffs; V2 shows the expected drop; V4 0 wrong `complete`
 - [ ] P3: differential test green for every key; V1 0 diffs with VERIFY; V2 warm edge-only median ≤ 5 ms
 - [ ] P4: callees identity and latency gates
