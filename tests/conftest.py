@@ -433,6 +433,13 @@ def _reset_all_singletons():
             "disable",
             lambda fn: fn(),
         ),
+        # RFC-0042：调用 main() 的测试同样会启用常驻加载；每个测试从关闭开始，
+        # 否则之后的服务器测试会在后台为临时项目捕获快照、构图。
+        (
+            "tree_sitter_analyzer.resident.loader",
+            "reset",
+            lambda fn: fn(),
+        ),
     ]
 
     for module_path, attr_name, reset_fn in _RESETS:
