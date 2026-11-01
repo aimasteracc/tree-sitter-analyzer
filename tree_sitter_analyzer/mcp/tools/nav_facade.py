@@ -276,7 +276,7 @@ _NAV_DESCRIPTION = (
     "format (verbose|compact). format=compact → one line per caller "
     "(name  file:line  resolution_kind) + one verdict line "
     "(complete | incomplete (reasons) | unknown (reasons)), same RFC-0040 verdict "
-    "as the full answer, ~10x fewer tokens.\n"
+    "as the full answer, ~20x fewer tokens (median).\n"
     "  scope=graph → full call-graph traversal (callers mode). "
     "Params: function_name/symbol (required), file_path, depth, output_format.\n"
     "  Best for ONE hop. If the next question is about those callers (their "

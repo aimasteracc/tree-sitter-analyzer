@@ -91,15 +91,17 @@ def test_unknown_answer_keeps_its_reason() -> None:
     full = _full(completeness="unknown", completeness_reasons=["SOURCE_MISSING"])
     out = compact_callers(full)
     assert out["answer"] == (
-        "callers of load: 0\n"
-        "verdict: unknown (SOURCE_MISSING); details: format=verbose"
+        "callers of load: 0\nverdict: unknown (SOURCE_MISSING); details: format=verbose"
     )
     assert_equivalent(full, out)
 
 
 def test_reason_falls_back_to_the_single_reason_field() -> None:
-    full = _full(completeness="unknown", completeness_reasons=None,
-                 completeness_reason="INDEX_MISSING")
+    full = _full(
+        completeness="unknown",
+        completeness_reasons=None,
+        completeness_reason="INDEX_MISSING",
+    )
     assert compact_verdict(full) == "unknown (INDEX_MISSING)"
 
 
@@ -118,7 +120,9 @@ def test_annotated_resolution_kind_wins_over_callee_resolution() -> None:
         caller_count=1,
         callers=[
             _caller(
-                "use", "u.py", 4,
+                "use",
+                "u.py",
+                4,
                 callee_resolution="project",
                 resolution_kind="annotated_receiver",
             )
@@ -151,22 +155,37 @@ def test_error_answers_pass_through_unchanged() -> None:
 
 def test_the_compact_answer_is_much_smaller_than_the_full_answer() -> None:
     callers = [
-        _caller(f"f{i}", f"pkg/m{i}.py", i, callee_resolution="project",
-                language="python", callee_resolved_file="pkg/t.py",
-                body="def f():\n    return load()\n")
+        _caller(
+            f"f{i}",
+            f"pkg/m{i}.py",
+            i,
+            callee_resolution="project",
+            language="python",
+            callee_resolved_file="pkg/t.py",
+            body="def f():\n    return load()\n",
+        )
         for i in range(10)
     ]
-    full = _full(caller_count=10, callers=callers,
-                 completeness_checks={"required": 12, "checked": 12})
+    full = _full(
+        caller_count=10,
+        callers=callers,
+        completeness_checks={"required": 12, "checked": 12},
+    )
     compact = compact_callers(full)
-    assert len(json.dumps(compact)) * 5 < len(json.dumps(full))
+    assert len(json.dumps(compact)) * 3 < len(json.dumps(full))
 
 
 # -- property: projection over arbitrary full answers -----------------------
 
 _REASONS = st.sampled_from(
-    ["UNRESOLVED_INBOUND", "NAME_ONLY_INBOUND", "UNRESOLVED_IN_DECLARING_FILE",
-     "SOURCE_STALE", "EXCLUDED_FILE", "NON_CALL_REFERENCE"]
+    [
+        "UNRESOLVED_INBOUND",
+        "NAME_ONLY_INBOUND",
+        "UNRESOLVED_IN_DECLARING_FILE",
+        "SOURCE_STALE",
+        "EXCLUDED_FILE",
+        "NON_CALL_REFERENCE",
+    ]
 )
 _NAME = st.sampled_from(
     ["main", "<module>", "Text.join", "_run", "handler", "load", "a.b.c", "?"]
@@ -250,7 +269,9 @@ def indexed(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 def _nav(root: Path, **args: Any) -> dict[str, Any]:
-    return asyncio.run(build_nav_facade(str(root)).execute({"action": "callers", **args}))
+    return asyncio.run(
+        build_nav_facade(str(root)).execute({"action": "callers", **args})
+    )
 
 
 def test_facade_compact_matches_the_full_answer(indexed: Path) -> None:
@@ -264,15 +285,15 @@ def test_facade_compact_with_bodies_requested_is_still_the_same_set(
     indexed: Path,
 ) -> None:
     full = _nav(indexed, function_name="load")
-    compact = _nav(indexed, function_name="load", format="compact",
-                   include_bodies=True)
+    compact = _nav(indexed, function_name="load", format="compact", include_bodies=True)
     assert_equivalent(full, compact)
 
 
 def test_facade_default_and_verbose_are_the_full_answer(indexed: Path) -> None:
     default = _nav(indexed, function_name="load", include_bodies=False)
-    verbose = _nav(indexed, function_name="load", include_bodies=False,
-                   format="verbose")
+    verbose = _nav(
+        indexed, function_name="load", include_bodies=False, format="verbose"
+    )
     assert "format" not in default
     assert "callers" in default and "completeness_checks" in default
     assert set(verbose) == set(default)

@@ -84,9 +84,7 @@ def _kind(caller: Mapping[str, Any]) -> str:
 def expected_shape(full: Mapping[str, Any], top: int = 3) -> CompactShape:
     """完整答复应投影出的结构（直接读完整答复的字段）。"""
     completeness = full.get("completeness")
-    label = (
-        completeness if completeness in ("complete", "incomplete") else "unknown"
-    )
+    label = completeness if completeness in ("complete", "incomplete") else "unknown"
     reasons = list(full.get("completeness_reasons") or [])
     if not reasons and full.get("completeness_reason"):
         reasons = [str(full["completeness_reason"])]
@@ -118,3 +116,10 @@ def assert_equivalent(full: Mapping[str, Any], compact: Mapping[str, Any]) -> No
     assert shape == expected_shape(full), (full, compact)
     if shape.completeness == "complete":
         assert full["completeness"] == "complete", (full, compact)
+    # 机器可读字段：原因码逐项等于完整答复（complete 时为空），verdict 相同。
+    full_reasons = list(full.get("completeness_reasons") or [])
+    if not full_reasons and full.get("completeness_reason"):
+        full_reasons = [str(full["completeness_reason"])]
+    expected_reasons = [] if shape.completeness == "complete" else full_reasons
+    assert list(compact.get("completeness_reasons") or []) == expected_reasons
+    assert compact.get("verdict") == full.get("verdict"), (full, compact)

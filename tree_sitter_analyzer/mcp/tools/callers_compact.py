@@ -81,9 +81,7 @@ def caller_line(caller: Mapping[str, Any]) -> str:
     name = caller.get("name") or "?"
     file = caller.get("file") or "?"
     line = caller.get("line") or 0
-    kind = (
-        caller.get("resolution_kind") or caller.get("callee_resolution") or "unknown"
-    )
+    kind = caller.get("resolution_kind") or caller.get("callee_resolution") or "unknown"
     return f"{name}  {file}:{line}  {kind}"
 
 
@@ -102,12 +100,19 @@ def compact_callers(answer: Any) -> Any:
     verdict = compact_verdict(answer)
     label = verdict_label(answer)
     lines.append(f"verdict: {verdict}{'' if label == 'complete' else _DETAILS}")
-    return {
-        "success": True,
-        "format": COMPACT_FORMAT,
-        "completeness": label,
-        "answer": "\n".join(lines),
-    }
+    compact: dict[str, Any] = {"success": True}
+    if isinstance(answer.get("verdict"), str):
+        compact["verdict"] = answer["verdict"]
+    # 机器可读的判定与完整答复相同（信封契约：非 complete 必须给出原因码）。
+    compact.update(
+        {
+            "format": COMPACT_FORMAT,
+            "completeness": label,
+            "completeness_reasons": [] if label == "complete" else _reasons(answer),
+            "answer": "\n".join(lines),
+        }
+    )
+    return compact
 
 
 def invalid_format(value: Any) -> dict[str, Any] | None:

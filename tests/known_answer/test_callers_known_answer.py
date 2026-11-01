@@ -29,9 +29,9 @@ import pytest
 
 from scripts.wrong_complete.scorer import evidence_keys, score
 from tests.known_answer._cases import MODES, Case
-from tests.known_answer._compact import assert_equivalent
 from tests.known_answer._cases_java_ts import JAVA_TS_CASES
 from tests.known_answer._cases_python import PYTHON_CASES
+from tests.known_answer._compact import assert_equivalent
 from tests.known_answer._runner import (
     Observation,
     observe,
