@@ -440,6 +440,12 @@ def _reset_all_singletons():
             "reset",
             lambda fn: fn(),
         ),
+        # RFC-0042 P2a：常驻句柄按项目根留在进程内；每个测试如同新进程。
+        (
+            "tree_sitter_analyzer.resident.handle",
+            "reset",
+            lambda fn: fn(),
+        ),
     ]
 
     for module_path, attr_name, reset_fn in _RESETS:

@@ -18,6 +18,7 @@ from ...graph.edge_store import direct_callers_memo
 from ...member_names import unquote_member_name
 from ...module_scope_caller import is_module_caller, module_caller_entry
 from ...receiver_proof import has_unproven_receiver
+from ...resident import handle as resident_handle
 from ...utils import setup_logger
 from . import certification_timeouts
 from ._response_builder import build_response
@@ -421,6 +422,14 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         """
         for arguments in requests:
             self.validate_arguments(arguments)
+        # RFC-0042 P2a：本请求的探针（重建标记、活动索引探测、认证超时记录、
+        # 成本档位）经一次核验的常驻句柄读取；没有句柄时照常逐个探测。
+        with resident_handle.request(self.project_root):
+            return await self._execute_batch(requests)
+
+    async def _execute_batch(
+        self, requests: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         if is_index_rebuilding(self.project_root):
             rebuilding = await self._answer_all(requests, None, None)
             return [r for r in rebuilding if r is not None]

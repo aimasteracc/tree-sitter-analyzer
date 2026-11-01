@@ -19,8 +19,9 @@ from __future__ import annotations
 import os
 import sqlite3
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
+from ..resident import handle as resident_handle
 from .callgraph_state import exact_call_graph_marker
 
 
@@ -33,7 +34,20 @@ class LiveIndexProbe:
 
 
 def probe_live_index(project_root: str) -> LiveIndexProbe | None:
-    """只读探测活动索引；库不存在、不可读或结构不符时为 ``None``。"""
+    """只读探测活动索引；库不存在、不可读或结构不符时为 ``None``。
+
+    RFC-0042 P2a：``nav callers`` 请求内、且常驻句柄（``resident.handle``）已按
+    选择器与已封存库的 stat 证据核验时，复用句柄里同一函数对同一已封存版本的
+    探测结果；其余情况照常探测。
+    """
+    cached = resident_handle.live_probe(project_root)
+    if cached is not None:
+        return cast(LiveIndexProbe, cached)
+    return probe_live_index_uncached(project_root)
+
+
+def probe_live_index_uncached(project_root: str) -> LiveIndexProbe | None:
+    """``probe_live_index`` 的原始定义：每次都打开活动索引读取证据。"""
     from .generation_routing import resolve_index_location
 
     try:
