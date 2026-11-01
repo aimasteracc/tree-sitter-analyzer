@@ -18,6 +18,7 @@ import psutil
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "qualify_native_install.py"
+FIXED_ZIP_TIME = (2020, 1, 1, 0, 0, 0)
 SCHEMA = ROOT / "rfcs/schemas/no1-006a-native-attestation-v1.schema.json"
 TOOLS = [
     "search",
@@ -94,10 +95,14 @@ def make_wheel(path: Path) -> dict[str, Any]:
     rows.append(["tree_sitter_analyzer-1.0.dist-info/RECORD", "", ""])
     record = io.StringIO()
     csv.writer(record, lineterminator="\n").writerows(rows)
+    # 固定 mtime：writestr(str) は現在時刻(2秒精度)を埋め込むため、同一テスト内で
+    # wheel を2回組むと秒境界を跨いだ時に sha256 が変わり偶発失敗する (#1842)。
     with zipfile.ZipFile(path, "w") as archive:
-        for name, data in files.items():
-            archive.writestr(name, data)
-        archive.writestr("tree_sitter_analyzer-1.0.dist-info/RECORD", record.getvalue())
+        for name, data in {
+            **files,
+            "tree_sitter_analyzer-1.0.dist-info/RECORD": record.getvalue(),
+        }.items():
+            archive.writestr(zipfile.ZipInfo(name, FIXED_ZIP_TIME), data)
     return {
         "filename": path.name,
         "sha256": sha(path),

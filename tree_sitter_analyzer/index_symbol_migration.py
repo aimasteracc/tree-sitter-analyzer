@@ -7,6 +7,7 @@ import sqlite3
 import time
 from collections.abc import Callable
 
+from ._recorded_source_rows import finish_cursors, track_cursor
 from .index_symbol_projection import index_content_hash_sql as _index_content_hash_sql
 from .index_symbol_projection import (
     projection_schema_columns as _projection_schema_columns,
@@ -57,6 +58,7 @@ def ensure_symbol_rows_backfilled(
 
     savepoint_started = False
     inserted_legacy_rows = False
+    opened: list[object] = []
     conn.set_progress_handler(expired, 1_000)
     try:
         conn.execute("SAVEPOINT ast_symbol_rows_upgrade")
@@ -147,10 +149,13 @@ def ensure_symbol_rows_backfilled(
 
         hash_sql = _index_content_hash_sql(conn)
         hash_column = "content_hash" if hash_sql != "''" else "''"
-        preflight = conn.execute(
-            "SELECT length(CAST(file_path AS BLOB)), "
-            "length(CAST(language AS BLOB)), length(CAST(symbols_json AS BLOB)), "
-            f"length(CAST({hash_column} AS BLOB)) FROM ast_index"
+        preflight = track_cursor(
+            opened,
+            conn.execute(
+                "SELECT length(CAST(file_path AS BLOB)), "
+                "length(CAST(language AS BLOB)), length(CAST(symbols_json AS BLOB)), "
+                f"length(CAST({hash_column} AS BLOB)) FROM ast_index"
+            ),
         )
         while True:
             check_budget()
@@ -185,10 +190,14 @@ def ensure_symbol_rows_backfilled(
         ):
             raise sqlite3.OperationalError("LEGACY_SYMBOL_MIGRATION_BUDGET")
         ordinary_empty = ordinary_count_row[0] == 0
-        ordinary_preflight = conn.execute(
-            "SELECT length(CAST(name AS BLOB)), length(CAST(kind AS BLOB)), "
-            "length(CAST(file_path AS BLOB)), length(CAST(language AS BLOB)), "
-            "typeof(line), typeof(end_line) FROM ast_symbol_rows ORDER BY file_path, id"
+        ordinary_preflight = track_cursor(
+            opened,
+            conn.execute(
+                "SELECT length(CAST(name AS BLOB)), length(CAST(kind AS BLOB)), "
+                "length(CAST(file_path AS BLOB)), length(CAST(language AS BLOB)), "
+                "typeof(line), typeof(end_line) "
+                "FROM ast_symbol_rows ORDER BY file_path, id"
+            ),
         )
         ordinary_seen = 0
         while True:
@@ -217,16 +226,22 @@ def ensure_symbol_rows_backfilled(
         ordinary_cursor = (
             None
             if ordinary_empty
-            else conn.execute(
-                "SELECT name, kind, file_path, language, line, end_line "
-                "FROM ast_symbol_rows ORDER BY file_path, id"
+            else track_cursor(
+                opened,
+                conn.execute(
+                    "SELECT name, kind, file_path, language, line, end_line "
+                    "FROM ast_symbol_rows ORDER BY file_path, id"
+                ),
             )
         )
         content_exact = not ordinary_empty
         state_rows: list[tuple[str, str, int]] = []
-        cursor = conn.execute(
-            f"SELECT file_path, language, symbols_json, {hash_column} "
-            "FROM ast_index ORDER BY file_path"
+        cursor = track_cursor(
+            opened,
+            conn.execute(
+                f"SELECT file_path, language, symbols_json, {hash_column} "
+                "FROM ast_index ORDER BY file_path"
+            ),
         )
         materialized_rows = 0
         while True:
@@ -338,10 +353,13 @@ def ensure_symbol_rows_backfilled(
         conn.execute("DELETE FROM ast_symbol_projection_state")
         for file_path, content_hash, symbol_count in state_rows:
             check_budget()
-            digest_rows = conn.execute(
-                "SELECT id, name, kind, file_path, language, line, end_line "
-                "FROM ast_symbol_rows WHERE file_path = ? ORDER BY id",
-                (file_path,),
+            digest_rows = track_cursor(
+                opened,
+                conn.execute(
+                    "SELECT id, name, kind, file_path, language, line, end_line "
+                    "FROM ast_symbol_rows WHERE file_path = ? ORDER BY id",
+                    (file_path,),
+                ),
             )
             projection_digest = _symbol_rows_digest(digest_rows, check_budget)
             check_budget()
@@ -384,3 +402,4 @@ def ensure_symbol_rows_backfilled(
         raise
     finally:
         conn.set_progress_handler(None, 0)
+        finish_cursors(opened)

@@ -36,8 +36,49 @@ def _run_reference_task(capsys, task_id: str):
     return exit_code, captured, json.loads(captured.out)
 
 
-@pytest.mark.flaky(reruns=1)  # #1816: wall-clock limit on loaded runners
-def test_reference_transcript_reaches_registered_pass(capsys) -> None:
+def _fake_verification(monkeypatch, *, exit_code: int = 0) -> None:
+    """Replace the two real ``uv run pytest`` launches with an instant stand-in.
+
+    One reference run starts the registered suite twice (``edit.verify`` through
+    ``verification_runner._run_step`` and ``_run_registered_verification``), about
+    4-9 s each on Windows and the cost that blew the budget on loaded runners
+    (#1816). Everything else (index, search, git patch, oracle) stays real.
+    """
+    from tree_sitter_analyzer import verification_runner
+    from tree_sitter_analyzer.no1_010b import transcript
+
+    def step(argv, root, deadline, cancel):
+        return {
+            "status": "passed" if exit_code == 0 else "failed",
+            "exit_code": exit_code,
+            "output": "",
+            "output_truncated": False,
+            "cleanup_complete": True,
+        }
+
+    def registered(root, argv):
+        return {
+            "argv": list(argv),
+            "exit_code": exit_code,
+            "passed": exit_code == 0,
+            "output_tail": "",
+        }
+
+    monkeypatch.setattr(verification_runner, "_run_step", step)
+    monkeypatch.setattr(transcript, "_run_registered_verification", registered)
+
+
+# slow + slow_ok: the single end-to-end run that really launches
+# ``uv run pytest`` twice (edit.verify and the registered verification).  Both
+# are bounded by their own 120 s timeouts, so the 300 s test timeout is a
+# legitimate bound, not a hidden wait.  Every other reference-run test uses
+# ``_fake_verification`` (#1816).  The fixture suite needs no pytest plugin, so
+# skipping plugin autoload trims the real start-up.
+@pytest.mark.slow
+@pytest.mark.slow_ok
+@pytest.mark.timeout(300)
+def test_reference_transcript_reaches_registered_pass(capsys, monkeypatch) -> None:
+    monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
     exit_code, captured, transcript = _run_reference_task(
         capsys, "no1-010b/0001-bugfix-dispatch-unknown-route"
     )
@@ -122,8 +163,9 @@ def test_reference_transcript_reaches_registered_pass(capsys) -> None:
     ],
 )
 def test_reference_transcript_covers_representative_success_scenarios(
-    capsys, task_id, task_class, changed_paths, target
+    capsys, monkeypatch, task_id, task_class, changed_paths, target
 ) -> None:
+    _fake_verification(monkeypatch)
     exit_code, captured, transcript = _run_reference_task(capsys, task_id)
 
     assert exit_code == 0
@@ -151,7 +193,10 @@ def test_reference_transcript_covers_representative_success_scenarios(
         assert transcript["test_selection"] is None
 
 
-def test_reference_transcript_preserves_registered_verification_failure(capsys) -> None:
+def test_reference_transcript_preserves_registered_verification_failure(
+    capsys, monkeypatch
+) -> None:
+    _fake_verification(monkeypatch, exit_code=1)
     task_id = "no1-010b/0006-bugfix-cancel-unknown-order"
     exit_code, captured, transcript = _run_reference_task(capsys, task_id)
 

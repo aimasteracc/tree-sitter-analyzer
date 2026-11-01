@@ -10,7 +10,9 @@ import json
 import re
 import sqlite3
 from collections import deque
-from collections.abc import Collection
+from collections.abc import Collection, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, cast
@@ -878,7 +880,46 @@ def _callees_by_name(
     ).fetchall()
 
 
+#: Per-request memo of :func:`_direct_callers` (#1840).  One ``callers`` answer asks
+#: the same ``(name, file)`` twice — the unattributed-site check and the unresolved
+#: inbound check both read the target's direct inbound edges — and each read costs
+#: the edge SQL plus the alias lookups.  Outside :func:`direct_callers_memo` every
+#: call reads the index live, so only an answer that opts in shares the read.
+_DIRECT_CALLERS_MEMO: ContextVar[
+    dict[tuple[int, str, str | None], list[sqlite3.Row]] | None
+] = ContextVar("edge_store_direct_callers_memo", default=None)
+
+
+@contextmanager
+def direct_callers_memo() -> Iterator[None]:
+    """Share identical :func:`_direct_callers` reads until the block exits.
+
+    The index does not change inside one answer (it is read from one bound
+    snapshot), so a repeated ``(connection, name, file)`` read returns the rows
+    of the first.  Every caller still runs its own check over those rows.
+    """
+    token = _DIRECT_CALLERS_MEMO.set({})
+    try:
+        yield
+    finally:
+        _DIRECT_CALLERS_MEMO.reset(token)
+
+
 def _direct_callers(
+    conn: sqlite3.Connection,
+    callee_name: str,
+    callee_file: str | None,
+) -> list[sqlite3.Row]:
+    memo = _DIRECT_CALLERS_MEMO.get()
+    if memo is None:
+        return _read_direct_callers(conn, callee_name, callee_file)
+    key = (id(conn), callee_name, callee_file)
+    if key not in memo:
+        memo[key] = _read_direct_callers(conn, callee_name, callee_file)
+    return list(memo[key])
+
+
+def _read_direct_callers(
     conn: sqlite3.Connection,
     callee_name: str,
     callee_file: str | None,

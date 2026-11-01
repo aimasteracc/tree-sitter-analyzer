@@ -806,7 +806,6 @@ def test_single_file_backfill_exception_keeps_marker_incomplete(tmp_path) -> Non
     assert graph_built is False
 
 
-@pytest.mark.flaky(reruns=1)  # #1816: wall-clock limit on loaded runners
 def test_single_file_backfill_error_keeps_marker_incomplete(tmp_path) -> None:
     cache = legacy_cache(str(tmp_path))
     try:

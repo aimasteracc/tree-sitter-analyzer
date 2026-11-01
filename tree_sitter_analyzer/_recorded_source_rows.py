@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from collections.abc import Callable, Iterator
-from typing import Protocol, cast
+from collections.abc import Callable, Iterable, Iterator
+from typing import Protocol, TypeVar, cast
+
+_Row = TypeVar("_Row")
+_CursorT = TypeVar("_CursorT")
 
 
 class _Cursor(Protocol):
@@ -25,6 +28,30 @@ def finish_cursor(cursor: object) -> None:
     close = getattr(cursor, "close", None)
     if callable(close):
         close()
+
+
+def finishing_rows(cursor: Iterable[_Row]) -> Iterator[_Row]:
+    """逐行迭代游标；无论读完、中断还是异常，都结束游标上未读完的语句（#1833）。
+
+    游标只存在于本生成器内，不进入调用方的局部变量，所以调用方的异常 traceback
+    不会让未读完的语句继续持有读事务。
+    """
+    try:
+        yield from cursor
+    finally:
+        finish_cursor(cursor)
+
+
+def track_cursor(opened: list[object], cursor: _CursorT) -> _CursorT:
+    """登记游标，供调用方在 ``finally`` 里用 :func:`finish_cursors` 统一结束（#1833）。"""
+    opened.append(cursor)
+    return cursor
+
+
+def finish_cursors(opened: list[object]) -> None:
+    """结束所有已登记游标上未读完的语句。"""
+    for cursor in opened:
+        finish_cursor(cursor)
 
 
 def _read_admitted_count(

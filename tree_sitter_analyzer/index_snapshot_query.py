@@ -9,6 +9,7 @@ from collections import OrderedDict
 from collections.abc import Collection
 from typing import Any, cast
 
+from ._recorded_source_rows import finishing_rows
 from .cache.callgraph_state import call_graph_built as _call_graph_built
 from .cache.graph import bfs_callees, bfs_callers
 from .cache.graph_input_rows import (
@@ -163,9 +164,10 @@ class CertifiedSnapshotCache:
         ]
 
     def get_imports(self) -> dict[str, list[str]]:
-        rows = self.get_conn().execute("SELECT file_path, imports_json FROM ast_index")
         result: dict[str, list[str]] = {}
-        for row in rows:
+        for row in finishing_rows(
+            self.get_conn().execute("SELECT file_path, imports_json FROM ast_index")
+        ):
             values = json.loads(row["imports_json"])
             result[row["file_path"]] = [
                 value.get("text", "") if isinstance(value, dict) else value
