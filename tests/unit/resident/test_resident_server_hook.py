@@ -127,6 +127,8 @@ def test_set_project_path_starts_the_loader_for_the_new_root(
     first, second = tmp_path / "a", tmp_path / "b"
     first.mkdir()
     second.mkdir()
+    # Rebinding the (not under test) tool registry costs seconds when built cold.
+    monkeypatch.setattr(TreeSitterAnalyzerMCPServer, "tools", property(lambda _s: {}))
     instance = TreeSitterAnalyzerMCPServer(str(first))
     instance.set_project_path(str(second))
     assert loader.wait(timeout=10)
