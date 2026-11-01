@@ -1,5 +1,4 @@
 """Unit tests for hotspot_analyzer.py and output_schema.py (pure functions only)."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -30,7 +29,6 @@ TestFocus.__test__ = False  # type: ignore[attr-defined]
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
-
 @dataclass
 class FakeFunc:
     name: str
@@ -49,31 +47,15 @@ class FakeHeatmap:
     max_complexity: int = 0
 
 
-def make_entry(
-    rank=1,
-    file="a.py",
-    severity="OK",
-    score=50.0,
-    ca_raw=5,
-    ca_alias=5,
-    max_cc=10,
-    hops=None,
-):
+def make_entry(rank=1, file="a.py", severity="OK", score=50.0, ca_raw=5, ca_alias=5, max_cc=10, hops=None):
     return HotspotEntry(
-        rank=rank,
-        file=file,
-        severity=severity,
-        score=score,
-        ca_raw=ca_raw,
-        ca_alias=ca_alias,
-        max_cc=max_cc,
-        test_focus=TestFocus("fn", max_cc, "ok"),
-        hops=hops,
+        rank=rank, file=file, severity=severity, score=score,
+        ca_raw=ca_raw, ca_alias=ca_alias, max_cc=max_cc,
+        test_focus=TestFocus("fn", max_cc, "ok"), hops=hops,
     )
 
 
 # ── P2: Basic score ───────────────────────────────────────────────────────────
-
 
 def test_score_calculation_basic():
     ca_map = {"a.py": 5}
@@ -85,7 +67,6 @@ def test_score_calculation_basic():
 
 
 # ── P4: Severity boundaries ───────────────────────────────────────────────────
-
 
 def test_severity_critical_boundary():
     assert classify_severity(400) == "CRITICAL"
@@ -110,11 +91,8 @@ def test_empty_results_is_success():
 
 
 def test_test_focus_extraction():
-    hm = FakeHeatmap(
-        "a.py",
-        max_complexity=12,
-        functions=[FakeFunc("parse", 12), FakeFunc("init", 3)],
-    )
+    hm = FakeHeatmap("a.py", max_complexity=12,
+                     functions=[FakeFunc("parse", 12), FakeFunc("init", 3)])
     tf = build_test_focus(hm, "CRITICAL")
     assert tf.function == "parse"
     assert tf.cc == 12
@@ -122,7 +100,6 @@ def test_test_focus_extraction():
 
 
 # ── P3: alias-aware Ca ────────────────────────────────────────────────────────
-
 
 def test_alias_resolution_python(tmp_path):
     from tree_sitter_analyzer.hotspot_analyzer import build_alias_ca_map
@@ -165,17 +142,11 @@ def test_alias_resolution_typescript(tmp_path):
 
 # ── P6: Error categories ──────────────────────────────────────────────────────
 
-
 def test_error_index_not_built():
     from tree_sitter_analyzer.output_schema import HotspotResult
-
-    r = HotspotResult(
-        success=False,
-        error="index_not_built",
-        error_category="state",
-        recovery_hint="fix_then_retry",
-        message="Index not found",
-    )
+    r = HotspotResult(success=False, error="index_not_built",
+                      error_category="state", recovery_hint="fix_then_retry",
+                      message="Index not found")
     d = result_to_dict(r)
     assert d["error_category"] == "state"
     assert d["recovery_hint"] == "fix_then_retry"
@@ -184,14 +155,9 @@ def test_error_index_not_built():
 
 def test_error_entry_point_not_found():
     from tree_sitter_analyzer.output_schema import HotspotResult
-
-    r = HotspotResult(
-        success=False,
-        error="entry_point_not_found",
-        error_category="data",
-        recovery_hint="try_alternative",
-        message="Not found",
-    )
+    r = HotspotResult(success=False, error="entry_point_not_found",
+                      error_category="data", recovery_hint="try_alternative",
+                      message="Not found")
     d = result_to_dict(r)
     assert d["error_category"] == "data"
     assert d["recovery_hint"] == "try_alternative"
@@ -199,14 +165,9 @@ def test_error_entry_point_not_found():
 
 def test_error_transient():
     from tree_sitter_analyzer.output_schema import HotspotResult
-
-    r = HotspotResult(
-        success=False,
-        error="parse_timeout",
-        error_category="transient",
-        recovery_hint="retry",
-        message="Timeout",
-    )
+    r = HotspotResult(success=False, error="parse_timeout",
+                      error_category="transient", recovery_hint="retry",
+                      message="Timeout")
     d = result_to_dict(r)
     assert d["error_category"] == "transient"
     assert d["recovery_hint"] == "retry"
@@ -214,21 +175,15 @@ def test_error_transient():
 
 def test_error_invalid_depth():
     from tree_sitter_analyzer.output_schema import HotspotResult
-
-    r = HotspotResult(
-        success=False,
-        error="invalid_argument",
-        error_category="configuration",
-        recovery_hint="fix_argument",
-        message="Invalid value for --depth: must be 1-5",
-    )
+    r = HotspotResult(success=False, error="invalid_argument",
+                      error_category="configuration", recovery_hint="fix_argument",
+                      message="Invalid value for --depth: must be 1-5")
     d = result_to_dict(r)
     assert d["error_category"] == "configuration"
     assert d["recovery_hint"] == "fix_argument"
 
 
 # ── P1: Pagination ────────────────────────────────────────────────────────────
-
 
 def test_pagination_slice():
     entries = [make_entry(rank=i, score=float(100 - i)) for i in range(1, 11)]
@@ -256,7 +211,6 @@ def test_pagination_merge():
 
 # ── P5: BFS ───────────────────────────────────────────────────────────────────
 
-
 def test_bfs_subgraph_smaller():
     edges = {
         "main.py": {"a.py": 1, "b.py": 1},
@@ -271,7 +225,6 @@ def test_bfs_subgraph_smaller():
 
 def test_bfs_depth_cap(capsys):
     from tree_sitter_analyzer.subgraph_traverser import get_subgraph
-
     dm = MagicMock()
     dm._import_edges = {"main.py": {"a.py": 1}, "a.py": {}}
     result = get_subgraph(dm, "main.py", 10)
@@ -294,7 +247,6 @@ def test_hops_in_result():
 
 # ── top_n edge cases ──────────────────────────────────────────────────────────
 
-
 def test_compute_scores_top_n_zero_returns_empty():
     ca_map = {"a.py": 5}
     hm = FakeHeatmap("a.py", max_complexity=10, functions=[FakeFunc("f", 10)])
@@ -313,7 +265,6 @@ def test_compute_scores_top_n_negative_clamps_to_empty():
 
 
 # ── _resolve_import_mod ────────────────────────────────────────────────────────
-
 
 def test_resolve_absolute_import():
     file_set = {"pkg/utils.py", "pkg/__init__.py"}
@@ -340,7 +291,6 @@ def test_resolve_bare_relative_not_in_fileset_returns_none():
 
 # ── _iter_resolved_imports: bare relative imports ─────────────────────────────
 
-
 def test_iter_resolved_bare_dot_import():
     file_set = {"pkg/__init__.py", "pkg/utils.py", "pkg/foo.py"}
     text = "from . import utils\n"
@@ -349,12 +299,7 @@ def test_iter_resolved_bare_dot_import():
 
 
 def test_iter_resolved_bare_double_dot_import():
-    file_set = {
-        "pkg/__init__.py",
-        "pkg/utils.py",
-        "pkg/sub/__init__.py",
-        "pkg/sub/mod.py",
-    }
+    file_set = {"pkg/__init__.py", "pkg/utils.py", "pkg/sub/__init__.py", "pkg/sub/mod.py"}
     text = "from .. import utils\n"
     results = list(_iter_resolved_imports(text, "pkg/sub/mod.py", file_set))
     assert "pkg/utils.py" in results
@@ -370,7 +315,6 @@ def test_iter_resolved_no_duplicate_from_both_passes():
 
 
 # ── build_ca_from_source_imports ──────────────────────────────────────────────
-
 
 def test_ca_counts_standard_imports(tmp_path):
     (tmp_path / "pkg").mkdir()
@@ -406,7 +350,6 @@ def test_ca_windows_path_normalization(tmp_path):
 
 # ── _detect_source_dir ────────────────────────────────────────────────────────
 
-
 def test_detect_source_dir_pyproject(tmp_path):
     (tmp_path / "mypkg").mkdir()
     (tmp_path / "mypkg" / "__init__.py").write_text("")
@@ -433,11 +376,9 @@ def test_detect_source_dir_none_when_empty(tmp_path):
 
 # ── build_ca_raw_map ──────────────────────────────────────────────────────────
 
-
 def test_build_ca_raw_map_no_result():
     """When dm._result is None, returns an empty dict."""
     from tree_sitter_analyzer.hotspot_analyzer import build_ca_raw_map
-
     dm = MagicMock()
     dm._result = None
     result = build_ca_raw_map(dm)
@@ -447,7 +388,6 @@ def test_build_ca_raw_map_no_result():
 def test_build_ca_raw_map_with_module_stats():
     """Returns {file: afferent_coupling} from dm._result.module_stats."""
     from tree_sitter_analyzer.hotspot_analyzer import build_ca_raw_map
-
     dm = MagicMock()
     stat1 = MagicMock()
     stat1.file = "pkg/foo.py"
@@ -461,7 +401,6 @@ def test_build_ca_raw_map_with_module_stats():
 
 
 # ── build_heatmap_map ─────────────────────────────────────────────────────────
-
 
 def test_build_heatmap_map_normalizes_backslash():
     """Backslash paths in FileHeatmap.file are normalized to forward slash."""
@@ -484,7 +423,6 @@ def test_build_heatmap_map_normalizes_backslash():
 
 # ── build_test_focus: no-functions branch ─────────────────────────────────────
 
-
 def test_build_test_focus_no_functions():
     """FakeHeatmap with empty functions list → TestFocus with function='(no functions)'."""
     hm = FakeHeatmap("a.py", max_complexity=0, functions=[])
@@ -495,7 +433,6 @@ def test_build_test_focus_no_functions():
 
 
 # ── build_import_edges_from_source ────────────────────────────────────────────
-
 
 def test_build_import_edges_from_source_basic(tmp_path):
     """Import edges are built correctly from Python source files."""
@@ -514,7 +451,6 @@ def test_build_import_edges_from_source_basic(tmp_path):
 
 
 # ── heatmaps_from_project_analysis ────────────────────────────────────────────
-
 
 def test_heatmaps_from_project_analysis_empty_dir(tmp_path):
     """Empty project directory yields no heatmaps."""
@@ -562,7 +498,6 @@ def test_heatmaps_from_project_analysis_transforms_result(tmp_path):
 
 # ── _detect_source_dir: setuptools and edge cases ─────────────────────────────
 
-
 def test_detect_source_dir_setuptools_packages(tmp_path):
     """pyproject.toml with [tool.setuptools] packages is resolved when hatch is absent."""
     (tmp_path / "mypkg").mkdir()
@@ -586,7 +521,6 @@ def test_detect_source_dir_dot_prefix_dir_ignored(tmp_path):
 
 # ── build_alias_ca_map: short-circuit on empty import_edges ──────────────────
 
-
 def test_build_alias_ca_map_empty_import_edges_returns_copy():
     """When import_edges is empty, returns a new dict copy of ca_raw without rglob walk."""
     from tree_sitter_analyzer.hotspot_analyzer import build_alias_ca_map
@@ -598,7 +532,6 @@ def test_build_alias_ca_map_empty_import_edges_returns_copy():
 
 
 # ── compute_scores: alias_ca_map overrides raw Ca ────────────────────────────
-
 
 def test_compute_scores_alias_ca_map_overrides_raw():
     """When alias_ca_map is provided, ca_alias uses alias value and score reflects it."""
@@ -614,7 +547,6 @@ def test_compute_scores_alias_ca_map_overrides_raw():
 
 # ── _resolve_import_mod: bare-dot and empty-string edges ─────────────────────
 
-
 def test_resolve_import_mod_bare_dot_resolves_to_package_init():
     """raw_mod='.' → empty mod after strip → resolves to pkg/__init__.py."""
     file_set = {"pkg/__init__.py", "pkg/foo.py"}
@@ -629,7 +561,6 @@ def test_resolve_import_mod_empty_string_returns_none():
 
 
 # ── _iter_resolved_imports: dedup and pass-2 edge cases ──────────────────────
-
 
 def test_iter_resolved_imports_deduplicates_pass1():
     """Same module imported on two lines — yielded exactly once (236->224 branch)."""
@@ -658,7 +589,6 @@ def test_iter_resolved_imports_pass2_skips_unresolvable():
 
 # ── build_import_edges_from_source: non-py skip and OSError ──────────────────
 
-
 def test_build_import_edges_skips_non_python_files(tmp_path):
     """Non-.py files in scan list are skipped; result is empty (line 276 continue)."""
     from tree_sitter_analyzer.hotspot_analyzer import build_import_edges_from_source
@@ -680,7 +610,6 @@ def test_build_import_edges_oserror_on_read_is_skipped(tmp_path):
 
 # ── build_ca_from_source_imports: non-py skip and OSError ────────────────────
 
-
 def test_ca_from_source_imports_skips_non_python_files(tmp_path):
     """Non-.py files in scan list are skipped; ca result is empty (line 313 continue)."""
     (tmp_path / "main.ts").write_text("import { Foo } from './utils'\n")
@@ -695,7 +624,6 @@ def test_ca_from_source_imports_oserror_on_read_is_skipped(tmp_path):
 
 
 # ── _detect_source_dir: malformed TOML and OSError on iterdir ────────────────
-
 
 def test_detect_source_dir_malformed_toml_falls_back_to_heuristic(tmp_path):
     """pyproject.toml with invalid TOML → except Exception caught, heuristic used (100-101)."""
@@ -712,7 +640,6 @@ def test_detect_source_dir_oserror_on_iterdir_returns_none():
 
 
 # ── _parse_python_reexports: OSError and false branches ──────────────────────
-
 
 def test_parse_python_reexports_oserror_returns_empty():
     """Unreadable path → OSError caught → returns [] (lines 417-418)."""
@@ -746,7 +673,6 @@ def test_parse_python_reexports_skips_star_imports(tmp_path):
 
 # ── _parse_ts_reexports: OSError and false branch ────────────────────────────
 
-
 def test_parse_ts_reexports_oserror_returns_empty():
     """Unreadable path → OSError caught → returns [] (lines 437-438)."""
     from pathlib import Path
@@ -769,7 +695,6 @@ def test_parse_ts_reexports_skips_non_export_lines(tmp_path):
 
 # ── build_alias_ca_map: known_files paths and missing module on disk ──────────
 
-
 def test_build_alias_ca_map_known_files_python_branch(tmp_path):
     """known_files provided: uses list-based init discovery (line 472 True branch)."""
     from tree_sitter_analyzer.hotspot_analyzer import build_alias_ca_map
@@ -781,9 +706,7 @@ def test_build_alias_ca_map_known_files_python_branch(tmp_path):
     import_edges = {"main.py": {"pkg/__init__.py": 1}}
     ca_raw = {"pkg/__init__.py": 1, "pkg/core.py": 0}
     known_files = ["pkg/__init__.py", "pkg/core.py"]
-    alias_ca = build_alias_ca_map(
-        ca_raw, import_edges, str(tmp_path), known_files=known_files
-    )
+    alias_ca = build_alias_ca_map(ca_raw, import_edges, str(tmp_path), known_files=known_files)
     # __init__.py has 1 importer, re-exports core → core gets +1
     assert alias_ca["pkg/core.py"] == 1
 
@@ -814,9 +737,7 @@ def test_build_alias_ca_map_known_files_typescript_branch(tmp_path):
     import_edges = {"main.ts": {"src/index.ts": 1}}
     ca_raw = {"src/index.ts": 1, "src/utils.ts": 0}
     known_files = ["src/index.ts", "src/utils.ts"]
-    alias_ca = build_alias_ca_map(
-        ca_raw, import_edges, str(tmp_path), known_files=known_files
-    )
+    alias_ca = build_alias_ca_map(ca_raw, import_edges, str(tmp_path), known_files=known_files)
     # index.ts has 1 importer, re-exports utils → utils gets +1
     assert alias_ca["src/utils.ts"] == 1
 

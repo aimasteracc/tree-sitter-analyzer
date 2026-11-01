@@ -144,3 +144,5 @@ class TestGetVisibilitySymbol:
         assert formatter._get_visibility_symbol("internal") == "~"
         assert formatter._get_visibility_symbol("custom") == "+"
         assert formatter._get_visibility_symbol("PUBLIC") == "+"
+
+

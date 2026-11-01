@@ -85,7 +85,9 @@ class ReadPartialToolBatchExtraFileErrorMixin:
             result = await tool._execute_batch(args)
         if "results" in result:
             errors = result["results"][0].get("errors", [])
-            assert any("too large" in e["error"].lower() for e in errors)
+            assert any(
+                "too large" in e["error"].lower() for e in errors
+            )
         else:
             assert "error" in result or isinstance(result, dict)
         test_file.unlink()

@@ -358,7 +358,6 @@ class TestBuiltinFormatters:
 
         assert result == "No elements found."
 
-
 class TestFormatterWithHtmlElements:
     """Test formatters with HTML/CSS elements"""
 
@@ -414,7 +413,6 @@ class TestFormatterWithHtmlElements:
         assert "CSS_RULES (1)" in result
         assert "div" in result
         assert ".container" in result
-
 
 class TestFormatterRegistryIntegration:
     """Test FormatterRegistry integration with built-in formatters"""

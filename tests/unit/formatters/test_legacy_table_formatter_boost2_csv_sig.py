@@ -195,3 +195,5 @@ class TestExtractDocSummary:
         doc = "/**\n * Get the user.\n * @return User\n */"
         result = formatter._extract_doc_summary(doc)
         assert "Get the user" in result
+
+

@@ -15,9 +15,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LISTING_PATH = PROJECT_ROOT / "docs" / "repository-listing.md"
-REGISTRY_PATH = (
-    PROJECT_ROOT / "benchmarks" / "codegraph_compare" / "claim_registry.json"
-)
+REGISTRY_PATH = PROJECT_ROOT / "benchmarks" / "codegraph_compare" / "claim_registry.json"
 
 # Capabilities a released breaking change removed; CHANGELOG.md owns the record.
 # A listing that advertises one sends users after something that is not there.

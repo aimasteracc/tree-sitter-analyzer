@@ -402,3 +402,4 @@ class TestJavaScriptSectionAbsence:
     def test_format_full_table_trailing_blank_lines_removal(self, formatter):
         result = formatter._format_full_table(self._empty_data())
         assert not result.endswith("\n\n")
+

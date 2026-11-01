@@ -91,7 +91,9 @@ class Calculator:
 
         # Full format validations
         # New FullFormatter uses text borders (=, -) instead of Markdown
-        assert "=" in table_output or "#" in table_output  # Should have headers/borders
+        assert (
+            "=" in table_output or "#" in table_output
+        )  # Should have headers/borders
         assert (
             "Calculator" in table_output or "FUNCTION" in table_output
         )  # Should contain class or function info
@@ -163,6 +165,7 @@ class Calculator:
                 )
             else:
                 print("✅ Markdown validation passed")
+
 
         # Run the async validation
         asyncio.run(run_validation())

@@ -487,6 +487,8 @@ class TestFormatFullTable:
         assert isinstance(result, str)
 
 
+
+
 # ---------------------------------------------------------------------------
 # Method row formatting
 # ---------------------------------------------------------------------------
@@ -520,6 +522,8 @@ class TestMethodFormatting:
         result = _FMT._create_full_signature(method)
         assert "String" in result
         assert "void" in result
+
+
 
 
 # ---------------------------------------------------------------------------

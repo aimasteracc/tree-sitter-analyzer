@@ -16,7 +16,6 @@ from tree_sitter_analyzer.project_graph import _language_from_ext
 # Helpers
 # ---------------------------------------------------------------------------
 
-
 class _MockCache:
     """Minimal stand-in for ASTCache — walk_and_partition only needs project_root."""
 
@@ -48,7 +47,6 @@ def _make_error_entry(rel_path: str, reason: str) -> dict:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
-
 
 class TestCorpusExclusion:
     def test_corpus_file_excluded_from_candidates(self, tmp_path):

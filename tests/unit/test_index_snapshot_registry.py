@@ -438,11 +438,7 @@ class TestAuthoritativeSnapshotTransitions:
             {"output_format": "json"}
         )
 
-        assert (
-            result["total_files"],
-            result["snapshot_completeness"],
-            result["indexed"],
-        ) == (
+        assert (result["total_files"], result["snapshot_completeness"], result["indexed"]) == (
             0,
             "partial",
             False,

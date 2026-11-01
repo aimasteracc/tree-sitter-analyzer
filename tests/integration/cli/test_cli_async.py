@@ -552,7 +552,9 @@ class Class_{i}:
         assert result.returncode == 0, (
             f"Large file CLI processing failed with stderr: {result.stderr}"
         )
-        assert len(result.stdout) > 0  # ratchet: nondeterministic uuid-in-output-path
+        assert (
+            len(result.stdout) > 0
+        )  # ratchet: nondeterministic uuid-in-output-path
 
     def test_cli_performance_baseline(self, sample_files):
         """CLIパフォーマンスベースラインテスト"""
