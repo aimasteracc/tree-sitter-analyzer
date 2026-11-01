@@ -98,6 +98,7 @@ number; if two RFCs collide on a number in flight, the later-merged one renames.
 | [0039](0039-incremental-index-certification.md) | Incremental index certification | accepted (owner 2026-10-20; tracked #1718) |
 | [0040](0040-proof-carrying-completeness.md) | Proof-carrying completeness for nav callers | draft (implemented with this RFC) |
 | [0041](0041-unified-evidence-carrying-query-language.md) | Unified, evidence-carrying query language (`search action=uql`) | draft |
+| [0042](0042-resident-callers-substrate.md) | Resident call graph and check substrate for `nav callers` / `callees` | draft (#1855) |
 
 ## Roadmap
 
