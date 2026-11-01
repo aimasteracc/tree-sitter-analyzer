@@ -187,7 +187,19 @@ jobs:
       timeout-minutes: 15
       run: |
         uv run pytest tests/ -n auto -q --maxfail=200 --timeout=120 \
-          -m "slow and not network and not e2e and not benchmark and not full_language"
+          -m "slow and not performance and not network and not e2e and not benchmark and not full_language"
+      shell: bash
+
+    # Wall-clock perf checks must never gate an irreversible publish (#1852):
+    # runner slowness alone hit the 180 s per-test timeout and blocked PyPI.
+    # The check still runs and surfaces a warning annotation on regression.
+    - name: Perf regression signal (non-gating)
+      if: matrix.coverage
+      continue-on-error: true
+      timeout-minutes: 12
+      run: |
+        uv run pytest tests/ -q --maxfail=5 -m "performance and not network and not e2e and not benchmark" \
+          || echo "::warning title=Perf regression signal::performance-marked tests failed or timed out; non-gating (see #1852)"
       shell: bash
 
     - name: Upload failed test diagnostics
@@ -346,7 +358,19 @@ jobs:
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == inputs.python-version
       run: |
         uv run pytest tests/ -n auto -q --maxfail=200 --timeout=120 \
-          -m "slow and not network and not e2e and not benchmark and not full_language"
+          -m "slow and not performance and not network and not e2e and not benchmark and not full_language"
+      shell: bash
+
+    # Wall-clock perf checks must never gate an irreversible publish (#1852):
+    # runner slowness alone hit the 180 s per-test timeout and blocked PyPI.
+    # The check still runs and surfaces a warning annotation on regression.
+    - name: Perf regression signal (non-gating)
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == inputs.python-version
+      continue-on-error: true
+      timeout-minutes: 12
+      run: |
+        uv run pytest tests/ -q --maxfail=5 -m "performance and not network and not e2e and not benchmark" \
+          || echo "::warning title=Perf regression signal::performance-marked tests failed or timed out; non-gating (see #1852)"
       shell: bash
 
     - name: Upload failed test diagnostics
