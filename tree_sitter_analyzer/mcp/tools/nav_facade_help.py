@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .callers_compact import FORMAT_PROPERTY
+from .callers_compact import FORMAT_PROPERTY, INCLUDE_UNCONFIRMED_PROPERTY
 from .facade_discovery import build_bespoke_action_schema
 
 # callers/callees scope=point 路由转发给 inner 的参数。
@@ -20,6 +20,8 @@ POINT_RELATION_KEYS = (
     "include_bodies",
     "output_format",
 )
+# #1854：callers 另转发 ``order``（callees 没有置信层级）。
+CALLERS_POINT_KEYS = (*POINT_RELATION_KEYS, "order")
 # callers/callees scope=graph 路由转发给 call_graph inner 的参数。
 GRAPH_RELATION_KEYS = ("function_name", "file_path", "depth", "output_format")
 # context 路由转发给 CodeGraphContextTool 的参数。
@@ -61,17 +63,25 @@ def register_nav_help_schemas(
 ) -> None:
     """为 callers/callees/context 登记 help schema。"""
     # #1853：只有 callers 有紧凑答复（format=compact）。
-    relation_extras: tuple[tuple[str, Any, dict[str, Any]], ...] = (
-        ("callers", callers_inner, {"format": FORMAT_PROPERTY}),
-        ("callees", callees_inner, {}),
+    relation_extras: tuple[tuple[str, Any, tuple[str, ...], dict[str, Any]], ...] = (
+        (
+            "callers",
+            callers_inner,
+            CALLERS_POINT_KEYS,
+            {
+                "format": FORMAT_PROPERTY,
+                "include_unconfirmed": INCLUDE_UNCONFIRMED_PROPERTY,
+            },
+        ),
+        ("callees", callees_inner, POINT_RELATION_KEYS, {}),
     )
-    for action, inner, extras in relation_extras:
+    for action, inner, keep, extras in relation_extras:
         facade.register_bespoke_schema(
             action,
             build_bespoke_action_schema(
                 action,
                 inner,
-                keep=POINT_RELATION_KEYS,
+                keep=keep,
                 extra_properties={"scope": _SCOPE_PROPERTY, **extras},
             ),
         )
