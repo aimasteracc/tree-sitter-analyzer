@@ -44,7 +44,7 @@ claude mcp add tree-sitter-analyzer \
   -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
 ```
 
-**One-command alternative** (project-scoped, never writes to your home directory):
+**Guided alternative** (project-scoped, never writes to your home directory):
 
 ```bash
 tree-sitter-analyzer setup                # dry run: lists the exact files it would change
@@ -181,7 +181,7 @@ TSA ships curated workflows under `.claude/skills/tsa-*/`:
 
 Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 8 tools on every question.
 
-### 367 CLI flags
+### 371 CLI flags
 
 Highlights:
 
