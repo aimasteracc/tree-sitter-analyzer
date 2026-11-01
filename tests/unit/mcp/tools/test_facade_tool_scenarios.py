@@ -608,6 +608,7 @@ def _nav_help_schema(target_action: str) -> dict[str, Any]:
 def test_nav_callers_help_schema只声明路由真实转发的参数() -> None:
     # Issue #1562: help for nav callers returned ACTION_SCHEMA_UNAVAILABLE.
     # #1853: the route reads ``format`` (verbose|compact) itself.
+    # #1854: it also reads ``include_unconfirmed`` and forwards ``order``.
     schema = _nav_help_schema("callers")
     assert sorted(schema["properties"]) == [
         "action",
@@ -615,7 +616,9 @@ def test_nav_callers_help_schema只声明路由真实转发的参数() -> None:
         "format",
         "function_name",
         "include_bodies",
+        "include_unconfirmed",
         "limit",
+        "order",
         "output_format",
         "scope",
         "symbol",
