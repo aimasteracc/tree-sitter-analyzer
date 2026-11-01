@@ -56,14 +56,14 @@ def test_complete_answer_is_one_line_per_caller_plus_verdict() -> None:
         caller_count=2,
         callers=[
             _caller("main", "app/cli.py", 10, callee_resolution="project"),
-            _caller("run", "app/x.py", 3, callee_resolution="same_file"),
+            _caller("run", "app/x.py", 3, callee_resolution="local"),
         ],
     )
     out = compact_callers(full)
     assert out["answer"] == (
         "callers of load: 2\n"
         "main  app/cli.py:10  project\n"
-        "run  app/x.py:3  same_file\n"
+        "run  app/x.py:3  local\n"
         "verdict: complete"
     )
     assert out["completeness"] == "complete"
@@ -133,7 +133,8 @@ def test_annotated_resolution_kind_wins_over_callee_resolution() -> None:
 
 def test_missing_caller_fields_render_placeholders() -> None:
     full = _full(caller_count=1, callers=[{}])
-    assert "?  ?:0  unknown" in compact_callers(full)["answer"]
+    listed = compact_callers(full, include_unconfirmed=True)["answer"]
+    assert "?  ?:0  unknown" in listed
 
 
 def test_truncated_answer_says_how_many_are_hidden() -> None:

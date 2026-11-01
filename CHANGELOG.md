@@ -30,6 +30,19 @@
   open-source repos (rich, pydantic, fastapi, gson, axios, hono, zod; 138
   questions) the median answer drops from 2,282 to 116 cl100k tokens (19.6x).
   The default (`format=verbose`) is unchanged.
+- **Per-caller confidence for `nav action=callers`** (#1854). Each caller
+  carries `confidence_tier`: `proven` / `inferred` / `unconfirmed_receiver`,
+  derived from `callee_resolution` and `resolution_kind` (table in
+  `docs/agent-envelope-contract.md`; any unknown value is
+  `unconfirmed_receiver`). Opt-in `order=confidence` puts proven callers first
+  before the `limit` cut; the default order is unchanged. `format=compact`
+  orders by tier and folds unconfirmed-receiver callers into one count line
+  (`include_unconfirmed=true` lists them). Folding never changes
+  `completeness` or its reason codes. On the 138 stored answers the compact
+  size is unchanged (median 116 tokens): those questions are file-scoped or
+  qualified, and their listed callers are all resolver-bound. On unscoped
+  bare-name questions (r15 scope answers) the compact total drops 39% on
+  pydantic (43,621 to 26,714 tokens).
 
 ## [3.1.1] - 2026-11-01
 
