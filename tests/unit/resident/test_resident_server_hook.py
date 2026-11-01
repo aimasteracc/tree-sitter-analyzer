@@ -93,10 +93,12 @@ async def test_tools_call_starts_the_loader(
     monkeypatch.setattr(loader, "load", gate)
     _instance, server = _server(tmp_path)
     handler = server.request_handlers[types.CallToolRequest]
+    # A cheap call: set_project_path without arguments is refused at once (an
+    # unknown tool name would build the whole tool registry first).
     await handler(
         types.CallToolRequest(
             method="tools/call",
-            params=types.CallToolRequestParams(name="no_such_tool", arguments={}),
+            params=types.CallToolRequestParams(name="set_project_path", arguments={}),
         )
     )
     assert loader.wait(timeout=10)
