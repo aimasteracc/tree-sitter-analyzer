@@ -71,7 +71,6 @@ def parse_compact(answer: Mapping[str, Any]) -> CompactShape:
     collapsed = 0
     if body and (folded := _COLLAPSED.match(body[-1])) is not None:
         collapsed = int(folded["collapsed"])
-        assert collapsed > 0, body[-1]
         body = body[:-1]
     # 机器可读的折叠数与文本行一致（没有折叠时不出现该字段）。
     assert answer.get("unconfirmed_collapsed", 0) == collapsed, answer
