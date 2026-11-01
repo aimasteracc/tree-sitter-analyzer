@@ -14,7 +14,8 @@
 4. 不列出真值之外的调用方（拒绝虚假声明，#1766）；
 5. 未列出的真值调用点必须出现在证据字段里（不静默丢失，#1764）；
 6. 裸名回答不比限定名回答更有把握（#1740 不变量）；
-7. 目标名只有一处定义时，带不带 ``file_path`` 答案相同（#1798）。
+7. 目标名只有一处定义时，带不带 ``file_path`` 答案相同（#1798）；
+8. ``format=compact`` 的调用方集合与判定与完整答复相同，判定绝不更乐观（#1853）。
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ import pytest
 
 from scripts.wrong_complete.scorer import evidence_keys, score
 from tests.known_answer._cases import MODES, Case
+from tests.known_answer._compact import assert_equivalent
 from tests.known_answer._cases_java_ts import JAVA_TS_CASES
 from tests.known_answer._cases_python import PYTHON_CASES
 from tests.known_answer._runner import (
@@ -204,3 +206,15 @@ def test_the_oracle_finds_exactly_the_hand_labelled_truth(case: Case) -> None:
     # 判定器自检：在语料上与手写真值逐点一致（不运行 TSA）。
     found = frozenset(site.key() for site in oracle_sites(case) if site.must_cover)
     assert found == case.truth
+
+
+@pytest.mark.parametrize("scope", ["scoped", "unscoped"])
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize("case", CASES, ids=_IDS)
+def test_the_compact_answer_is_the_full_answer_projected(
+    observed: Callable[[Case], Observation], case: Case, mode: str, scope: str
+) -> None:
+    # #1853：紧凑答复只是完整答复的投影——同一调用方集合、同一 RFC-0040 判定。
+    obs = observed(case)
+    full = obs.answers[mode] if scope == "scoped" else obs.unscoped[mode]
+    assert_equivalent(full, obs.compact[f"{scope}:{mode}"])

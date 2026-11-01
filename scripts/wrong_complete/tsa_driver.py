@@ -37,11 +37,15 @@ async def index_project(
 
 
 async def query_callers(
-    root: Path, function_name: str, file_path: str | None
+    root: Path,
+    function_name: str,
+    file_path: str | None,
+    answer_format: str | None = None,
 ) -> dict[str, Any]:
     """``nav action=callers``，不带函数体、不截断（limit 5000，与 dogfood 一致）。
 
-    ``file_path`` 为 ``None`` 时不带范围提问（#1798）。
+    ``file_path`` 为 ``None`` 时不带范围提问（#1798）。``answer_format`` 为
+    ``"compact"`` 时取紧凑答复（#1853）；``None`` 即默认的完整答复。
     """
     from tree_sitter_analyzer.mcp.tools.nav_facade import build_nav_facade
 
@@ -53,5 +57,7 @@ async def query_callers(
     }
     if file_path is not None:
         arguments["file_path"] = file_path
+    if answer_format is not None:
+        arguments["format"] = answer_format
     answer: dict[str, Any] = await build_nav_facade(str(root)).execute(arguments)
     return answer

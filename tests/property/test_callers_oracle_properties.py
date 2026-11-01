@@ -6,7 +6,8 @@ a. ``complete`` ⇒ 判定器的必须覆盖点 ⊆ 已列出调用方覆盖的�
 b. 同一目标，裸名回答不比限定名回答更有把握；
 c. 加一个无关的同名方法（或函数）不会让回答升级为 ``complete``；
 d. 不改变调用语义的别名 / 改名不改变调用方集合与完整性；
-e. 查询作用域内的跨名批量（RFC-0041）对每个输入的答复与单次调用逐字节相同。
+e. 查询作用域内的跨名批量（RFC-0041）对每个输入的答复与单次调用逐字节相同；
+f. ``format=compact`` 的调用方集合与判定与完整答复相同，判定绝不更乐观（#1853）。
 
 PR CI 用固定种子、少量样例（``TSA_ORACLE_EXAMPLES`` 默认 6）；夜间工作流
 ``wrong-complete-oracle.yml`` 设 ``TSA_ORACLE_EXAMPLES`` / ``TSA_ORACLE_SEED`` 跑更多样例，
@@ -35,6 +36,7 @@ from scripts.wrong_complete.tsa_driver import (
     query_callers,
     write_project,
 )
+from tests.known_answer._compact import assert_equivalent
 from tests.property._callers_projects import (
     NAMES_A,
     NAMES_B,
@@ -237,3 +239,40 @@ def test_a_semantics_preserving_rename_keeps_the_callers(
     summary_a = {m: (a["completeness"], caller_keys(a)) for m, a in first.items()}
     summary_b = {m: (a["completeness"], caller_keys(a)) for m, a in second.items()}
     assert summary_a == summary_b, (files_a, files_b)
+
+
+def _full_and_compact(
+    root: Path, files: dict[str, str], target: Target
+) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """索引一次；两种模式、带不带范围，各取完整与紧凑答复。"""
+
+    async def run() -> list[tuple[dict[str, Any], dict[str, Any]]]:
+        write_project(root, files)
+        await index_project(root)
+        pairs = []
+        for name in (target.name, target.qualified):
+            for file_path in (target.file, None):
+                pairs.append(
+                    (
+                        await query_callers(root, name, file_path),
+                        await query_callers(
+                            root, name, file_path, answer_format="compact"
+                        ),
+                    )
+                )
+        return pairs
+
+    return asyncio.run(run())
+
+
+@seed(_SEED)
+@_SETTINGS
+@given(spec=projects())
+def test_the_compact_answer_projects_the_full_answer(
+    tmp_path_factory: pytest.TempPathFactory, spec: ProjectSpec
+) -> None:
+    # 不变量 f（#1853）：紧凑答复从同一完整性结果派生，调用方集合逐项相同。
+    files = render(spec, NAMES_A)
+    target = target_of(spec, files)
+    for full, compact in _full_and_compact(_fresh(tmp_path_factory), files, target):
+        assert_equivalent(full, compact)

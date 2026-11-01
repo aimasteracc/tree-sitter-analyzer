@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .callers_compact import FORMAT_PROPERTY
 from .facade_discovery import build_bespoke_action_schema
 
 # callers/callees scope=point 路由转发给 inner 的参数。
@@ -59,14 +60,19 @@ def register_nav_help_schemas(
     facade: Any, callers_inner: Any, callees_inner: Any, context_inner: Any
 ) -> None:
     """为 callers/callees/context 登记 help schema。"""
-    for action, inner in (("callers", callers_inner), ("callees", callees_inner)):
+    # #1853：只有 callers 有紧凑答复（format=compact）。
+    relation_extras: tuple[tuple[str, Any, dict[str, Any]], ...] = (
+        ("callers", callers_inner, {"format": FORMAT_PROPERTY}),
+        ("callees", callees_inner, {}),
+    )
+    for action, inner, extras in relation_extras:
         facade.register_bespoke_schema(
             action,
             build_bespoke_action_schema(
                 action,
                 inner,
                 keep=POINT_RELATION_KEYS,
-                extra_properties={"scope": _SCOPE_PROPERTY},
+                extra_properties={"scope": _SCOPE_PROPERTY, **extras},
             ),
         )
     facade.register_bespoke_schema(

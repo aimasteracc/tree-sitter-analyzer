@@ -1,0 +1,120 @@
+"""#1853 紧凑答复的独立解析器与等价判定（测试侧，不复用产品代码）。
+
+紧凑答复是完整答复的投影：调用方集合（名字、文件、行、解析方式）与完整性判定
+必须与完整答复相同。这里从紧凑文本**解析回**结构，再与完整答复直接读出的结构
+比较，所以产品侧的渲染与这里的解析是两份独立实现。
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Any
+
+_HEADER = re.compile(r"^callers of (?P<function>.*): (?P<total>\d+)$")
+_CALLER = re.compile(
+    r"^(?P<name>\S(?:.*?\S)?)  (?P<file>.+):(?P<line>-?\d+)  (?P<kind>\S+)$"
+)
+_MORE = re.compile(r"^\+(?P<hidden>\d+) more \(raise limit\)$")
+_VERDICT = re.compile(
+    r"^verdict: (?P<label>complete|incomplete|unknown)"
+    r"(?: \((?P<reasons>[^)]*)\))?(?P<details>; details: format=verbose)?$"
+)
+_EXTRA = re.compile(r"^\+(\d+)$")
+
+CallerRow = tuple[str, str, int, str]
+
+
+@dataclass(frozen=True)
+class CompactShape:
+    """紧凑答复里可比较的部分。"""
+
+    completeness: str
+    reasons: tuple[str, ...]
+    extra_reasons: int
+    callers: tuple[CallerRow, ...]
+    total: int
+    hidden: int
+
+
+def parse_compact(answer: Mapping[str, Any]) -> CompactShape:
+    """把 ``format=compact`` 的答复解析回结构；格式不符即断言失败。"""
+    assert answer.get("format") == "compact", answer
+    lines = str(answer["answer"]).split("\n")
+    header = _HEADER.match(lines[0])
+    assert header is not None, lines[0]
+    verdict = _VERDICT.match(lines[-1])
+    assert verdict is not None, lines[-1]
+    body = lines[1:-1]
+    hidden = 0
+    if body and (more := _MORE.match(body[-1])) is not None:
+        hidden = int(more["hidden"])
+        body = body[:-1]
+    callers: list[CallerRow] = []
+    for line in body:
+        row = _CALLER.match(line)
+        assert row is not None, line
+        callers.append((row["name"], row["file"], int(row["line"]), row["kind"]))
+    raw = [r.strip() for r in (verdict["reasons"] or "").split(",") if r.strip()]
+    extra = 0
+    if raw and (tail := _EXTRA.match(raw[-1])) is not None:
+        extra = int(tail.group(1))
+        raw = raw[:-1]
+    label = verdict["label"]
+    # 非 complete 必须指向完整答复；complete 不带原因也不带指引。
+    assert (label != "complete") == bool(verdict["details"]), lines[-1]
+    assert answer.get("completeness") == label, answer
+    return CompactShape(
+        completeness=label,
+        reasons=tuple(raw),
+        extra_reasons=extra,
+        callers=tuple(callers),
+        total=int(header["total"]),
+        hidden=hidden,
+    )
+
+
+def _kind(caller: Mapping[str, Any]) -> str:
+    return str(
+        caller.get("resolution_kind") or caller.get("callee_resolution") or "unknown"
+    )
+
+
+def expected_shape(full: Mapping[str, Any], top: int = 3) -> CompactShape:
+    """完整答复应投影出的结构（直接读完整答复的字段）。"""
+    completeness = full.get("completeness")
+    label = (
+        completeness if completeness in ("complete", "incomplete") else "unknown"
+    )
+    reasons = list(full.get("completeness_reasons") or [])
+    if not reasons and full.get("completeness_reason"):
+        reasons = [str(full["completeness_reason"])]
+    if label == "complete":
+        reasons = []
+    callers = tuple(
+        (
+            str(c.get("name") or "?"),
+            str(c.get("file") or "?"),
+            int(c.get("line") or 0),
+            _kind(c),
+        )
+        for c in full.get("callers") or []
+    )
+    total = int(full.get("caller_count", len(callers)) or 0)
+    return CompactShape(
+        completeness=label,
+        reasons=tuple(str(r) for r in reasons[:top]),
+        extra_reasons=max(0, len(reasons) - top),
+        callers=callers,
+        total=total,
+        hidden=max(0, total - len(callers)),
+    )
+
+
+def assert_equivalent(full: Mapping[str, Any], compact: Mapping[str, Any]) -> None:
+    """紧凑答复与完整答复的调用方集合、判定一致；紧凑判定绝不更乐观。"""
+    shape = parse_compact(compact)
+    assert shape == expected_shape(full), (full, compact)
+    if shape.completeness == "complete":
+        assert full["completeness"] == "complete", (full, compact)
