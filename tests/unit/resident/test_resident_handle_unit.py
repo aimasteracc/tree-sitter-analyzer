@@ -120,7 +120,8 @@ def test_acquire_reuses_a_current_handle_and_drops_a_stale_one(
     assert handle.acquire(str(tmp_path)) is found
     assert handle.acquire(str(tmp_path)) is found
     assert builds == [str(tmp_path)]
-    Path(found.selector_path).write_text("[]", encoding="utf-8")
+    # A different size: the stamp changes even within one mtime tick.
+    Path(found.selector_path).write_text("[1]", encoding="utf-8")
     assert handle.acquire(str(tmp_path)) is None  # stale, rebuild refused
     assert handle.peek(str(tmp_path)) is None
     assert handle.stats() == {"built": 1, "reused": 1, "dropped": 1}
