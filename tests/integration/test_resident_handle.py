@@ -22,7 +22,12 @@ from typing import Any
 
 import pytest
 
-from tree_sitter_analyzer.cache import build_state, live_index_probe, query_cost
+from tree_sitter_analyzer.cache import (
+    build_state,
+    generation_routing,
+    live_index_probe,
+    query_cost,
+)
 from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
 from tree_sitter_analyzer.resident import handle, loader
 
@@ -57,8 +62,14 @@ class _Probes:
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self.probes = 0
         self.cost_opens = 0
+        self.resolves = 0
         probe = live_index_probe.probe_live_index_uncached
         opened = query_cost._compute_index_holds_rows
+        resolve = generation_routing.resolve_index_location
+
+        def counted_resolve(*args: Any, **kwargs: Any) -> Any:
+            self.resolves += 1
+            return resolve(*args, **kwargs)
 
         def counted_probe(*args: Any, **kwargs: Any) -> Any:
             self.probes += 1
@@ -72,10 +83,14 @@ class _Probes:
             live_index_probe, "probe_live_index_uncached", counted_probe
         )
         monkeypatch.setattr(query_cost, "_compute_index_holds_rows", counted_open)
+        monkeypatch.setattr(
+            generation_routing, "resolve_index_location", counted_resolve
+        )
 
     def reset(self) -> None:
         self.probes = 0
         self.cost_opens = 0
+        self.resolves = 0
 
 
 async def _ask(root: Path, query: tuple[str, str]) -> Any:
@@ -126,7 +141,8 @@ async def test_warm_requests_probe_nothing(
     probes = _Probes(monkeypatch)
     for query in _QUERIES:
         await _ask(project, query)
-    assert (probes.probes, probes.cost_opens) == (0, 0)
+    # No probe, no cost-tier index open, and no index location resolved at all.
+    assert (probes.probes, probes.cost_opens, probes.resolves) == (0, 0, 0)
 
     # The same request with the switch off probes as today: the certification
     # ruling and the cost tier each open the live index.
