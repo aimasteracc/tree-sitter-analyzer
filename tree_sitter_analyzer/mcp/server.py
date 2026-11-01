@@ -86,6 +86,24 @@ def _resolve_relative_path(base_root: str, file_path: str) -> str:
     return str(_p.resolve())
 
 
+def _register_resident_start(server: Any, instance: Any) -> None:
+    """RFC-0042 P1: start the resident loader on ``notifications/initialized``.
+
+    The client sends it after it received the ``initialize`` answer, so the
+    loader can never delay the handshake. SDKs without a notification handler
+    table (MCP 2.x adapters) start it on the first ``tools/list`` / ``tools/call``.
+    """
+    handlers = getattr(server, "notification_handlers", None)
+    if not isinstance(handlers, dict):
+        return
+    from mcp import types
+
+    async def on_initialized(_notification: Any) -> None:
+        instance.start_resident()
+
+    handlers[types.InitializedNotification] = on_initialized
+
+
 def _create_tool_registry(
     project_root: str | None,
     lifecycle_manager: Any | None = None,
@@ -306,9 +324,26 @@ class TreeSitterAnalyzerMCPServer:
         # Register SMART workflow prompts so AI agents can self-discover usage patterns
         register_prompts(server)
 
+        _register_resident_start(server, self)
+
         self.server = server
         _log_safely(logger.info, "MCP server created successfully")
         return server
+
+    def start_resident(self) -> None:
+        """RFC-0042 P1: start the background load for this root; never blocks or raises.
+
+        Called after the MCP ``initialize`` answer (``notifications/initialized``)
+        and, idempotently, on ``tools/list`` / ``tools/call`` for SDKs without
+        notification handlers. Only a server whose ``main()`` enabled the loader
+        ever loads.
+        """
+        try:
+            from ..resident import loader
+
+            loader.start(self._project_root)
+        except Exception as e:  # noqa: BLE001 — requests then take today's path
+            _log_safely(logger.warning, "resident loader did not start: %s", e)
 
     def set_project_path(self, project_path: str) -> None:
         """Set the project path for all components."""
@@ -333,6 +368,7 @@ class TreeSitterAnalyzerMCPServer:
 
         self.analysis_engine = get_analysis_engine(project_path)
         self.security_validator = SecurityValidator(project_path)
+        self.start_resident()
 
         _log_safely(logger.info, "Set project path to: %s", project_path)
 
@@ -471,6 +507,13 @@ class TreeSitterAnalyzerMCPServer:
                 shutdown_error = e
                 _log_safely(_log_err, "MCP watcher shutdown failed: %s", e)
             try:
+                # RFC-0042：不再启动常驻加载，并在限定时间内等待在途加载。
+                from ..resident.loader import shutdown as shutdown_resident
+
+                shutdown_resident()
+            except Exception as e:  # 常驻加载收尾失败不阻断停止
+                _log_safely(_log_err, "resident loader shutdown failed: %s", e)
+            try:
                 # #1708：不再调度新的后台预构图，并在限定时间内等待在途构建。
                 from ..call_graph_warm import shutdown as shutdown_graph_warm
 
@@ -533,6 +576,10 @@ async def main() -> None:
         from ..call_graph_warm import enable as enable_graph_warm
 
         enable_graph_warm()
+        # RFC-0042 P1：长驻服务器在 initialize 答复之后于后台加载常驻状态。
+        from ..resident.loader import enable as enable_resident
+
+        enable_resident()
         server = TreeSitterAnalyzerMCPServer(project_root)
         await server.run()
 

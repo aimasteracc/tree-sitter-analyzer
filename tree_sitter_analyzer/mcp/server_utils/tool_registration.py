@@ -46,6 +46,7 @@ def register_tools(server: Any, server_instance: Any) -> None:
     @server.list_tools()  # type: ignore[untyped-decorator]
     async def handle_list_tools() -> list[Any]:
         """List all available tools."""
+        _start_resident(server_instance)
         logger.info("Client requesting tools list")
         tools = [Tool(**d) for d in _facade_definitions(server_instance)]
         tools.append(Tool(**_SET_PROJECT_PATH_TOOL))
@@ -54,6 +55,7 @@ def register_tools(server: Any, server_instance: Any) -> None:
 
     @server.call_tool()  # type: ignore[untyped-decorator]
     async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
+        _start_resident(server_instance)
         try:
             server_instance.ensure_initialized()
             logger.info(f"MCP tool call: {name} with args: {list(arguments.keys())}")
@@ -93,6 +95,13 @@ def register_tools(server: Any, server_instance: Any) -> None:
                     text=_json_dumps(error_body),
                 )
             ]
+
+
+def _start_resident(server_instance: Any) -> None:
+    """RFC-0042 P1: idempotent loader start for SDKs without ``initialized`` hooks."""
+    start = getattr(type(server_instance), "start_resident", None)
+    if callable(start):
+        server_instance.start_resident()
 
 
 def _facade_definitions(server_instance: Any) -> list[dict[str, Any]]:
