@@ -131,9 +131,14 @@ async def test_answers_are_identical_with_and_without_the_memo(
 ) -> None:
     today = await _today(project, monkeypatch)
     cold = await _ask_all(project)  # fills the memo
-    assert snapshot_memo.stats()["stored"] > 0
+    filled = snapshot_memo.stats()
     warm = await _ask_all(project)  # served from it
-    assert snapshot_memo.stats()["hits"] > 0
+    served = snapshot_memo.stats()
+    # The warm pass stores nothing new: every stored reader result was a hit.
+    assert served["stored"] == filled["stored"] == filled["entries"]
+    assert (
+        served["hits"] - filled["hits"] >= filled["entries"]
+    )  # ratchet: nondeterministic a reader may be asked more than once per question
     assert cold == today
     assert warm == today
     assert any(a["completeness"] == "complete" for a in today)
@@ -150,7 +155,10 @@ async def test_a_warm_request_decodes_no_call_site_again(
     assert decodes.count == 0
     monkeypatch.setenv(loader.ENV_VAR, "off")
     await _ask_all(project)
-    assert decodes.count > 0  # today's path decodes on every request
+    # Today's path decodes the declaring files again on every request.
+    assert decodes.count >= len(
+        _QUERIES
+    )  # ratchet: nondeterministic two decodes (unresolved, excluded) per declaring file
 
 
 def _readers(cache: Any, names: list[str], files: list[str]) -> list[Any]:
@@ -206,7 +214,7 @@ async def test_every_memoized_reader_equals_a_fresh_read_of_the_snapshot(
         assert snapshot_memo.stats()["stored"] == 0
         filled = _readers(cache, names, files)
         stored = snapshot_memo.stats()["stored"]
-        assert stored > 0
+        assert stored == snapshot_memo.stats()["entries"]
         hit = _readers(cache, names, files)
         assert snapshot_memo.stats()["stored"] == stored  # all hits
     assert filled == fresh
