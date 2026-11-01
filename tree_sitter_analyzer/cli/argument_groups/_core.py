@@ -119,6 +119,31 @@ def _add_install_skills_options(parser: argparse.ArgumentParser) -> None:
         dest="install_skills_global",
         help="Install bundled tsa-* skills into ~/.claude/skills/ (user-global).",
     )
+    parser.add_argument(
+        "--setup",
+        action="store_true",
+        help=(
+            "One-command onboarding (#1856): detect assistants, show the exact "
+            "project files that would be written (.mcp.json, skills), apply on "
+            "confirmation, warm the index and print an overview. Dry-run by "
+            "default when not interactive. Also available as `setup`."
+        ),
+    )
+    parser.add_argument(
+        "--setup-yes",
+        action="store_true",
+        help="With --setup: apply without prompting (for scripts).",
+    )
+    parser.add_argument(
+        "--setup-agents",
+        metavar="LIST",
+        help="With --setup: comma list of claude-code,cursor,vscode (default: detect).",
+    )
+    parser.add_argument(
+        "--setup-no-index",
+        action="store_true",
+        help="With --setup: skip the index warm-up and overview.",
+    )
 
 
 def _add_batch_options(parser: argparse.ArgumentParser) -> None:

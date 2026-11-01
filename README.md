@@ -44,6 +44,16 @@ claude mcp add tree-sitter-analyzer \
   -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
 ```
 
+**One-command alternative** (project-scoped, never writes to your home directory):
+
+```bash
+tree-sitter-analyzer setup                # dry run: lists the exact files it would change
+tree-sitter-analyzer setup --setup-yes    # apply: .mcp.json + .claude/skills, warm index, print overview
+# options: --setup-agents claude-code,cursor,vscode   --setup-no-index
+```
+
+Idempotent; an existing `tree-sitter-analyzer` entry is never overwritten, malformed config files are left untouched, and no network access is used.
+
 Restart your agent, then say: *"Run the `index` tool with action=status."*
 CLI equivalent (no agent needed): `tree-sitter-analyzer --codegraph-status`
 
