@@ -336,11 +336,13 @@ class TreeSitterAnalyzerMCPServer:
         Called after the MCP ``initialize`` answer (``notifications/initialized``)
         and, idempotently, on ``tools/list`` / ``tools/call`` for SDKs without
         notification handlers. Only a server whose ``main()`` enabled the loader
-        ever loads.
+        ever loads. Each call also counts as activity, which keeps the P1b lease
+        renewal going (and resumes it after an idle period).
         """
         try:
             from ..resident import loader
 
+            loader.touch(self._project_root)
             loader.start(self._project_root)
         except Exception as e:  # noqa: BLE001 — requests then take today's path
             _log_safely(logger.warning, "resident loader did not start: %s", e)

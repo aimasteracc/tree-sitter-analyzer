@@ -15,6 +15,16 @@ the same work earlier, in a daemon thread started after the MCP
    computes the same digest and adopts it; a request that arrives during the
    build waits for it through the existing ``call_graph_memo.claim`` (#1708).
 
+P1b (§4.4): after an idle gap the lease has expired and the next query captures
+again (334 ms on ``rich`` after 40 s). While the server is active (a request in
+the last :data:`ACTIVE_SECONDS`), the loader thread repeats step 1 shortly
+before the TTL ends. A renewal is the same full capture a request would run: it
+re-checks every source against the manifest, and the registry extends a lease
+only when the new capture's identity equals it (``reuse_snapshot``); a changed
+source or index gives a different capture and never extends the old one. An
+answer is therefore certified against a capture at most one TTL old, as today.
+An idle server stops renewing (no CPU) and resumes on the next request.
+
 Trust (RFC-0042 R0/R1): the loader adds no cache and no key. Its results are
 found only through the certified snapshot identity and the content digest that
 today's code already checks, so a different index generation or source state
@@ -48,6 +58,12 @@ DEFAULT_MODE = "background"
 SHUTDOWN_SECONDS = 5.0
 #: Name of the loader thread (tests and logs recognise it).
 THREAD_NAME = "tsa-resident-loader"
+#: P1b: renew this long before the lease's TTL ends, plus the last capture's duration.
+RENEW_MARGIN_SECONDS = 5.0
+#: P1b: never renew more often than this (seconds).
+MIN_RENEW_SECONDS = 1.0
+#: P1b: keep renewing while a request arrived within this window (seconds).
+ACTIVE_SECONDS = 600.0
 
 _OFF_VALUES = frozenset({"off", "0", "false", "no"})
 _MODES = frozenset({"off", "first-use", "background"})
@@ -55,12 +71,18 @@ _MODES = frozenset({"off", "first-use", "background"})
 _lock = threading.Lock()
 _enabled = False
 _closed = False
-#: Project root key -> the loader thread (running or finished).
+#: Set at shutdown: renewal loops end at once.
+_stop = threading.Event()
+#: Project root key -> the loader thread (it keeps renewing after the load).
 _threads: dict[str, threading.Thread] = {}
+#: Project root key -> set when the load (not the renewal loop) has finished.
+_loaded: dict[str, threading.Event] = {}
 #: Project root key -> last known state (``loading`` / ``ready`` / ``skipped`` / ``failed``).
 _status: dict[str, dict[str, Any]] = {}
 #: Project root key -> (event set when the capture ends, capturing thread).
 _capturing: dict[str, tuple[threading.Event, threading.Thread]] = {}
+#: Project root key -> ``time.monotonic()`` of the last request (P1b).
+_activity: dict[str, float] = {}
 
 
 def mode() -> str:
@@ -85,6 +107,16 @@ def _key(project_root: str) -> str:
     return os.path.normcase(os.path.realpath(project_root))
 
 
+def touch(project_root: str | None) -> None:
+    """Record a request for ``project_root``: renewal continues (or resumes)."""
+    if not project_root:
+        return
+    key = _key(project_root)
+    with _lock:
+        if key in _threads:
+            _activity[key] = time.monotonic()
+
+
 def start(project_root: str | None) -> bool:
     """Start the background load for ``project_root``; never blocks, never repeats.
 
@@ -103,15 +135,20 @@ def start(project_root: str | None) -> bool:
         if not _enabled or _closed or key in _threads:
             return False
         _status[key] = {"state": "loading"}
+        _loaded[key] = threading.Event()
+        _activity[key] = time.monotonic()  # the start counts as activity
         thread = threading.Thread(
-            target=_run, args=(project_root, key), name=THREAD_NAME, daemon=True
+            target=_run,
+            args=(project_root, key, _stop),
+            name=THREAD_NAME,
+            daemon=True,
         )
         _threads[key] = thread
         thread.start()
     return True
 
 
-def _run(project_root: str, key: str) -> None:
+def _run(project_root: str, key: str, stop: threading.Event) -> None:
     started = time.perf_counter()
     try:
         outcome = load(project_root)
@@ -121,22 +158,21 @@ def _run(project_root: str, key: str) -> None:
     outcome["seconds"] = round(time.perf_counter() - started, 3)
     with _lock:
         _status[key] = outcome
+        loaded = _loaded.get(key)
+    if loaded is not None:
+        loaded.set()
+    if outcome.get("state") == "ready" and outcome.get("certified") is None:
+        _renew(project_root, key, stop, float(outcome.get("lease_seconds") or 0.0))
 
 
 def load(project_root: str) -> dict[str, Any]:
     """Run today's first-query work for ``project_root``: certified lease, then graph."""
-    from ..cache.generation_routing import resolve_index_path
-    from ..mcp.tools.index_rebuild_signal import is_index_rebuilding
-
-    try:
-        database = str(resolve_index_path(project_root))
-    except (OSError, ValueError):
-        return {"state": "skipped", "reason": "INDEX_GENERATION_SELECTOR_INVALID"}
-    if not os.path.lexists(database):
-        return {"state": "skipped", "reason": "MISSING_INDEX"}
-    if is_index_rebuilding(project_root):
-        return {"state": "skipped", "reason": "INDEX_REBUILDING"}
+    skipped = _skip_reason(project_root)
+    if skipped is not None:
+        return {"state": "skipped", "reason": skipped}
+    started = time.perf_counter()
     outcome: dict[str, Any] = {"state": "ready", "certified": _lease(project_root)}
+    outcome["lease_seconds"] = round(time.perf_counter() - started, 3)
     from .. import call_graph_warm
 
     outcome["graph"] = call_graph_warm.warm_now(project_root)
@@ -169,6 +205,22 @@ def _bind_snapshot_graph(project_root: str) -> str | None:
         return None
 
 
+def _skip_reason(project_root: str) -> str | None:
+    """Why no lease is taken for ``project_root`` now (no index, rebuild running)."""
+    from ..cache.generation_routing import resolve_index_path
+    from ..mcp.tools.index_rebuild_signal import is_index_rebuilding
+
+    try:
+        database = str(resolve_index_path(project_root))
+    except (OSError, ValueError):
+        return "INDEX_GENERATION_SELECTOR_INVALID"
+    if not os.path.lexists(database):
+        return "MISSING_INDEX"
+    if is_index_rebuilding(project_root):
+        return "INDEX_REBUILDING"
+    return None
+
+
 def _lease(project_root: str) -> str | None:
     """Take the certified snapshot lease a request would take; None when certified.
 
@@ -190,6 +242,45 @@ def _lease(project_root: str) -> str | None:
             if owner is not None:
                 return None
             return _certified_index_read_reason() or "INDEX_SNAPSHOT_UNKNOWN"
+
+
+def _renew_interval(capture_seconds: float) -> float:
+    """Seconds until the next renewal: before the TTL ends, leaving room for the capture."""
+    from .. import index_snapshot
+
+    ttl = float(index_snapshot._TTL_SECONDS)
+    return max(MIN_RENEW_SECONDS, ttl - RENEW_MARGIN_SECONDS - capture_seconds)
+
+
+def _renew_once(project_root: str) -> str | None:
+    """One renewal: the same guards and the same capture as the load's step 1."""
+    skipped = _skip_reason(project_root)
+    if skipped is not None:
+        return skipped
+    return _lease(project_root)
+
+
+def _renew(
+    project_root: str, key: str, stop: threading.Event, capture_s: float
+) -> None:
+    """P1b: renew the lease before its TTL while active, until shutdown."""
+    while not stop.wait(_renew_interval(capture_s)):
+        with _lock:
+            idle = time.monotonic() - _activity.get(key, 0.0) > ACTIVE_SECONDS
+        if idle:
+            continue  # no capture CPU while idle; resumes after touch()
+        started = time.perf_counter()
+        try:
+            reason = _renew_once(project_root)
+            label = "renewed" if reason is None else reason
+        except Exception as exc:  # noqa: BLE001 — the next request captures as today
+            logger.warning("resident lease renewal failed", exc_info=True)
+            label = "failed:" + type(exc).__name__
+        capture_s = time.perf_counter() - started
+        with _lock:
+            current = _status.setdefault(key, {})
+            current["renewals"] = int(current.get("renewals", 0)) + 1
+            current["renewal"] = label
 
 
 @contextmanager
@@ -231,22 +322,25 @@ def status(project_root: str) -> dict[str, Any] | None:
 
 
 def wait(project_root: str | None = None, timeout: float | None = None) -> bool:
-    """Wait for loader threads (all, or one root); True when all have finished."""
+    """Wait for the loads (all, or one root); True when all have finished.
+
+    The renewal loop that follows a load is not waited for; see :func:`shutdown`.
+    """
     deadline = None if timeout is None else time.monotonic() + timeout
     with _lock:
-        threads = [
-            thread
-            for key, thread in _threads.items()
+        events = [
+            event
+            for key, event in _loaded.items()
             if project_root is None or key == _key(project_root)
         ]
-    for thread in threads:
+    for event in events:
         left = None if deadline is None else max(0.0, deadline - time.monotonic())
-        thread.join(left)
-    return not any(thread.is_alive() for thread in threads)
+        event.wait(left)
+    return all(event.is_set() for event in events)
 
 
 def shutdown(timeout: float = SHUTDOWN_SECONDS) -> bool:
-    """Server stop: start no new load and wait up to ``timeout`` for running ones.
+    """Server stop: no new load, renewal loops end, wait up to ``timeout`` for loads.
 
     A load still running is abandoned in its daemon thread (it only fills
     in-process caches and the atomically replaced graph store of #1675).
@@ -254,18 +348,28 @@ def shutdown(timeout: float = SHUTDOWN_SECONDS) -> bool:
     global _closed
     with _lock:
         _closed = True
-    finished = wait(timeout=timeout)
+        stop = _stop
+        threads = list(_threads.values())
+    stop.set()
+    deadline = time.monotonic() + timeout
+    for thread in threads:
+        thread.join(max(0.0, deadline - time.monotonic()))
+    finished = not any(thread.is_alive() for thread in threads)
     if not finished:
         logger.warning("resident load still running after %.1f s at shutdown", timeout)
     return finished
 
 
 def reset() -> None:
-    """Forget all loader state and disable (tests; threads already running finish)."""
-    global _enabled, _closed
+    """Forget all loader state and disable (tests); running loops are told to stop."""
+    global _enabled, _closed, _stop
     with _lock:
+        _stop.set()
+        _stop = threading.Event()
         _enabled = False
         _closed = False
         _threads.clear()
+        _loaded.clear()
         _status.clear()
         _capturing.clear()
+        _activity.clear()
