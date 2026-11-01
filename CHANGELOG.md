@@ -19,6 +19,14 @@
   41.5 / 41.8 ms, hono 132 / 128 ms). Answers are identical with the feature
   on and off on the stored dogfood rows of rich, hono and zod (601 rows, 0
   differences).
+- **No latency cliff after 35 s of idle** (#1855, RFC-0042 Phase 1b). While a
+  request arrived in the last 10 minutes, the resident loader renews the
+  certified snapshot lease shortly before its 35 s TTL ends. A renewal is the
+  same full capture a request would run: it re-checks every source, and the
+  lease is extended only when nothing changed. An answer is therefore still
+  certified against a capture at most one TTL old, and an idle server stops
+  renewing. MCP query after 40 s idle, ABBA medians, off → on: rich 342 → 56 ms,
+  hono 884 → 147 ms (warm 48 and 162 ms).
 
 - **Compact answer mode for `nav action=callers`** (#1853). Opt-in
   `format=compact` returns one line per caller (`name  file:line
