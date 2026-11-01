@@ -85,17 +85,21 @@ def questions_of(row: Any) -> list[dict[str, Any]]:
     return []
 
 
-def load_questions(paths: list[str]) -> list[dict[str, Any]]:
+def load_questions(paths: list[str]) -> tuple[list[dict[str, Any]], int]:
+    """Distinct questions of the rows, and how many callers rows were read."""
     seen: dict[str, dict[str, Any]] = {}
+    rows_read = 0
     for path in paths:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         rows = data
         if isinstance(data, dict):
             rows = data.get("results") or data.get("rows") or []
         for row in rows if isinstance(rows, list) else []:
-            for question in questions_of(row):
+            asked = questions_of(row)
+            rows_read += bool(asked)
+            for question in asked:
                 seen.setdefault(json.dumps(question, sort_keys=True), question)
-    return list(seen.values())
+    return list(seen.values()), rows_read
 
 
 def run_pass(
@@ -159,22 +163,23 @@ def main() -> None:
     repo = str(Path(args.repo).resolve())
     if args.stderr is None:
         args.stderr = str(Path(repo).parent / "identity-server.stderr.log")
-    questions = load_questions(args.rows)
+    questions, rows_read = load_questions(args.rows)
     passes: list[dict[str, Any]] = []
     for mode in args.passes.split(","):
         if free_gb(repo) < MIN_FREE_GB:
             raise SystemExit(f"stopping: less than {MIN_FREE_GB} GiB free")
         passes.append(run_pass(repo, mode.strip(), questions, args))
     completeness: dict[str, dict[str, int]] = {}
-    for done in passes:
+    for number, done in enumerate(passes):
         counts: dict[str, int] = {}
         for answer in done["answers"].values():
             key = str((answer or {}).get("completeness"))
             counts[key] = counts.get(key, 0) + 1
-        completeness[done["mode"] + str(passes.index(done))] = counts
+        completeness[f"{number}:{done['mode']}"] = counts
     record = {
         "repo": Path(repo).name,
         "rows": [Path(p).name for p in args.rows],
+        "rows_read": rows_read,
         "questions": len(questions),
         "passes": [p["mode"] for p in passes],
         "suspended": any(p["suspended"] for p in passes),

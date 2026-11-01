@@ -133,7 +133,7 @@ async def test_warm_requests_probe_nothing(
     monkeypatch.setenv(loader.ENV_VAR, "off")
     probes.reset()
     await _ask(project, _QUERIES[1])
-    assert probes.probes >= 2
+    assert probes.probes == 2
 
 
 @pytest.mark.asyncio
@@ -158,7 +158,7 @@ async def test_the_loader_publishes_the_handle_and_the_cost_tier(
 def _poison(root: Path) -> handle.ResidentHandle:
     """Make the stored handle claim the call-graph marker is not exact."""
     stored = handle.peek(str(root))
-    assert stored is not None
+    assert isinstance(stored, handle.ResidentHandle)
     probe = replace(stored.live_probe, call_graph_exact=False)
     poisoned = replace(stored, live_probe=probe)
     with handle._lock:
@@ -194,7 +194,8 @@ async def test_a_poisoned_handle_is_used_only_for_its_own_generation(
     _edit(project)
     await _index(project)  # republish: a new selector and a new sealed database
     after = await _ask_all(project)
-    assert reads.count > 0  # the poisoned handle was dropped, certification ran
+    # The poisoned handle was dropped: every question certified again.
+    assert reads.count == len(_QUERIES)
     assert after == await _today(project, monkeypatch)
     assert {c["name"] for c in after[3]["callers"]} >= {"top", "again"}
 
@@ -263,7 +264,8 @@ async def test_a_selector_replaced_with_equal_bytes_and_times_drops_the_handle(
     assert handle.file_stamp(stored.selector_path) != stored.selector_stamp
     reads = _CertifiedReads(monkeypatch)
     resident = await _ask_all(project)
-    assert reads.count > 0  # rebuilt from today's probe, not the poisoned one
+    # Rebuilt from today's probe, not the poisoned one: every question certified.
+    assert reads.count == len(_QUERIES)
     assert resident == await _today(project, monkeypatch)
 
 
@@ -301,10 +303,11 @@ async def test_the_rebuild_flag_is_read_on_every_request(
     monkeypatch.setattr(build_state, "build_in_progress", rebuilding)
     resident = await _ask(project, _QUERIES[3])
     assert resident["data_source"] == "cache_rebuilding"
-    assert len(reads) >= 1
+    # Read by the batch check and again by the answer, as today.
+    assert len(reads) == 2
     reads.clear()
     await _ask(project, _QUERIES[3])
-    assert len(reads) >= 1  # never cached across requests
+    assert len(reads) == 2  # never cached across requests
     today = await _today(project, monkeypatch)
     assert resident == today[3]
 
