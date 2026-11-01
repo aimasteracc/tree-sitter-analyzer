@@ -144,7 +144,8 @@ def compact_callers(answer: Any, *, include_unconfirmed: bool = False) -> Any:
             "format": COMPACT_FORMAT,
             "completeness": label,
             "completeness_reasons": [] if label == "complete" else _reasons(answer),
-            "unconfirmed_collapsed": collapsed,
+            # 只在确有折叠时出现：没有折叠的答复与 #1853 的信封同样大小。
+            **({"unconfirmed_collapsed": collapsed} if collapsed else {}),
             "answer": "\n".join(lines),
         }
     )

@@ -90,7 +90,7 @@ def test_include_unconfirmed_lists_every_caller_last() -> None:
         "opaque  opaque.py:1  unknown",
         "builtin_like  builtin_like.py:1  stdlib",
     ]
-    assert out["unconfirmed_collapsed"] == 0
+    assert "unconfirmed_collapsed" not in out
     assert_equivalent(_full(_MIXED), out, include_unconfirmed=True)
 
 
@@ -112,8 +112,9 @@ def test_a_complete_answer_is_never_downgraded_or_upgraded_by_folding() -> None:
     )
     out = compact_callers(full)
     assert out["completeness"] == "complete"
-    assert out["unconfirmed_collapsed"] == 0
-    assert _FOLD.split(" ")[1] not in out["answer"]
+    # No fold: the envelope is exactly the #1853 shape (no extra field, no line).
+    assert "unconfirmed_collapsed" not in out
+    assert "unconfirmed-receiver" not in out["answer"]
 
 
 def test_fold_line_sits_before_the_truncation_line() -> None:
