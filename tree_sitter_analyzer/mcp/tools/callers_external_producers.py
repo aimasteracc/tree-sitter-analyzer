@@ -17,7 +17,9 @@ from __future__ import annotations
 import ast
 import os
 import re
-from typing import Any
+from typing import Any, cast
+
+from ...resident import snapshot_memo
 
 #: 排除原因码。
 EXTERNAL_PRODUCER_REASON = "produced_by_external_call"
@@ -176,9 +178,8 @@ class ExternalProducers:
 
     def _named_elsewhere(self, file_path: str, name: str) -> bool:
         """Another indexed source file contains ``name`` as a word; unreadable counts as yes."""
-        try:
-            rows = self._conn().execute("SELECT file_path FROM ast_index").fetchall()
-        except Exception:  # noqa: BLE001 — unreadable: assume it is referenced
+        rows = self._indexed_paths()
+        if rows is None:  # unreadable: assume it is referenced
             return True
         word = re.compile(rf"(?<![\w$]){re.escape(name)}(?![\w$])")
         for (other,) in rows:
@@ -216,34 +217,67 @@ class ExternalProducers:
     def _conn(self) -> Any:
         return self._cache.get_conn()
 
+    def _fact(self, reader: str, args: tuple[Any, ...], compute: Any) -> Any:
+        """RFC-0042 P2b: an index-only fact, memoized per certified snapshot.
+
+        ``compute`` returns ``None`` when the read fails; that is never memoized.
+        Source text (``_source``) is always read live.
+        """
+        return snapshot_memo.cached(self._cache, reader, args, compute)
+
+    def _indexed_paths(self) -> list[tuple[str]] | None:
+        def read() -> list[tuple[str]] | None:
+            try:
+                return [
+                    (str(row[0]),)
+                    for row in self._conn()
+                    .execute("SELECT file_path FROM ast_index")
+                    .fetchall()
+                ]
+            except Exception:  # noqa: BLE001 — unreadable: the caller decides
+                return None
+
+        return cast("list[tuple[str]] | None", self._fact("ext.paths", (), read))
+
     def _language(self, file_path: str) -> str:
         if self._languages is None:
-            try:
-                rows = (
-                    self._conn()
-                    .execute("SELECT file_path, language FROM ast_index")
-                    .fetchall()
-                )
-                self._languages = {str(r[0]): str(r[1] or "") for r in rows}
-            except Exception:  # noqa: BLE001 — unreadable: keep the guard
-                self._languages = {}
+
+            def read() -> dict[str, str] | None:
+                try:
+                    rows = (
+                        self._conn()
+                        .execute("SELECT file_path, language FROM ast_index")
+                        .fetchall()
+                    )
+                except Exception:  # noqa: BLE001 — unreadable: keep the guard
+                    return None
+                return {str(r[0]): str(r[1] or "") for r in rows}
+
+            self._languages = self._fact("ext.languages", (), read) or {}
         return self._languages.get(file_path, "")
 
-    def _bindings(self, file_path: str) -> dict[str, tuple[str, bool]]:
-        if file_path not in self._imports:
-            found: dict[str, tuple[str, bool]] = {}
+    def _import_rows(self, file_path: str) -> list[Any]:
+        def read() -> list[tuple[Any, ...]] | None:
             try:
-                rows = (
-                    self._conn()
+                return [
+                    tuple(row)
+                    for row in self._conn()
                     .execute(
                         "SELECT local_name, module_path, is_relative, is_star FROM ast_imports "
                         "WHERE file_path = ?",
                         (file_path,),
                     )
                     .fetchall()
-                )
+                ]
             except Exception:  # noqa: BLE001 — unreadable: no binding, keep the guard
-                rows = []
+                return None
+
+        return cast("list[Any]", self._fact("ext.imports", (file_path,), read) or [])
+
+    def _bindings(self, file_path: str) -> dict[str, tuple[str, bool]]:
+        if file_path not in self._imports:
+            found: dict[str, tuple[str, bool]] = {}
+            rows = self._import_rows(file_path)
             for local, module, relative, star in rows:
                 if star or not local:
                     continue
@@ -269,15 +303,22 @@ class ExternalProducers:
     def _project_tops(self) -> set[str]:
         if self._tops is None:
             tops: set[str] = set()
-            try:
-                rows = (
-                    self._conn()
-                    .execute(
-                        "SELECT file_path FROM ast_index WHERE language = 'python'"
-                    )
-                    .fetchall()
-                )
-            except Exception:  # noqa: BLE001 — unreadable: treat every module as project
+
+            def read() -> list[tuple[str]] | None:
+                try:
+                    return [
+                        (str(row[0]),)
+                        for row in self._conn()
+                        .execute(
+                            "SELECT file_path FROM ast_index WHERE language = 'python'"
+                        )
+                        .fetchall()
+                    ]
+                except Exception:  # noqa: BLE001 — unreadable: every module is project
+                    return None
+
+            rows = self._fact("ext.python_paths", (), read)
+            if rows is None:
                 rows = []
                 tops.add("")
             for (path,) in rows:

@@ -81,6 +81,7 @@ _DEPENDENCIES: tuple[str, ...] = (
     "tree_sitter_analyzer.mcp.tools.certification_timeouts",
     "tree_sitter_analyzer.index_snapshot",
     "tree_sitter_analyzer.index_snapshot_query",
+    "tree_sitter_analyzer.resident.snapshot_memo",
     "tree_sitter_analyzer.ast_cache",
     "tree_sitter_analyzer.call_graph",
     "tree_sitter_analyzer.call_graph_warm",

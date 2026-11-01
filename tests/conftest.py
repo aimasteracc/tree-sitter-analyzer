@@ -427,6 +427,12 @@ def _reset_all_singletons():
             "clear",
             lambda fn: fn(),
         ),
+        # RFC-0042 P2b：边层检查读取按认证快照身份记忆在进程内；每个测试如同新进程。
+        (
+            "tree_sitter_analyzer.resident.snapshot_memo",
+            "clear",
+            lambda fn: fn(),
+        ),
         # #1708：调用 MCP 服务器 main() 的测试会启用发布后预构图；每个测试从关闭开始。
         (
             "tree_sitter_analyzer.call_graph_warm",
