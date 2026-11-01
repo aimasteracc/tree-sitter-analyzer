@@ -2,6 +2,86 @@
 
 ## [Unreleased]
 
+## [3.1.1] - 2026-11-01
+
+v3.1.1 is a patch release. It fixes how SQLite cursors are finished after an
+interrupted row loop, makes one seal warning name the lock holder, trims the
+cost of `nav action=callers`, and stabilises several tests. No request shape
+and no response value changes: on the 7 pinned repositories every stored
+answer of v3.1.0 was compared with v3.1.1 (see the release-gate numbers
+below). The index does not need a rebuild.
+
+### Fixed
+
+- **Cursors left open by interrupted row loops are finished** (#1833, #1844).
+  A cursor held in a local across a loop that can raise (a deadline callback,
+  a corrupt row) stayed alive through the traceback and kept a SQLite read
+  lock. Every such site now finishes its cursor on every exit, with a
+  regression test per site.
+- **The SealBusy warning names the lock holder** (#1848, #1849). When the
+  private generation stays busy past the 10 s budget, the warning now lists
+  the SQLite objects of this process that can hold it: open connections on
+  that file, connections owned by another thread, and live cursors on closed
+  connections, each with a bounded referrer chain. The data is collected only
+  after the deadline, so the busy budget is unchanged.
+
+### Performance
+
+- **`nav action=callers` reads the direct inbound edges once per request**
+  (#1840, #1847). The unattributed-site check and the unresolved-inbound
+  check read the same `(name, file)` edges; the read is now shared inside one
+  request and every check still runs over the rows. Answers are unchanged.
+  Conditions: warm in-process callers, qualified and bare queries, one
+  machine, same-session ABBA against v3.1.0. On hono the warm callers median
+  went 0.137 → 0.110 s in the PR measurement, and 0.150 → 0.127 s in the
+  release gate (two runs per wheel, quiet machine); a second gate round under
+  background load gave 0.298 → 0.236 s, so the gain held as a ratio (-15 to
+  -21%) while the absolute values moved with machine load. On rich (0.03 –
+  0.09 s) and fastapi (0.09 – 0.22 s) the difference was within the run to
+  run noise of this machine; do not expect a gain there. Cold index and the
+  first query of a fresh process are not affected by this change.
+
+### Tests
+
+- The fixture wheel used by the contract tests has a fixed date, so crossing a
+  2 s boundary no longer changes its hash (#1842, #1843), and the aggregate
+  helper surfaces every failure.
+- The rerun markers of #1815 and #1816 are removed by fixing the cost and the
+  waits of the tests instead (#1845, #1846).
+
+### Release gate numbers (dogfood round 15)
+
+The 7 pinned repositories were rich, pydantic, fastapi, axios, gson, zod and
+hono, the same batteries as the v3.1.0 gate. v3.1.0 and v3.1.1 were measured
+on the same machine in one session. The machine was not idle during the
+second half of the latency runs (a browser on the same host), so latency
+numbers are medians of ABBA / BAAB blocks and are given as ratios, not as
+absolute promises.
+
+- **0 wrong `complete`** in bare and qualified mode, by the ground truth GT2
+  (rich, pydantic, fastapi: 18 batteries), by the in-repo oracle
+  (`scripts/wrong_complete`) over 2,660 stored Python answers (scope forms included) and 2 sweeps of
+  40 targets per Python and Java repository, and by the manual evaluation of
+  axios and gson and the ground truth of zod and hono. The one flagged item,
+  pydantic `general_wrap_validator_function`, is correct: its only reference is
+  in a deprecation string.
+- **Answer identity with v3.1.0:** 64 stored answer files, 2,959 answers
+  (callers, completeness, reason codes, `completeness_checks`; timing fields
+  ignored). No answer differs in content. 106 answers list the same callers
+  in a different order, and one answer (pydantic, `GetterDict.items`, bare)
+  names `pydantic/v1/typing.py` instead of `pydantic/typing.py` as
+  `callee_resolved_file` of one caller entry whose call site resolves to both
+  files. Both effects come from the order of rows in a freshly built index and
+  were reproduced with v3.1.0 itself (two fresh indexes of v3.1.0 gave both
+  values).
+- **uql smoke:** 39 queries, 0 errors, 0 wrong `complete`, the same
+  completeness distribution as v3.1.0 (23 complete).
+- **Latency against v3.1.0:** warm callers is lower or equal on hono, rich,
+  axios, gson, zod and pydantic and equal within noise on fastapi. Cold index
+  and the first query of a fresh process are within run-to-run noise on every
+  repository. fastapi was noisy on this machine, with cold index 16 – 35 s
+  for both versions.
+
 ## [3.1.0] - 2026-10-29
 
 v3.1.0 is a minor release. It adds one MCP action (`search action=uql`), makes
