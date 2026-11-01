@@ -27,6 +27,18 @@
   certified against a capture at most one TTL old, and an idle server stops
   renewing. MCP query after 40 s idle, ABBA medians, off → on: rich 342 → 56 ms,
   hono 884 → 147 ms (warm 48 and 162 ms).
+- **`nav callers` checks one resident handle instead of about ten per-request
+  probes** (#1855, RFC-0042 Phase 2a). The index location, the live-index probe,
+  the cost tier and the certified-lease reuse check are read through a handle
+  per project root, kept only for a sealed published generation and validated
+  on every request by two `lstat` calls (selector and database). Any change, a
+  missing file or a database that regained a write bit drops the handle, and
+  the request takes today's path. The rebuild flag is still read on every
+  request. The MCP server builds the handle and the first cost tier at the end
+  of its background load; `TSA_RESIDENT=first-use` builds it on the first
+  request; `off` disables it. In-process warm medians, ABBA, off → on: rich
+  edge-only answers 52.1 → 26.6 ms and review-gated 114.6 → 91.1 ms. Answers
+  are identical with the feature on and off.
 
 - **Compact answer mode for `nav action=callers`** (#1853). Opt-in
   `format=compact` returns one line per caller (`name  file:line
