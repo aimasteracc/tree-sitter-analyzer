@@ -1,4 +1,5 @@
 """Raw per-call cost of os.stat / os.path.realpath on this machine: python -I statcost.py <repo>"""
+
 import os
 import sys
 import time
@@ -17,7 +18,9 @@ for f in files:
 rp = (time.perf_counter() - t0) / len(files)
 t0 = time.perf_counter()
 n = 0
-for d, _dirs, _fs in os.walk(repo):
+for _d, _dirs, _fs in os.walk(repo):
     n += 1
 wk = time.perf_counter() - t0
-print(f"files {len(files)} stat_us {st*1e6:.1f} realpath_us {rp*1e6:.1f} walk_ms {wk*1e3:.1f} dirs {n}")
+print(
+    f"files {len(files)} stat_us {st * 1e6:.1f} realpath_us {rp * 1e6:.1f} walk_ms {wk * 1e3:.1f} dirs {n}"
+)

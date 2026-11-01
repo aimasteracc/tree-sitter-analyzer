@@ -5,6 +5,7 @@ python -I prof_callers.py <repo> <sample.json> <mode: first|warm> <out.json> [n_
 Wraps the callers pipeline stages and reports exclusive time per stage
 (a stage's time excludes the time of wrapped stages it calls), plus cProfile.
 """
+
 import asyncio
 import cProfile
 import functools
@@ -26,11 +27,11 @@ n_targets = int(sys.argv[5]) if len(sys.argv) > 5 else 10
 bodies = bool(int(sys.argv[6])) if len(sys.argv) > 6 else False
 
 t_imp0 = time.perf_counter()
-import tree_sitter_analyzer.mcp.tools.callers_tool as ct  # noqa: E402
-import tree_sitter_analyzer.index_snapshot as isnap  # noqa: E402
 import tree_sitter_analyzer.cache.query_cost as qc  # noqa: E402
-import tree_sitter_analyzer.mcp.tools.callers_absence as cabs  # noqa: E402
 import tree_sitter_analyzer.call_graph as cg  # noqa: E402
+import tree_sitter_analyzer.index_snapshot as isnap  # noqa: E402
+import tree_sitter_analyzer.mcp.tools.callers_absence as cabs  # noqa: E402
+import tree_sitter_analyzer.mcp.tools.callers_tool as ct  # noqa: E402
 import tree_sitter_analyzer.mcp.utils.format_helper as mfh  # noqa: E402
 
 t_imp1 = time.perf_counter()
@@ -59,6 +60,7 @@ def wrap(owner, name, label=None):
                 _stack[-1][0] += dt
 
     import inspect
+
     if isinstance(inspect.getattr_static(owner, name), staticmethod):
         inner = staticmethod(inner)
     setattr(owner, name, inner)
@@ -123,14 +125,23 @@ wrap(ct, "assess_completeness", "G.review.assess_completeness")
 wrap(ct, "prove_edges", "G.review.prove")
 wrap(ct, "prove", "G.review.prove")
 for gate in [n for n in dir(cabs) if n.startswith("_") and callable(getattr(cabs, n))]:
-    if gate in ("_is_accessor",) or gate.endswith("gate") or "reference" in gate or "unindexed" in gate or "decorator" in gate or "defined" in gate:
+    if (
+        gate in ("_is_accessor",)
+        or gate.endswith("gate")
+        or "reference" in gate
+        or "unindexed" in gate
+        or "decorator" in gate
+        or "defined" in gate
+    ):
         try:
             wrap(cabs, gate, "G.review." + gate)
         except Exception:
             pass
 wrap(T, "_inline_caller_bodies", "H.bodies")
 wrap(ct, "is_index_rebuilding", "J.infra.is_index_rebuilding")
-wrap(ct, "_certification_ruled_out", "J.infra.certification_ruled_out(live_index_probe)")
+wrap(
+    ct, "_certification_ruled_out", "J.infra.certification_ruled_out(live_index_probe)"
+)
 wrap(T, "_try_get_cache", "J.infra.try_get_cache")
 wrap(ct, "_is_stale_resolution", "J.infra.is_stale_resolution")
 wrap(ct.certification_timeouts, "should_skip", "J.infra.cert_timeouts")
@@ -148,7 +159,9 @@ def load_targets(p, n):
     rows = d["targets"] if isinstance(d, dict) else d
     res = []
     for t in rows:
-        q = t.get("qual") or (f"{t['class']}.{t['name']}" if t.get("class") else t["name"])
+        q = t.get("qual") or (
+            f"{t['class']}.{t['name']}" if t.get("class") else t["name"]
+        )
         res.append((q, q.rsplit(".", 1)[-1], t["file"]))
     return res[:n]
 
@@ -159,29 +172,40 @@ _l = os.lstat
 _s = os.stat
 
 
-def l(*a, **k):
+def counted_lstat(*a, **k):
     nlstat["n"] += 1
     return _l(*a, **k)
 
 
-def s(*a, **k):
+def counted_stat(*a, **k):
     nlstat["n"] += 1
     return _s(*a, **k)
 
 
-os.lstat = l
-os.stat = s
+os.lstat = counted_lstat
+os.stat = counted_stat
 
 
 async def run():
     tool = ct.CodeGraphCallersTool(repo)
-    rec = {"repo": Path(repo).name, "mode": mode, "import_s": round(t_imp1 - t_imp0, 3), "bodies": bodies}
-    prof = cProfile.Profile() if os.environ.get('PROF') == '1' else type('N', (), {'enable': lambda s: None, 'disable': lambda s: None})()
+    rec = {
+        "repo": Path(repo).name,
+        "mode": mode,
+        "import_s": round(t_imp1 - t_imp0, 3),
+        "bodies": bodies,
+    }
+    prof = (
+        cProfile.Profile()
+        if os.environ.get("PROF") == "1"
+        else type("N", (), {"enable": lambda s: None, "disable": lambda s: None})()
+    )
     if mode == "first":
         q, b, f = targets[0]
         prof.enable()
         t0 = time.perf_counter()
-        r = await tool.execute({"function_name": q, "file_path": f, "include_bodies": bodies})
+        r = await tool.execute(
+            {"function_name": q, "file_path": f, "include_bodies": bodies}
+        )
         rec["total_s"] = round(time.perf_counter() - t0, 4)
         prof.disable()
         rec["n_queries"] = 1
@@ -189,8 +213,12 @@ async def run():
     else:
         for q, b, f in targets:  # warm-up round, not timed
             for name in (q, b):
-                await tool.execute({"function_name": name, "file_path": f, "include_bodies": bodies})
-        EXCL.clear(); CALLS.clear(); nlstat["n"] = 0
+                await tool.execute(
+                    {"function_name": name, "file_path": f, "include_bodies": bodies}
+                )
+        EXCL.clear()
+        CALLS.clear()
+        nlstat["n"] = 0
         lat = []
         bykind = {}
         comp = {}
@@ -198,12 +226,21 @@ async def run():
         for _ in range(2):
             for q, b, f in targets:
                 for name in (q, b):
-                    before = CALLS.get("G.review.assess_completeness", 0), EXCL.get("G.review._reference_scan", 0.0)
                     nref0 = CALLS.get("G.review._reference_scan", 0)
                     t0 = time.perf_counter()
-                    r = await tool.execute({"function_name": name, "file_path": f, "include_bodies": bodies})
+                    r = await tool.execute(
+                        {
+                            "function_name": name,
+                            "file_path": f,
+                            "include_bodies": bodies,
+                        }
+                    )
                     lat.append(time.perf_counter() - t0)
-                    kind = "review" if CALLS.get("G.review._reference_scan", 0) > nref0 else "edge_only"
+                    kind = (
+                        "review"
+                        if CALLS.get("G.review._reference_scan", 0) > nref0
+                        else "edge_only"
+                    )
                     bykind.setdefault(kind, []).append(lat[-1])
                     comp[r.get("completeness")] = comp.get(r.get("completeness"), 0) + 1
                     sz = len(json.dumps(r, default=str))
@@ -214,20 +251,36 @@ async def run():
         rec["p90_ms"] = round(sorted(lat)[int(len(lat) * 0.9) - 1] * 1000, 1)
         rec["max_ms"] = round(max(lat) * 1000, 1)
         rec["last_payload_bytes"] = sz
-        rec["by_kind"] = {k: {"n": len(v), "median_ms": round(statistics.median(v)*1000, 1), "max_ms": round(max(v)*1000, 1)} for k, v in bykind.items()}
+        rec["by_kind"] = {
+            k: {
+                "n": len(v),
+                "median_ms": round(statistics.median(v) * 1000, 1),
+                "max_ms": round(max(v) * 1000, 1),
+            }
+            for k, v in bykind.items()
+        }
         rec["completeness"] = comp
     rec["stat_calls_per_query"] = round(nlstat["n"] / rec["n_queries"], 1)
     acc = sum(EXCL.values())
     rec["stages_ms_per_query"] = {
-        k: round(v * 1000 / rec["n_queries"], 2) for k, v in sorted(EXCL.items(), key=lambda kv: -kv[1])
+        k: round(v * 1000 / rec["n_queries"], 2)
+        for k, v in sorted(EXCL.items(), key=lambda kv: -kv[1])
     }
-    rec["calls_per_query"] = {k: round(v / rec["n_queries"], 2) for k, v in CALLS.items()}
-    rec["unwrapped_ms_per_query"] = round((rec["total_s"] - acc) * 1000 / rec["n_queries"], 2)
+    rec["calls_per_query"] = {
+        k: round(v / rec["n_queries"], 2) for k, v in CALLS.items()
+    }
+    rec["unwrapped_ms_per_query"] = round(
+        (rec["total_s"] - acc) * 1000 / rec["n_queries"], 2
+    )
     sio = io.StringIO()
-    if isinstance(prof, cProfile.Profile): pstats.Stats(prof, stream=sio).sort_stats("cumulative").print_stats(60)
+    if isinstance(prof, cProfile.Profile):
+        pstats.Stats(prof, stream=sio).sort_stats("cumulative").print_stats(60)
     sio2 = io.StringIO()
-    if isinstance(prof, cProfile.Profile): pstats.Stats(prof, stream=sio2).sort_stats("tottime").print_stats(30)
-    Path(out).with_suffix(".prof.txt").write_text(sio.getvalue() + "\n===== tottime\n" + sio2.getvalue(), encoding="utf-8")
+    if isinstance(prof, cProfile.Profile):
+        pstats.Stats(prof, stream=sio2).sort_stats("tottime").print_stats(30)
+    Path(out).with_suffix(".prof.txt").write_text(
+        sio.getvalue() + "\n===== tottime\n" + sio2.getvalue(), encoding="utf-8"
+    )
     Path(out).write_text(json.dumps(rec, indent=1), encoding="utf-8")
     print(json.dumps(rec, indent=1))
 

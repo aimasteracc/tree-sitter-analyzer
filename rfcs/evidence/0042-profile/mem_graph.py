@@ -1,4 +1,5 @@
 """Memory of today's in-process call graph state: python -I mem_graph.py <repo>"""
+
 import gc
 import sqlite3
 import sys
@@ -10,7 +11,9 @@ sys.path.insert(0, r"C:\git-private\tsa-worktrees\rfc-1855")
 repo = sys.argv[1]
 
 from tree_sitter_analyzer.call_graph import CachedCallGraph  # noqa: E402
-from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool  # noqa: E402
+from tree_sitter_analyzer.mcp.tools.callers_tool import (  # noqa: E402
+    CodeGraphCallersTool,  # noqa: E402
+)
 
 tool = CodeGraphCallersTool(repo)
 cache = tool._try_get_cache()
@@ -28,9 +31,22 @@ tracemalloc.stop()
 callers_edges = sum(len(v) for v in g._callers.values())
 possible = sum(len(v) for v in g._possible_callers.values())
 print("built", g._built, "build_s_under_tracemalloc", round(dt, 2))
-print("functions(nodes)", len(g._functions), "certain_edges", callers_edges,
-      "call_edges_list", len(g._call_edges), "possible_edges", possible)
-print("retained_MB", round((cur - base) / 1e6, 1), "peak_MB", round((peak - base) / 1e6, 1))
+print(
+    "functions(nodes)",
+    len(g._functions),
+    "certain_edges",
+    callers_edges,
+    "call_edges_list",
+    len(g._call_edges),
+    "possible_edges",
+    possible,
+)
+print(
+    "retained_MB",
+    round((cur - base) / 1e6, 1),
+    "peak_MB",
+    round((peak - base) / 1e6, 1),
+)
 edges = callers_edges + possible
 nodes = len(g._functions)
 print("retained_bytes_per_(node+edge)", round((cur - base) / max(1, nodes + edges)))

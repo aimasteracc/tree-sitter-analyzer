@@ -2,6 +2,7 @@
 
 python -I idle_probe.py <repo> <name> <file> <idle_seconds>
 """
+
 import asyncio
 import sys
 import time
@@ -9,7 +10,9 @@ import time
 sys.dont_write_bytecode = True
 sys.path.insert(0, r"C:\git-private\tsa-worktrees\rfc-1855")
 repo, name, file, idle = sys.argv[1], sys.argv[2], sys.argv[3], float(sys.argv[4])
-from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool  # noqa: E402
+from tree_sitter_analyzer.mcp.tools.callers_tool import (  # noqa: E402
+    CodeGraphCallersTool,  # noqa: E402
+)
 
 
 async def main():
