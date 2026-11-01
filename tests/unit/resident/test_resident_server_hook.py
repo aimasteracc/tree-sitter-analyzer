@@ -95,12 +95,15 @@ async def test_tools_call_starts_the_loader(
     monkeypatch.setattr(TreeSitterAnalyzerMCPServer, "tool_definitions", lambda _s: [])
     _instance, server = _server(tmp_path)
     handler = server.request_handlers[types.CallToolRequest]
-    # A cheap call: set_project_path without arguments is refused at once (an
-    # unknown tool name would build the whole tool registry first).
+    # A cheap call: set_project_path to a missing directory is refused at once
+    # (an unknown tool name would build the whole tool registry first).
     await handler(
         types.CallToolRequest(
             method="tools/call",
-            params=types.CallToolRequestParams(name="set_project_path", arguments={}),
+            params=types.CallToolRequestParams(
+                name="set_project_path",
+                arguments={"project_path": str(tmp_path / "missing")},
+            ),
         )
     )
     assert loader.wait(timeout=10)

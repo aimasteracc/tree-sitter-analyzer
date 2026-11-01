@@ -186,8 +186,6 @@ def warm_now(project_root: str) -> dict[str, Any] | None:
         return None
     key = _key(project_root)
     with _lock:
-        if _closed:
-            return None
         running = _threads.get(key)
         if running is not None and running.is_alive():
             return {"in_flight": True}
