@@ -49,6 +49,7 @@ from ... import read_existing_access as read_access
 from ...call_graph_binding import RefIdentity, ref_identity
 from ...constants import JS_TS_MODULE_EXTS
 from ...module_scope_caller import is_module_caller
+from . import callers_compact
 from .facade_tool import FacadeTool
 from .nav_facade_help import (
     CONTEXT_KEYS,
@@ -271,7 +272,11 @@ _NAV_DESCRIPTION = (
     "source_generation, output_format.\n"
     "- action=callers — who calls a function (codegraph_callers equivalent).\n"
     "  scope=point (default) → direct 1-hop callers (fast). "
-    "Params: function_name/symbol (required), file_path, include_bodies, output_format.\n"
+    "Params: function_name/symbol (required), file_path, include_bodies, output_format, "
+    "format (verbose|compact). format=compact → one line per caller "
+    "(name  file:line  resolution_kind) + one verdict line "
+    "(complete | incomplete (reasons) | unknown (reasons)), same RFC-0040 verdict "
+    "as the full answer, ~20x fewer tokens (median).\n"
     "  scope=graph → full call-graph traversal (callers mode). "
     "Params: function_name/symbol (required), file_path, depth, output_format.\n"
     "  Best for ONE hop. If the next question is about those callers (their "
@@ -384,8 +389,19 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         return await context_inner.execute(context_args)
 
     async def _callers_route(args: dict[str, Any]) -> Any:
-        """R4: scope=point → direct callers; scope=graph → call-graph traversal."""
+        """R4: scope=point → direct callers; scope=graph → call-graph traversal.
+
+        #1853: ``format=compact`` projects the full scope=point answer to one
+        line per caller plus one verdict line; the default stays the full answer.
+        """
         scope = args.pop("scope", "point")
+        answer_format = args.pop("format", callers_compact.VERBOSE_FORMAT)
+        format_error = callers_compact.invalid_format(answer_format)
+        if format_error is not None:
+            return format_error
+        compact = answer_format == callers_compact.COMPACT_FORMAT
+        if scope == "graph" and compact:
+            return callers_compact.compact_scope_error()
         if scope == "graph":
             # Inject mode=callers for the call-graph inner; project to its schema.
             graph_args = {k: v for k, v in args.items() if k in GRAPH_RELATION_KEYS}
@@ -394,13 +410,19 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         # scope=point (default): use the dedicated callers tool.
         # limit is forwarded so callers=point honours the budget cap.
         point_args = {k: v for k, v in args.items() if k in POINT_RELATION_KEYS}
+        if compact:
+            # Bodies never reach a compact answer; skip reading them unless asked.
+            point_args.setdefault("include_bodies", False)
         symbol = point_args.get("function_name")
         source = follow_ups.source_of(symbol)
         result = await callers_point.execute(point_args)
         follow_ups.record(symbol, result)
-        return append_next_step(
-            result, hint_after_callers(source) if source is not None else None
-        )
+        hint = hint_after_callers(source) if source is not None else None
+        if compact:
+            return callers_compact.with_hint(
+                callers_compact.compact_callers(result), hint
+            )
+        return append_next_step(result, hint)
 
     async def _callees_route(args: dict[str, Any]) -> Any:
         """R4: scope=point → direct callees; scope=graph → call-graph traversal."""

@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Compact answer mode for `nav action=callers`** (#1853). Opt-in
+  `format=compact` returns one line per caller (`name  file:line
+  resolution_kind`) and one verdict line (`complete` |
+  `incomplete (<top reason codes>)` | `unknown (<top reason codes>)`).
+  The compact answer is a projection of the full answer: the same caller list
+  and the same RFC-0040 completeness result, never more optimistic, with the
+  full `completeness_reasons` kept as a field. On the stored answers of 7
+  open-source repos (rich, pydantic, fastapi, gson, axios, hono, zod; 138
+  questions) the median answer drops from 2,282 to 116 cl100k tokens (19.6x).
+  The default (`format=verbose`) is unchanged.
+
 ## [3.1.1] - 2026-11-01
 
 v3.1.1 is a patch release. It fixes how SQLite cursors are finished after an
