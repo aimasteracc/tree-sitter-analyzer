@@ -8,9 +8,14 @@
 格式（以两个空格分隔，便于逐行读取）::
 
     callers of <function>: <caller_count>
-    <name>  <file>:<line>  <resolution_kind>
+    <name>  <file>:<line>  <resolution_kind>     # proven → inferred（#1854）
     ...
+    +<n> unconfirmed-receiver candidates (include_unconfirmed=true to list)
     +<hidden> more (raise limit)                 # 仅在截断时
+
+#1854：调用方按 :mod:`callers_confidence` 的层级稳定排序，``unconfirmed_receiver``
+层默认折叠为计数行（``unconfirmed_collapsed`` 字段给出同一数目）。列出的与折叠的
+合起来正是完整答复本页的调用方；判定与原因码不受折叠影响。
     verdict: complete
     verdict: incomplete (<top reasons>); details: format=verbose
     verdict: unknown (<top reasons>); details: format=verbose
@@ -23,6 +28,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from .callers_confidence import UNCONFIRMED, caller_confidence, order_by_confidence
+
 COMPACT_FORMAT = "compact"
 VERBOSE_FORMAT = "verbose"
 #: ``nav action=callers`` 接受的 ``format`` 值；默认 ``verbose`` 即原有完整答复。
@@ -32,6 +39,11 @@ TOP_REASONS = 3
 
 _NOT_COMPLETE_LABELS = frozenset({"incomplete"})
 _DETAILS = "; details: format=verbose"
+INCLUDE_UNCONFIRMED = "include_unconfirmed"
+_COLLAPSED_LINE = (
+    "+{collapsed} unconfirmed-receiver candidates "
+    f"({INCLUDE_UNCONFIRMED}=true to list)"
+)
 
 FORMAT_PROPERTY: dict[str, Any] = {
     "type": "string",
@@ -39,8 +51,18 @@ FORMAT_PROPERTY: dict[str, Any] = {
     "default": VERBOSE_FORMAT,
     "description": (
         "verbose (default) = full answer with evidence; compact = one line per "
-        "caller (name  file:line  resolution_kind) plus one completeness verdict "
-        "line, derived from the same RFC-0040 result."
+        "caller (name  file:line  resolution_kind), proven first, plus one "
+        "completeness verdict line, derived from the same RFC-0040 result. "
+        "Compact folds unconfirmed_receiver callers into one count line."
+    ),
+}
+
+INCLUDE_UNCONFIRMED_PROPERTY: dict[str, Any] = {
+    "type": "boolean",
+    "default": False,
+    "description": (
+        "format=compact only: list unconfirmed_receiver callers instead of "
+        "folding them into a count line. The verdict is the same either way."
     ),
 }
 
@@ -85,15 +107,28 @@ def caller_line(caller: Mapping[str, Any]) -> str:
     return f"{name}  {file}:{line}  {kind}"
 
 
-def compact_callers(answer: Any) -> Any:
-    """把完整 callers 答复投影为紧凑答复；失败答复原样返回。"""
+def compact_callers(answer: Any, *, include_unconfirmed: bool = False) -> Any:
+    """把完整 callers 答复投影为紧凑答复；失败答复原样返回。
+
+    #1854：调用方按置信层级稳定排序；``unconfirmed_receiver`` 层默认折叠为
+    一行计数（``include_unconfirmed=True`` 时逐行列出）。判定行与原因码只读
+    完整答复，与折叠与否无关。
+    """
     if not isinstance(answer, dict) or answer.get("success") is False:
         return answer
-    callers = [c for c in answer.get("callers") or [] if isinstance(c, Mapping)]
+    callers = order_by_confidence(
+        c for c in answer.get("callers") or [] if isinstance(c, Mapping)
+    )
     total = answer.get("caller_count")
     total = total if isinstance(total, int) and total >= 0 else len(callers)
+    listed = [
+        c for c in callers if include_unconfirmed or caller_confidence(c) != UNCONFIRMED
+    ]
+    collapsed = len(callers) - len(listed)
     lines = [f"callers of {answer.get('function') or '?'}: {total}"]
-    lines.extend(caller_line(caller) for caller in callers)
+    lines.extend(caller_line(caller) for caller in listed)
+    if collapsed:
+        lines.append(_COLLAPSED_LINE.format(collapsed=collapsed))
     hidden = total - len(callers)
     if hidden > 0:
         lines.append(f"+{hidden} more (raise limit)")
@@ -109,6 +144,8 @@ def compact_callers(answer: Any) -> Any:
             "format": COMPACT_FORMAT,
             "completeness": label,
             "completeness_reasons": [] if label == "complete" else _reasons(answer),
+            # 只在确有折叠时出现：没有折叠的答复与 #1853 的信封同样大小。
+            **({"unconfirmed_collapsed": collapsed} if collapsed else {}),
             "answer": "\n".join(lines),
         }
     )
@@ -125,6 +162,19 @@ def invalid_format(value: Any) -> dict[str, Any] | None:
         "error": (
             f"format={value!r} is not supported for action=callers; "
             f"use one of: {', '.join(CALLERS_FORMATS)}"
+        ),
+    }
+
+
+def invalid_include_unconfirmed(value: Any) -> dict[str, Any] | None:
+    """``include_unconfirmed`` 必须是布尔值；合法时为 ``None``。"""
+    if isinstance(value, bool):
+        return None
+    return {
+        "success": False,
+        "error_code": "INVALID_ARGUMENT",
+        "error": (
+            f"{INCLUDE_UNCONFIRMED}={value!r} must be true or false for action=callers"
         ),
     }
 
