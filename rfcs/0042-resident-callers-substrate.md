@@ -399,13 +399,17 @@ so Phase 1 adds no steady-state memory. It only moves the time it is paid.
 | gson | 264 | 8,265 | 19–24k | 16–20 MB | ≤ 10 MB | 40 MB |
 | fastapi | 1,191 | 10,922 | 25–32k | 21–27 MB | ≤ 14 MB | 56 MB |
 | pydantic | 605 | 22,735 | 65k (19k / 46k) | about 55 MB | ≤ 28 MB | 110 MB |
-| hono | 453 | — | to be measured (P0) | ≤ pydantic | | 110 MB |
-| zod | — | — | to be measured (P0) | ≤ pydantic | | 110 MB |
+| hono | 453 | 4,175 | 51.9k (1.5k / 50.4k, measured P0) | 11.5–24.7 MB (measured P0) | ≤ 12 MB | 50 MB |
+| zod | 521 | 6,586 | 83.6k (2.4k / 81.2k, measured P0) | 15.5–35.0 MB (measured P0) | ≤ 18 MB | 70 MB |
 
 - The ceiling is 2 × the graph state.
-- File and symbol counts are taken from the r13 index replies. hono and zod counts are not in the
-  stored replies, so Phase 0 measures them. The table is an estimate; only the `rich` row is
-  measured.
+- File and symbol counts are taken from the r13 index replies. hono and zod were measured in
+  Phase 0 with `benchmarks/resident/graph_size.py` on `develop` `c9277106` (nodes / edges, where
+  edges = certain + name-only). The range is a fresh edge resolution against a replay of the
+  persisted resolution (#1675); the build peak is 55–57 MB for hono and 79–82 MB for zod. Both
+  TypeScript graphs are dominated by name-only edges (78–81 % of edges), so their bytes per
+  (node + edge) are lower than `rich`'s (about 220–475 against 815). The other rows are
+  estimates.
 
 **Optional Phase 6: a compact graph.** Integer node IDs with CSR adjacency
 (`array('i')` caller → callee and callee → caller, with line) cost 16–17 bytes per edge plus about
@@ -640,7 +644,7 @@ They must fail on a naive "global dict keyed by root" implementation.
 
 ## Acceptance criteria
 
-- [ ] P0 harness committed; hono and zod sizes measured; the §8 table completed
+- [x] P0 harness committed; hono and zod sizes measured; the §8 table completed
 - [ ] P1: first query after start ≈ warm (V2); V1 0 diffs; V3 within the ceiling
 - [ ] P1b: after-idle query ≤ 2 × warm
 - [ ] P2a/P2b: V1 0 diffs; V2 shows the expected drop; V4 0 wrong `complete`
