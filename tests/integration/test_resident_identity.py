@@ -157,8 +157,8 @@ async def _today(root: Path, monkeypatch: pytest.MonkeyPatch) -> list[Any]:
 def _load(root: Path) -> dict[str, Any]:
     assert loader.start(str(root)) is True
     assert loader.wait(str(root), timeout=60)
-    status = loader.status(str(root))
-    assert status is not None
+    status = loader.status(str(root)) or {}
+    assert status.get("state") in {"ready", "skipped", "failed"}, status
     return status
 
 
@@ -339,7 +339,7 @@ def _poison_resident_graph(root: Path) -> None:
     """Replace the loader's graph state with one that has no edges at all."""
     canonical = str(root.resolve())
     state = call_graph_memo.latest(canonical)
-    assert state is not None, "the loader must have stored a graph"
+    assert isinstance(state, dict) and state["_built"] is True, "no stored graph"
     poisoned = dict(state)
     for name in ("_callers", "_callees", "_possible_callers", "_call_edges"):
         if name in poisoned:

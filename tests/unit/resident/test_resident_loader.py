@@ -122,7 +122,7 @@ def test_start_returns_at_once_while_the_load_runs(
     assert loader.wait(str(tmp_path), timeout=10)
     status = loader.status(str(tmp_path))
     assert status["state"] == "ready"
-    assert status["seconds"] >= 0
+    assert isinstance(status["seconds"], float)
 
 
 def test_concurrent_starts_run_one_load_per_root(
