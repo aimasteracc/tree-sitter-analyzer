@@ -232,8 +232,10 @@ def _full_answers(draw: st.DrawFn) -> dict[str, Any]:
     )
 
 
-# 60 examples fit the unit per-test budget under the suite's guards (~0.2 s
-# standalone); the live-index invariant f in tests/property covers real answers.
+# slow_ok: pure projection, ~0.2 s standalone, but Hypothesis data generation
+# under the coverage tracer took 14.7 s on the CI coverage axis. The live-index
+# counterpart is invariant f in tests/property/test_callers_oracle_properties.py.
+@pytest.mark.slow_ok
 @settings(max_examples=60, deadline=None, database=None)
 @given(full=_full_answers())
 def test_property_compact_is_an_exact_projection_of_the_full_answer(
