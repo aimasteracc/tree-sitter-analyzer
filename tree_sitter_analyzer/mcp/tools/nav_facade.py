@@ -49,9 +49,10 @@ from ... import read_existing_access as read_access
 from ...call_graph_binding import RefIdentity, ref_identity
 from ...constants import JS_TS_MODULE_EXTS
 from ...module_scope_caller import is_module_caller
-from . import callers_compact
+from . import callers_compact, callers_confidence
 from .facade_tool import FacadeTool
 from .nav_facade_help import (
+    CALLERS_POINT_KEYS,
     CONTEXT_KEYS,
     GRAPH_RELATION_KEYS,
     POINT_RELATION_KEYS,
@@ -187,6 +188,17 @@ def _is_collectible_caller(file_path: str, name: str, language: str = "") -> boo
     return True
 
 
+def _callers_arg_error(
+    answer_format: Any, include_unconfirmed: Any, order: Any
+) -> dict[str, Any] | None:
+    """#1853 / #1854: the first invalid presentation argument of action=callers."""
+    return (
+        callers_compact.invalid_format(answer_format)
+        or callers_compact.invalid_include_unconfirmed(include_unconfirmed)
+        or (None if order is None else callers_confidence.invalid_order(order))
+    )
+
+
 def _test_map_next_step(
     test_files: list[str],
     *,
@@ -276,7 +288,10 @@ _NAV_DESCRIPTION = (
     "format (verbose|compact). format=compact → one line per caller "
     "(name  file:line  resolution_kind) + one verdict line "
     "(complete | incomplete (reasons) | unknown (reasons)), same RFC-0040 verdict "
-    "as the full answer, ~20x fewer tokens (median).\n"
+    "as the full answer, ~20x fewer tokens (median). Each caller has "
+    "confidence_tier (proven|inferred|unconfirmed_receiver); order=confidence "
+    "puts proven first; compact folds unconfirmed_receiver into a count "
+    "(include_unconfirmed=true lists them).\n"
     "  scope=graph → full call-graph traversal (callers mode). "
     "Params: function_name/symbol (required), file_path, depth, output_format.\n"
     "  Best for ONE hop. If the next question is about those callers (their "
@@ -393,12 +408,17 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
 
         #1853: ``format=compact`` projects the full scope=point answer to one
         line per caller plus one verdict line; the default stays the full answer.
+        #1854: compact asks for ``order=confidence`` and folds unconfirmed-receiver
+        callers unless ``include_unconfirmed`` is true.
         """
         scope = args.pop("scope", "point")
         answer_format = args.pop("format", callers_compact.VERBOSE_FORMAT)
-        format_error = callers_compact.invalid_format(answer_format)
-        if format_error is not None:
-            return format_error
+        include_unconfirmed = args.pop(callers_compact.INCLUDE_UNCONFIRMED, False)
+        arg_error = _callers_arg_error(
+            answer_format, include_unconfirmed, args.get("order")
+        )
+        if arg_error is not None:
+            return arg_error
         compact = answer_format == callers_compact.COMPACT_FORMAT
         if scope == "graph" and compact:
             return callers_compact.compact_scope_error()
@@ -409,10 +429,12 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             return await callers_graph.execute(graph_args)
         # scope=point (default): use the dedicated callers tool.
         # limit is forwarded so callers=point honours the budget cap.
-        point_args = {k: v for k, v in args.items() if k in POINT_RELATION_KEYS}
+        point_args = {k: v for k, v in args.items() if k in CALLERS_POINT_KEYS}
         if compact:
             # Bodies never reach a compact answer; skip reading them unless asked.
             point_args.setdefault("include_bodies", False)
+            # The limit cut keeps the most confident callers on the page.
+            point_args.setdefault("order", callers_confidence.ORDER_CONFIDENCE)
         symbol = point_args.get("function_name")
         source = follow_ups.source_of(symbol)
         result = await callers_point.execute(point_args)
@@ -420,7 +442,10 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         hint = hint_after_callers(source) if source is not None else None
         if compact:
             return callers_compact.with_hint(
-                callers_compact.compact_callers(result), hint
+                callers_compact.compact_callers(
+                    result, include_unconfirmed=include_unconfirmed
+                ),
+                hint,
             )
         return append_next_step(result, hint)
 

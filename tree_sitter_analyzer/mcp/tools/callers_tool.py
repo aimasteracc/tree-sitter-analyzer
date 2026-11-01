@@ -39,6 +39,14 @@ from .callers_checks import (
     prove,
     prove_edges,
 )
+from .callers_confidence import (
+    ORDER_CONFIDENCE,
+    ORDER_INDEX,
+    ORDER_PROPERTY,
+    invalid_order,
+    order_by_confidence,
+    with_confidence,
+)
 from .callers_dispatch import narrow_to_target
 from .callers_external_producers import drop_external_producers
 from .callers_name_only import name_only_fields, name_only_sites, name_only_step
@@ -384,6 +392,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                     ),
                     "default": True,
                 },
+                "order": ORDER_PROPERTY,
             },
             "required": ["function_name"],
             "additionalProperties": False,
@@ -392,6 +401,9 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         if "function_name" not in arguments:
             raise ValueError("function_name is required")
+        order_error = invalid_order(arguments.get("order", ORDER_INDEX))
+        if order_error is not None:
+            raise ValueError(order_error["error"])
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -723,6 +735,11 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # what was omitted (same pattern as dead_code_tool / hyphae_select_tool).
         total_callers = len(callers)
         truncated = total_callers > listed_cap
+        # #1854：每个调用方带置信层级；order=confidence 在截断前把 proven 排在前面。
+        # 只改呈现：总数、各项检查与完整性判定都在别处由同一份证据得出。
+        callers = with_confidence(callers)
+        if arguments.get("order", ORDER_INDEX) == ORDER_CONFIDENCE:
+            callers = order_by_confidence(callers)
         callers = callers[:listed_cap]
 
         # 默认内联有上限的调用方源码；调用者可只请求坐标和元数据。

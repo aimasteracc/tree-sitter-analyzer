@@ -255,6 +255,39 @@ listed in `non_call_reference_sites` under the alias (`alias: "_f"`), not just
 the import line. Because the alias is used from another module, it is a
 re-export: the import line in `hub` stays a reference.
 
+### Per-caller confidence tier (#1854)
+
+Every `nav action=callers` caller entry carries `confidence_tier`, derived only
+from the two resolution fields already on the entry. Each field gives a tier and
+the entry gets the less confident of the two; any value not in the table below
+(missing, misspelled, a future kind) is `unconfirmed_receiver`.
+
+| Field | Value | Tier |
+|---|---|---|
+| `callee_resolution` | `local`, `project` | `proven` |
+| `callee_resolution` | `stdlib`, `external`, `builtin`, `unknown` | `unconfirmed_receiver` |
+| `resolution_kind` | absent, `import_alias` | `proven` |
+| `resolution_kind` | `annotated_receiver` | `inferred` |
+
+`proven`: the resolver bound the call edge to a project definition (self/cls,
+an import, the same file, a unique function, a class-name or constructed
+receiver and its MRO). `inferred`: the binding rests on a type annotation
+(RFC-0038). `unconfirmed_receiver`: a same-named call whose edge is not bound to
+a project definition; this is what an unscoped bare-name query lists when the
+name has several definitions.
+
+The tier is presentation only. It never enters the RFC-0040 checks: an
+unconfirmed call site still counts as unresolved evidence, and
+`completeness` / `completeness_reasons` are the same whatever the order or
+folding. `order=confidence` (opt-in; the default `order=index` keeps the
+existing order) sorts proven, then inferred, then unconfirmed, stable within a
+tier, before the `limit` cut. `format=compact` uses `order=confidence` and folds
+the `unconfirmed_receiver` callers of the page into one line,
+`+N unconfirmed-receiver candidates (include_unconfirmed=true to list)`, with the
+same number in `unconfirmed_collapsed`; `include_unconfirmed=true` lists them.
+The listed and the folded callers together are the callers of the full answer.
+The numeric `confidence` (0.8) of an annotated entry is a different field.
+
 The alias is **re-exported** (#1709) when another file imports that name
 (`from .hub import _f`), calls it through a module object (`owner._f()`), or
 mentions it in any other way in a file the reference scan read. The re-export
