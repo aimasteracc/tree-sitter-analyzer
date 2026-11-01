@@ -53,6 +53,43 @@ PRELOAD_MODULES: tuple[str, ...] = (
     "tree_sitter_analyzer.mcp.tools.nav_facade",
     "tree_sitter_analyzer.mcp.tools.callers_tool",
 )
+#: Every module the loader thread runs code from (see :func:`import_dependencies`).
+_DEPENDENCIES: tuple[str, ...] = (
+    "tree_sitter_analyzer.cache.generation_routing",
+    "tree_sitter_analyzer.cache.live_index_probe",
+    "tree_sitter_analyzer.mcp.tools.index_rebuild_signal",
+    "tree_sitter_analyzer.mcp.tools.certification_timeouts",
+    "tree_sitter_analyzer.index_snapshot",
+    "tree_sitter_analyzer.index_snapshot_query",
+    "tree_sitter_analyzer.ast_cache",
+    "tree_sitter_analyzer.call_graph",
+    "tree_sitter_analyzer.call_graph_warm",
+    # Imported lazily inside functions on the capture and graph paths
+    # (measured: tests/integration/test_resident_loader_imports.py).
+    "tree_sitter_analyzer.cache.build_state",
+    "tree_sitter_analyzer.cache.certification_tracking",
+    "tree_sitter_analyzer.cache.generation_pins",
+    "tree_sitter_analyzer.cache.generation_reader_release",
+    "tree_sitter_analyzer.cache.generation_reads",
+    "tree_sitter_analyzer.file_change_time",
+    "tree_sitter_analyzer.frozen_git_index",
+    "tree_sitter_analyzer.git_subprocess",
+    "tree_sitter_analyzer.index_certification_tree",
+    "tree_sitter_analyzer.index_snapshot_windows",
+    "tree_sitter_analyzer.index_source_scope",
+    "tree_sitter_analyzer.indexing_snapshot",
+    "tree_sitter_analyzer.jsts_import_targets",
+    "tree_sitter_analyzer.language_detector",
+    "tree_sitter_analyzer.languages.language_detector_helpers",
+    "tree_sitter_analyzer.portable_source_snapshot",
+    "tree_sitter_analyzer.query_scope",
+    "tree_sitter_analyzer.secure_temp",
+    "tree_sitter_analyzer.source_hash_cache",
+    "tree_sitter_analyzer.source_oracle",
+    "tree_sitter_analyzer.synapse_resolver._typescript_imports",
+    "tree_sitter_analyzer.temp_cleanup",
+    *PRELOAD_MODULES,
+)
 
 _OFF_VALUES = frozenset({"off", "0", "false", "no"})
 _MODES = frozenset({"off", "first-use", "background"})
@@ -90,6 +127,33 @@ def _key(project_root: str) -> str:
     return os.path.normcase(os.path.realpath(project_root))
 
 
+_imported = False
+
+
+def import_dependencies() -> None:
+    """Import everything the loader thread runs, on the calling thread, once.
+
+    The loader thread must never import a module for the first time. Python's
+    per-module import locks deadlock (``_DeadlockError``) when two threads
+    import modules of one import cycle at the same moment, and the request path
+    imports lazily all the time (facades, tools, the cache stack). If the loader
+    thread never takes a module lock, no cycle can form, whatever the request
+    path imports. ``start`` runs this on the server's event-loop thread, the
+    thread that also runs every request, so these imports are serialized with
+    the request path's own imports. ``tests/integration/test_resident_loader_imports.py``
+    runs real loads in fresh processes and fails on any first-time import in
+    the loader thread, so this list cannot silently fall behind the code.
+    """
+    global _imported
+    if _imported:
+        return
+    import importlib
+
+    for name in _DEPENDENCIES:
+        importlib.import_module(name)
+    _imported = True
+
+
 def start(project_root: str | None) -> bool:
     """Start the background load for ``project_root``; never blocks, never repeats.
 
@@ -105,6 +169,11 @@ def start(project_root: str | None) -> bool:
         if current != "background":
             _status.setdefault(key, {"state": current})
             return False
+        if not _enabled or _closed or key in _threads:
+            return False
+    # Never import while holding _lock, and never let the loader thread import.
+    import_dependencies()
+    with _lock:
         if not _enabled or _closed or key in _threads:
             return False
         _status[key] = {"state": "loading"}
