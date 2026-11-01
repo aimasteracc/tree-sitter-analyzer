@@ -103,6 +103,36 @@ def test_a_graph_that_does_not_build_on_the_lease_is_reported(
     assert loader._bind_snapshot_graph(str(tmp_path)) == "GRAPH_NOT_BUILT"
 
 
+def test_the_load_ends_by_importing_the_nav_answer_modules(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The first ``tools/call`` no longer pays the nav modules' import (~0.3 s)."""
+    import importlib
+
+    imported: list[str] = []
+    monkeypatch.setattr(loader, "_skip_reason", lambda _root: None, raising=False)
+    monkeypatch.setattr(loader, "_lease", lambda _root: "CALL_GRAPH_INCOMPLETE")
+    monkeypatch.setattr(call_graph_warm, "warm_now", lambda _root: None)
+    real = importlib.import_module
+
+    def recording(name: str, package: str | None = None) -> Any:
+        imported.append(name)
+        return real(name, package)
+
+    monkeypatch.setattr(importlib, "import_module", recording)
+    monkeypatch.setattr(generation_routing, "resolve_index_path", lambda _r: tmp_path)
+    outcome = loader.load(str(tmp_path))
+    assert outcome["preloaded"] == list(loader.PRELOAD_MODULES)
+    assert imported[-len(loader.PRELOAD_MODULES) :] == list(loader.PRELOAD_MODULES)
+
+
+def test_a_module_that_fails_to_import_is_skipped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(loader, "PRELOAD_MODULES", ("no.such.module", "json"))
+    assert loader._preload() == ["json"]
+
+
 # --------------------------------------------------------------------------- #
 # call_graph_warm.warm_now: the start-time build obeys the post-publish rules
 # --------------------------------------------------------------------------- #

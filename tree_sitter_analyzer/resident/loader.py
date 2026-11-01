@@ -58,6 +58,11 @@ DEFAULT_MODE = "background"
 SHUTDOWN_SECONDS = 5.0
 #: Name of the loader thread (tests and logs recognise it).
 THREAD_NAME = "tsa-resident-loader"
+#: Modules the first ``nav callers`` call imports; the load ends by importing them.
+PRELOAD_MODULES: tuple[str, ...] = (
+    "tree_sitter_analyzer.mcp.tools.nav_facade",
+    "tree_sitter_analyzer.mcp.tools.callers_tool",
+)
 #: P1b: renew this long before the lease's TTL ends, plus the last capture's duration.
 RENEW_MARGIN_SECONDS = 5.0
 #: P1b: never renew more often than this (seconds).
@@ -178,7 +183,28 @@ def load(project_root: str) -> dict[str, Any]:
     outcome["graph"] = call_graph_warm.warm_now(project_root)
     if outcome["certified"] is None:
         outcome["snapshot_graph"] = _bind_snapshot_graph(project_root)
+    outcome["preloaded"] = _preload()
     return outcome
+
+
+def _preload() -> list[str]:
+    """Import the modules a first ``nav callers`` call imports (no object is built).
+
+    The server builds the ``nav`` facade on its first ``tools/call`` (#1675);
+    importing its modules costs about 0.3 s of that call. This runs last, after
+    the server has answered ``tools/list``, so it rarely overlaps the server's
+    own imports (Python's per-module import locks make an overlap safe).
+    """
+    import importlib
+
+    done: list[str] = []
+    for name in PRELOAD_MODULES:
+        try:
+            importlib.import_module(name)
+        except ImportError:
+            continue
+        done.append(name)
+    return done
 
 
 def _bind_snapshot_graph(project_root: str) -> str | None:
