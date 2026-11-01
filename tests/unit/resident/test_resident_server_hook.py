@@ -91,6 +91,8 @@ async def test_tools_call_starts_the_loader(
     gate = _Gate()
     gate.release.set()
     monkeypatch.setattr(loader, "load", gate)
+    # The SDK lists tools before a call; the facade definitions are not under test.
+    monkeypatch.setattr(TreeSitterAnalyzerMCPServer, "tool_definitions", lambda _s: [])
     _instance, server = _server(tmp_path)
     handler = server.request_handlers[types.CallToolRequest]
     # A cheap call: set_project_path without arguments is refused at once (an
