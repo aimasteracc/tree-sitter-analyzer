@@ -149,10 +149,13 @@ def test_slow_suite_runs_once_per_reusable_test_matrix() -> None:
     workflow = PROJECT_ROOT / ".github" / "workflows" / "reusable-test.yml"
     text = workflow.read_text(encoding="utf-8")
     slow_marker = (
-        '-m "slow and not network and not e2e and not benchmark and not full_language"'
+        '-m "slow and not performance and not network and not e2e and not benchmark and not full_language"'
     )
 
     assert text.count(slow_marker) == 2
+    # Wall-clock perf checks run only in a non-gating step (#1852).
+    assert text.count('name: Perf regression signal (non-gating)') == 2
+    assert text.count('-m "performance and not network and not e2e and not benchmark"') == 2
 
 
 def test_budget_retry_is_bounded_and_budget_only() -> None:
