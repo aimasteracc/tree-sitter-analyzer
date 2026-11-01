@@ -642,6 +642,12 @@ They must fail on a naive "global dict keyed by root" implementation.
 
 - [ ] P0 harness committed; hono and zod sizes measured; the §8 table completed
 - [ ] P1: first query after start ≈ warm (V2); V1 0 diffs; V3 within the ceiling
+  - P1 PR: V1 0 differing rows (rich 402, hono 101, zod 98; noise baseline 0). V3: server RSS
+    after the first query is unchanged (rich 99.4 → 98.5 MB, hono 170.7 → 162.8 MB). V2 first
+    query, MCP ABBA medians off → on: rich 1,278 → 199 ms, hono 2,681 → 346 ms. That is
+    4.8 × and 2.7 × the warm median, not yet ≤ 2 ×. What remains is the first `query_cost` index
+    open (40–70 ms, P2a's handle) and the `nav` facade construction on the event loop (about
+    0.14 s on rich; no phase covers it yet).
 - [ ] P1b: after-idle query ≤ 2 × warm
 - [ ] P2a/P2b: V1 0 diffs; V2 shows the expected drop; V4 0 wrong `complete`
 - [ ] P3: differential test green for every key; V1 0 diffs with VERIFY; V2 warm edge-only median ≤ 5 ms

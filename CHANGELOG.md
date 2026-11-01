@@ -4,6 +4,22 @@
 
 ### Added
 
+- **The MCP server loads the call graph and the certified snapshot lease at
+  start** (#1855, RFC-0042 Phase 1). After the `initialize` answer, a
+  background thread runs the work a first `nav callers` query does: it takes
+  the certified snapshot lease, builds the call graph (the #1708 post-publish
+  build), binds it to the lease, and imports the `nav` modules. The first query
+  then reuses all of it. It never blocks the handshake and never builds an
+  index. A request that arrives during the load waits for the in-flight
+  capture or build instead of repeating it. Nothing is a new cache or key:
+  another index generation or source state never sees the preloaded state.
+  `TSA_RESIDENT=off` (or `first-use`) keeps today's lazy behaviour; CLI runs
+  are unchanged. MCP first query after start, ABBA medians, off → on: rich
+  1,278 → 199 ms and hono 2,681 → 346 ms; the warm median is unchanged (rich
+  41.5 / 41.8 ms, hono 132 / 128 ms). Answers are identical with the feature
+  on and off on the stored dogfood rows of rich, hono and zod (601 rows, 0
+  differences).
+
 - **Compact answer mode for `nav action=callers`** (#1853). Opt-in
   `format=compact` returns one line per caller (`name  file:line
   resolution_kind`) and one verdict line (`complete` |
