@@ -640,7 +640,9 @@ class TestQueryServiceFallbackAdditionalPaths:
 class TestCreateResultDictComplexityScore:
     """Tests for complexity_score inclusion in _create_result_dict (STEP 8)."""
 
-    def test_create_result_dict_with_complexity(self, query_service: QueryService) -> None:
+    def test_create_result_dict_with_complexity(
+        self, query_service: QueryService
+    ) -> None:
         """PluginQueryNode with complexity_score=10 → result dict has 'complexity_score': 10"""
         from types import SimpleNamespace
 
@@ -660,7 +662,9 @@ class TestCreateResultDictComplexityScore:
         assert "complexity_score" in result
         assert result["complexity_score"] == 10
 
-    def test_create_result_dict_without_complexity(self, query_service: QueryService) -> None:
+    def test_create_result_dict_without_complexity(
+        self, query_service: QueryService
+    ) -> None:
         """Regular MagicMock node (no PluginQueryNode) → result dict has no 'complexity_score' key"""
         mock_node = MagicMock()
         mock_node.type = "function_definition"
@@ -668,7 +672,9 @@ class TestCreateResultDictComplexityScore:
         mock_node.end_point = (5, 0)
         mock_node.text = b"def test(): pass"
 
-        result = query_service._create_result_dict(mock_node, "test", "def test(): pass")
+        result = query_service._create_result_dict(
+            mock_node, "test", "def test(): pass"
+        )
         assert "complexity_score" not in result
 
 

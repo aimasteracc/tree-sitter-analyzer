@@ -247,5 +247,3 @@ def golden_master_manager():
 def full_format_golden_tester():
     """Fixture providing golden master tester for full format"""
     return GoldenMasterTester("full")
-
-

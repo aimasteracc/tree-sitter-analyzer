@@ -12,6 +12,7 @@ from tree_sitter_analyzer.cache.indexer import walk_and_partition
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 class _MockCache:
     """Minimal stand-in for ASTCache."""
 
@@ -43,6 +44,7 @@ def _make_error_entry(rel_path: str, reason: str) -> dict:
 # Tests
 # ---------------------------------------------------------------------------
 
+
 class TestPluginSkipWarning:
     def setup_method(self):
         """Clear the de-duplication set before each test for isolation."""
@@ -62,7 +64,9 @@ class TestPluginSkipWarning:
         def _lang_none(path: str):
             return None  # simulate: .css not in EXT_TO_LANG
 
-        with caplog.at_level(logging.WARNING, logger="tree_sitter_analyzer.cache.indexer"):
+        with caplog.at_level(
+            logging.WARNING, logger="tree_sitter_analyzer.cache.indexer"
+        ):
             walk_and_partition(
                 cache,
                 conn,
@@ -99,7 +103,9 @@ class TestPluginSkipWarning:
         def _lang_none(path: str):
             return None
 
-        with caplog.at_level(logging.WARNING, logger="tree_sitter_analyzer.cache.indexer"):
+        with caplog.at_level(
+            logging.WARNING, logger="tree_sitter_analyzer.cache.indexer"
+        ):
             walk_and_partition(
                 cache,
                 conn,
@@ -113,7 +119,8 @@ class TestPluginSkipWarning:
             )
 
         css_warnings = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if r.levelno == logging.WARNING and ".css" in r.getMessage()
         ]
         assert len(css_warnings) == 1, (
@@ -134,7 +141,9 @@ class TestPluginSkipWarning:
         def _lang_none(path: str):
             return None
 
-        with caplog.at_level(logging.WARNING, logger="tree_sitter_analyzer.cache.indexer"):
+        with caplog.at_level(
+            logging.WARNING, logger="tree_sitter_analyzer.cache.indexer"
+        ):
             walk_and_partition(
                 cache,
                 conn,
@@ -168,7 +177,9 @@ class TestPluginSkipWarning:
         def _lang_none(path: str):
             return None
 
-        with caplog.at_level(logging.WARNING, logger="tree_sitter_analyzer.cache.indexer"):
+        with caplog.at_level(
+            logging.WARNING, logger="tree_sitter_analyzer.cache.indexer"
+        ):
             stats, candidates, _ = walk_and_partition(
                 cache,
                 conn,

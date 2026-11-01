@@ -4,6 +4,7 @@ Tests argument validation, DependencyMatrix build errors, heatmap parse errors,
 trace_from scenarios (not-found / isolated-file / subgraph), and show_alias_diff
 gap summary. Each test asserts a real behavioral contract — no coverage stuffing.
 """
+
 from __future__ import annotations
 
 import json
@@ -20,6 +21,7 @@ TestFocus.__test__ = False  # type: ignore[attr-defined]
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class FakeFunc:
@@ -115,6 +117,7 @@ _WRITE_META = "tree_sitter_analyzer.cli.capability_commands._write_index_meta"
 
 # ── Argument validation ───────────────────────────────────────────────────────
 
+
 def test_invalid_top_n_zero():
     """top_n=0 returns exit code 1 with error='invalid_argument', category='configuration'."""
     ctx, captured = make_context()
@@ -183,6 +186,7 @@ def test_depth_over_5_capped_with_warning(capsys):
 
 # ── DependencyMatrix build errors ─────────────────────────────────────────────
 
+
 def test_index_not_built_file_not_found():
     """dm.build() raising FileNotFoundError → error='index_not_built', category='state'."""
     ctx, captured = make_context()
@@ -226,6 +230,7 @@ def test_index_not_built_generic_error():
 
 # ── Heatmap errors ────────────────────────────────────────────────────────────
 
+
 def test_parse_timeout():
     """heatmaps_from_project_analysis raising TimeoutError → error='parse_timeout'."""
     ctx, captured = make_context()
@@ -264,6 +269,7 @@ def test_fs_busy():
 
 # ── Success paths ─────────────────────────────────────────────────────────────
 
+
 def test_success_empty_heatmap():
     """When compute_scores returns [], result is success=True, verdict='OK', message set."""
     ctx, captured = make_context()
@@ -292,7 +298,12 @@ def test_success_with_critical_file():
     ctx, captured = make_context()
     MockDM, _ = make_dm_mock()
     critical_entry = make_hotspot_entry(
-        file="src/big.py", severity="CRITICAL", score=500.0, ca_raw=25, ca_alias=25, max_cc=20
+        file="src/big.py",
+        severity="CRITICAL",
+        score=500.0,
+        ca_raw=25,
+        ca_alias=25,
+        max_cc=20,
     )
     with (
         patch(_DM, MockDM),
@@ -301,7 +312,10 @@ def test_success_with_critical_file():
         patch(_HEATMAPS, return_value=[FakeHeatmap("src/big.py", max_complexity=20)]),
         patch(_CA_RAW, return_value={"src/big.py": 25}),
         patch(_ALIAS_CA, return_value={"src/big.py": 25}),
-        patch(_HEATMAP_MAP, return_value={"src/big.py": FakeHeatmap("src/big.py", max_complexity=20)}),
+        patch(
+            _HEATMAP_MAP,
+            return_value={"src/big.py": FakeHeatmap("src/big.py", max_complexity=20)},
+        ),
         patch(_COMPUTE, return_value=[critical_entry]),
     ):
         rc = _handle_hotspot(make_args(), ctx, "json")
@@ -315,6 +329,7 @@ def test_success_with_critical_file():
 
 
 # ── trace_from scenarios ──────────────────────────────────────────────────────
+
 
 def test_trace_from_entry_point_not_found():
     """trace_from file not in subgraph and not in heatmap → error='entry_point_not_found'."""
@@ -366,6 +381,7 @@ def test_trace_from_isolated_file():
 
 # ── show_alias_diff ───────────────────────────────────────────────────────────
 
+
 def test_show_alias_diff_populates_gap_summary():
     """show_alias_diff=True with alias_ca > ca_raw for a file → alias_gap_summary populated."""
     ctx, captured = make_context()
@@ -393,6 +409,7 @@ def test_show_alias_diff_populates_gap_summary():
 
 
 # ── _ensure_tsa_config ────────────────────────────────────────────────────────
+
 
 def test_ensure_tsa_config_skips_if_exists(tmp_path):
     """Existing .tsa/config.json is not overwritten by _ensure_tsa_config."""
@@ -426,11 +443,14 @@ def test_ensure_tsa_config_creates_if_missing(tmp_path):
 
 # ── _write_index_meta ─────────────────────────────────────────────────────────
 
+
 def test_write_index_meta_creates_file(tmp_path):
     """_write_index_meta writes .tsa/index-meta.json with correct fields."""
     from tree_sitter_analyzer.cli.capability_commands import _write_index_meta
 
-    _write_index_meta(str(tmp_path), files_indexed=42, languages=["python", "typescript"])
+    _write_index_meta(
+        str(tmp_path), files_indexed=42, languages=["python", "typescript"]
+    )
 
     meta_path = tmp_path / ".tsa" / "index-meta.json"
     assert meta_path.exists()
@@ -442,6 +462,7 @@ def test_write_index_meta_creates_file(tmp_path):
 
 
 # ── top_n capping at 200 ──────────────────────────────────────────────────────
+
 
 def test_top_n_capped_at_200():
     """top_n=300 is silently capped to 200; compute_scores receives top_n=200."""
@@ -466,14 +487,15 @@ def test_top_n_capped_at_200():
 
 # ── Ca fallback source scanning ───────────────────────────────────────────────
 
+
 def test_ca_fallback_when_import_edges_empty(tmp_path):
     """When dm._import_edges is empty, fallback source scanning is invoked and succeeds."""
     ctx, captured = make_context()
     MockDM = MagicMock()
     dm = MockDM.return_value
     dm.build.return_value = None
-    dm._import_edges = {}   # triggers import_edges rebuild branch
-    dm._result = None       # build_ca_raw_map returns {} → triggers ca_map branch too
+    dm._import_edges = {}  # triggers import_edges rebuild branch
+    dm._result = None  # build_ca_raw_map returns {} → triggers ca_map branch too
 
     with (
         patch(_DM, MockDM),
@@ -505,13 +527,18 @@ def test_ca_fallback_when_import_edges_empty(tmp_path):
 
 # ── Pagination beyond total pages ─────────────────────────────────────────────
 
+
 def test_page_beyond_total_returns_empty_results_success():
     """Requesting page=999 with only one page of data returns success=True, results=[]."""
     ctx, captured = make_context()
     MockDM, _ = make_dm_mock()
     review_entry = make_hotspot_entry(
-        file="src/mod.py", severity="REVIEW", score=150.0,
-        ca_raw=5, ca_alias=5, max_cc=30,
+        file="src/mod.py",
+        severity="REVIEW",
+        score=150.0,
+        ca_raw=5,
+        ca_alias=5,
+        max_cc=30,
     )
     with (
         patch(_DM, MockDM),
@@ -535,6 +562,7 @@ def test_page_beyond_total_returns_empty_results_success():
 
 # ── _write_index_meta: PackageNotFoundError fallback ─────────────────────────
 
+
 def test_write_index_meta_package_not_found_uses_dev_version(tmp_path):
     """PackageNotFoundError when querying package version → tsa_version='0.0.0+dev' (lines 61-62)."""
     import importlib.metadata
@@ -550,12 +578,15 @@ def test_write_index_meta_package_not_found_uses_dev_version(tmp_path):
     ):
         _write_index_meta(str(tmp_path), files_indexed=10, languages=["python"])
 
-    meta = json.loads((tmp_path / ".tsa" / "index-meta.json").read_text(encoding="utf-8"))
+    meta = json.loads(
+        (tmp_path / ".tsa" / "index-meta.json").read_text(encoding="utf-8")
+    )
     assert meta["tsa_version"] == "0.0.0+dev"
     assert meta["files_indexed"] == 10
 
 
 # ── Ca fallback: one-sided branches (ca_map vs import_edges) ─────────────────
+
 
 def test_ca_fallback_only_import_edges_empty(tmp_path):
     """ca_map is populated but import_edges is empty → only import_edges is rebuilt (222->225)."""
@@ -611,7 +642,9 @@ def test_trace_from_with_real_subgraph():
     hm_b = FakeHeatmap("b.py", max_complexity=4)
     # get_subgraph returns real subgraph (not None) → skips isolated-file branch
     fake_reachable = {"a.py": 0, "b.py": 1}
-    entry = make_hotspot_entry(file="a.py", severity="REVIEW", score=120.0, ca_raw=3, ca_alias=3, max_cc=8)
+    entry = make_hotspot_entry(
+        file="a.py", severity="REVIEW", score=120.0, ca_raw=3, ca_alias=3, max_cc=8
+    )
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
@@ -686,7 +719,9 @@ def test_ca_fallback_only_ca_map_empty(tmp_path):
     MockDM = MagicMock()
     dm = MockDM.return_value
     dm.build.return_value = None
-    dm._import_edges = {"src/foo.py": {}}  # non-empty → outer block entered only if ca_map empty
+    dm._import_edges = {
+        "src/foo.py": {}
+    }  # non-empty → outer block entered only if ca_map empty
     dm._result = None  # build_ca_raw_map returns {} → ca_map empty → enters outer block
 
     ca_spy = MagicMock(return_value={"src/foo.py": 2})

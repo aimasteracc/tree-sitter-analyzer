@@ -254,15 +254,11 @@ def _lease(project_root: str) -> str | None:
     when the live index's call-graph marker already rules certification out, or
     when a capture of the same state recently exceeded its deadline (#1710).
     """
-    from ..cache.live_index_probe import probe_live_index
     from ..index_snapshot import _certified_index_read_reason, certified_index_read
-    from ..mcp.tools import certification_timeouts
 
-    probe = probe_live_index(project_root)
-    if probe is not None and not probe.call_graph_exact:
-        return "CALL_GRAPH_INCOMPLETE"
-    if certification_timeouts.should_skip(project_root):
-        return "CERTIFICATION_TIMEOUT_REMEMBERED"
+    refused = _lease_refusal(project_root)
+    if refused is not None:
+        return refused
     with capturing(project_root):
         with certified_index_read(project_root) as owner:
             if owner is not None:
@@ -278,12 +274,37 @@ def _renew_interval(capture_seconds: float) -> float:
     return max(MIN_RENEW_SECONDS, ttl - RENEW_MARGIN_SECONDS - capture_seconds)
 
 
+def _lease_refusal(project_root: str) -> str | None:
+    """The request's own reasons to take no certified lease (``execute_batch``)."""
+    from ..cache.live_index_probe import probe_live_index
+    from ..mcp.tools import certification_timeouts
+
+    probe = probe_live_index(project_root)
+    if probe is not None and not probe.call_graph_exact:
+        return "CALL_GRAPH_INCOMPLETE"
+    if certification_timeouts.should_skip(project_root):
+        return "CERTIFICATION_TIMEOUT_REMEMBERED"
+    return None
+
+
 def _renew_once(project_root: str) -> str | None:
-    """One renewal: the same guards and the same capture as the load's step 1."""
-    skipped = _skip_reason(project_root)
+    """One renewal: the load's guards, then a full capture (never a reuse).
+
+    Reusing the still-valid lease (as a request does) would not extend it: only
+    a capture does, and the registry extends a lease only when the new
+    capture's identity equals it (``reuse_snapshot``); otherwise the capture is
+    a new lease. ``None`` when the renewed lease is complete.
+    """
+    from ..index_snapshot import lease_existing_snapshot
+
+    skipped = _skip_reason(project_root) or _lease_refusal(project_root)
     if skipped is not None:
         return skipped
-    return _lease(project_root)
+    with capturing(project_root):
+        with lease_existing_snapshot(project_root) as snapshot:
+            if snapshot.completeness == "complete":
+                return None
+            return snapshot.reason or "INDEX_SNAPSHOT_UNKNOWN"
 
 
 def _renew(

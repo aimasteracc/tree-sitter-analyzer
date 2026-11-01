@@ -151,13 +151,9 @@ public class UserService {
         assert "createUser" in full_output, "Missing method in full format"
         assert "validateUser" in full_output, "Missing method in full format"
 
+        assert full_output.count("| Method | Signature | Vis | Lines | Cx | Doc |") == 2
         assert (
-            full_output.count("| Method | Signature | Vis | Lines | Cx | Doc |") == 2
-        )
-        assert (
-            full_output.count(
-                "| findUserById | (id:Long):User | + | 14-19 | 2 | - |"
-            )
+            full_output.count("| findUserById | (id:Long):User | + | 14-19 | 2 | - |")
             == 1
         )
         assert (

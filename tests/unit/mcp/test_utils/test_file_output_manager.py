@@ -361,5 +361,3 @@ class TestFileOutputManagerSetProjectRoot:
         manager.set_project_root(new_root)
         # Output path should still be the env path
         assert manager.get_output_path() == env_path
-
-

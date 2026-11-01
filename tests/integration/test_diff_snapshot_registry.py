@@ -91,7 +91,6 @@ def _frozen_result(
         scope_mode=scope_mode,
         output_format="json",
         agent_summary_only=agent_summary_only,
-
     )
 
 

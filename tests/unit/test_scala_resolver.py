@@ -168,7 +168,9 @@ class TestResolveScalaCallee:
         """build_scala_resolver_context stores named imports in name_to_source."""
 
         class _FakeImport:
-            def __init__(self, local_name: str, module_path: str, is_star: bool = False) -> None:
+            def __init__(
+                self, local_name: str, module_path: str, is_star: bool = False
+            ) -> None:
                 self.local_name = local_name
                 self.module_path = module_path
                 self.is_star = is_star
@@ -178,7 +180,7 @@ class TestResolveScalaCallee:
             imports_by_file={
                 "src/App.scala": [
                     _FakeImport("JsonParser", "com.example.json.JsonParser"),
-                    _FakeImport("", "com.example.util"),           # no local_name — skip
+                    _FakeImport("", "com.example.util"),  # no local_name — skip
                     _FakeImport("*", "com.example.star", is_star=True),  # star — skip
                 ],
             },

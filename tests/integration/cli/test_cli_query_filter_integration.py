@@ -341,7 +341,9 @@ class TestCLIQueryComplexityLineSpanFilter:
         tmp.close()
         return tmp
 
-    def _make_args(self, file_path: str, query_key: str = "methods", filter_expr: str | None = None):
+    def _make_args(
+        self, file_path: str, query_key: str = "methods", filter_expr: str | None = None
+    ):
         return type(
             "Args",
             (),
@@ -378,8 +380,12 @@ public class SpanTest {{
             assert results is not None
             # longMethod spans > 10 lines; shortMethod spans <= 10 lines
             names = [r.get("name") or r.get("content", "") for r in results]
-            assert any("longMethod" in n for n in names), f"longMethod not found in {names}"
-            assert not any("shortMethod" in n for n in names), f"shortMethod should be excluded, names={names}"
+            assert any("longMethod" in n for n in names), (
+                f"longMethod not found in {names}"
+            )
+            assert not any("shortMethod" in n for n in names), (
+                f"shortMethod should be excluded, names={names}"
+            )
         finally:
             Path(tmp.name).unlink(missing_ok=True)
 
@@ -405,8 +411,12 @@ public class SpanTest {{
             results = await command.execute_query("java", "methods", "methods")
             assert results is not None
             names = [r.get("name") or r.get("content", "") for r in results]
-            assert any("shortMethod" in n for n in names), f"shortMethod not found in {names}"
-            assert not any("longMethod" in n for n in names), f"longMethod should be excluded, names={names}"
+            assert any("shortMethod" in n for n in names), (
+                f"shortMethod not found in {names}"
+            )
+            assert not any("longMethod" in n for n in names), (
+                f"longMethod should be excluded, names={names}"
+            )
         finally:
             Path(tmp.name).unlink(missing_ok=True)
 
@@ -432,7 +442,9 @@ public class SimpleClass {
             # Since these are fallback query nodes without complexity_score,
             # the filter excludes all of them
             for r in results:
-                assert "complexity_score" not in r, f"Unexpected complexity_score in {r}"
+                assert "complexity_score" not in r, (
+                    f"Unexpected complexity_score in {r}"
+                )
             # Results should be empty since all items lack complexity_score
             assert len(results) == 0
 
@@ -455,6 +467,7 @@ public class TestClass {
 
             import io
             import sys as _sys
+
             old_stderr = _sys.stderr
             _sys.stderr = captured_stderr = io.StringIO()
             try:

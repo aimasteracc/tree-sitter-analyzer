@@ -91,15 +91,26 @@ async def test_a_renewed_lease_serves_the_query_after_idle(
     today = await _today(project, monkeypatch)
     captures = _Captures(monkeypatch)
     _load(project)
+    leased = _lease_id(project)
     tool = CodeGraphCallersTool(str(project))
     first = _stable(await tool.execute(_args(*_QUERIES[1])))
     time.sleep(_IDLE)
+    renewals = loader.status(str(project))["renewals"]
     after_idle = _stable(await tool.execute(_args(*_QUERIES[1])))
     assert captures.by_requests() == 0  # no request ever captured
-    assert captures.by_loader() >= 2  # the load and at least one renewal
+    assert renewals >= 1
+    # Every renewal is a capture: reusing the still-valid lease would not
+    # extend it, and it would lapse at the TTL anyway.
+    assert captures.by_loader() >= 1 + renewals
+    # An unchanged identity keeps the same lease, so per-snapshot state stays.
+    assert _lease_id(project) == leased
     assert first == after_idle == today[1]
-    assert loader.status(str(project))["renewals"] >= 1
     assert await _ask_all(project) == today
+
+
+def _lease_id(root: Path) -> str | None:
+    with index_snapshot.REGISTRY.pin_reusable(str(root)) as snapshot:
+        return snapshot.snapshot_id if snapshot is not None else None
 
 
 @pytest.mark.asyncio

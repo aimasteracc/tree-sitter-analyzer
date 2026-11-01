@@ -63,7 +63,7 @@ def test_lua_project_index_persists_exact_function_snapshot(tmp_path) -> None:
     source = tmp_path / "main.lua"
     source.write_text(
         'local json = require("json")\n'
-        'function greet(name) return name end\n'
+        "function greet(name) return name end\n"
         'greet("world")\n',
         encoding="utf-8",
     )

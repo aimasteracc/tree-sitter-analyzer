@@ -256,7 +256,6 @@ def test_change_impact_frozen_agent_summary_keeps_wire_owner(
         scope_mode="report",
         output_format="json",
         agent_summary_only=True,
-
     )
     assert result["action_version"] == EDIT_IMPACT_ACTION_VERSION
 

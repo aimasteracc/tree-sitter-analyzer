@@ -308,5 +308,3 @@ class TestMultipleClassesFormat:
 
         assert "## Outer" in result
         assert "## Inner" in result
-
-

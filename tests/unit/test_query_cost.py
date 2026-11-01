@@ -71,7 +71,10 @@ def test_cacheable_route_reports_cold_on_a_miss(indexed_project, monkeypatch) ->
     monkeypatch.setattr(qc, "get_answer_cache", lambda: _MissCache())
 
     cost = qc.query_cost(
-        "edit", "safe", indexed_project, {"file_path": "tree_sitter_analyzer/latency.py"}
+        "edit",
+        "safe",
+        indexed_project,
+        {"file_path": "tree_sitter_analyzer/latency.py"},
     )
     assert cost is not None
     # The cache miss is the expensive call: 3453 ms computed against 51-69 ms
@@ -87,7 +90,10 @@ def test_cacheable_route_reports_cached_on_a_hit(indexed_project, monkeypatch) -
     monkeypatch.setattr(qc, "get_answer_cache", lambda: _HitCache())
 
     cost = qc.query_cost(
-        "edit", "safe", indexed_project, {"file_path": "tree_sitter_analyzer/latency.py"}
+        "edit",
+        "safe",
+        indexed_project,
+        {"file_path": "tree_sitter_analyzer/latency.py"},
     )
     assert cost is not None
     assert cost.tier == "cached"

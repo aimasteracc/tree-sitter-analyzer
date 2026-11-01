@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Branch coverage tests for LegacyTableFormatter — signature branches, type abbreviations, doc helpers."""
 
-
 import tree_sitter_analyzer.formatters  # noqa: F401
 from tree_sitter_analyzer.legacy_table_formatter import (
     LegacyTableFormatter,

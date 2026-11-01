@@ -36,17 +36,9 @@ def _pytest_temp_parent() -> Path:
 
     local_app_data = os.environ.get("LOCALAPPDATA")
     if local_app_data:
-        return (
-            Path(local_app_data).resolve()
-            / "tree-sitter-analyzer"
-            / "temp-runtime"
-        )
+        return Path(local_app_data).resolve() / "tree-sitter-analyzer" / "temp-runtime"
 
-    return (
-        Path(tempfile.gettempdir())
-        / "tsa-temp-cache"
-        / _current_user_key()
-    )
+    return Path(tempfile.gettempdir()) / "tsa-temp-cache" / _current_user_key()
 
 
 def _ensure_private_directory(path: Path) -> None:
@@ -94,9 +86,7 @@ def _has_explicit_basetemp(config: Any) -> bool:
 
 
 def _restore_process_temp_settings(config: Any) -> None:
-    previous_environment = getattr(
-        config, "_tsa_previous_temp_environment", None
-    )
+    previous_environment = getattr(config, "_tsa_previous_temp_environment", None)
     if previous_environment is None:
         return
 

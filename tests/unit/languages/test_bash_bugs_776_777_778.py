@@ -87,5 +87,3 @@ class TestNoPhantomElements:
         tree, plugin = _parse(code)
         elements = plugin.create_extractor().extract_elements(tree, code)
         assert [f.name for f in elements["functions"]] == ["deploy"]
-
-
