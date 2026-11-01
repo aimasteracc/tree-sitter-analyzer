@@ -15,10 +15,14 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import os
 import re
+import threading
+from collections import OrderedDict
 from typing import Any, cast
 
+from ...resident import loader as resident_loader
 from ...resident import snapshot_memo
 
 #: 排除原因码。
@@ -81,6 +85,105 @@ _HEAD = re.compile(r"^([A-Za-z_$][\w$]*)\s*[(.\[]")
 _LANGUAGES = ("python", "javascript", "jsx", "typescript", "tsx")
 
 
+#: RFC-0042 P2b: :func:`literal_shape` results, keyed by the digest of the source
+#: text they were computed from and the name. The text itself is read live on
+#: every request (never memoized), so this is the same pure function over the
+#: same input, not freshness evidence. Bounded; oldest first.
+_SHAPES: OrderedDict[tuple[bytes, str], tuple[bool, bool]] = OrderedDict()
+_SHAPES_MAX = 512
+_SHAPES_LOCK = threading.Lock()
+
+
+def clear_shapes() -> None:
+    """Forget the memoized shapes (tests)."""
+    with _SHAPES_LOCK:
+        _SHAPES.clear()
+
+
+def literal_shape(text: str, name: str) -> tuple[bool, bool]:
+    """``(literal, unmodified)`` of module-level ``name`` in Python ``text``.
+
+    ``literal``: assigned once at module level to a non-empty container literal
+    with no dynamic lookup in it. ``unmodified``: additionally never declared
+    ``global``/``nonlocal``, stored into, deleted or mutated in ``text``. A pure
+    function of ``text`` and ``name``, memoized by the text's digest.
+    """
+    if resident_loader.mode() == "off":
+        return _literal_shape(text, name)
+    key = (
+        hashlib.blake2b(text.encode("utf-8", "surrogatepass"), digest_size=20).digest(),
+        name,
+    )
+    with _SHAPES_LOCK:
+        known = _SHAPES.get(key)
+        if known is not None:
+            _SHAPES.move_to_end(key)
+            return known
+    shape = _literal_shape(text, name)
+    with _SHAPES_LOCK:
+        _SHAPES[key] = shape
+        while len(_SHAPES) > _SHAPES_MAX:
+            _SHAPES.popitem(last=False)
+    return shape
+
+
+def _literal_shape(text: str, name: str) -> tuple[bool, bool]:
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return False, False
+    literal = None
+    assigned = 0
+    for node in tree.body:
+        targets: list[ast.expr] = []
+        value = None
+        if isinstance(node, ast.Assign):
+            targets, value = list(node.targets), node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            targets, value = [node.target], node.value
+        if any(isinstance(t, ast.Name) and t.id == name for t in targets):
+            assigned += 1
+            literal = value
+    if assigned != 1 or not isinstance(
+        literal, ast.Dict | ast.List | ast.Tuple | ast.Set
+    ):
+        return False, False
+    # An empty literal is a registry meant to be filled at runtime; keep the guard.
+    if not (literal.keys if isinstance(literal, ast.Dict) else literal.elts):
+        return False, False
+    if any(marker in ast.unparse(literal) for marker in _DYNAMIC_MARKERS):
+        return False, False
+    return True, _unmodified(tree, name)
+
+
+def _unmodified(tree: ast.Module, name: str) -> bool:
+    for item in ast.walk(tree):
+        if isinstance(item, ast.Global | ast.Nonlocal) and name in item.names:
+            return False
+        if (
+            isinstance(item, ast.Subscript)
+            and isinstance(item.ctx, ast.Store | ast.Del)
+            and isinstance(item.value, ast.Name)
+            and item.value.id == name
+        ):
+            return False
+        if (
+            isinstance(item, ast.Attribute)
+            and isinstance(item.value, ast.Name)
+            and item.value.id == name
+            and item.attr in _MUTATORS
+        ):
+            return False
+        if (
+            isinstance(item, ast.Name)
+            and item.id == name
+            and isinstance(item.ctx, ast.Store | ast.Del)
+        ):
+            if item is not _first_target(tree, name):
+                return False
+    return True
+
+
 def _produced_shape(text: str) -> bool:
     """调用的是产出值：``f(...)``、``f(...)(...)``、``m.f(...)[...]``、``m.T[...]``。"""
     return "(" in text or "[" in text
@@ -122,59 +225,13 @@ class ExternalProducers:
         text = self._source(file_path)
         if text is None:
             return False
-        try:
-            tree = ast.parse(text)
-        except (SyntaxError, ValueError):
-            return False
-        literal = None
-        assigned = 0
-        for node in tree.body:
-            targets: list[ast.expr] = []
-            value = None
-            if isinstance(node, ast.Assign):
-                targets, value = list(node.targets), node.value
-            elif isinstance(node, ast.AnnAssign) and node.value is not None:
-                targets, value = [node.target], node.value
-            if any(isinstance(t, ast.Name) and t.id == name for t in targets):
-                assigned += 1
-                literal = value
-        if assigned != 1 or not isinstance(
-            literal, ast.Dict | ast.List | ast.Tuple | ast.Set
-        ):
-            return False
-        # An empty literal is a registry meant to be filled at runtime; keep the guard.
-        if not (literal.keys if isinstance(literal, ast.Dict) else literal.elts):
-            return False
-        if any(marker in ast.unparse(literal) for marker in _DYNAMIC_MARKERS):
+        literal, unmodified = literal_shape(text, name)
+        if not literal:
             return False
         # Another module may fill it (`registry.TABLE.update(vars(plugins))`).
         if self._named_elsewhere(file_path, name):
             return False
-        for item in ast.walk(tree):
-            if isinstance(item, ast.Global | ast.Nonlocal) and name in item.names:
-                return False
-            if (
-                isinstance(item, ast.Subscript)
-                and isinstance(item.ctx, ast.Store | ast.Del)
-                and isinstance(item.value, ast.Name)
-                and item.value.id == name
-            ):
-                return False
-            if (
-                isinstance(item, ast.Attribute)
-                and isinstance(item.value, ast.Name)
-                and item.value.id == name
-                and item.attr in _MUTATORS
-            ):
-                return False
-            if (
-                isinstance(item, ast.Name)
-                and item.id == name
-                and isinstance(item.ctx, ast.Store | ast.Del)
-            ):
-                if item is not _first_target(tree, name):
-                    return False
-        return True
+        return unmodified
 
     def _named_elsewhere(self, file_path: str, name: str) -> bool:
         """Another indexed source file contains ``name`` as a word; unreadable counts as yes."""

@@ -47,6 +47,9 @@ _SOURCES = {
         "        return assist()\n\n\n"
         "def build():\n"
         "    return Router().route('used')\n\n\n"
+        "HANDLERS = {'a': build}\n\n\n"
+        "def dispatch(name):\n"
+        "    return HANDLERS[name]()\n\n\n"
         "build()\n"
     ),
 }
@@ -57,8 +60,11 @@ _QUERIES = [
     ("Router.route", "router.py"),
     ("build", "router.py"),
     ("used", "router.py"),
+    ("dispatch", "router.py"),
 ]
-_REBIND = "\n\nfunctools = None\n"
+#: Rebinds the imported producer and mutates the literal dispatch table: both
+#: external-producer verdicts change, and they read the source live.
+_REBIND = "\n\nfunctools = None\nHANDLERS['b'] = build\n"
 
 
 @pytest.fixture(autouse=True)
@@ -311,6 +317,9 @@ async def test_an_edit_without_a_refresh_gives_todays_answer(
     today = await _sequence(project, "off", monkeypatch)
     resident = await _sequence(project, "background", monkeypatch)
     assert resident == today
+    # The edit changed answers (the verdicts were re-derived from the new text).
+    changed = [q for q, a, b in zip(_QUERIES, *resident, strict=True) if a != b]
+    assert ("dispatch", "router.py") in changed
 
 
 @pytest.mark.asyncio
