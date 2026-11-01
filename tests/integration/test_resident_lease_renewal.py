@@ -98,7 +98,7 @@ async def test_a_renewed_lease_serves_the_query_after_idle(
     renewals = loader.status(str(project))["renewals"]
     after_idle = _stable(await tool.execute(_args(*_QUERIES[1])))
     assert captures.by_requests() == 0  # no request ever captured
-    assert renewals >= 1
+    assert renewals >= 1  # ratchet: nondeterministic timer count
     # Every renewal is a capture: reusing the still-valid lease would not
     # extend it, and it would lapse at the TTL anyway.
     assert captures.by_loader() >= 1 + renewals

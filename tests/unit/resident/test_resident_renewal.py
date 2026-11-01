@@ -80,10 +80,12 @@ def test_the_lease_is_renewed_before_the_ttl_while_active(
     _install(monkeypatch, renewals)
     assert loader.start(str(tmp_path)) is True
     assert loader.wait(str(tmp_path), timeout=5)  # the load, not the renewal loop
-    assert _until(lambda: renewals.count() >= 3)
+    assert _until(
+        lambda: renewals.count() >= 3
+    )  # ratchet: nondeterministic timer count
     status = loader.status(str(tmp_path))
     assert status["state"] == "ready"
-    assert status["renewals"] >= 3
+    assert status["renewals"] >= 3  # ratchet: nondeterministic timer count
     assert status["renewal"] == "renewed"
 
 
@@ -139,7 +141,9 @@ def test_a_failing_renewal_is_reported_and_retried(
     renewals = _Renewals(fail=True)
     _install(monkeypatch, renewals)
     assert loader.start(str(tmp_path)) is True
-    assert _until(lambda: renewals.count() >= 2)
+    assert _until(
+        lambda: renewals.count() >= 2
+    )  # ratchet: nondeterministic timer count
     assert loader.status(str(tmp_path))["renewal"] == "failed:OSError"
 
 
