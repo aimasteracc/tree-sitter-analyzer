@@ -25,14 +25,12 @@ from mcp.server.lowlevel import Server  # noqa: E402
 from tree_sitter_analyzer.mcp import server as server_module  # noqa: E402
 from tree_sitter_analyzer.mcp._sdk_compat import MCP2ServerAdapter  # noqa: E402
 from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer  # noqa: E402
-from tree_sitter_analyzer.mcp.server_utils import input_validation  # noqa: E402
-from tree_sitter_analyzer.mcp.server_utils.input_validation import (  # noqa: E402
+from tree_sitter_analyzer.mcp.server_utils import tool_registration  # noqa: E402
+from tree_sitter_analyzer.mcp.server_utils.tool_registration import (  # noqa: E402  # noqa: E402
+    _SET_PROJECT_PATH_TOOL,
     InputValidationError,
     ToolInputValidator,
     call_tool_registration,
-)
-from tree_sitter_analyzer.mcp.server_utils.tool_registration import (  # noqa: E402
-    _SET_PROJECT_PATH_TOOL,
 )
 from tree_sitter_analyzer.resident import loader  # noqa: E402
 
@@ -93,7 +91,7 @@ def _ours(
 
 @pytest.mark.parametrize("schema", [_SCHEMA, _SET_PROJECT_PATH_TOOL["inputSchema"]])
 def test_validation_answers_like_the_sdk(schema: dict[str, Any]) -> None:
-    validator = ToolInputValidator({"t": _Tool(schema)})
+    validator = ToolInputValidator(lambda: {"t": _Tool(schema)})
     extra = [
         {"project_path": "/x"},
         {"project_path": 3},
@@ -110,7 +108,7 @@ def test_the_nav_facade_schema_answers_like_the_sdk(tmp_path: Path) -> None:
     schema = build_facade("nav", str(tmp_path), None).get_tool_definition()[
         "inputSchema"
     ]
-    validator = ToolInputValidator({"nav": _Tool(schema)})
+    validator = ToolInputValidator(lambda: {"nav": _Tool(schema)})
     cases = [
         {"action": "callers", "function_name": "f", "file_path": "a.py"},
         {
@@ -142,7 +140,7 @@ def test_the_schema_is_checked_once_per_schema_object(
     monkeypatch.setattr(cls, "check_schema", staticmethod(counting))
     tool = _Tool(copy.deepcopy(_SCHEMA))
     cache = {"t": tool}
-    validator = ToolInputValidator(cache)
+    validator = ToolInputValidator(lambda: cache)
     for arguments in _ARGUMENTS:
         _ours(validator, "t", arguments)
     assert len(checks) == 1
@@ -154,7 +152,7 @@ def test_the_schema_is_checked_once_per_schema_object(
 
 def test_a_broken_schema_raises_the_sdk_error_every_time() -> None:
     schema = {"type": "object", "properties": {"a": {"type": 12}}}
-    validator = ToolInputValidator({"t": _Tool(schema)})
+    validator = ToolInputValidator(lambda: {"t": _Tool(schema)})
     with pytest.raises(jsonschema.SchemaError) as sdk:
         jsonschema.validate(instance={}, schema=schema)
     for _ in range(2):  # a failed check is never kept
@@ -165,7 +163,7 @@ def test_a_broken_schema_raises_the_sdk_error_every_time() -> None:
 
 
 def test_an_unlisted_tool_is_not_validated() -> None:
-    validator = ToolInputValidator({})
+    validator = ToolInputValidator(lambda: {})
     validator.validate("missing", {"anything": object()})
     validator.prepare("missing")
 
@@ -173,9 +171,9 @@ def test_an_unlisted_tool_is_not_validated() -> None:
 def test_validator_bound_clears_instead_of_growing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(input_validation, "MAX_VALIDATORS", 2)
+    monkeypatch.setattr(tool_registration, "MAX_VALIDATORS", 2)
     cache: dict[str, Any] = {}
-    validator = ToolInputValidator(cache)
+    validator = ToolInputValidator(lambda: cache)
     for index in range(5):
         cache[f"t{index}"] = _Tool(copy.deepcopy(_SCHEMA))
         validator.validate(f"t{index}", _ARGUMENTS[0])
