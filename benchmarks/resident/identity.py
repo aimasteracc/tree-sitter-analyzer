@@ -3,7 +3,7 @@
 Usage::
 
     python benchmarks/resident/identity.py --repo PATH --rows FILE [--rows FILE ...]
-        [--passes off,on,off] [--settle 10] [--env KEY=VALUE ...] [--out out.json]
+        [--passes off,on,off] [--settle 10] [--repeat 1] [--env KEY=VALUE ...] [--out out.json]
 
 ``--rows`` are stored dogfood answer files. The ``nav callers`` question of
 every row is replayed; the stored payloads are not compared (they come from
@@ -128,9 +128,12 @@ def run_pass(
         client.request("tools/list", {})
         if mode != "off" and args.settle:
             time.sleep(args.settle)
-        for question in questions:
-            _seconds, _size, payload = client.call("nav", question)
-            answers[json.dumps(question, sort_keys=True)] = strip(payload)
+        # ``--repeat`` asks the whole list again in the same server; the last
+        # round is kept, so with the switch on it is answered from warm state.
+        for _round in range(max(1, args.repeat)):
+            for question in questions:
+                _seconds, _size, payload = client.call("nav", question)
+                answers[json.dumps(question, sort_keys=True)] = strip(payload)
     finally:
         client.close()
     return {"mode": mode, "answers": answers, "suspended": clock.suspended()}
@@ -160,6 +163,7 @@ def main() -> None:
     parser.add_argument("--rows", action="append", required=True)
     parser.add_argument("--passes", default="off,on,off")
     parser.add_argument("--settle", type=float, default=10.0)
+    parser.add_argument("--repeat", type=int, default=1, help="rounds per pass")
     parser.add_argument("--env", action="append", default=[], metavar="KEY=VALUE")
     parser.add_argument("--stderr", default=None)
     parser.add_argument("--out")
@@ -186,6 +190,7 @@ def main() -> None:
         "rows_read": rows_read,
         "questions": len(questions),
         "passes": [p["mode"] for p in passes],
+        "repeat": args.repeat,
         "suspended": any(p["suspended"] for p in passes),
         "completeness": completeness,
         "comparisons": [
