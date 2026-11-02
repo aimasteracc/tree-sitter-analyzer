@@ -15,6 +15,7 @@ from .error_recovery import (
     ensure_canonical_error_envelope,
     ensure_canonical_success_envelope,
 )
+from .input_validation import call_tool_registration
 
 logger = setup_logger(__name__)
 
@@ -53,8 +54,16 @@ def register_tools(server: Any, server_instance: Any) -> None:
         logger.info(f"Returning {len(tools)} tools: {[t.name for t in tools]}")
         return tools
 
-    @server.call_tool()  # type: ignore[untyped-decorator]
+    # #1855: the SDK's per-call schema check runs once per schema here instead.
+    call_tool, input_validator = call_tool_registration(server)
+    server_instance.input_validator = input_validator
+
+    @call_tool  # type: ignore[untyped-decorator]
     async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
+        if input_validator is not None:
+            # Before anything else, as the SDK did; the SDK answers the raised
+            # error with the same error result as its own validation.
+            input_validator.validate(name, arguments)
         _start_resident(server_instance)
         try:
             server_instance.ensure_initialized()

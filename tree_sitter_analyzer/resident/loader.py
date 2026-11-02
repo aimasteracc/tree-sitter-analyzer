@@ -158,8 +158,23 @@ def enable() -> None:
         _closed = False
 
 
+#: ``project_root`` as given -> :func:`_key`. Every request calls ``touch`` and
+#: ``start``; two ``realpath`` calls cost about 1–2 ms per request on Windows
+#: (#1855). The key only names the root's loader bookkeeping (thread, status,
+#: activity, capture); the load itself always runs on ``project_root``.
+_keys: dict[str, str] = {}
+#: Bound of :data:`_keys` (a server has one root, rarely a few).
+_MAX_KEYS = 64
+
+
 def _key(project_root: str) -> str:
-    return os.path.normcase(os.path.realpath(project_root))
+    key = _keys.get(project_root)
+    if key is None:
+        key = os.path.normcase(os.path.realpath(project_root))
+        if len(_keys) >= _MAX_KEYS:
+            _keys.clear()
+        _keys[project_root] = key
+    return key
 
 
 def touch(project_root: str | None) -> None:
@@ -528,3 +543,4 @@ def reset() -> None:
         _status.clear()
         _capturing.clear()
         _activity.clear()
+        _keys.clear()
