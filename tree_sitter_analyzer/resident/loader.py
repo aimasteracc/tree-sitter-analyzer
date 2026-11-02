@@ -38,8 +38,9 @@ first request validates it with two ``lstat`` calls instead of probing.
 
 Switch ``TSA_RESIDENT``: ``background`` (default) loads after start;
 ``first-use`` keeps today's lazy loading but uses the resident handle (P2a),
-built by the first request; ``off`` is the kill switch: no load, no handle,
-today's path everywhere. Only processes that call :func:`enable` (the MCP
+built by the first request, and the per-snapshot memo of the edge-layer
+readers (P2b, :mod:`.snapshot_memo`); ``off`` is the kill switch: no load, no
+handle, no memo, today's path everywhere. Only processes that call :func:`enable` (the MCP
 server) ever load: one-shot CLI runs and embedders keep ``first-use``.
 """
 
@@ -81,6 +82,7 @@ _DEPENDENCIES: tuple[str, ...] = (
     "tree_sitter_analyzer.mcp.tools.certification_timeouts",
     "tree_sitter_analyzer.index_snapshot",
     "tree_sitter_analyzer.index_snapshot_query",
+    "tree_sitter_analyzer.resident.snapshot_memo",
     "tree_sitter_analyzer.ast_cache",
     "tree_sitter_analyzer.call_graph",
     "tree_sitter_analyzer.call_graph_warm",

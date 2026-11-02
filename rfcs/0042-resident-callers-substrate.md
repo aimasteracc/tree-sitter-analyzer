@@ -656,7 +656,7 @@ They must fail on a naive "global dict keyed by root" implementation.
   - P1b PR: MCP ABBA medians after 40 s idle, off → on: rich 342 → 56 ms (warm after idle 48 ms),
     hono 884 → 147 ms (162 ms). A renewal keeps the same snapshot ID when nothing changed. V1 on
     vs off is 0 differing rows on rich, hono and zod (601 rows).
-- [ ] P2a/P2b: V1 0 diffs; V2 shows the expected drop; V4 0 wrong `complete`
+- [x] P2a/P2b: V1 0 diffs; V2 shows the expected drop; V4 0 wrong `complete`
   - P2a PR (#1870): one `ResidentHandle` per root, kept only for a sealed published generation
     (plain file, no write bit). A request validates it with two `lstat` calls (selector and
     database stamps) and reads the index location, the live-index probe, the cost tier and the
@@ -669,6 +669,35 @@ They must fail on a naive "global dict keyed by root" implementation.
     review-gated median 97.5–104.6 ms against 86.2–87.7 ms without it. V2 in-process warm ABBA
     medians, off → on: rich edge-only 52.1 → 26.6 ms, review-gated 114.6 → 91.1 ms; hono
     edge-only 236 → 214 ms, review-gated 304 → 272 ms. V1: see the PR (0 differing questions).
+  - P2b PR (#1871, stacked on #1870): `resident/snapshot_memo.py` memoizes the §3.2 readers by
+    the certified snapshot key (`graph_input_identity`): `has_call_edges`, the declaring-file
+    classified sites (unresolved and excluded), `unresolved_caller_sites` /
+    `count_unresolved_callers`, `symbol_definitions`, `symbol_declaring_files`,
+    `query_callers` (the unattributed check), `call_edge_lines`, and the index facts of the
+    external-producer check (languages, import rows, Python paths, indexed paths). A hit returns
+    a deep copy; `None`, exceptions and reads that end past the owner's deadline are not stored
+    (some readers turn a deadline interrupt into `[]`). A new snapshot of a root drops the old
+    memo; at most 4 snapshots and 8,192 entries each (measured 1.7 KB per entry on rich).
+    **Correction to the §3.2 table:** the `external_producer_verdicts` row cannot be keyed by
+    the snapshot, because the verdict reads the declaring file's source (`_literal_container`,
+    `_rebound`, `_named_elsewhere`). Only its index inputs are snapshot-memoized; its parse of
+    the declaring file is reused only for byte-identical text (keyed by the text's digest),
+    and the text is read on every request. The request-scoped stamp memo for the review gates
+    was not added (see P2a: the scope machinery is slower for one name). V2 in-process warm
+    ABBA medians, off → on, P2a + P2b: rich edge-only 52.3 → 11.2 ms, review-gated
+    113.3 → 77.8 ms; hono edge-only 177 → 8.1 ms, review-gated 222 → 64.8 ms. These timed
+    rounds repeat questions; a first touch of a new target gains less (rich edge-only
+    33 → 7.4 ms, review-gated 100 → 77 ms; hono 179 → 136 ms and 235 → 107 ms). MCP ABBA,
+    `develop` (P1b on) → P2a + P2b: warm median rich 87 → 21 ms, hono 262 → 74 ms; after 40 s
+    idle rich 97 → 28 ms, hono 354 → 123 ms. The RFC targets (edge-only 2–4 ms, review-gated
+    15–25 ms) are **not met**: what remains on an edge-only answer is the MCP layer
+    (about 7–22 ms), the certified-lease enter, the rebuild-flag connection and the freshness
+    stats of the answer's files; review-gated answers are dominated by the source gates (§3.3).
+    V1 through a real MCP server (`benchmarks/resident/identity.py`, r15 rows of rich, hono,
+    zod, pydantic and fastapi: 951 rows, 901 distinct questions): 0 differing questions on vs
+    off for P2a alone and for P2a + P2b (noise off vs off 0), and 0 again when every question is
+    asked a second time in the same server (memo-warm answers); 0 new `complete`. V4 follows
+    from V1 (every answer equals `off`); `audit_complete.py` was not rerun.
 - [ ] P3: differential test green for every key; V1 0 diffs with VERIFY; V2 warm edge-only median ≤ 5 ms
 - [ ] P4: callees identity and latency gates
 - [ ] CLI↔MCP parity test green (answers identical; CLI `first-use`)

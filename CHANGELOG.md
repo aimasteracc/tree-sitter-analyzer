@@ -39,6 +39,20 @@
   request; `off` disables it. In-process warm medians, ABBA, off → on: rich
   edge-only answers 52.1 → 26.6 ms and review-gated 114.6 → 91.1 ms. Answers
   are identical with the feature on and off.
+- **`nav callers` remembers the edge-layer check reads of each certified
+  snapshot** (#1855, RFC-0042 Phase 2b). The RFC-0040 checks 1–5 read SQL from
+  the request's certified snapshot, an immutable private copy named by a
+  random ID. Their readers (declaring-file call sites, unresolved inbound sites
+  and counts, definitions, module-level sites, name-only lines, the evidence
+  base and the index facts of the external-producer check) are now memoized
+  per snapshot identity: the same functions over the same immutable input. A
+  refresh, republish or watcher sync gives the next request a new snapshot, and
+  the old memo is dropped. Source text is still read on every request; the
+  external-producer check's parse of a declaring file is reused only for
+  byte-identical text. Failed, empty-on-error and past-deadline reads are never
+  stored. With Phase 2a, MCP warm medians, ABBA, `develop` → this change: rich
+  87 → 21 ms (edge-only 79 → 19 ms), hono 262 → 74 ms (edge-only 229 → 34 ms).
+  Answers are identical with the feature on and off.
 
 - **Compact answer mode for `nav action=callers`** (#1853). Opt-in
   `format=compact` returns one line per caller (`name  file:line

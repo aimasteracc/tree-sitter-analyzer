@@ -28,6 +28,7 @@ from .cache.query import (
 )
 from .cache.search import search_symbols_cascade
 from .graph.edge_store import EdgeKind, EdgeStore
+from .resident import snapshot_memo
 
 #: #1774：已核验调用图标记成立的快照身份（有上限，先进先出）。
 _BUILT_SNAPSHOTS_MAX = 16
@@ -91,6 +92,19 @@ class CertifiedSnapshotCache:
         if not all(isinstance(part, str) and part for part in parts):
             return None
         return ("certified-snapshot", *parts)
+
+    def memo_storable(self) -> bool:
+        """RFC-0042 P2b: whether a result just read may be memoized for the snapshot.
+
+        The owner's connection interrupts queries once its deadline passes, and a
+        few readers turn that interrupt into an empty result. A result read while
+        the deadline still holds saw no interrupt, so only such a result is stored.
+        """
+        try:
+            self._owner.require_active()
+        except RuntimeError:
+            return False
+        return True
 
     def get_stats(self) -> dict[str, int]:
         row = self.get_conn().execute("SELECT COUNT(*) FROM ast_index").fetchone()
@@ -203,12 +217,30 @@ class CertifiedSnapshotCache:
         return [dict(row) for row in self.get_conn().execute(sql, params)]
 
     def has_call_edges(self) -> bool:
-        return bool(
-            EdgeStore(self.get_conn(), ensure_schema=False).has_edges(EdgeKind.CALLS)
+        # RFC-0042 P2b：以下读取都是同一不可变快照上的同一函数，按快照身份记忆。
+        return snapshot_memo.cached(
+            self,
+            "has_call_edges",
+            (),
+            lambda: bool(
+                EdgeStore(self.get_conn(), ensure_schema=False).has_edges(
+                    EdgeKind.CALLS
+                )
+            ),
         )
 
     def query_callers(
         self, callee_name: str, callee_file: str | None = None, max_depth: int = 1
+    ) -> list[dict[str, Any]]:
+        return snapshot_memo.cached(
+            self,
+            "query_callers",
+            (callee_name, callee_file, max_depth),
+            lambda: self._query_callers(callee_name, callee_file, max_depth),
+        )
+
+    def _query_callers(
+        self, callee_name: str, callee_file: str | None, max_depth: int
     ) -> list[dict[str, Any]]:
         normalized = callee_file.replace("\\", "/") if callee_file else None
         store = EdgeStore(self.get_conn(), ensure_schema=False)
@@ -253,9 +285,14 @@ class CertifiedSnapshotCache:
         file: str | None = None,
         bound_targets: Collection[tuple[str, int]] | None = None,
     ) -> int | None:
-        return cast(
-            int | None,
-            self._store().count_unresolved_callers(name, file, bound_targets),
+        return snapshot_memo.cached(
+            self,
+            "count_unresolved_callers",
+            (name, file, _targets_key(bound_targets)),
+            lambda: cast(
+                int | None,
+                self._store().count_unresolved_callers(name, file, bound_targets),
+            ),
         )
 
     def unresolved_caller_sites(
@@ -264,35 +301,70 @@ class CertifiedSnapshotCache:
         file: str | None = None,
         bound_targets: Collection[tuple[str, int]] | None = None,
     ) -> list[dict[str, object]] | None:
-        return cast(
-            list[dict[str, object]] | None,
-            self._store().unresolved_caller_sites(name, file, bound_targets),
+        return snapshot_memo.cached(
+            self,
+            "unresolved_caller_sites",
+            (name, file, _targets_key(bound_targets)),
+            lambda: cast(
+                list[dict[str, object]] | None,
+                self._store().unresolved_caller_sites(name, file, bound_targets),
+            ),
         )
 
     def symbol_definitions(self, name: str) -> list[tuple[str, int]]:
-        rows = self.get_conn().execute(
-            "SELECT file_path, line FROM ast_symbol_rows WHERE name=? "
-            "AND kind IN ('function', 'method')",
-            (name,),
-        )
-        return [(str(row[0]), int(row[1] or 0)) for row in rows if row[0]]
+        def read() -> list[tuple[str, int]]:
+            rows = self.get_conn().execute(
+                "SELECT file_path, line FROM ast_symbol_rows WHERE name=? "
+                "AND kind IN ('function', 'method')",
+                (name,),
+            )
+            return [(str(row[0]), int(row[1] or 0)) for row in rows if row[0]]
+
+        return snapshot_memo.cached(self, "symbol_definitions", (name,), read)
 
     def unresolved_call_sites_in_file(
         self, file: str
     ) -> list[dict[str, object]] | None:
-        return cast(
-            list[dict[str, object]] | None,
-            self._store().unresolved_call_sites_in_file(file),
+        return snapshot_memo.cached(
+            self,
+            "unresolved_call_sites_in_file",
+            (file,),
+            lambda: cast(
+                list[dict[str, object]] | None,
+                self._store().unresolved_call_sites_in_file(file),
+            ),
         )
 
     def excluded_call_sites_in_file(self, file: str) -> list[dict[str, object]] | None:
-        return cast(
-            list[dict[str, object]] | None,
-            self._store().excluded_call_sites_in_file(file),
+        return snapshot_memo.cached(
+            self,
+            "excluded_call_sites_in_file",
+            (file,),
+            lambda: cast(
+                list[dict[str, object]] | None,
+                self._store().excluded_call_sites_in_file(file),
+            ),
         )
 
     def symbol_declaring_files(self, name: str) -> tuple[str, ...]:
-        rows = self.get_conn().execute(
-            "SELECT DISTINCT file_path FROM ast_symbol_rows WHERE name=?", (name,)
-        )
-        return tuple(str(row[0]) for row in rows if row[0])
+        def read() -> tuple[str, ...]:
+            rows = self.get_conn().execute(
+                "SELECT DISTINCT file_path FROM ast_symbol_rows WHERE name=?", (name,)
+            )
+            return tuple(str(row[0]) for row in rows if row[0])
+
+        return snapshot_memo.cached(self, "symbol_declaring_files", (name,), read)
+
+
+def _targets_key(
+    bound_targets: Collection[tuple[str, int]] | None,
+) -> frozenset[tuple[str, int]] | None:
+    """Memo key of the bound targets: membership is all the readers use."""
+    if bound_targets is None:
+        return None
+    try:
+        return frozenset(bound_targets)
+    except (
+        TypeError
+    ):  # unhashable members: ``cached`` cannot hash it and reads directly
+        return tuple(bound_targets)  # type: ignore[return-value]

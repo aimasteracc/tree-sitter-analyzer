@@ -107,6 +107,8 @@ _QUERIES = [
 async def test_one_direct_inbound_read_per_target_per_request(
     project: Path, monkeypatch: pytest.MonkeyPatch, name: str, file_path: str
 ) -> None:
+    # Today's path (RFC-0042 off): every request reads, each target once.
+    monkeypatch.setenv("TSA_RESIDENT", "off")
     tool = CodeGraphCallersTool(str(project))
     await tool.execute(_args(name, file_path))  # warm: graph, snapshot
     reads = _count_reads(monkeypatch)
@@ -115,6 +117,24 @@ async def test_one_direct_inbound_read_per_target_per_request(
 
     assert reads, "the query must read the direct inbound edges"
     assert len(reads) == len(set(reads)), f"a target was read twice: {reads}"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name, file_path", _QUERIES)
+async def test_a_repeat_on_the_same_snapshot_reads_nothing_again(
+    project: Path, monkeypatch: pytest.MonkeyPatch, name: str, file_path: str
+) -> None:
+    """RFC-0042 P2b: the reads are memoized per certified snapshot."""
+    monkeypatch.delenv("TSA_RESIDENT", raising=False)
+    tool = CodeGraphCallersTool(str(project))
+    first = await tool.execute(_args(name, file_path))
+    reads = _count_reads(monkeypatch)
+
+    again = await tool.execute(_args(name, file_path))
+
+    assert reads == []
+    assert again["callers"] == first["callers"]
+    assert again["completeness"] == first["completeness"]
 
 
 @pytest.mark.asyncio
