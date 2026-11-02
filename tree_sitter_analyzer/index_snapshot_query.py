@@ -6,8 +6,8 @@ import json
 import sqlite3
 import threading
 from collections import OrderedDict
-from collections.abc import Collection
-from typing import Any, cast
+from collections.abc import Callable, Collection
+from typing import Any, TypeVar, cast
 
 from ._recorded_source_rows import finishing_rows
 from .cache.callgraph_state import call_graph_built as _call_graph_built
@@ -28,7 +28,10 @@ from .cache.query import (
 )
 from .cache.search import search_symbols_cascade
 from .graph.edge_store import EdgeKind, EdgeStore
+from .graph.read_interrupt import ReadInterrupted
 from .resident import snapshot_memo
+
+T = TypeVar("T")
 
 #: #1774：已核验调用图标记成立的快照身份（有上限，先进先出）。
 _BUILT_SNAPSHOTS_MAX = 16
@@ -96,9 +99,11 @@ class CertifiedSnapshotCache:
     def memo_storable(self) -> bool:
         """RFC-0042 P2b: whether a result just read may be memoized for the snapshot.
 
-        The owner's connection interrupts queries once its deadline passes, and a
-        few readers turn that interrupt into an empty result. A result read while
-        the deadline still holds saw no interrupt, so only such a result is stored.
+        The owner's connection interrupts queries once its deadline passes. Since
+        #1873 no edge-layer reader turns that interrupt into an empty result (it
+        propagates as ``ReadInterrupted``, or is ``None``); this check stays as
+        defense in depth: a result read while the deadline still holds saw no
+        interrupt, so only such a result is stored.
         """
         try:
             self._owner.require_active()
@@ -289,9 +294,11 @@ class CertifiedSnapshotCache:
             self,
             "count_unresolved_callers",
             (name, file, _targets_key(bound_targets)),
-            lambda: cast(
-                int | None,
-                self._store().count_unresolved_callers(name, file, bound_targets),
+            lambda: _not_read_is_none(
+                lambda: cast(
+                    int | None,
+                    self._store().count_unresolved_callers(name, file, bound_targets),
+                )
             ),
         )
 
@@ -305,9 +312,11 @@ class CertifiedSnapshotCache:
             self,
             "unresolved_caller_sites",
             (name, file, _targets_key(bound_targets)),
-            lambda: cast(
-                list[dict[str, object]] | None,
-                self._store().unresolved_caller_sites(name, file, bound_targets),
+            lambda: _not_read_is_none(
+                lambda: cast(
+                    list[dict[str, object]] | None,
+                    self._store().unresolved_caller_sites(name, file, bound_targets),
+                )
             ),
         )
 
@@ -354,6 +363,19 @@ class CertifiedSnapshotCache:
             return tuple(str(row[0]) for row in rows if row[0])
 
         return snapshot_memo.cached(self, "symbol_declaring_files", (name,), read)
+
+
+def _not_read_is_none(read: Callable[[], T]) -> T | None:
+    """#1873: an interrupted read of an ``X | None`` reader is ``None`` ("not read").
+
+    ``None`` is the readers' "could not be read": the RFC-0040 check records it
+    as ``not_checked`` (never 0), and the snapshot memo never stores it. Any
+    other SQL error still propagates (strict), as before.
+    """
+    try:
+        return read()
+    except ReadInterrupted:
+        return None
 
 
 def _targets_key(

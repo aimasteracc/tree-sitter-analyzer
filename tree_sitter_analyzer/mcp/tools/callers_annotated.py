@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...graph.read_interrupt import raise_if_interrupted
+
 #: (definition file, definition line).
 Coordinate = tuple[str, int]
 
@@ -40,7 +42,9 @@ def name_bound_targets(
         return frozenset()
     try:
         found = reader(func_name) or []
-    except Exception:  # nosec B110 — unreadable: annotated edges stay unresolved.
+    except Exception as exc:  # nosec B110 — unreadable: annotated edges stay unresolved.
+        # #1873: an interrupted read is "not read", never turned into a value.
+        raise_if_interrupted(exc)
         return frozenset()
     normalized = file_path.replace("\\", "/") if file_path else None
     return frozenset(

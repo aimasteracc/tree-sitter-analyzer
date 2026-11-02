@@ -17,6 +17,8 @@ import json
 import sqlite3
 from typing import Any
 
+from .read_interrupt import raise_if_interrupted
+
 #: ``ast_imports`` 中把 ``name`` 改名导入的行（星号导入与模块别名除外）。
 _ALIAS_IMPORTS_SQL = (
     "SELECT DISTINCT file_path, local_name FROM ast_imports "
@@ -35,7 +37,10 @@ def alias_call_rows(conn: sqlite3.Connection, callee_name: str) -> list[sqlite3.
         return []
     try:
         local_names = _alias_local_names(conn, callee_name)
-    except sqlite3.OperationalError:
+    except sqlite3.OperationalError as exc:
+        # #1873: a damaged index (no ``ast_imports``) has no alias rows; an
+        # interrupted read was not read, and must not look like that.
+        raise_if_interrupted(exc)
         return []
     rows: list[sqlite3.Row] = []
     for local_name in local_names:
@@ -207,7 +212,8 @@ def _es_alias_rows(conn: sqlite3.Connection, callee_name: str) -> list[sqlite3.R
                 (callee_name, f'"name": "{callee_name}"'),
             ).fetchall()
         rows = _es_alias_buckets(conn).get(callee_name, [])
-    except sqlite3.OperationalError:
+    except sqlite3.OperationalError as exc:
+        raise_if_interrupted(exc)  # #1873: not read is not ``[]``.
         return []
     # 与逐名查询的 ``i.local_name <> ?`` 条件一致：原样导入的同名不算改名。
     return [row for row in rows if row["callee_name"] != callee_name]
