@@ -183,3 +183,65 @@ def test_racing_readers_agree() -> None:
     assert errors == []
     assert len(results) == 800
     assert all(result in ([0], [1], [2], [3], [4]) for result in results)
+
+
+# --------------------------------------------------------------------------- #
+# P3-lite: whole-snapshot tables
+# --------------------------------------------------------------------------- #
+
+
+def test_a_table_is_computed_once_and_shared() -> None:
+    from types import MappingProxyType
+
+    cache = _Snap()
+    calls, compute = _counting(MappingProxyType({"f": (1, 2)}))
+    first = snapshot_memo.cached_table(cache, "t", compute)
+    assert snapshot_memo.cached_table(cache, "t", compute) is first
+    assert calls == [1]
+    # Another snapshot of the same root never sees it.
+    other = _Snap(snapshot="s2")
+    snapshot_memo.cached_table(other, "t", compute)
+    assert calls == [1, 1]
+
+
+def test_a_table_is_stored_past_the_entry_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(snapshot_memo, "MAX_ENTRIES", 2)
+    cache = _Snap()
+    for index in range(5):
+        snapshot_memo.cached(cache, "r", (index,), lambda i=index: [i])
+    calls, compute = _counting(("row",))
+    snapshot_memo.cached_table(cache, "t", compute)
+    snapshot_memo.cached_table(cache, "t", compute)
+    assert calls == [1]
+
+
+def test_a_table_read_in_doubt_or_off_is_not_kept(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = _Snap()
+    cache.storable = False
+    calls, compute = _counting(("row",))
+    snapshot_memo.cached_table(cache, "t", compute)
+    snapshot_memo.cached_table(cache, "t", compute)
+    assert calls == [1, 1]
+    cache.storable = True
+    monkeypatch.setenv(loader.ENV_VAR, "off")
+    snapshot_memo.cached_table(cache, "t", compute)
+    snapshot_memo.cached_table(cache, "t", compute)
+    assert calls == [1, 1, 1, 1]
+    assert snapshot_memo.stats()["entries"] == 0
+
+
+def test_a_failed_table_build_is_not_kept() -> None:
+    cache = _Snap()
+
+    def fail() -> Any:
+        raise RuntimeError("interrupted")
+
+    with pytest.raises(RuntimeError):
+        snapshot_memo.cached_table(cache, "t", fail)
+    calls, compute = _counting(("row",))
+    assert snapshot_memo.cached_table(cache, "t", compute) == ("row",)
+    assert calls == [1]

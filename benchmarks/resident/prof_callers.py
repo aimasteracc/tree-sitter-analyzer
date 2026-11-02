@@ -2,14 +2,16 @@
 
 Usage::
 
-    python benchmarks/resident/prof_callers.py --repo PATH --mode first|warm
+    python benchmarks/resident/prof_callers.py --repo PATH --mode first|warm|first-touch
         [--sample sample.json] [--targets 40] [--rounds 2] [--bodies] [--out out.json]
 
 Each pipeline stage is wrapped with a timer. A stage's time **excludes** the
 time of the wrapped stages it calls, so the buckets add up to the total; the
 rest is reported as ``unwrapped_ms_per_query``. ``first`` times one query of a
 fresh process; ``warm`` runs one untimed round over every target (qualified
-and bare form), then ``--rounds`` timed rounds.
+and bare form), then ``--rounds`` timed rounds; ``first-touch`` runs one
+untimed query (lease and graph), then asks every target once (qualified, then
+bare when it differs): the first touch of a new target on a warm server.
 
 Answers are classified per query: ``review`` when the RFC-0040 review gates
 ran (``_reference_scan`` was called), else ``edge_only``. Set ``PROF=1`` to
@@ -236,9 +238,15 @@ async def run(args: argparse.Namespace, import_s: float) -> dict[str, Any]:
         rec["n_queries"] = 1
         rec["completeness"] = answer.get("completeness")
     else:
-        for qual, bare, file in targets:  # warm-up round, not timed
-            for name in (qual, bare):
-                await ask(name, file)
+        if args.mode == "first-touch":
+            # One untimed query takes the lease and builds the graph; every target
+            # is then asked once, so no answer comes from a memo of a prior ask.
+            await ask("__warm_up__", targets[0][2])
+            args.rounds = 1
+        else:
+            for qual, bare, file in targets:  # warm-up round, not timed
+                for name in (qual, bare):
+                    await ask(name, file)
         EXCL.clear()
         CALLS.clear()
         _stat_count["n"] = 0
@@ -249,7 +257,10 @@ async def run(args: argparse.Namespace, import_s: float) -> dict[str, Any]:
         prof.enable()
         for _ in range(args.rounds):
             for qual, bare, file in targets:
-                for name in (qual, bare):
+                forms = (qual, bare)
+                if args.mode == "first-touch":
+                    forms = tuple(dict.fromkeys(forms))
+                for name in forms:
                     scans = CALLS.get("G.review._reference_scan", 0)
                     t0 = time.perf_counter()
                     answer = await ask(name, file)
@@ -297,7 +308,9 @@ async def run(args: argparse.Namespace, import_s: float) -> dict[str, Any]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--repo", required=True)
-    parser.add_argument("--mode", choices=("first", "warm"), required=True)
+    parser.add_argument(
+        "--mode", choices=("first", "warm", "first-touch"), required=True
+    )
     parser.add_argument("--sample", help="targets JSON; default: picked from the index")
     parser.add_argument("--targets", type=int, default=40)
     parser.add_argument("--rounds", type=int, default=2)

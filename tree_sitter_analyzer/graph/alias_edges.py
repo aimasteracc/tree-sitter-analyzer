@@ -15,8 +15,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import Any
 
+from . import snapshot_tables
 from .read_interrupt import raise_if_interrupted
 
 #: ``ast_imports`` 中把 ``name`` 改名导入的行（星号导入与模块别名除外）。
@@ -80,20 +83,39 @@ def _alias_local_names(conn: sqlite3.Connection, callee_name: str) -> list[str]:
     """
     from ..query_scope import in_scope
 
+    # RFC-0042 P3-lite: on a certified snapshot the same buckets are built once
+    # per snapshot (the set equality above makes them per-name exact).
+    table = snapshot_tables.table(conn, "alias_import_buckets", lambda: _frozen(conn))
+    if table is not None:
+        return list(table.get(callee_name, ()))
     if not in_scope():
         imports = conn.execute(_ALIAS_IMPORTS_SQL, (callee_name, callee_name))
         return sorted({str(local_name) for _file, local_name in imports})
     return _alias_import_buckets(conn).get(callee_name, [])
 
 
+def _compute_alias_import_buckets(conn: sqlite3.Connection) -> dict[str, list[str]]:
+    buckets: dict[str, set[str]] = {}
+    for alias_of, local_name in conn.execute(_ALIAS_IMPORTS_ALL_SQL):
+        buckets.setdefault(str(alias_of), set()).add(str(local_name))
+    return {name: sorted(locals_) for name, locals_ in buckets.items()}
+
+
+def _frozen(conn: sqlite3.Connection) -> Mapping[str, tuple[str, ...]]:
+    """The alias-import buckets as an immutable table (shared by every request)."""
+    return MappingProxyType(
+        {
+            name: tuple(locals_)
+            for name, locals_ in _compute_alias_import_buckets(conn).items()
+        }
+    )
+
+
 def _alias_import_buckets(conn: sqlite3.Connection) -> dict[str, list[str]]:
     from ..query_scope import scoped
 
     def compute() -> dict[str, list[str]]:
-        buckets: dict[str, set[str]] = {}
-        for alias_of, local_name in conn.execute(_ALIAS_IMPORTS_ALL_SQL):
-            buckets.setdefault(str(alias_of), set()).add(str(local_name))
-        return {name: sorted(locals_) for name, locals_ in buckets.items()}
+        return _compute_alias_import_buckets(conn)
 
     databases = _database_identity(conn)
     if databases is None:  # in-memory database: no file identity
@@ -183,17 +205,23 @@ def _es_sql(conn: sqlite3.Connection, tail: str) -> str:
     return "SELECT e.* " + _ES_FROM[_es_join(conn)] + _ES_WHERE + tail
 
 
+def _compute_es_alias_buckets(
+    conn: sqlite3.Connection,
+) -> dict[str, list[sqlite3.Row]]:
+    buckets: dict[str, list[sqlite3.Row]] = {}
+    for row in conn.execute(_es_sql(conn, _ES_ALL_FILTER)):
+        alias = _row_alias(row)
+        name = alias.get("name") if alias else None
+        if isinstance(name, str):
+            buckets.setdefault(name, []).append(row)
+    return buckets
+
+
 def _es_alias_buckets(conn: sqlite3.Connection) -> dict[str, list[sqlite3.Row]]:
     from ..query_scope import scoped
 
     def compute() -> dict[str, list[sqlite3.Row]]:
-        buckets: dict[str, list[sqlite3.Row]] = {}
-        for row in conn.execute(_es_sql(conn, _ES_ALL_FILTER)):
-            alias = _row_alias(row)
-            name = alias.get("name") if alias else None
-            if isinstance(name, str):
-                buckets.setdefault(name, []).append(row)
-        return buckets
+        return _compute_es_alias_buckets(conn)
 
     databases = _database_identity(conn)
     if databases is None:  # in-memory database: no file identity
@@ -201,10 +229,63 @@ def _es_alias_buckets(conn: sqlite3.Connection) -> dict[str, list[sqlite3.Row]]:
     return scoped(("es_alias_buckets", databases), compute)
 
 
+def _es_alias_table(conn: sqlite3.Connection) -> Mapping[str, tuple[sqlite3.Row, ...]]:
+    """RFC-0042 P3-lite: the ES alias buckets as an immutable per-snapshot table."""
+    return MappingProxyType(
+        {name: tuple(rows) for name, rows in _compute_es_alias_buckets(conn).items()}
+    )
+
+
+def _es_alias_rows_from_table(
+    table: Mapping[str, tuple[sqlite3.Row, ...]],
+    callee_name: str,
+    *,
+    per_name: bool,
+) -> list[sqlite3.Row]:
+    """The rows :func:`alias_call_rows` keeps from the path it replaces, from the table.
+
+    The table holds every ES join row with an ``import_alias``, bucketed by
+    that name, in ``e.id`` order: exactly the query scope's buckets
+    (:func:`_es_alias_buckets`), so inside a scope its rows are the bucket
+    minus ``local_name = <name>``, as there. Outside a scope the per-name query
+    (``_ES_ONE_FILTER``) decided: ``instr(metadata, '"name": "<name>"')`` and
+    ``local_name <> <name>``, after which :func:`alias_call_rows` keeps a row
+    only when its ``import_alias.name`` is the name. Applying the per-name
+    query's own two conditions to the bucket gives exactly the rows the
+    per-name path keeps, in the same order, also for a name whose JSON escape
+    differs from its text (differential test:
+    ``tests/integration/test_snapshot_tables_p3_lite.py``).
+    """
+    rows = [
+        row for row in table.get(callee_name, ()) if row["callee_name"] != callee_name
+    ]
+    if not per_name:
+        return rows
+    pattern = f'"name": "{callee_name}"'
+    return [
+        row
+        for row in rows
+        if isinstance(row["metadata"], str) and pattern in row["metadata"]
+    ]
+
+
+def prefill(conn: sqlite3.Connection) -> None:
+    """Build this module's per-snapshot tables now (the resident loader; no-op unbound)."""
+    snapshot_tables.table(conn, "alias_import_buckets", lambda: _frozen(conn))
+    snapshot_tables.table(conn, "es_alias_buckets", lambda: _es_alias_table(conn))
+
+
 def _es_alias_rows(conn: sqlite3.Connection, callee_name: str) -> list[sqlite3.Row]:
     from ..query_scope import in_scope
 
     try:
+        table = snapshot_tables.table(
+            conn, "es_alias_buckets", lambda: _es_alias_table(conn)
+        )
+        if table is not None:
+            return _es_alias_rows_from_table(
+                table, callee_name, per_name=not in_scope()
+            )
         # 作用域内从第一个名字起就分桶（一次连接查询服务查询中的全部名字）。
         if not in_scope():
             return conn.execute(

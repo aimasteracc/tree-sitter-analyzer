@@ -17,6 +17,8 @@
   - `tree_sitter_analyzer/mcp/tools/index_rebuild_signal.py`, `cache/query_cost.py`,
     `cache/generation_routing.py` (per-request probes become one handle check)
   - `tests/unit/resident/`, `tests/integration/test_resident_identity.py`
+  - P3-lite: `tree_sitter_analyzer/graph/es_import_sites.py`, `graph/alias_edges.py`,
+    new `graph/snapshot_tables.py`, `index_snapshot_query.py`, `resident/snapshot_memo.py`
   - Not touched: the compact callers output of #1853 (`nav` answer shaping) — this RFC only changes
     how the same answer is computed.
 
@@ -699,6 +701,28 @@ They must fail on a naive "global dict keyed by root" implementation.
     asked a second time in the same server (memo-warm answers); 0 new `complete`. V4 follows
     from V1 (every answer equals `off`); `audit_complete.py` was not rerun.
 - [ ] P3: differential test green for every key; V1 0 diffs with VERIFY; V2 warm edge-only median ≤ 5 ms
+  - P3-lite PR (narrowed scope, owner-approved instead of the eager substrate): the
+    first touch of a new TypeScript/JavaScript target. Profiling put most of it in
+    two readers that the P2b memo cannot help on a new name: the renamed-import
+    bindings of `es_import_sites` (a plan driven from every non-star import row,
+    about 50 ms per call on hono) and the ES alias rows of `alias_edges` (a scan of
+    every call edge's metadata per name, about 30 ms on hono and 100 ms on zod; the
+    BFS of `query_callers` was slow only because it reads them). Changes: a new
+    plan for the bindings query (`CROSS JOIN` from `idx_edges_resolved`,
+    `+i.is_star`; `GROUP BY` with `ORDER BY MIN(i.rowid)` reproduces the old plan's
+    order, 0.1 ms); and whole-snapshot tables (ES alias rows, alias-import buckets,
+    import statements per importing file) kept in the snapshot memo by the
+    certified snapshot key (`snapshot_memo.cached_table`), bound only to the
+    snapshot adapter's own connection (`graph/snapshot_tables.py`) and prefilled by
+    the loader on its lease. Each name's rows come from the tables under the
+    per-name query's own conditions. No schema change (a partial index on the
+    alias metadata would have needed a schema bump and a reindex for a similar
+    gain). Differential test against the per-name readers on every name and file
+    of hono, zod and rich: 0 differences (`tests/integration/test_snapshot_tables_p3_lite.py`).
+    In-process first touch, ABBA medians, `develop` → P3-lite: hono edge-only
+    128 → 13 ms, review-gated 165 → 75 ms; zod 79 → 19 ms, 160 → 75 ms. The first
+    query on a new snapshot still builds the tables (about 30 ms on hono, 100 ms on
+    zod) unless the loader did; the remaining first-touch cost is the review gates.
 - [ ] P4: callees identity and latency gates
 - [ ] CLI↔MCP parity test green (answers identical; CLI `first-use`)
 - [ ] `docs/agent-envelope-contract.md` unchanged; `index status` `resident` block documented

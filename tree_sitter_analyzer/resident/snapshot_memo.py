@@ -135,6 +135,34 @@ def cached(
     return value
 
 
+def cached_table(cache: Any, name: str, compute: Callable[[], T]) -> T:
+    """RFC-0042 P3-lite: a whole-snapshot table, computed once per snapshot.
+
+    Same key, trust and failure rules as :func:`cached`, with two differences
+    that only suit tables: the value must be immutable (a ``MappingProxyType``
+    of tuples), so a hit returns the stored object itself instead of a deep
+    copy; and a table is stored even past :data:`MAX_ENTRIES` (there are a few
+    fixed table names per snapshot, and a table that is never stored would be
+    rebuilt on every read).
+    """
+    key = snapshot_key(cache)
+    if key is None:
+        return compute()
+    entry = ("table", name)
+    with _lock:
+        memo = _memos.get(key)
+        if memo is not None and memo.get(_OWNER) == key and entry in memo:
+            _memos.move_to_end(key)
+            _stats["hits"] += 1
+            return memo[entry]  # type: ignore[no-any-return]
+        _stats["misses"] += 1
+    value = compute()
+    if value is None or not _storable(cache):
+        return value
+    _store(key, entry, value, bounded=False)
+    return value
+
+
 def _storable(cache: Any) -> bool:
     """The cache confirms the read finished before its deadline (no interrupt seen)."""
     check = getattr(cache, "memo_storable", None)
@@ -146,7 +174,9 @@ def _storable(cache: Any) -> bool:
         return False
 
 
-def _store(key: tuple[str, ...], entry: Hashable, value: Any) -> None:
+def _store(
+    key: tuple[str, ...], entry: Hashable, value: Any, *, bounded: bool = True
+) -> None:
     with _lock:
         memo = _memos.get(key)
         if memo is None:
@@ -160,7 +190,7 @@ def _store(key: tuple[str, ...], entry: Hashable, value: Any) -> None:
             while len(_memos) > MAX_SNAPSHOTS:
                 _memos.popitem(last=False)
                 _stats["dropped_snapshots"] += 1
-        if len(memo) > MAX_ENTRIES:
+        if bounded and len(memo) > MAX_ENTRIES:
             return
         memo[entry] = value
         _memos.move_to_end(key)
@@ -189,4 +219,12 @@ def clear() -> None:
             _stats[name] = 0
 
 
-__all__ = ["cached", "clear", "copy_value", "keys", "snapshot_key", "stats"]
+__all__ = [
+    "cached",
+    "cached_table",
+    "clear",
+    "copy_value",
+    "keys",
+    "snapshot_key",
+    "stats",
+]

@@ -53,6 +53,24 @@
   stored. With Phase 2a, MCP warm medians, ABBA, `develop` → this change: rich
   87 → 21 ms (edge-only 79 → 19 ms), hono 262 → 74 ms (edge-only 229 → 34 ms).
   Answers are identical with the feature on and off.
+- **The first `nav callers` question about a new TypeScript or JavaScript
+  target is fast too** (#1855, RFC-0042 Phase 3-lite). Two edge-layer readers
+  cost about 30–100 ms on every new target: the renamed-import bindings of the
+  declaring file (a query plan that walked every import row) and the ES alias
+  call rows (a scan of every call edge's metadata, per name). The bindings
+  query now starts from the module edges into the declaring file (about 50 ms
+  → 0.1 ms on hono, same rows in the same order). The ES alias rows, the
+  alias-import buckets and each importing file's import statements are read
+  once per certified snapshot into immutable tables kept in the snapshot memo,
+  and each name's rows are taken from them with the per-name query's own
+  conditions; the MCP server's background load builds the tables on its lease.
+  `TSA_RESIDENT=off`, the live index and any other connection read per name as
+  before. No index schema change and no reindex. A differential test compares
+  the new readers with the old per-name ones on every name and file of real
+  indexes (hono, zod and rich: 0 differences). In-process first touch of a
+  target, ABBA medians, `develop` → this change: hono edge-only answers
+  128 → 13 ms and review-gated 165 → 75 ms; zod 79 → 19 ms and 160 → 75 ms.
+  Answers are identical to `develop`.
 
 - **Compact answer mode for `nav action=callers`** (#1853). Opt-in
   `format=compact` returns one line per caller (`name  file:line

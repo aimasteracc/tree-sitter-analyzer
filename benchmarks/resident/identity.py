@@ -20,6 +20,10 @@ server (``python -m tree_sitter_analyzer.mcp.server``, this interpreter and
 loader finishes. Answers are compared field by field after dropping timing,
 process and ``query_cost`` fields (the r15 ``tools/identity.py`` rule).
 
+A pass named ``MODE@LABEL`` runs the server on the code tree given by
+``--code LABEL=PATH`` (its ``PYTHONPATH``), so two versions can be compared
+on one index: ``--code dev=… --code br=… --passes on@dev,on@br,on@dev``.
+
 The report counts, per pair of passes, the questions whose answers differ, and
 the questions answered ``complete`` with the switch on but not off (a release
 blocker under RFC-0042 V1). ``off`` against ``off`` is the noise baseline.
@@ -106,7 +110,11 @@ def run_pass(
     repo: str, mode: str, questions: list[dict[str, Any]], args: argparse.Namespace
 ) -> dict[str, Any]:
     env_pairs = list(args.env)
-    if mode == "off":
+    # ``MODE@LABEL``: run this pass on the code tree ``--code LABEL=PATH``.
+    switch, _, label = mode.partition("@")
+    if label:
+        env_pairs.append(f"PYTHONPATH={_code_trees(args)[label]}")
+    if switch == "off":
         env_pairs.append("TSA_RESIDENT=off")
     clock = SuspendClock()
     # Run the server outside the repo: ``python -m`` puts the working directory on
@@ -126,7 +134,7 @@ def run_pass(
         )
         client.notify("notifications/initialized", {})
         client.request("tools/list", {})
-        if mode != "off" and args.settle:
+        if switch != "off" and args.settle:
             time.sleep(args.settle)
         # ``--repeat`` asks the whole list again in the same server; the last
         # round is kept, so with the switch on it is answered from warm state.
@@ -137,6 +145,15 @@ def run_pass(
     finally:
         client.close()
     return {"mode": mode, "answers": answers, "suspended": clock.suspended()}
+
+
+def _code_trees(args: argparse.Namespace) -> dict[str, str]:
+    """``--code LABEL=PATH`` pairs: the ``PYTHONPATH`` of passes named ``MODE@LABEL``."""
+    trees: dict[str, str] = {}
+    for pair in args.code:
+        label, _, path = pair.partition("=")
+        trees[label] = path
+    return trees
 
 
 def compare(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
@@ -165,6 +182,13 @@ def main() -> None:
     parser.add_argument("--settle", type=float, default=10.0)
     parser.add_argument("--repeat", type=int, default=1, help="rounds per pass")
     parser.add_argument("--env", action="append", default=[], metavar="KEY=VALUE")
+    parser.add_argument(
+        "--code",
+        action="append",
+        default=[],
+        metavar="LABEL=PATH",
+        help="a code tree for passes named MODE@LABEL (e.g. on@dev,on@branch)",
+    )
     parser.add_argument("--stderr", default=None)
     parser.add_argument("--out")
     args = parser.parse_args()
