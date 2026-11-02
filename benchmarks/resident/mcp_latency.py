@@ -12,7 +12,9 @@ same interpreter and ``PYTHONPATH`` as this script) per run:
 1. ``initialize`` + ``notifications/initialized`` + ``tools/list`` (timed);
 2. sleep ``--settle`` seconds (0 = ask while any background load still runs);
 3. the **first query**: ``nav action=callers`` on the first target, qualified;
-4. **warm**: ``--rounds`` rounds over every target, qualified and bare;
+4. **warm**: ``--rounds`` rounds over every target, qualified and bare; the
+   first round's questions not asked before are also reported on their own
+   (``first_touch_by_kind``: the first touch of a new target);
 5. **after idle**: sleep ``--idle`` seconds (past the 35 s snapshot TTL), ask
    the first target again, then once more (``after_idle_warm``).
 
@@ -209,7 +211,10 @@ def run_server(
         warm: list[float] = []
         sizes: list[int] = []
         by_kind: dict[str, list[float]] = {}
-        for _ in range(args.rounds):
+        # The first round's questions not asked before: first touch of a target.
+        touch: dict[str, list[float]] = {}
+        asked = {(qual, file)}
+        for round_no in range(args.rounds):
             for qual_name, bare, target_file in targets:
                 for name in (qual_name, bare):
                     seconds, size, answer = client.call(
@@ -217,9 +222,17 @@ def run_server(
                     )
                     warm.append(seconds)
                     sizes.append(size)
-                    by_kind.setdefault(answer_kind(answer), []).append(seconds)
+                    kind = answer_kind(answer)
+                    by_kind.setdefault(kind, []).append(seconds)
+                    if round_no == 0 and (name, target_file) not in asked:
+                        touch.setdefault(kind, []).append(seconds)
+                        touch.setdefault("all", []).append(seconds)
+                    asked.add((name, target_file))
         rec["warm"] = summary_ms(warm)
         rec["warm_by_kind"] = {k: summary_ms(v) for k, v in sorted(by_kind.items())}
+        rec["first_touch_by_kind"] = {
+            k: summary_ms(v) for k, v in sorted(touch.items())
+        }
         rec["warm_median_bytes"] = sorted(sizes)[len(sizes) // 2] if sizes else 0
         if args.idle:
             time.sleep(args.idle)
