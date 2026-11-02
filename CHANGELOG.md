@@ -85,6 +85,19 @@
   bare-name questions (r15 scope answers) the compact total drops 39% on
   pydantic (43,621 to 26,714 tokens).
 
+### Fixed
+
+- **A deadline-interrupted snapshot read is "not read", never "no rows"**
+  (#1873). The alias and ES import readers of `nav callers` turned the
+  certified snapshot's deadline interrupt into an empty result, so an RFC-0040
+  check could count 0 and the certified answer could still be `complete`.
+  An interrupt now propagates. Inside the `unresolved_inbound` check it is
+  `not_checked` (`unknown`, never memoized). Elsewhere the certified answer is
+  dropped and the request falls back. Two more readers that kept a default on
+  an interrupt (bound definitions, index excludes) do the same. The request
+  path was already safe: its after-read deadline check drops such an answer.
+  Answers without a deadline are unchanged.
+
 ## [3.1.1] - 2026-11-01
 
 v3.1.1 is a patch release. It fixes how SQLite cursors are finished after an

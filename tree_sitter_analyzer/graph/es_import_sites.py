@@ -20,6 +20,8 @@ import sqlite3
 from collections.abc import Callable, Collection, Iterable
 from typing import Any
 
+from .read_interrupt import raise_if_interrupted
+
 #: ES 模块语言（与 ``languages_compatible`` 的 JS/TS 家族一致）。
 ES_LANGUAGES = frozenset({"javascript", "jsx", "typescript", "tsx"})
 
@@ -49,7 +51,9 @@ def imported_unresolved_rows(
         if _language(conn, callee_file) not in ES_LANGUAGES:
             return []
         rows = conn.execute(_ROWS_SQL, (callee_name,)).fetchall()
-    except sqlite3.Error:
+    except sqlite3.Error as exc:
+        # #1873: an interrupted read was not read; `[]` would count as 0 sites.
+        raise_if_interrupted(exc)
         return []
     out: list[Any] = []
     imported: dict[tuple[str, str], bool] = {}
@@ -94,7 +98,8 @@ def _renamed_import_rows(
     """经改名导入调用、且没能解析的裸调用行（解析器绑定了的经 ``import_alias`` 可见）。"""
     try:
         bindings = conn.execute(_RENAMED_SQL, (callee_file, callee_name)).fetchall()
-    except sqlite3.Error:
+    except sqlite3.Error as exc:
+        raise_if_interrupted(exc)
         return []
     exports: dict[str, Any] | None = None
     defined: set[str] = set()
@@ -103,7 +108,8 @@ def _renamed_import_rows(
         try:
             exports = _export_shape(conn, callee_file)
             defined = _definitions(conn, callee_file)
-        except sqlite3.Error:
+        except sqlite3.Error as exc:
+            raise_if_interrupted(exc)
             exports = None  # 读不到导出表：每个改名绑定都保留。
     try:
         return [
@@ -119,7 +125,8 @@ def _renamed_import_rows(
             )
             for row in conn.execute(_LOCAL_CALLS_SQL, (local, file_path)).fetchall()
         ]
-    except sqlite3.Error:
+    except sqlite3.Error as exc:
+        raise_if_interrupted(exc)
         return []
 
 
@@ -204,7 +211,8 @@ def _import_statements(conn: sqlite3.Connection, file_path: str) -> list[str]:
             "SELECT symbols_json FROM ast_index WHERE file_path = ?", (file_path,)
         ).fetchone()
         symbols = (json.loads(row[0] or "{}").get("symbols") or []) if row else []
-    except (sqlite3.Error, TypeError, ValueError, AttributeError):
+    except (sqlite3.Error, TypeError, ValueError, AttributeError) as exc:
+        raise_if_interrupted(exc)
         return []
     return [
         str(s.get("text") or "")
@@ -244,7 +252,8 @@ def _head(callee_full: str) -> str:
 def _imports(conn: sqlite3.Connection, file_path: str, local: str) -> bool:
     try:
         return conn.execute(_IMPORTED_SQL, (file_path, local)).fetchone() is not None
-    except sqlite3.Error:
+    except sqlite3.Error as exc:
+        raise_if_interrupted(exc)
         return True  # 读不到导入表：保守地保留调用点。
 
 
