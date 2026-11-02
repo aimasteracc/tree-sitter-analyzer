@@ -6,7 +6,8 @@ import json
 import sqlite3
 import threading
 from collections import OrderedDict
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Iterator
+from contextlib import contextmanager
 from typing import Any, TypeVar, cast
 
 from ._recorded_source_rows import finishing_rows
@@ -27,6 +28,7 @@ from .cache.query import (
     lookup as cache_lookup,
 )
 from .cache.search import search_symbols_cascade
+from .graph import alias_edges, es_import_sites, snapshot_tables
 from .graph.edge_store import EdgeKind, EdgeStore
 from .graph.read_interrupt import ReadInterrupted
 from .resident import snapshot_memo
@@ -250,8 +252,39 @@ class CertifiedSnapshotCache:
         normalized = callee_file.replace("\\", "/") if callee_file else None
         store = EdgeStore(self.get_conn(), ensure_schema=False)
         if store.has_edges(EdgeKind.CALLS):
-            return store.query_callers(callee_name, normalized, max_depth)
+            with self._snapshot_tables():
+                return store.query_callers(callee_name, normalized, max_depth)
         return bfs_callers(self.get_conn(), callee_name, normalized, max_depth)
+
+    @contextmanager
+    def _snapshot_tables(self) -> Iterator[None]:
+        """RFC-0042 P3-lite: let the graph readers keep whole-snapshot tables.
+
+        The readers of :mod:`.graph.snapshot_tables` see a table only for this
+        adapter's connection, inside this block, and only when the snapshot memo
+        has a certified identity for it (never with ``TSA_RESIDENT=off``).
+        """
+        if snapshot_memo.snapshot_key(self) is None:
+            yield
+            return
+        with snapshot_tables.bound(
+            self.get_conn(),
+            lambda name, compute: snapshot_memo.cached_table(self, name, compute),
+        ):
+            yield
+
+    def prefill_snapshot_tables(self) -> bool:
+        """Build the graph readers' per-snapshot tables now (the resident loader).
+
+        False when this snapshot keeps no tables (no certified identity, or off).
+        """
+        if snapshot_memo.snapshot_key(self) is None:
+            return False
+        conn = self.get_conn()
+        with self._snapshot_tables():
+            alias_edges.prefill(conn)
+            es_import_sites.prefill(conn)
+        return True
 
     def query_callees(
         self, caller_name: str, caller_file: str | None = None, max_depth: int = 1
@@ -294,7 +327,7 @@ class CertifiedSnapshotCache:
             self,
             "count_unresolved_callers",
             (name, file, _targets_key(bound_targets)),
-            lambda: _not_read_is_none(
+            lambda: self._with_tables(
                 lambda: cast(
                     int | None,
                     self._store().count_unresolved_callers(name, file, bound_targets),
@@ -312,13 +345,18 @@ class CertifiedSnapshotCache:
             self,
             "unresolved_caller_sites",
             (name, file, _targets_key(bound_targets)),
-            lambda: _not_read_is_none(
+            lambda: self._with_tables(
                 lambda: cast(
                     list[dict[str, object]] | None,
                     self._store().unresolved_caller_sites(name, file, bound_targets),
                 )
             ),
         )
+
+    def _with_tables(self, read: Callable[[], T]) -> T | None:
+        """``_not_read_is_none(read)`` with the per-snapshot tables bound."""
+        with self._snapshot_tables():
+            return _not_read_is_none(read)
 
     def symbol_definitions(self, name: str) -> list[tuple[str, int]]:
         def read() -> list[tuple[str, int]]:

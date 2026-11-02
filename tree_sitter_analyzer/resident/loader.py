@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sqlite3
 import threading
 import time
 from collections.abc import Iterator
@@ -83,6 +84,10 @@ _DEPENDENCIES: tuple[str, ...] = (
     "tree_sitter_analyzer.index_snapshot",
     "tree_sitter_analyzer.index_snapshot_query",
     "tree_sitter_analyzer.resident.snapshot_memo",
+    # P3-lite: the per-snapshot tables the load prefills.
+    "tree_sitter_analyzer.graph.snapshot_tables",
+    "tree_sitter_analyzer.graph.alias_edges",
+    "tree_sitter_analyzer.graph.es_import_sites",
     "tree_sitter_analyzer.ast_cache",
     "tree_sitter_analyzer.call_graph",
     "tree_sitter_analyzer.call_graph_warm",
@@ -323,6 +328,14 @@ def _bind_snapshot_graph(project_root: str) -> str | None:
         if not graph._built:
             return "GRAPH_NOT_BUILT"
         cache.call_graph_built()  # per-snapshot verdict the first request checks
+        # P3-lite: the graph readers' whole-snapshot tables (ES alias rows), so
+        # the first request on this lease reads no full edge scan. A table that
+        # cannot be built now (damaged index, deadline) is simply not stored:
+        # the first request builds it or reads per name, as without the load.
+        try:
+            cache.prefill_snapshot_tables()
+        except sqlite3.Error as exc:
+            logger.info("resident table prefill skipped: %s", exc)
         return None
 
 
