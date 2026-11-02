@@ -656,7 +656,7 @@ They must fail on a naive "global dict keyed by root" implementation.
   - P1b PR: MCP ABBA medians after 40 s idle, off → on: rich 342 → 56 ms (warm after idle 48 ms),
     hono 884 → 147 ms (162 ms). A renewal keeps the same snapshot ID when nothing changed. V1 on
     vs off is 0 differing rows on rich, hono and zod (601 rows).
-- [ ] P2a/P2b: V1 0 diffs; V2 shows the expected drop; V4 0 wrong `complete`
+- [x] P2a/P2b: V1 0 diffs; V2 shows the expected drop; V4 0 wrong `complete`
   - P2a PR (#1870): one `ResidentHandle` per root, kept only for a sealed published generation
     (plain file, no write bit). A request validates it with two `lstat` calls (selector and
     database stamps) and reads the index location, the live-index probe, the cost tier and the
@@ -693,8 +693,11 @@ They must fail on a naive "global dict keyed by root" implementation.
     15–25 ms) are **not met**: what remains on an edge-only answer is the MCP layer
     (about 7–22 ms), the certified-lease enter, the rebuild-flag connection and the freshness
     stats of the answer's files; review-gated answers are dominated by the source gates (§3.3).
-    V1: see the PR (0 differing questions). V4 follows from V1 (every answer equals `off`,
-    0 new `complete`); `audit_complete.py` was not rerun.
+    V1 through a real MCP server (`benchmarks/resident/identity.py`, r15 rows of rich, hono,
+    zod, pydantic and fastapi: 951 rows, 901 distinct questions): 0 differing questions on vs
+    off for P2a alone and for P2a + P2b (noise off vs off 0), and 0 again when every question is
+    asked a second time in the same server (memo-warm answers); 0 new `complete`. V4 follows
+    from V1 (every answer equals `off`); `audit_complete.py` was not rerun.
 - [ ] P3: differential test green for every key; V1 0 diffs with VERIFY; V2 warm edge-only median ≤ 5 ms
 - [ ] P4: callees identity and latency gates
 - [ ] CLI↔MCP parity test green (answers identical; CLI `first-use`)
