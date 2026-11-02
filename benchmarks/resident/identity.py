@@ -109,7 +109,11 @@ def run_pass(
     if mode == "off":
         env_pairs.append("TSA_RESIDENT=off")
     clock = SuspendClock()
-    client = StdioClient(repo, server_env(env_pairs), args.stderr)
+    # Run the server outside the repo: ``python -m`` puts the working directory on
+    # ``sys.path``, and a repo such as pydantic would shadow the server's own import.
+    client = StdioClient(
+        repo, server_env(env_pairs), args.stderr, cwd=str(Path(repo).parent)
+    )
     answers: dict[str, Any] = {}
     try:
         client.request(

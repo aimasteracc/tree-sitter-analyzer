@@ -49,7 +49,9 @@ from _common import SuspendClock, load_targets, summary_ms, write_json  # noqa: 
 class StdioClient:
     """Newline-delimited JSON-RPC 2.0 client for one MCP server process."""
 
-    def __init__(self, repo: str, env: dict[str, str], stderr_path: str) -> None:
+    def __init__(
+        self, repo: str, env: dict[str, str], stderr_path: str, cwd: str | None = None
+    ) -> None:
         self._id = 0
         self._stderr = open(stderr_path, "ab")  # noqa: SIM115 — closed in close()
         self.proc = subprocess.Popen(
@@ -63,7 +65,9 @@ class StdioClient:
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=self._stderr,
-            cwd=repo,
+            # ``cwd`` outside the repo when the repo shadows a server dependency
+            # (``python -m`` puts the working directory first on ``sys.path``).
+            cwd=cwd or repo,
             env=env,
         )
         self._lines: list[bytes] = []
