@@ -76,6 +76,7 @@ from .index_symbol_projection import (
     sqlite_compile_supports_fts5,
     symbol_projection_is_exact,
 )
+from .resident import handle as resident_handle
 
 ACTION_VERSION = "index.status/v1"
 
@@ -765,8 +766,17 @@ def _pin_certified_reusable(project_root: str) -> Iterator[IndexSnapshot | None]
     """固定一个可直接复用的完整能力（同一活动数据库）；没有时为 None。"""
     from .cache.generation_routing import resolve_index_path
 
+    # RFC-0042 P2a：nav callers 请求内，活动库取本请求已按选择器与已封存库 stat
+    # 证据核验过的常驻句柄；其余情况照常解析。
+    handle = resident_handle.current_handle(project_root)
     with REGISTRY.pin_reusable(project_root) as reusable:
-        active_database = os.path.abspath(str(resolve_index_path(project_root)))
+        active_database = os.path.abspath(
+            str(
+                handle.database
+                if handle is not None
+                else resolve_index_path(project_root)
+            )
+        )
         if (
             reusable is not None
             and reusable.snapshot_id is not None

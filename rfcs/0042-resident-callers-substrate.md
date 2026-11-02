@@ -657,6 +657,18 @@ They must fail on a naive "global dict keyed by root" implementation.
     hono 884 → 147 ms (162 ms). A renewal keeps the same snapshot ID when nothing changed. V1 on
     vs off is 0 differing rows on rich, hono and zod (601 rows).
 - [ ] P2a/P2b: V1 0 diffs; V2 shows the expected drop; V4 0 wrong `complete`
+  - P2a PR (#1870): one `ResidentHandle` per root, kept only for a sealed published generation
+    (plain file, no write bit). A request validates it with two `lstat` calls (selector and
+    database stamps) and reads the index location, the live-index probe, the cost tier and the
+    certified-lease reuse check through it; a warm request resolves the index location 0 times
+    and opens no probe connection. The rebuild flag is still read on every request. Two
+    deviations from §2, both measured: the read-only connection for the rebuild flag lives for
+    one request, not across requests (a held connection pins a retired generation on Windows,
+    #1631), at about 1.3 ms per request here; and the "cheapest first step", one RFC-0041
+    `query_scope` per request, was not adopted: on rich (ABBA, n = 160 per slot) it made the
+    review-gated median 97.5–104.6 ms against 86.2–87.7 ms without it. V2 in-process warm ABBA
+    medians, off → on: rich edge-only 52.1 → 26.6 ms, review-gated 114.6 → 91.1 ms; hono
+    edge-only 236 → 214 ms, review-gated 304 → 272 ms. V1: see the PR (0 differing questions).
 - [ ] P3: differential test green for every key; V1 0 diffs with VERIFY; V2 warm edge-only median ≤ 5 ms
 - [ ] P4: callees identity and latency gates
 - [ ] CLI↔MCP parity test green (answers identical; CLI `first-use`)

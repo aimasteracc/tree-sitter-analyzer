@@ -49,7 +49,9 @@ from _common import SuspendClock, load_targets, summary_ms, write_json  # noqa: 
 class StdioClient:
     """Newline-delimited JSON-RPC 2.0 client for one MCP server process."""
 
-    def __init__(self, repo: str, env: dict[str, str], stderr_path: str) -> None:
+    def __init__(
+        self, repo: str, env: dict[str, str], stderr_path: str, cwd: str | None = None
+    ) -> None:
         self._id = 0
         self._stderr = open(stderr_path, "ab")  # noqa: SIM115 — closed in close()
         self.proc = subprocess.Popen(
@@ -63,7 +65,9 @@ class StdioClient:
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=self._stderr,
-            cwd=repo,
+            # ``cwd`` outside the repo when the repo shadows a server dependency
+            # (``python -m`` puts the working directory first on ``sys.path``).
+            cwd=cwd or repo,
             env=env,
         )
         self._lines: list[bytes] = []
@@ -150,6 +154,16 @@ def nav_args(name: str, file: str) -> dict[str, Any]:
     }
 
 
+def answer_kind(payload: dict[str, Any]) -> str:
+    """``review`` when the RFC-0040 review gates ran (more than the 5 edge checks
+    recorded), else ``edge_only``; the in-process split of ``prof_callers.py``."""
+    checks = payload.get("completeness_checks") or {}
+    checked = checks.get("checked") if isinstance(checks, dict) else None
+    if not isinstance(checked, int):
+        return "unclassified"
+    return "review" if checked > 5 else "edge_only"
+
+
 def server_env(pairs: list[str]) -> dict[str, str]:
     env = dict(os.environ)
     for pair in pairs:
@@ -194,15 +208,18 @@ def run_server(
         rec["first_completeness"] = payload.get("completeness")
         warm: list[float] = []
         sizes: list[int] = []
+        by_kind: dict[str, list[float]] = {}
         for _ in range(args.rounds):
             for qual_name, bare, target_file in targets:
                 for name in (qual_name, bare):
-                    seconds, size, _payload = client.call(
+                    seconds, size, answer = client.call(
                         "nav", nav_args(name, target_file)
                     )
                     warm.append(seconds)
                     sizes.append(size)
+                    by_kind.setdefault(answer_kind(answer), []).append(seconds)
         rec["warm"] = summary_ms(warm)
+        rec["warm_by_kind"] = {k: summary_ms(v) for k, v in sorted(by_kind.items())}
         rec["warm_median_bytes"] = sorted(sizes)[len(sizes) // 2] if sizes else 0
         if args.idle:
             time.sleep(args.idle)

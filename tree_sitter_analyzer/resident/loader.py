@@ -32,11 +32,15 @@ can never see them; nothing here is freshness evidence. The loader never
 records a certification timeout (a request records its own), never builds an
 index, and skips a root without a published index or while a full rebuild runs.
 
+P2a: the load ends by publishing the root's :class:`~.handle.ResidentHandle`
+(the index location and live-index probe of the sealed generation), so the
+first request validates it with two ``lstat`` calls instead of probing.
+
 Switch ``TSA_RESIDENT``: ``background`` (default) loads after start;
-``first-use`` and ``off`` keep today's lazy behaviour (P1 has no further
-resident state, so the two are the same for now; ``off`` stays the kill switch
-for later phases). Only processes that call :func:`enable` (the MCP server)
-ever load: one-shot CLI runs and embedders keep ``first-use``.
+``first-use`` keeps today's lazy loading but uses the resident handle (P2a),
+built by the first request; ``off`` is the kill switch: no load, no handle,
+today's path everywhere. Only processes that call :func:`enable` (the MCP
+server) ever load: one-shot CLI runs and embedders keep ``first-use``.
 """
 
 from __future__ import annotations
@@ -80,6 +84,8 @@ _DEPENDENCIES: tuple[str, ...] = (
     "tree_sitter_analyzer.ast_cache",
     "tree_sitter_analyzer.call_graph",
     "tree_sitter_analyzer.call_graph_warm",
+    "tree_sitter_analyzer.resident.handle",
+    "tree_sitter_analyzer.cache.query_cost",
     # Imported lazily inside functions on the capture and graph paths
     # (measured: tests/integration/test_resident_loader_imports.py).
     "tree_sitter_analyzer.cache.build_state",
@@ -253,7 +259,25 @@ def load(project_root: str) -> dict[str, Any]:
     if outcome["certified"] is None:
         outcome["snapshot_graph"] = _bind_snapshot_graph(project_root)
     outcome["preloaded"] = _preload()
+    outcome["handle"] = _publish_handle(project_root)
     return outcome
+
+
+def _publish_handle(project_root: str) -> bool:
+    """P2a: build the root's :class:`~.handle.ResidentHandle` and the first cost tier.
+
+    Both are today's functions run earlier: the handle holds the index location
+    and live-index probe of the sealed generation, and ``query_cost`` remembers
+    whether the index holds rows for that probe's identity, so the first
+    request opens no index for its cost tier (40–70 ms measured after P1).
+    """
+    from ..cache import query_cost
+    from . import handle
+
+    if handle.acquire(project_root) is None:
+        return False
+    query_cost._index_holds_rows(project_root)
+    return True
 
 
 def _preload() -> list[str]:
