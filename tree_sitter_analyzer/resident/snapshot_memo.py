@@ -51,7 +51,9 @@ T = TypeVar("T")
 #: At most this many snapshots (one per project root) keep a memo.
 MAX_SNAPSHOTS = 4
 #: At most this many entries per snapshot; past it, results are computed, not stored.
-MAX_ENTRIES = 20_000
+#: Measured: 218 entries after 40 rich targets (both forms) retain about 372 KB
+#: (1.7 KB each), so the bound keeps one snapshot's memo near 14 MB at most.
+MAX_ENTRIES = 8_192
 
 _lock = threading.Lock()
 #: Snapshot key -> {(reader, args): value}; oldest first.
