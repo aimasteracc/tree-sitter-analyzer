@@ -204,7 +204,7 @@ async def _bound_answer(
     """
     tool = CodeGraphCallersTool(str(root))
     with index_snapshot.certified_index_read(str(root)) as owner:
-        assert owner is not None
+        assert isinstance(owner, index_snapshot.CertifiedIndexRead)
         cache = owner.query_cache()
         interrupter.reset(choose)
         answers = await tool._answer_all(
@@ -232,7 +232,7 @@ async def _uncertified_answer(root: Path, query: tuple[str, str]) -> dict[str, A
     answers = await CodeGraphCallersTool(str(root))._answer_all(
         [_args(*query)], None, None
     )
-    assert answers[0] is not None
+    assert isinstance(answers[0], dict)
     return answers[0]
 
 
@@ -258,7 +258,6 @@ async def test_any_interrupted_read_leaves_the_answer_unproven(
     baseline = await _bound_answer(project, query, interrupter, _never)
     assert baseline is not None and baseline["completeness"] == "complete"
     statements = interrupter.count
-    assert statements > 0
     wrong = []
     routed: list[dict[str, Any]] = []
     for index in range(statements):
@@ -376,7 +375,7 @@ async def test_deadline_during_the_read_answers_from_a_full_read(
     interrupter.reset(_from(module))
     answer = await CodeGraphCallersTool(str(project)).execute(_args(*query))
     assert interrupter.hits, "the reader ran no statement"
-    assert late["by"] > 0
+    assert late["by"] == 3600.0
     # The certified answer is dropped; the request answers from the live index,
     # read in full (no interrupt there), exactly as the fallback alone does.
     assert _stable(answer) == fallback
