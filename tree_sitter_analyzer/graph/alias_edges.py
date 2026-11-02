@@ -237,25 +237,35 @@ def _es_alias_table(conn: sqlite3.Connection) -> Mapping[str, tuple[sqlite3.Row,
 
 
 def _es_alias_rows_from_table(
-    table: Mapping[str, tuple[sqlite3.Row, ...]], callee_name: str
+    table: Mapping[str, tuple[sqlite3.Row, ...]],
+    callee_name: str,
+    *,
+    per_name: bool,
 ) -> list[sqlite3.Row]:
-    """The per-name query's rows that :func:`alias_call_rows` keeps, from the table.
+    """The rows :func:`alias_call_rows` keeps from the path it replaces, from the table.
 
-    The per-name query (``_ES_ONE_FILTER``) matches ``instr(metadata, '"name":
-    "<name>"')`` and ``local_name <> <name>``; :func:`alias_call_rows` then keeps
-    a row only when its ``import_alias.name`` is the name. The table holds every
-    ES join row with an ``import_alias``, bucketed by that name, in ``e.id``
-    order; applying the per-name query's own two conditions to the bucket gives
-    exactly the rows the per-name path keeps, in the same order (differential
-    test: ``tests/integration/test_snapshot_tables_p3_lite.py``).
+    The table holds every ES join row with an ``import_alias``, bucketed by
+    that name, in ``e.id`` order: exactly the query scope's buckets
+    (:func:`_es_alias_buckets`), so inside a scope its rows are the bucket
+    minus ``local_name = <name>``, as there. Outside a scope the per-name query
+    (``_ES_ONE_FILTER``) decided: ``instr(metadata, '"name": "<name>"')`` and
+    ``local_name <> <name>``, after which :func:`alias_call_rows` keeps a row
+    only when its ``import_alias.name`` is the name. Applying the per-name
+    query's own two conditions to the bucket gives exactly the rows the
+    per-name path keeps, in the same order, also for a name whose JSON escape
+    differs from its text (differential test:
+    ``tests/integration/test_snapshot_tables_p3_lite.py``).
     """
+    rows = [
+        row for row in table.get(callee_name, ()) if row["callee_name"] != callee_name
+    ]
+    if not per_name:
+        return rows
     pattern = f'"name": "{callee_name}"'
     return [
         row
-        for row in table.get(callee_name, ())
-        if row["callee_name"] != callee_name
-        and isinstance(row["metadata"], str)
-        and pattern in row["metadata"]
+        for row in rows
+        if isinstance(row["metadata"], str) and pattern in row["metadata"]
     ]
 
 
@@ -273,7 +283,9 @@ def _es_alias_rows(conn: sqlite3.Connection, callee_name: str) -> list[sqlite3.R
             conn, "es_alias_buckets", lambda: _es_alias_table(conn)
         )
         if table is not None:
-            return _es_alias_rows_from_table(table, callee_name)
+            return _es_alias_rows_from_table(
+                table, callee_name, per_name=not in_scope()
+            )
         # 作用域内从第一个名字起就分桶（一次连接查询服务查询中的全部名字）。
         if not in_scope():
             return conn.execute(

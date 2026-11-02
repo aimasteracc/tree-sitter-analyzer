@@ -42,6 +42,7 @@ from tree_sitter_analyzer.graph import (
     snapshot_tables,
 )
 from tree_sitter_analyzer.graph.edge_store import EdgeStore
+from tree_sitter_analyzer.query_scope import query_scope
 from tree_sitter_analyzer.resident import snapshot_memo
 
 _AN_HOUR_NS = 3600 * 1_000_000_000
@@ -250,6 +251,15 @@ def test_tables_give_the_per_name_readers_results(
                 new_locals = alias_edges._alias_local_names(conn, name)
             assert new_alias == old_alias, (root.name, name)
             assert new_locals == old_locals, (root.name, name)
+        # Inside an RFC-0041 query scope the table stands in for the scope's own
+        # buckets (an unscoped build per name here: an in-memory copy has no file
+        # identity), so a sample of names suffices on large repos.
+        for name in names[:300]:
+            with query_scope():
+                old_scoped = _rows(alias_edges.alias_call_rows(conn, name))
+                with snapshot_tables.bound(conn, provider):
+                    new_scoped = _rows(alias_edges.alias_call_rows(conn, name))
+            assert new_scoped == old_scoped, (root.name, name)
         for file in files:
             old = es_import_sites._import_statements(conn, file)
             with snapshot_tables.bound(conn, provider):
