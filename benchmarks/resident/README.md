@@ -14,7 +14,7 @@ tree-sitter-analyzer --project-root PATH --full-index
 | Script | Measures | RFC section |
 |---|---|---|
 | `prof_callers.py` | In-process stage buckets of `nav callers` (exclusive time per stage), `first` or `warm` | Motivation, buckets table |
-| `mcp_latency.py` | Through a real MCP stdio server: `initialize`, the first query after start, warm, after idle; `--inproc` adds the MCP-layer (facade, encode, transport) share | V2 |
+| `mcp_latency.py` | Through a real MCP stdio server: `initialize`, the first query after start, warm, after idle; `--inproc` adds the MCP-layer (facade, encode, transport) share, overall and per answer kind (`mcp_layer_by_kind_ms`) | V2 |
 | `idle_probe.py` | In-process: warm, then the query after an idle gap past the 35 s snapshot TTL | §4.4 |
 | `graph_size.py` | Files, symbols, graph nodes and edges, retained and peak MB of the call-graph state | §8, V3 |
 | `statcost.py` | Unit cost of `os.stat` / `realpath` / one walk on this host | §9 |

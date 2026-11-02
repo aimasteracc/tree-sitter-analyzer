@@ -4,6 +4,7 @@
 import argparse
 import asyncio
 import sys
+import time
 from pathlib import Path as PathClass
 from typing import Any
 
@@ -78,6 +79,11 @@ logger = setup_logger(__name__)
 _UNKNOWN_URI_PREFIX = "Unknown resource URI: "
 _MSG_SERVER_ERROR = "Server error: %s"
 _MSG_SHUTTING_DOWN = "MCP server shutting down"
+#: #1855: the facade built once the resident load has finished (the hot one).
+_WARM_FACADE = "nav"
+#: How long the warm-up waits for the load, and how often it looks (seconds).
+_FACADE_WARM_WAIT_SECONDS = 600.0
+_FACADE_WARM_POLL_SECONDS = 0.1
 
 
 def _resolve_relative_path(base_root: str, file_path: str) -> str:
@@ -136,6 +142,9 @@ class TreeSitterAnalyzerMCPServer:
         self._tools: dict[str, Any] | None = None
         # #1675：tools/call 只构建被调用的门面；之后的完整注册表复用这些实例。
         self._facades: dict[str, Any] = {}
+        #: #1855: set by ``register_tools`` when the server validates arguments itself.
+        self.input_validator: Any | None = None
+        self._facade_warm_task: asyncio.Task[None] | None = None
         from .subscription_lifecycle import SubscriptionLifecycleManager
 
         self.subscription_lifecycle = SubscriptionLifecycleManager(project_root)
@@ -343,9 +352,48 @@ class TreeSitterAnalyzerMCPServer:
             from ..resident import loader
 
             loader.touch(self._project_root)
-            loader.start(self._project_root)
+            if loader.start(self._project_root):
+                self._schedule_facade_warm(self._project_root)
         except Exception as e:  # noqa: BLE001 — requests then take today's path
             _log_safely(logger.warning, "resident loader did not start: %s", e)
+
+    def _schedule_facade_warm(self, project_root: str | None) -> None:
+        """#1855: build the ``nav`` facade once the resident load has finished.
+
+        A cold server's first ``nav`` call built the facade (about 0.2 s of
+        imports and tool construction, #1675). This task waits on the event
+        loop, without blocking it, for the loader's load to end, then builds
+        the facade on the event-loop thread, the thread every request runs on:
+        the imports stay off the loader thread (P1), and the build is
+        serialized with requests like any request's own build. By then the
+        client has long had its ``tools/list`` answer; a request that arrives
+        during the build waits for at most what it would have paid itself.
+        """
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return  # no event loop (direct calls in tests): nothing to warm
+        self._facade_warm_task = loop.create_task(
+            self._warm_facade_after_load(project_root)
+        )
+
+    async def _warm_facade_after_load(self, project_root: str | None) -> None:
+        from ..resident import loader
+
+        deadline = time.monotonic() + _FACADE_WARM_WAIT_SECONDS
+        while not loader.wait(project_root, 0):
+            if time.monotonic() >= deadline:
+                return
+            await asyncio.sleep(_FACADE_WARM_POLL_SECONDS)
+        if project_root != self._project_root:
+            return  # the root changed meanwhile; its own start warms it
+        try:
+            self.facade(_WARM_FACADE)
+            validator = self.__dict__.get("input_validator")
+            if validator is not None:
+                validator.prepare(_WARM_FACADE)
+        except Exception as e:  # noqa: BLE001 — the first call builds it instead
+            _log_safely(logger.warning, "facade warm-up failed: %s", e)
 
     def set_project_path(self, project_path: str) -> None:
         """Set the project path for all components."""

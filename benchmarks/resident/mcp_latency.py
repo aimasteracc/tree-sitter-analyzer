@@ -252,8 +252,8 @@ async def run_inproc(
 
     tool = CodeGraphCallersTool(args.repo)
 
-    async def ask(name: str, file: str) -> None:
-        await tool.execute(
+    async def ask(name: str, file: str) -> Any:
+        return await tool.execute(
             {
                 "function_name": name,
                 "file_path": file,
@@ -266,13 +266,20 @@ async def run_inproc(
         for name in (qual, bare):
             await ask(name, file)
     warm: list[float] = []
+    by_kind: dict[str, list[float]] = {}
     for _ in range(args.rounds):
         for qual, bare, file in targets:
             for name in (qual, bare):
                 t0 = time.perf_counter()
-                await ask(name, file)
-                warm.append(time.perf_counter() - t0)
-    return summary_ms(warm)
+                answer = await ask(name, file)
+                seconds = time.perf_counter() - t0
+                warm.append(seconds)
+                kind = answer_kind(answer if isinstance(answer, dict) else {})
+                by_kind.setdefault(kind, []).append(seconds)
+    return {
+        **summary_ms(warm),
+        "by_kind": {k: summary_ms(v) for k, v in sorted(by_kind.items())},
+    }
 
 
 def main() -> None:
@@ -298,6 +305,13 @@ def main() -> None:
         if mcp_median and inproc_median:
             rec["mcp_layer_median_ms"] = round(mcp_median - inproc_median, 1)
             rec["mcp_layer_share"] = round((mcp_median - inproc_median) / mcp_median, 3)
+        # Per answer kind: the edge-only gap is the MCP layer without review gates.
+        rec["mcp_layer_by_kind_ms"] = {
+            kind: round(stats["median_ms"] - inproc["median_ms"], 1)
+            for kind, stats in rec["warm_by_kind"].items()
+            if (inproc := rec["inproc_warm"]["by_kind"].get(kind, {})).get("median_ms")
+            and stats.get("median_ms")
+        }
     write_json(args.out, rec)
 
 
