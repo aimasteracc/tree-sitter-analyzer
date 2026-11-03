@@ -160,7 +160,7 @@
   are already non-complete keep their reasons. Python (#1883) and Java
   overrides without `@Override` (#1884) have the same gap and are tracked
   separately.
-  GATE_PLACEHOLDER
+  Gate: on the r15 callers corpus (hono, zod, axios, gson, rich, fastapi and pydantic; 2,457 answers), develop 102007ac and the branch were run on one shared index per repo. No verdict changed, no `complete` was lost or added, and no caller count changed. No r15 target sits under an unfollowable clause; the only such clauses in these repos are cast class expressions in a zod test, and those answers are already non-complete at the edge layer. One zod reason changed, `flattenError` from `NON_CALL_REFERENCES` to `NON_CALL_REFERENCES_UNCHECKED`. That was the cold first query hitting the scan budget under load: a recheck on both builds gives `NON_CALL_REFERENCES`.
 
 - **`nav callers` no longer counts a JS/TS call site the call graph already
   binds as an open site** (PR-3). The `UNRESOLVED_INBOUND` and
