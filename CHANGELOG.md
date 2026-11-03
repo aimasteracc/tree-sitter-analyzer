@@ -4,6 +4,21 @@
 
 ### Added
 
+- **Callers verification gate (dev tooling, `benchmarks/callers_gate`).**
+  `py -3 -m benchmarks.callers_gate {setup,run,promote,precheck,report}`
+  replaces the per-PR manual replay of the r15 callers corpus. It keeps the 7
+  pinned repos and their indexes on disk (index key: git blobs of every
+  package file except the query-only `mcp/tools/callers_*.py`, audited at build
+  time, plus interpreter, distributions and pyproject), caches base answers by
+  package tree hash, runs repos and shards in parallel on long-lived isolated
+  servers, and judges the diff automatically: a transition table, a policy
+  (default: only `X->complete` and reason changes), GT2 for Python completes,
+  the PR-4 `open_sites` soundness check, and a tree-sitter classifier of every
+  `git grep -w` hit for TS/JS/Java completes, so a human reads only the
+  residual hits. Every cache fails closed. `precheck` runs ruff, format, mypy,
+  the related tests and Codecov-style patch coverage locally. See
+  `docs/dev/callers-gate.md`.
+
 - **`nav callers` lists a registering decorator as a known use** (PR-4). When the
   only blocker is `DECORATOR_MAY_REGISTER` and the decorator sits on the
   target's own definition, the answer lists it as a caller entry with
@@ -135,6 +150,13 @@
   qualified, and their listed callers are all resolver-bound. On unscoped
   bare-name questions (r15 scope answers) the compact total drops 39% on
   pydantic (43,621 to 26,714 tokens).
+
+### Changed
+
+- **CI: the MCP black-box E2E job runs two attempts in parallel** (a matrix on
+  the same head, `fail-fast: false`) instead of a manual rerun. The check
+  names gain `(attempt 1)` / `(attempt 2)`; the required `Quality Gate` still
+  reads the job result, which passes only when both attempts pass.
 
 ### Fixed
 
