@@ -51,6 +51,7 @@ from .callers_confidence import (
 )
 from .callers_dispatch import narrow_to_target
 from .callers_external_producers import drop_external_producers
+from .callers_graph_bindings import drop_graph_bound, graph_bindings
 from .callers_name_only import (
     name_only_fields,
     name_only_lines_exact,
@@ -751,6 +752,8 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # Honest-truncation cap: record total before slicing so agents know
         # what was omitted (same pattern as dead_code_tool / hyphae_select_tool).
         total_callers = len(callers)
+        # PR-3：守卫比对的是全部已列出的调用方，不只是截断后展示的那些。
+        all_listed = list(callers)
         truncated = total_callers > listed_cap
         # #1854：每个调用方带置信层级；order=confidence 在截断前把 proven 排在前面。
         # 只改呈现：总数、各项检查与完整性判定都在别处由同一份证据得出。
@@ -804,6 +807,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # against "this file is a browser asset full of builtin attribute calls".
         excluded_sites = _declaring_file_excluded(cache, count_name, file_path)
         declaring_sites = drop_bound_sites(declaring_sites, bound_targets)
+        graph_bound_inbound: list[dict[str, Any]] = []
         # #1596 / #1643：非调用引用门（#1593）会扫描别名与回调，守卫只需计入
         # 可能点名目标的调用点（同名或计算式分发）。该门对有无调用方都运行，
         # 因此收窄也不再限于 0 调用方。
@@ -819,6 +823,28 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             declaring_sites, excluded_sites = drop_class_constructions(
                 cache, self.project_root, declaring_sites, excluded_sites, count_name
             )
+            # PR-3：调用图已确定绑定的 JS/TS 调用点——已列出调用方自己的边，或绑定到
+            # 外围类自身方法、且源码证明到达不了目标的 `this.m()`——不是未解析的入口。
+            bindings = graph_bindings(
+                query_graph.get,
+                cache,
+                self.project_root,
+                func_name if is_qualified else count_name,
+                file_path,
+                qualified=is_qualified,
+                declaring=None
+                if is_qualified or cache is None
+                else _declaring_files(cache, count_name, file_path),
+                listed=all_listed,
+            )
+            declaring_sites, excluded_sites, _moved = drop_graph_bound(
+                bindings, declaring_sites, excluded_sites
+            )
+            if bindings is not None and unresolved_list is not None:
+                unresolved_list, inbound_bound = bindings.partition(unresolved_list)
+                if inbound_bound:
+                    unresolved_inbound = len(unresolved_list or [])
+                    graph_bound_inbound = inbound_bound
         unresolved_in_declaring_files = (
             None if declaring_sites is None else len(declaring_sites)
         )
@@ -900,6 +926,12 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         else:
             result["unresolved_sites"] = None
             result["unresolved_sites_total"] = None
+        if graph_bound_inbound:
+            # PR-3：不再计入 `unresolved_inbound` 的调用点及其理由，可复核。
+            result["unresolved_inbound_excluded"] = graph_bound_inbound[
+                :_UNRESOLVED_SITES_CAP
+            ]
+            result["unresolved_inbound_excluded_total"] = len(graph_bound_inbound)
         if excluded_sites is not None:
             # The negative space, auditable. `excluded_by_reason` is the summary a
             # caller reads to decide whether "not a census" is alarming; the list

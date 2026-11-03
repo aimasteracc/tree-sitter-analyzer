@@ -180,6 +180,15 @@ names the first three sites inline and says how many more there are.
 so the count and the sites describe the same edges. `caller` is `<module>` for a
 module-level site; `callee` is the call's source text (`api.open`).
 
+PR-3: a JS/TS site the call graph already binds is not counted by either guard.
+`reason_code: listed_caller_edge` marks a listed caller's own call into the
+target; `graph_bound_elsewhere` marks `this.m()` bound to the enclosing class's
+own `m` when the source proves the target unreachable through that `this`. Such
+sites appear in `excluded_sites` (declaring-file guard) and in
+`unresolved_inbound_excluded` (capped at 20, total in
+`unresolved_inbound_excluded_total`; the field is absent when nothing was
+dropped).
+
 **Ranking (#1706).** `name_only_sites` and `unresolved_inbound_sites` are ranked
 before the cap, by how close the site is to the target:
 
