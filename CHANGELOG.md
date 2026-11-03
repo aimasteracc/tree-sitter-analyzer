@@ -138,6 +138,51 @@
 
 ### Fixed
 
+- **`nav callers` no longer counts a JS/TS call site the call graph already
+  binds as an open site** (PR-3). The `UNRESOLVED_INBOUND` and
+  `UNRESOLVED_IN_DECLARING_FILE` guards counted every call row the index left
+  without a persisted resolution, including two kinds that cannot reach the
+  target unseen:
+  - a listed caller's own call, counted a second time (zod
+    `ParseStatus.mergeObjectSync`, line 125 of its listed caller
+    `mergeObjectAsync`). The site is dropped with reason `listed_caller_edge`
+    only when it is the graph's certain edge into the target from that very
+    caller at that line;
+  - `this.m()` in a method of class `C`, bound certainly to `C`'s own `m`
+    (zod `ZodNumber`'s `this.setLimit` blocked `ZodBigInt.setLimit`). Dropped
+    with reason `graph_bound_elsewhere` only when the target is in neither the
+    certain nor the possible set of the caller and the source proves it cannot
+    be reached through that `this`: the call's `this` is the receiver of a
+    non-static method declared directly in `class C` (only arrow functions in
+    between); the target's class is not `C` or a subclass of it, read from
+    source along its whole `extends` chain (same file or a named relative
+    import; a mixin call, a namespace member, a package or unresolvable import,
+    or a duplicated name fails), never from inheritance edges; and the target's
+    class is never used as a value that could copy its methods elsewhere
+    (`applyMixins(D, [T])`, `T.prototype`, an aliased or default export, a
+    namespace object read by name).
+  Both need the site to be exactly one index row (file, line, call text), the
+  only call named like the target on its source line (a second
+  `this.m()` on the line keeps it), a caller the graph knows by name and
+  definition line, and a file that still matches the index. A base class
+  calling `this.m()` that subclasses override keeps its site (hono
+  `getQueryString`), as do unknown or possible-only receivers, `function`
+  expressions, static methods, Python, Java and site lists over 64. Dropped
+  sites move to `excluded_sites` (declaring-file guard) or the new
+  `unresolved_inbound_excluded` list (with `unresolved_inbound_excluded_total`).
+
+  Gate: the r15 callers corpus of zod, hono, rich, pydantic, fastapi, axios and
+  gson (2,457 answers), develop vs branch on one index each through a
+  long-lived MCP server. 4 zod answers move from `incomplete` to `complete`
+  (`ZodBigInt.setLimit` and `ParseStatus.mergeObjectSync`, bare and qualified),
+  each checked by hand against every `git grep -w` hit. 15 answers keep their
+  verdict and report the next real blocker, `NON_CALL_REFERENCES`: 12 hono
+  `getCookies` answers (the `protected abstract getCookies(...)` signatures in
+  both copies of the base class) and 3 zod `_addCheck` answers (a multi-line
+  `})._addCheck({` call). 7 more answers (zod 1, hono 4, axios 2) only lose
+  some of their sites, all as `listed_caller_edge` or `graph_bound_elsewhere`. hono
+  `getQueryString` stays `unknown`. 0 caller-count changes, 0 answers leave
+  `complete`, and 0 changes in rich, pydantic, fastapi and gson.
 - **`nav callers`: a declaration's own name line is not a reference to it, and
   Java annotations that register nothing no longer block `complete`** (PR-2).
   - The non-call reference scan skips the line the index records for each
