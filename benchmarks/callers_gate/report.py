@@ -26,7 +26,7 @@ from . import corpus
 from .layout import LABEL_SOURCE, REPOS, Layout
 from .oracle_truth import check_compact, check_rows, label_sites
 from .policy import Policy
-from .runner import RepoRun, budget_limited
+from .runner import RepoRun, budget_limited, check_missing
 from .transitions import KINDS, RepoDiff, RowSetMismatch, diff_repo, row_key
 
 #: The package root that holds ``benchmarks/`` (the oracle runs as a module from it).
@@ -192,6 +192,11 @@ def judge_repo(
     out["reason_changes_same_verdict"] = ref["reason_changes_same_verdict"]
     out["changes"] = ref["changes"]
     limited = {
+        c.key
+        for diff in diffs.values()
+        for c in diff.changes
+        if check_missing({"full": c.base}) != check_missing({"full": c.head})
+    } | {
         row_key(r)
         for r in run.base_rows + run.head_rows + run.cross_rows
         if budget_limited(r)
@@ -364,6 +369,23 @@ def _transitions(repos: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
+def _evidence(repos: list[dict[str, Any]]) -> list[str]:
+    """One line per changed row: transition, kinds, the head's finding and next_step."""
+    out = []
+    for r in repos:
+        for name, comparison in (r.get("comparisons") or {}).items():
+            for x in comparison.get("changes", []):
+                head = x["head"]
+                step = " ".join(str(head.get("next_step") or "-").split())[:300]
+                out.append(
+                    f"- {r['repo']} `{x['qual']}` ({x['mode']}, {x['file']}; {name}) "
+                    f"[{x['transition']}] kinds={','.join(x['kinds'])} | finding: "
+                    f"{head['completeness']} {head.get('reasons')} callers={head.get('caller_count')} "
+                    f"delta={json.dumps(x.get('delta') or {}, default=str)[:300]} | next_step: {step}"
+                )
+    return out
+
+
 def render(meta: dict[str, Any], repos: list[dict[str, Any]], code: int) -> str:
     lines = [f"# Callers gate: {_verdict(code, meta)}", ""]
     residual = _dedupe_residual([x for r in repos for x in r.get("residual", [])])
@@ -399,6 +421,8 @@ def render(meta: dict[str, Any], repos: list[dict[str, Any]], code: int) -> str:
         f"- {x['repo']} `{x['qual']}` ({x['mode']}) {x['head']['completeness']}: {x['base']['reasons']} -> {x['head']['reasons']}"
         for x in rc
     ] or ["None."]
+    lines += ["", "## Evidence for every changed row (head answer)", ""]
+    lines += _evidence(repos) or ["None."]
     lines += ["", "## Changed completes and their grep classification", ""]
     for r in repos:
         for g in r.get("grep", []):

@@ -86,9 +86,10 @@ def test_a_file_copied_under_another_tree_is_not_used(tmp_path: Path) -> None:
 def test_promote_copies_only_validated_results(tmp_path: Path) -> None:
     layout = Layout(tmp_path)
     answers.write_answers(
-        layout.result(KEY.tree, KEY.index_key, "rich"), KEY, ROWS, "computed"
+        layout.result(KEY.tree, KEY.index_key, "rich", "run1"), KEY, ROWS, "computed"
     )
-    broken = layout.result(KEY.tree, KEY.index_key, "gson")
+    broken = layout.result(KEY.tree, KEY.index_key, "gson", "run1")
+    broken.parent.mkdir(parents=True, exist_ok=True)
     broken.write_text("{}", encoding="utf-8")
     copied = answers.promote(layout, KEY.tree, _quiet)
     assert copied == [layout.baseline(KEY.tree, KEY.index_key, "rich")]

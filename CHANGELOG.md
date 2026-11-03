@@ -217,6 +217,11 @@
   - `run --repos <subset>` is recorded as PARTIAL and exits 3 unless
     `--allow-partial`; a parse error makes a hit residual before any other
     check.
+  - From the first real use (#1887): `--fresh-base` recomputes base sides for
+    fair latency; `--jobs 1` is strictly sequential; a check result missing or
+    `null` on one side only is re-asked as budget noise; head results are kept
+    per run id and `promote --run` picks one; the report shows each changed
+    row's finding and `next_step`.
 
 - **`nav callers` no longer answers `complete` for a JS/TS member under an
   `extends` clause the index cannot follow** (#1882). `class V1 extends

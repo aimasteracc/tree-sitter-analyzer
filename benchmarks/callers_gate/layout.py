@@ -13,7 +13,7 @@ Root: ``--root`` or ``TSA_GATE_ROOT`` (default ``C:\\git-private\\tsa-gate``)::
       index/<repo>/<index-key>/tree/      detached worktree = project root + .ast-cache
       index/<repo>/<index-key>/manifest.json
       baseline/<tree>/<index-key>/<repo>.json   answers of <tree> on that index (cache)
-      results/<tree>/<index-key>/<repo>.json    head answers (promote -> baseline)
+      results/<tree>/<index-key>/<run-id>/<repo>.json   head answers of one run (promote -> baseline)
       runs/<stamp>/report.{md,json}       one directory per run, with server logs
       locks/<repo>.lock                   one index writer per repo
 """
@@ -178,8 +178,13 @@ class Layout:
     def results_dir(self, tree: str) -> Path:
         return self.cache / "results" / tree
 
-    def result(self, tree: str, key: str, name: str) -> Path:
-        return self.results_dir(tree) / key / f"{name}.json"
+    def result(self, tree: str, key: str, name: str, run_id: str) -> Path:
+        """Head answers of one run: a later run on the same tree never overwrites them."""
+        return self.results_dir(tree) / key / run_id / f"{name}.json"
+
+    def result_runs(self, tree: str, key: str, name: str) -> list[Path]:
+        """Every run's head answers for (tree, index key, repo), oldest run id first."""
+        return sorted((self.results_dir(tree) / key).glob(f"*/{name}.json"))
 
     @property
     def runs(self) -> Path:

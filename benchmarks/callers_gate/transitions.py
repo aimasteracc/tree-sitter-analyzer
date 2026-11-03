@@ -72,6 +72,7 @@ class Change:
                 "completeness": full.get("completeness"),
                 "reasons": full.get("completeness_reasons"),
                 "caller_count": full.get("caller_count"),
+                "next_step": full.get("next_step"),
             }
 
         return {
@@ -83,6 +84,7 @@ class Change:
             "kinds": self.kinds,
             "base": side(self.base),
             "head": side(self.head),
+            "delta": self.delta(),
         }
 
     def delta(self) -> dict[str, Any]:

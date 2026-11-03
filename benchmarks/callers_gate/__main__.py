@@ -114,7 +114,10 @@ def cmd_run(args: argparse.Namespace) -> int:
         run_dir,
         _shards(args.shards),
         _log,
+        fresh_base=bool(args.fresh_base),
     )
+    if jobs == 1:
+        _log("--jobs 1: repos run one after another, one server per side")
     runs = runner.run_all(ctx, repos, jobs)
     query_s = time.perf_counter() - started - resolve_s
     for run in runs:
@@ -163,6 +166,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         "skipped_repos": skipped,
         "allow_partial": bool(args.allow_partial),
         "gate_format": GATE_FORMAT,
+        "run_id": run_dir.name,
+        "fresh_base": bool(args.fresh_base),
     }
     code = report.write_report(run_dir, meta, judged)
     _log(f"report {run_dir / 'report.md'}")
@@ -207,7 +212,7 @@ def cmd_promote(args: argparse.Namespace) -> int:
     layout = Layout.from_env(args.root)
     git_dir = Path(args.git_dir).resolve() if args.git_dir else HERE_REPO
     side = _resolve(layout, args.ref, "promote", git_dir)
-    copied = answers.promote(layout, side.tree, _log)
+    copied = answers.promote(layout, side.tree, _log, run_id=args.run)
     if not copied:
         _log(
             f"ERROR no validated results for tree {side.tree} ({args.ref}); the merged tree was never tested as a head"
@@ -303,7 +308,14 @@ def _rejudge(
         rows: dict[str, list[dict[str, Any]] | None] = {}
         sources = [
             ("base", "base", layout.baseline(meta["base"]["tree"], key, name), key),
-            ("head", "head", layout.result(meta["head"]["tree"], key, name), key),
+            (
+                "head",
+                "head",
+                layout.result(
+                    meta["head"]["tree"], key, name, meta.get("run_id") or run_dir.name
+                ),
+                key,
+            ),
         ]
         if base_key != key:
             sources.append(
@@ -398,7 +410,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="run a subset; the run is recorded as PARTIAL (exit >= 3 unless --allow-partial)",
     )
     r.add_argument(
-        "--jobs", type=int, help="concurrent repos (default from CPUs and free memory)"
+        "--jobs",
+        type=int,
+        help="concurrent repos (default from CPUs and free memory); 1 = strictly sequential, one server at a time",
     )
     r.add_argument(
         "--shards",
@@ -421,6 +435,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="allow changes of kind `other` (default: a violation)",
     )
     r.add_argument(
+        "--fresh-base",
+        action="store_true",
+        help="recompute every base side instead of using cached answers (fair base-vs-head timings)",
+    )
+    r.add_argument(
         "--allow-partial",
         action="store_true",
         help="with --repos, let a clean partial run exit 0 (default: 3, REVIEW)",
@@ -441,6 +460,10 @@ def build_parser() -> argparse.ArgumentParser:
         "promote", help="after a merge: results of the merged tree become the baseline"
     )
     pr.add_argument("--ref", default="origin/develop")
+    pr.add_argument(
+        "--run",
+        help="run id whose head results to promote (default: only if every run of the tree agrees)",
+    )
     pr.add_argument("--git-dir")
     pr.set_defaults(func=cmd_promote)
 

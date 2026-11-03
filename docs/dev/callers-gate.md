@@ -28,7 +28,11 @@ After the PR is squash-merged and `origin/develop` is fetched:
 py -3 -m benchmarks.callers_gate promote --ref origin/develop
 ```
 
-`promote` copies the head answers of the merged tree into `baseline/`. It
+`promote` copies the head answers of the merged tree into `baseline/`. Head
+answers are kept per run (`results/<tree>/<key>/<run-id>/`), so a later run on
+the same tree never overwrites an earlier one; when several runs of the tree
+disagree, pass `--run <run-id>` to pick one (without it, only agreeing runs
+are promoted). It
 works only when the merged `tree_sitter_analyzer/` tree hash equals a tree the
 gate ran as a head (a squash merge with nothing in between); otherwise it
 exits 2 and the next run recomputes the base side once. `run` also promotes
@@ -70,7 +74,10 @@ interpreter (default: the main checkout's `.venv`).
 
 ## What `run` does
 
-For each repo, concurrently (`--jobs`, default `min(cpus/2, (free GiB - 2) / 0.5, 8)`):
+For each repo, concurrently (`--jobs`, default `min(cpus/2, (free GiB - 2) / 0.5, 8)`;
+`--jobs 1` is strictly sequential: one repo at a time and one server per side).
+`--fresh-base` recomputes every base side instead of using cached answers, so
+base and head latencies are measured in the same run, on the same load:
 
 1. **Index.** Compute the index key from the head code (below). Reuse
    `index/<repo>/<key>/` if its manifest is valid; else build it with the head
@@ -90,7 +97,8 @@ For each repo, concurrently (`--jobs`, default `min(cpus/2, (free GiB - 2) / 0.5
    under `results/<head tree>/<index key>/<repo>.json`.
 4. **Budget retry.** TSA bounds some checks by wall-clock budgets and answers
    `*_UNCHECKED` (or a compact verdict that disagrees with the full one) when
-   a check ran out of time. Under load that changes answers without any code
+   a check ran out of time, or leaves a check result missing / `null` on one
+   side only (`non_call_references: null`). Under load that changes answers without any code
    change (seen on the shared machine: `Context.#newResponse` went
    `complete -> incomplete (NON_CALL_REFERENCES_UNCHECKED)`). After all repos
    finish, every *changed* row that is budget-limited on either side is
@@ -230,7 +238,8 @@ A PR that is meant to change something else passes a policy file or flags
 entry must name `repo`, `mode`, `file`, `qual` and `kinds`: it allows exactly
 one row. Allowing a change never skips an oracle.
 
-A budget-limited violation (the row was still `*_UNCHECKED` or form-disagreeing
+The report lists, for every changed row, the head's finding (verdict,
+reasons, caller count, delta) and its `next_step`. A budget-limited violation (the row was still `*_UNCHECKED` or form-disagreeing
 after the retries) carries a note that load may explain it; it is still a
 violation.
 

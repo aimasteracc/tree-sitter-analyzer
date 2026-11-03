@@ -116,6 +116,12 @@ class RunContext:
     shards: dict[str, int]
     log: Callable[[str], None]
     _materialize_lock: threading.Lock = field(default_factory=threading.Lock)
+    #: Recompute every base side (no cache) so base and head timings share one load.
+    fresh_base: bool = False
+
+    @property
+    def run_id(self) -> str:
+        return self.run_dir.name
 
     def pkg(self, side: sides.Side) -> Path:
         with self._materialize_lock:
@@ -151,13 +157,13 @@ def _ensure(
 def _cached_answers(
     ctx: RunContext, pin: RepoPin, tree: str, key: answers.AnswerKey
 ) -> list[dict[str, Any]] | None:
-    """``baseline/<tree>/<key>``, else ``results/<tree>/<key>`` promoted to baseline."""
+    """``baseline/<tree>/<key>``, else agreeing ``results/<tree>/<key>/<run>`` promoted."""
     path = ctx.layout.baseline(tree, key.index_key, pin.name)
     cached = answers.read_answers(path, key, ctx.log)
     if cached is not None:
         return cached
-    promoted = answers.read_answers(
-        ctx.layout.result(tree, key.index_key, pin.name), key, ctx.log
+    promoted = answers.pick_run(
+        ctx.layout.result_runs(tree, key.index_key, pin.name), key, None, ctx.log
     )
     if promoted is not None:
         answers.write_answers(path, key, promoted, "promoted:results")
@@ -178,7 +184,7 @@ def _side_answers(
     targets: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], str, float]:
     """(rows, source, seconds) of ``side``'s code on the index named by ``key``."""
-    cached = _cached_answers(ctx, pin, side.tree, key)
+    cached = None if ctx.fresh_base else _cached_answers(ctx, pin, side.tree, key)
     if cached is not None:
         ctx.log(f"[{pin.name}] {label} answers: cache hit ({len(cached)} rows)")
         return cached, "cache", 0.0
@@ -287,12 +293,8 @@ def run_repo(ctx: RunContext, pin: RepoPin) -> RepoRun:
     head_key = answers.AnswerKey(
         ctx.head.tree, out.index_key, pin.name, pin.sha, query_key
     )
-    answers.write_answers(
-        ctx.layout.result(ctx.head.tree, out.index_key, pin.name),
-        head_key,
-        rows,
-        "computed",
-    )
+    head_path = ctx.layout.result(ctx.head.tree, out.index_key, pin.name, ctx.run_id)
+    answers.write_answers(head_path, head_key, rows, "computed")
     out.head_rows = rows
     out.timings["head"] = secs
     out.timings["total"] = time.perf_counter() - t0
@@ -300,12 +302,7 @@ def run_repo(ctx: RunContext, pin: RepoPin) -> RepoRun:
         {
             "targets": targets,
             "base": (lambda: ctx.pkg(ctx.base), info.root, base_path, base_key),
-            "head": (
-                head_pkg,
-                info.root,
-                ctx.layout.result(ctx.head.tree, out.index_key, pin.name),
-                head_key,
-            ),
+            "head": (head_pkg, info.root, head_path, head_key),
         }
     )
     log(
@@ -314,18 +311,28 @@ def run_repo(ctx: RunContext, pin: RepoPin) -> RepoRun:
     return out
 
 
+def _guarded(ctx: RunContext, pin: RepoPin) -> RepoRun:
+    try:
+        return run_repo(ctx, pin)
+    except Exception as exc:  # noqa: BLE001 - one repo failing must not hide the others
+        ctx.log(f"[{pin.name}] ERROR {type(exc).__name__}: {exc}")
+        return RepoRun(pin.name, error=f"{type(exc).__name__}: {exc}")
+
+
 def run_all(ctx: RunContext, repos: list[str], jobs: int) -> list[RepoRun]:
+    """Run every repo. ``jobs == 1`` is strictly sequential: one repo at a time, in
+    this thread, and one server per side (shards are forced to 1)."""
     pins = sorted((REPOS[r] for r in repos), key=lambda p: -COST_HINT.get(p.name, 1.0))
     results: dict[str, RepoRun] = {}
-    with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
-        futures = {pool.submit(run_repo, ctx, pin): pin.name for pin in pins}
-        for future in as_completed(futures):
-            name = futures[future]
-            try:
-                results[name] = future.result()
-            except Exception as exc:  # noqa: BLE001 - one repo failing must not hide the others
-                ctx.log(f"[{name}] ERROR {type(exc).__name__}: {exc}")
-                results[name] = RepoRun(name, error=f"{type(exc).__name__}: {exc}")
+    if jobs <= 1:
+        ctx.shards = dict.fromkeys(REPOS, 1)
+        for pin in pins:
+            results[pin.name] = _guarded(ctx, pin)
+    else:
+        with ThreadPoolExecutor(max_workers=jobs) as pool:
+            futures = {pool.submit(_guarded, ctx, pin): pin.name for pin in pins}
+            for future in as_completed(futures):
+                results[futures[future]] = future.result()
     for name in repos:
         run = results[name]
         if run.error is None:
@@ -353,17 +360,38 @@ def budget_limited(row: dict[str, Any]) -> bool:
     return bool(compact != full.get("completeness"))
 
 
+def check_missing(row: dict[str, Any]) -> bool:
+    """The non-call reference check left no result (missing or null)."""
+    return row["full"].get("non_call_references") is None
+
+
+def pair_limited(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """A changed pair a budget may explain: either side ``budget_limited``, or one side
+    finished the non-call reference check and the other left it missing / null (the
+    check ran out of time without saying ``*_UNCHECKED``)."""
+    return (
+        budget_limited(a) or budget_limited(b) or check_missing(a) != check_missing(b)
+    )
+
+
+def _side_limited(row: dict[str, Any], other: dict[str, Any] | None) -> bool:
+    """This side's row should be re-asked (against the other side's row)."""
+    return budget_limited(row) or (
+        other is not None and check_missing(row) and not check_missing(other)
+    )
+
+
 def _changed_limited(
     rows: list[dict[str, Any]], head_rows: list[dict[str, Any]]
 ) -> set[tuple[str, str, str]]:
-    """Keys whose answer changed between ``rows`` and head and is budget-limited on a side."""
+    """Keys whose answer changed between ``rows`` and head and a budget may explain."""
     by = {row_key(r): r for r in rows}
     return {
         row_key(h)
         for h in head_rows
         if row_key(h) in by
         and classify_pair(by[row_key(h)], h)
-        and (budget_limited(h) or budget_limited(by[row_key(h)]))
+        and pair_limited(by[row_key(h)], h)
     }
 
 
@@ -397,11 +425,25 @@ def retry_budget_rows(
         ]
         pkg, root, path, akey = run.retry_context[side]
         by_key = {row_key(r): r for r in rows}
+        counterpart = {
+            row_key(r): r for r in (run.base_rows if side == "head" else run.head_rows)
+        }
+
+        def limited(
+            key: tuple[str, str, str],
+            row: dict[str, Any],
+            counterpart: dict[tuple[str, str, str], dict[str, Any]] = counterpart,
+        ) -> bool:
+            return _side_limited(row, counterpart.get(key))
+
         pending = [
             t
             for t in run.retry_context["targets"]
             if (t["mode"], t["file"], t["qual"]) in wanted[side]
-            and budget_limited(by_key[(t["mode"], t["file"], t["qual"])])
+            and limited(
+                (t["mode"], t["file"], t["qual"]),
+                by_key[(t["mode"], t["file"], t["qual"])],
+            )
         ]
         for attempt in range(1, attempts + 1):
             if not pending:
@@ -427,15 +469,18 @@ def retry_budget_rows(
                         "qual": key[2],
                         "before": by_key[key]["full"].get("completeness_reasons"),
                         "after": row["full"].get("completeness_reasons"),
-                        "conclusive": not budget_limited(row),
+                        "conclusive": not limited(key, row),
                     }
                 )
-                if not budget_limited(row):
+                if not limited(key, row):
                     by_key[key] = row
             pending = [
                 t
                 for t in pending
-                if budget_limited(by_key[(t["mode"], t["file"], t["qual"])])
+                if limited(
+                    (t["mode"], t["file"], t["qual"]),
+                    by_key[(t["mode"], t["file"], t["qual"])],
+                )
             ]
         new_rows = [by_key[row_key(r)] for r in rows]
         if new_rows != rows:
