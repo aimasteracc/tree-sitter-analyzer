@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from benchmarks.callers_gate.oracle_grep import Item, Repo, check_item
+from benchmarks.callers_gate.oracle_grep import Item, Repo, caller_end_line, check_item
 
 pytest.importorskip("tree_sitter_java")
 pytest.importorskip("tree_sitter_typescript")
@@ -243,3 +243,29 @@ def test_an_aliased_superclass_keeps_this_calls_residual(tmp_path: Path) -> None
     ) in got  # Sub extends W (= Widget): may dispatch
     assert ("src/sub.ts", 6, "other_symbol") in got  # Plain is provably unrelated
     assert ("src/sub.ts", 7, "declaration") in got
+
+
+SPANS_TS = """export function outer(a: number) {
+  return inner(a);
+}
+export const arrow = (b: number) => {
+  return inner(b);
+};
+class K {
+  method() {
+    return inner(1);
+  }
+}
+"""
+
+
+def test_caller_spans_come_from_the_callers_own_declaration(tmp_path: Path) -> None:
+    root = _git_repo(tmp_path, {"src/spans.ts": SPANS_TS})
+    repo = Repo(root)
+    assert caller_end_line(repo, "src/spans.ts", 1, "outer") == 3
+    assert caller_end_line(repo, "src/spans.ts", 4, "arrow") == 6
+    assert caller_end_line(repo, "src/spans.ts", 8, "method") == 10
+    assert caller_end_line(repo, "src/spans.ts", 2, "outer") is None  # wrong start line
+    assert caller_end_line(repo, "src/spans.ts", 1, "other") is None
+    assert caller_end_line(repo, "src/spans.ts", 1, "<module>") is None
+    assert caller_end_line(repo, "README.md", 1, "outer") is None

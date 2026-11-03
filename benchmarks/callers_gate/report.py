@@ -17,8 +17,8 @@ from . import corpus
 from .layout import LABEL_SOURCE, REPOS, Layout
 from .oracle_truth import check_rows
 from .policy import Policy
-from .runner import RepoRun
-from .transitions import RepoDiff, RowSetMismatch, diff_repo
+from .runner import RepoRun, budget_limited
+from .transitions import RepoDiff, RowSetMismatch, diff_repo, row_key
 
 ORACLE_GREP = Path(__file__).with_name("oracle_grep.py")
 EXIT_PASS, EXIT_FAIL, EXIT_ERROR, EXIT_REVIEW = 0, 1, 2, 3
@@ -28,14 +28,12 @@ def bare_name(qual: str) -> str:
     return qual.strip('"').rsplit(".", 1)[-1].strip('"')
 
 
-def grep_oracle(
-    python: Path, root: Path, items: list[dict[str, Any]], work: Path
-) -> list[dict[str, Any]]:
-    if not items:
-        return []
+def _oracle(
+    python: Path, request: dict[str, Any], expect: int, work: Path, name: str
+) -> list[Any]:
     work.mkdir(parents=True, exist_ok=True)
-    req, resp = work / "grep-request.json", work / "grep-response.json"
-    req.write_text(json.dumps({"root": str(root), "items": items}), encoding="utf-8")
+    req, resp = work / f"{name}-request.json", work / f"{name}-response.json"
+    req.write_text(json.dumps(request), encoding="utf-8")
     proc = subprocess.run(
         [str(python), "-s", "-P", str(ORACLE_GREP), str(req), str(resp)],
         capture_output=True,
@@ -43,11 +41,68 @@ def grep_oracle(
         check=False,
     )
     if proc.returncode != 0:
-        raise RuntimeError(f"grep oracle failed: {proc.stderr.strip()[-2000:]}")
+        raise RuntimeError(f"{name} oracle failed: {proc.stderr.strip()[-2000:]}")
     data = json.loads(resp.read_text(encoding="utf-8"))
-    if not isinstance(data, list) or len(data) != len(items):
-        raise RuntimeError("grep oracle returned a malformed response")
+    if not isinstance(data, list) or len(data) != expect:
+        raise RuntimeError(f"{name} oracle returned a malformed response")
     return data
+
+
+def grep_oracle(
+    python: Path, root: Path, items: list[dict[str, Any]], work: Path
+) -> list[dict[str, Any]]:
+    if not items:
+        return []
+    return _oracle(
+        python, {"root": str(root), "items": items}, len(items), work, "grep"
+    )
+
+
+def with_caller_spans(
+    python: Path, root: Path, rows: list[dict[str, Any]], work: Path
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Copies of ``rows`` whose TS/JS callers get the ``end_line`` the answer omits.
+
+    The span comes from the caller's own declaration (exact name + start line);
+    an unresolved caller keeps ``end_line`` None and covers its line only.
+    """
+    wanted = sorted(
+        {
+            (c["file"], c["line"], c["name"])
+            for r in rows
+            for c in r["full"].get("callers") or []
+            if c.get("end_line") is None and c.get("file") and c.get("line")
+        }
+    )
+    if not wanted:
+        return rows, {"spans_needed": 0, "spans_resolved": 0}
+    request = {
+        "mode": "spans",
+        "root": str(root),
+        "callers": [{"file": f, "line": ln, "name": n} for f, ln, n in wanted],
+    }
+    ends = _oracle(python, request, len(wanted), work, "spans")
+    span = {key: end for key, end in zip(wanted, ends, strict=True) if end is not None}
+
+    def fill(c: dict[str, Any]) -> dict[str, Any]:
+        end = span.get((c.get("file"), c.get("line"), c.get("name")))
+        return (
+            {**c, "end_line": end}
+            if c.get("end_line") is None and end is not None
+            else c
+        )
+
+    patched = [
+        {
+            **r,
+            "full": {
+                **r["full"],
+                "callers": [fill(c) for c in r["full"].get("callers") or []],
+            },
+        }
+        for r in rows
+    ]
+    return patched, {"spans_needed": len(wanted), "spans_resolved": len(span)}
 
 
 def judge_repo(
@@ -94,11 +149,20 @@ def judge_repo(
         c.summary() for c in diff.reason_changes_same_verdict
     ]
     violations = []
+    limited = {row_key(r) for r in run.base_rows + run.head_rows if budget_limited(r)}
     for change in diff.changes:
         why = policy.violations(change)
+        if why and change.key in limited:
+            why = [
+                *why,
+                "budget-limited answer (load-dependent; still so after retries)",
+            ]
         if why:
-            violations.append({**change.summary(), "violations": why})
+            violations.append(
+                {**change.summary(), "violations": why, "delta": change.delta()}
+            )
     out["violations"] = violations
+    out["budget_retries"] = run.retried
     out["changes"] = [c.summary() for c in diff.changes]
 
     unchanged = {(r["mode"], r["file"], r["qual"]) for r in run.head_rows} - {
@@ -114,7 +178,13 @@ def judge_repo(
         if run.repo in LABEL_SOURCE
         else None
     )
-    truth = check_rows(run.repo, run.head_rows, unchanged, gt2=gt2, labels=labels)
+    head_rows = run.head_rows
+    if not pin.is_python:
+        assert run.root is not None
+        head_rows, out["caller_spans"] = with_caller_spans(
+            python, run.root, run.head_rows, work / run.repo
+        )
+    truth = check_rows(run.repo, head_rows, unchanged, gt2=gt2, labels=labels)
     out["truth_failures"] = truth["failures"]
     out["truth_preexisting"] = truth["preexisting"]
     out["truth_stats"] = truth["stats"]
@@ -124,7 +194,7 @@ def judge_repo(
     residual: list[dict[str, Any]] = []
     grep_summary: list[dict[str, Any]] = []
     if not pin.is_python and new_complete:
-        head_by = {(r["mode"], r["file"], r["qual"]): r for r in run.head_rows}
+        head_by = {(r["mode"], r["file"], r["qual"]): r for r in head_rows}
         items = [
             {
                 "key": list(c.key),
@@ -207,7 +277,7 @@ def render(meta: dict[str, Any], repos: list[dict[str, Any]], code: int) -> str:
     lines += ["", f"## Failures ({len(failures) + len(truth) + len(errors)})", ""]
     lines += [f"- **{repo}** error: {err}" for repo, err in errors]
     lines += [
-        f"- **{repo}** `{v['qual']}` ({v['mode']}, {v['file']}): {', '.join(v['violations'])} [{v['transition']}]"
+        f"- **{repo}** `{v['qual']}` ({v['mode']}, {v['file']}): {', '.join(v['violations'])} [{v['transition']}] {json.dumps(v.get('delta') or {})[:400]}"
         for repo, v in failures
     ]
     lines += [
@@ -257,6 +327,12 @@ def render(meta: dict[str, Any], repos: list[dict[str, Any]], code: int) -> str:
             lines.append(
                 f"- {r['repo']}: {r['new_complete']} new complete(s) checked against GT2 ({len([f for f in r['truth_failures'] if f['kind'].startswith('gt2')])} misses)"
             )
+    retried = [x for r in repos for x in r.get("budget_retries", [])]
+    lines += ["", f"## Budget-limited answers re-asked ({len(retried)})", ""]
+    lines += [
+        f"- {x['qual']} ({x['mode']}, {x['side']} attempt {x['attempt']}): {x['before']} -> {x['after']} {'conclusive' if x['conclusive'] else 'STILL LIMITED'}"
+        for x in retried
+    ] or ["None."]
     pre = [f for r in repos for f in r.get("truth_preexisting", [])]
     lines += [
         "",

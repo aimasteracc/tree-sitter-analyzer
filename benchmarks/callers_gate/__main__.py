@@ -236,10 +236,77 @@ def cmd_report(args: argparse.Namespace) -> int:
         Path(args.run) if args.run else max(layout.runs.iterdir(), key=lambda p: p.name)
     )
     payload = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
+    if args.rejudge:
+        return _rejudge(layout, args, run_dir, payload)
     text = report.render(payload["meta"], payload["repos"], payload["exit_code"])
     (run_dir / "report.md").write_text(text, encoding="utf-8")
     print(text)
     return int(payload["exit_code"])
+
+
+def _rejudge(
+    layout: Layout, args: argparse.Namespace, run_dir: Path, payload: dict[str, Any]
+) -> int:
+    """Judge a finished run again from its cached answer files (new policy / oracle)."""
+    from . import report, runner
+    from .policy import Policy
+
+    python = _python(layout, args.python)
+    manifest = corpus.verify_corpus(layout)
+    policy = Policy.load(
+        Path(args.policy) if args.policy else None,
+        args.allow_transition,
+        caller_changes=args.allow_caller_changes,
+        site_changes=args.allow_site_changes,
+    )
+    meta = payload["meta"]
+    judged = []
+    for old in payload["repos"]:
+        name, key = old["repo"], old.get("index_key", "")
+        pin = REPOS[name]
+        _targets, sha = corpus.load_targets(layout, name, manifest)
+        qkey = keys.query_key(targets_sha256=sha)
+        rows = {}
+        for side, path in (
+            ("base", layout.baseline(meta["base"]["tree"], key, name)),
+            ("head", layout.result(meta["head"]["tree"], key, name)),
+        ):
+            rows[side] = answers.read_answers(
+                path,
+                answers.AnswerKey(meta[side]["tree"], key, name, pin.sha, qkey),
+                _log,
+            )
+        if rows["base"] is None or rows["head"] is None:
+            judged.append(
+                {
+                    "repo": name,
+                    "error": "cached answers missing or invalid; run again",
+                    "timings": {},
+                }
+            )
+            continue
+        run = runner.RepoRun(
+            name,
+            index_key=key,
+            base_rows=rows["base"],
+            head_rows=rows["head"],
+            root=layout.index_dir(name, key) / "tree",
+            baseline_source="cache",
+            timings=old.get("timings", {}),
+        )
+        judged.append(
+            report.judge_repo(
+                layout, python, run, policy, manifest, run_dir / "oracle-rejudge"
+            )
+        )
+    meta = {
+        **meta,
+        "policy": policy.__dict__ | {"allow_items": list(policy.allow_items)},
+        "rejudged": True,
+    }
+    code = report.write_report(run_dir, meta, judged)
+    _print_summary(judged, code, meta)
+    return code
 
 
 def cmd_precheck(args: argparse.Namespace) -> int:
@@ -330,6 +397,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     rp = sub.add_parser("report", help="re-render report.md of a run (default: latest)")
     rp.add_argument("--run")
+    rp.add_argument(
+        "--rejudge",
+        action="store_true",
+        help="re-run policy + oracles on the cached answers",
+    )
+    rp.add_argument("--policy")
+    rp.add_argument("--allow-transition", action="append", metavar="A->B")
+    rp.add_argument("--allow-caller-changes", action="store_true")
+    rp.add_argument("--allow-site-changes", action="store_true")
     rp.set_defaults(func=cmd_report)
 
     il = sub.add_parser("import-legacy", help="seed baseline/ from a manual-gate JSON")

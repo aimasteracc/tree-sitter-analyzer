@@ -740,9 +740,52 @@ def check_item(repo: Repo, item: Item) -> dict[str, Any]:
     return {"key": item.key, "name": item.name, "counts": counts, "hits": hits}
 
 
+SPAN_TYPES = DECL_TYPES - CLASS_TYPES - {"enum_constant", "type_alias_declaration"}
+
+
+def caller_end_line(repo: Repo, file: str, line: int, name: str) -> int | None:
+    """Last line of the declaration named ``name`` that starts on ``line`` (or None).
+
+    TS/JS caller entries carry no ``end_line``; without the span a call inside
+    the caller would look uncovered. Only an exact (name, start line) match
+    counts, so an unresolvable caller keeps its single line (conservative).
+    """
+    if not name or name.startswith("<"):
+        return None
+    parsed = repo.tree(file)
+    if parsed is None:
+        return None
+    best: int | None = None
+    for node in _walk(parsed[0].root_node):
+        if node.type not in SPAN_TYPES:
+            continue
+        ident = node.child_by_field_name("name")
+        if ident is None or _text(ident) != name:
+            continue
+        starts = {node.start_point[0] + 1, ident.start_point[0] + 1}
+        outer = node.parent
+        if outer is not None and outer.type in (
+            "lexical_declaration",
+            "variable_declaration",
+            "export_statement",
+        ):
+            starts.add(outer.start_point[0] + 1)
+        if line in starts:
+            end = node.end_point[0] + 1
+            best = end if best is None else max(best, end)
+    return best
+
+
 def main() -> None:
     request = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
     repo = Repo(Path(request["root"]))
+    if request.get("mode") == "spans":
+        spans = [
+            caller_end_line(repo, c["file"], c["line"], c["name"])
+            for c in request["callers"]
+        ]
+        Path(sys.argv[2]).write_text(json.dumps(spans), encoding="utf-8")
+        return
     out = [check_item(repo, Item(**item)) for item in request["items"]]
     Path(sys.argv[2]).write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
 

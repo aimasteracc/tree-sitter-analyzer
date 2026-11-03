@@ -76,13 +76,28 @@ For each repo, concurrently (`--jobs`, default `min(cpus/2, (free GiB - 2) / 0.5
    and ask every target (full form, then compact form).
 3. **Head answers.** Same, with the head code, always computed. Saved under
    `results/<head tree>/<index key>/<repo>.json`.
-4. **Judge** (below) and write `report.md` / `report.json`.
+4. **Budget retry.** TSA bounds some checks by wall-clock budgets and answers
+   `*_UNCHECKED` (or a compact verdict that disagrees with the full one) when
+   a check ran out of time. Under load that changes answers without any code
+   change (seen on the shared machine: `Context.#newResponse` went
+   `complete -> incomplete (NON_CALL_REFERENCES_UNCHECKED)`). After all repos
+   finish, every *changed* row that is budget-limited on either side is
+   re-asked on one quiet server per side, up to 2 times; a conclusive answer
+   replaces the cached one. A change that stays budget-limited is still
+   judged (and labelled as such); it is never silently dropped.
+5. **Judge** (below) and write `report.md` / `report.json`.
+
+`report --rejudge [--run <dir>] [--policy ...]` judges a finished run again
+from its cached answer files, for example with a policy that allows what a
+reviewer accepted.
 
 Base and head always read the same index (the determinism of the manual
 gates). A side may be split over several servers on the same index
 (`--shards repo=N`, default `zod=5 pydantic=2 fastapi=2 hono=2`). The base side
 uses contiguous slices; the head side balances slices by the base side's
-measured per-target cost. Rows are merged back in corpus order. Every server gets its own environment: no inherited `TSA_*`,
+measured per-target cost. Rows are merged back in corpus order.
+
+Every server gets its own environment: no inherited `TSA_*`,
 `TREE_SITTER_*` or `PYTHON*` variables, `PYTHONHASHSEED=0`, and private
 `TEMP` / `HOME` / `APPDATA` / `LOCALAPPDATA` directories under the run
 directory. A server refuses to start unless `tree_sitter_analyzer` resolves to
@@ -109,11 +124,9 @@ runs/<stamp>/                            report.md, report.json, server logs, or
 locks/<repo>.lock                        one index builder per repo across concurrent runs
 ```
 
-Disk (measured): repos ~50 MB (hard links), indexes ~0.3-0.6 GB per key for all 7
-repos, answers ~2-4 MB per repo per tree. `run` keeps no more than the
-current index key per repo plus the previous ones you have used; delete old
-`index/<repo>/<key>` directories with `git -C repos/<repo> worktree remove`
-or simply delete them and run `git -C repos/<repo> worktree prune`.
+`run` keeps the current index key per repo plus the 2 most recently used
+others (`--keep-indexes`); older keys are removed with `git worktree remove`.
+Snapshots under `src/` and answer files are small and are not pruned.
 
 ## Invalidation rules
 
@@ -198,6 +211,18 @@ format, including per-target `allow_items`.
   inheritance relation to the target's class, when the target's whole
   ancestry resolves; or a bare name bound by an import from an external
   module), and `residual` with the reason. Only residual hits reach a human.
+- **Caller spans.** TS/JS caller entries carry no `end_line`. Before the
+  label and grep checks, the oracle takes each caller's span from its own
+  declaration (exact name and start line); a caller it cannot match covers
+  only its own line, which can only add residuals, never hide one. Without
+  this, 24 hono / zod completes looked like label misses that were not.
+- **Classifier limits (by design conservative).** A target's class comes from
+  its qual, which drops anonymous classes; a target declared inside an
+  anonymous class body or object literal has no provable class, so member and
+  `this` uses of it stay residual. Classes are matched by simple name (all
+  same-named classes are unioned), and an ancestry with any unresolved name
+  (an alias, a mixin call, an external type outside the builtin list) is
+  never "provably unrelated".
 
 ## `precheck`
 

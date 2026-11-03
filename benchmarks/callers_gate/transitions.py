@@ -76,6 +76,28 @@ class Change:
             "head": side(self.head),
         }
 
+    def delta(self) -> dict[str, Any]:
+        """Callers and sites removed (``-``) / added (``+``), for the reviewer."""
+        out: dict[str, Any] = {}
+        a, b = set(_callers(self.base)), set(_callers(self.head))
+        if a != b:
+            out["callers"] = {
+                "-": sorted(a - b, key=repr),
+                "+": sorted(b - a, key=repr),
+            }
+        for f in SITE_FIELDS:
+            sa = {(s.get("file"), s.get("line")) for s in self.base.get(f) or []}
+            sb = {(s.get("file"), s.get("line")) for s in self.head.get(f) or []}
+            if sa != sb:
+                out[f] = {
+                    "-": sorted(sa - sb, key=repr),
+                    "+": sorted(sb - sa, key=repr),
+                }
+        for k in SITE_SCALARS:
+            if self.base.get(k) != self.head.get(k):
+                out[k] = [self.base.get(k), self.head.get(k)]
+        return out
+
 
 def _callers(full: dict[str, Any]) -> list[tuple[Any, ...]]:
     return sorted(

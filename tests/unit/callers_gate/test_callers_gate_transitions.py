@@ -223,3 +223,24 @@ def test_policy_refuses_malformed_files_and_unallowable_kinds(tmp_path: Path) ->
     assert Policy(allow_caller_changes=True, allow_site_changes=True).violations(
         _change(row(), bad)
     ) == ["error"]
+
+
+def test_delta_lists_removed_and_added_callers_and_sites() -> None:
+    a = row(
+        "incomplete",
+        ["NON_CALL_REFERENCES"],
+        sites=[{"file": "a.py", "line": 806, "callee": None}],
+    )
+    b = row(
+        "incomplete",
+        ["NON_CALL_REFERENCES"],
+        callers=[
+            {"file": "a.py", "name": "g", "line": 3, "end_line": 9},
+            {"file": "c.py", "name": "k", "line": 5, "end_line": 6},
+        ],
+    )
+    change = diff_repo("gson", [a], [b]).changes[0]
+    delta = change.delta()
+    assert delta["non_call_reference_sites"] == {"-": [("a.py", 806)], "+": []}
+    assert delta["callers"]["-"] == []
+    assert delta["callers"]["+"] == [("c.py", "k", 5, 6, None, None)]
