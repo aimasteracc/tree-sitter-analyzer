@@ -15,6 +15,7 @@ Every other shape keeps the guard (``HANDLERS[k]()`` above all).
 from __future__ import annotations
 
 import sqlite3
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -24,6 +25,7 @@ import pytest
 from tree_sitter_analyzer.mcp.tools.callers_class_subscript import (
     CLASS_CONSTRUCTION_REASON,
     CONSTRUCTION_METHODS,
+    clear_chains,
     constructs_only,
     drop_class_constructions,
     subscripted_name,
@@ -345,3 +347,100 @@ async def test_construction_method_target_still_blocks(tmp_path: Path) -> None:
     result = await _callers(root, "Pipe.__post_init__")
 
     assert result["completeness"] != "complete"
+
+
+# ------------------------------------------------------- coverage of branches
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "\ntry:\n    pass\nexcept ValueError as Pipe:\n    pass\n",
+        "\nmatch x:\n    case [*Pipe]:\n        pass\n",
+        "\nmatch x:\n    case {**Pipe}:\n        pass\n",
+        "\nmatch x:\n    case Pipe:\n        pass\n",
+        "\nfrom os import *\n",
+        "\n__all__ = ['Pipe']\n",
+        "\nd = obj.__dict__\n",
+        "\ng = globals\n",
+    ],
+)
+def test_more_bindings_and_dynamic_shapes_keep_the_guard(extra: str) -> None:
+    assert constructs_only(_PIPE + extra, "Pipe") is False
+
+
+def test_unrelated_imports_do_not_disturb_the_proof() -> None:
+    text = (
+        "import os.path\n"
+        "from . import sibling\n"
+        "from .pkg import helper as other\n" + _PIPE
+    )
+    assert constructs_only(text, "Pipe") is True
+
+
+def test_cyclic_in_file_bases_keep_the_guard() -> None:
+    text = "class A(B):\n    pass\n\n\nclass B(A):\n    pass\n"
+    assert constructs_only(text, "A") is False
+
+
+def test_class_getitem_read_in_the_body_keeps_the_guard() -> None:
+    text = _HEAD + "class Pipe(Generic[T]):\n    other = dict.__class_getitem__\n"
+    assert constructs_only(text, "Pipe") is False
+
+
+@pytest.mark.parametrize(
+    "decorator",
+    ["@other.dataclass\n", "@functools.dataclass\n", "@dataclass_like\n"],
+)
+def test_lookalike_dataclass_decorators_keep_the_guard(decorator: str) -> None:
+    text = (
+        "import functools\nimport other\n"
+        + _HEAD
+        + decorator
+        + "class Pipe(Generic[T]):\n    pass\n"
+    )
+    assert constructs_only(text, "Pipe") is False
+
+
+def test_rebound_object_base_keeps_the_guard() -> None:
+    text = _HEAD + "object = dict\n\n\nclass Pipe(object):\n    pass\n"
+    assert constructs_only(text, "Pipe") is False
+
+
+def test_non_generic_typing_attribute_base_keeps_the_guard() -> None:
+    text = "import typing\n\n\nclass Pipe(typing.NamedTuple):\n    pass\n"
+    assert constructs_only(text, "Pipe") is False
+
+
+@pytest.mark.skipif(sys.version_info < (3, 12), reason="PEP 695 syntax")
+def test_type_parameter_binding_is_counted() -> None:
+    text = _PIPE + "\n\ndef pick[Pipe](x: Pipe) -> Pipe:\n    return x\n"
+    assert constructs_only(text, "Pipe") is False
+
+
+def test_memo_is_bounded_and_clearable() -> None:
+    clear_chains()
+    for index in range(300):
+        assert constructs_only(_PIPE + f"\nX{index} = 1\n", "Pipe") is True
+    assert constructs_only(_PIPE, "Pipe") is True
+    assert constructs_only(_PIPE, "Pipe") is True
+    clear_chains()
+
+
+def test_other_files_that_do_not_rebind_allow_the_exclusion(tmp_path: Path) -> None:
+    _write(tmp_path, "mod.py", _PIPE)
+    _write(tmp_path, "other.py", "from mod import Pipe\nvalue = Pipe[int]((1,))\n")
+    _write(tmp_path, "plain.py", "x = 1\n")
+    sites = [_site("Pipe[T]"), _site("Pipe[T]", line=13)]
+    kept, excluded = drop_class_constructions(
+        _cache(["mod.py", "other.py", "plain.py"]), str(tmp_path), sites, [], "shout"
+    )
+    assert kept == []
+    assert [s["line"] for s in excluded] == [12, 13]
+
+
+def test_unreadable_other_file_keeps_the_site(tmp_path: Path) -> None:
+    _write(tmp_path, "mod.py", _PIPE)
+    site = _site("Pipe[T]")
+    kept, _ = drop_class_constructions(
+        _cache(["mod.py", "missing.py"]), str(tmp_path), [site], [], "shout"
+    )
+    assert kept == [site]
