@@ -50,6 +50,11 @@ from .callers_java_overrides import OVERRIDE_REASON, override_hint
 from .callers_outcomes import Checked, CheckOutcome, NotChecked, Scope, checked
 from .callers_reference_freshness import stale_reference_files
 from .callers_registrations import registration_hint, target_registrations
+from .callers_supertypes import (
+    DYNAMIC_SUPERTYPE_REASON,
+    dynamic_supertype_hint,
+    supertype_outcome,
+)
 from .callers_target import NOT_DEFINED_REASON, not_defined_hint, resolve_target
 from .callers_target import UNCHECKED_REASON as TARGET_UNCHECKED_REASON
 from .evidence_file_cache import FILE_CACHE, StatKey
@@ -344,6 +349,12 @@ def _assess_absence(
     finding = decorator_finding(project_root, declarations, cache=cache, bare=bare)
     decorator = None if finding is None else finding.text
     decorator_outcome = _decorator_outcome(scope, finding)
+    # #1882：类链上有索引跟不上的 extends（mixin 调用等）时，经由超类的分派不留调用边。
+    supertype, inherited = (
+        supertype_outcome(scope, project_root, declarations, bare)
+        if sites or finding is None
+        else (NotChecked(DYNAMIC_SUPERTYPE_REASON), None)
+    )
     if sites:
         checks.append(("non_call_references", checked(scope, NON_CALL_REASON)))
         hint = (
@@ -354,12 +365,19 @@ def _assess_absence(
         )
         return replace(
             verdict("unknown", NON_CALL_REASON, hint),
-            trailing=(("registering_decorator", decorator_outcome),),
+            trailing=(
+                ("registering_decorator", decorator_outcome),
+                ("supertype_dispatch", supertype),
+            ),
         )
     checks.append(("non_call_references", checked(scope)))
     checks.append(("registering_decorator", decorator_outcome))
     if finding is None or decorator is None:
-        return verdict("complete", None, None)
+        checks.append(("supertype_dispatch", supertype))
+        if inherited is None:
+            return verdict("complete", None, None)
+        hint = dynamic_supertype_hint(func_name, inherited)
+        return verdict("unknown", DYNAMIC_SUPERTYPE_REASON, hint)
     if finding.reason == OVERRIDE_REASON:
         return verdict(
             "unknown", OVERRIDE_REASON, override_hint(func_name, finding.detail)

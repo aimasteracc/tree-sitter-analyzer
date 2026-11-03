@@ -129,7 +129,7 @@ still hold for the unchanged files (#1672).
 `REQUIRED_CHECKS` ([`callers_checks.py`](../tree_sitter_analyzer/mcp/tools/callers_checks.py))
 ran over the queried target set and found nothing. A check that did not run makes the
 answer `unknown` (or `incomplete` with callers listed) with a code naming it. The bounded
-`completeness_checks` field shows the proof: `{"required": 12, "checked": 12}` on a census;
+`completeness_checks` field shows the proof: `{"required": 13, "checked": 13}` on a census;
 otherwise `not_checked` maps each check that did not run to its code, and `not_run` counts
 the gates skipped after an earlier gate decided.
 <!-- drift:completeness-reasons:start -->
@@ -157,6 +157,7 @@ the gates skipped after an earlier gate decided.
 | `ACCESSOR_UNCHECKED` | The declaration could not be read, so a property/accessor (whose reads are not call edges) cannot be ruled out (RFC-0040). | Read the declaration; search attribute reads. |
 | `DECORATOR_MAY_REGISTER` | A decorator may register the target for dispatch. When the decorator is on the target's own definition, it is listed as a `registration` caller entry and the answer is `incomplete` (PR-4). | The `registration` entry is a known use; the framework-side callers cannot be listed. Otherwise inspect the decorator. |
 | `OVERRIDE_DISPATCH` | Java: the target carries `@Override`, and a call through its supertype could reach it without a call edge naming it. Either the overridden method is not proved to be declared in the project (an external, `java.lang` or unresolved supertype, a `java.lang.Object` method; e.g. an override of `java.lang.ClassValue.computeValue`, which the JDK calls), or a call named like it is bound elsewhere and may dispatch here (`next_step` names up to 3 sites). `@SuppressWarnings`, `@Deprecated`, `@SafeVarargs` and `@FunctionalInterface` register nothing and do not block (PR-2). | For an external supertype, the callers are outside the project. Otherwise read the named sites and check each receiver's type. |
+| `DYNAMIC_SUPERTYPE` | JS/TS: the target is a class member that may override a supertype member (an instance or static method, accessor or field; not a constructor), and its class, or a class above it, has an `extends` clause the index cannot follow: a call (`extends mix(Proc)`), a conditional, a cast, a local value, an import that does not resolve to one project class, an unknown identifier, a duplicated name or a cycle (#1882). The index records no inheritance edge for it, so a call through a supertype (`this.getQuery()` in a base class) could reach the target without a call edge naming it. The chain is read from source; a package import or an ECMAScript / web platform global (`Error`, `HTMLElement`) ends it as a known external class. Also reported when a file on the chain could not be read or parsed. `next_step` names the class, its file and line, and the clause. | Read what the clause evaluates to, and search those classes for calls of the method through `this` or a supertype receiver. |
 <!-- drift:completeness-reasons:end -->
 
 ### Evidence behind the codes (#1672)

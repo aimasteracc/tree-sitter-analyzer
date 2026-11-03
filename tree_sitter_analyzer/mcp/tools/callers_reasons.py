@@ -20,6 +20,7 @@ from .callers_absence import UNCHECKED_REASON as NON_CALL_UNCHECKED_REASON
 from .callers_decorators import DECORATED_REASON
 from .callers_excluded import EXCLUDED_REASON
 from .callers_java_overrides import OVERRIDE_REASON
+from .callers_supertypes import DYNAMIC_SUPERTYPE_REASON
 from .callers_target import NOT_DEFINED_REASON
 from .callers_target import UNCHECKED_REASON as TARGET_UNCHECKED_REASON
 from .relation_freshness import (
@@ -79,5 +80,6 @@ COMPLETENESS_REASONS = frozenset(
         ACCESSOR_UNCHECKED_REASON,
         DECORATED_REASON,
         OVERRIDE_REASON,
+        DYNAMIC_SUPERTYPE_REASON,
     }
 )

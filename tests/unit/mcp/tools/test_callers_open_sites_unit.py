@@ -27,6 +27,7 @@ REVIEW_NAMES = (
     "accessor",
     "non_call_references",
     "registering_decorator",
+    "supertype_dispatch",
 )
 
 
@@ -156,7 +157,7 @@ def test_decorator_blocks_enumeration() -> None:
     assert bound == {"enumerated": False, "reason": NO_SITE_LIST}
 
 
-def _non_call_review(sites, total, decorator=None) -> AbsenceVerdict:
+def _non_call_review(sites, total, decorator=None, supertype=None) -> AbsenceVerdict:
     checks = tuple(
         (
             name,
@@ -164,14 +165,17 @@ def _non_call_review(sites, total, decorator=None) -> AbsenceVerdict:
             if name == "non_call_references"
             else Checked(SCOPE),
         )
-        for name in REVIEW_NAMES[:-1]
+        for name in REVIEW_NAMES[:-2]
     )
     return AbsenceVerdict(
         "unknown",
         "NON_CALL_REFERENCES",
         fields={"non_call_reference_sites": sites, "non_call_references": total},
         checks=checks,
-        trailing=(("registering_decorator", decorator or Checked(SCOPE)),),
+        trailing=(
+            ("registering_decorator", decorator or Checked(SCOPE)),
+            ("supertype_dispatch", supertype or Checked(SCOPE)),
+        ),
     )
 
 
