@@ -28,7 +28,14 @@
   later gate passing). Otherwise it is `{"enumerated": false, "reason":
   "SITES_TRUNCATED" | "NO_SITE_LIST"}`. `next_step` starts with the sites to
   read; `format=compact` adds `open: k sites (exhaustive)  a.py:3; ...` (up to
-  10) and `open_sites: {total, enumerated}`.
+  10) and `open_sites: {total, enumerated}`. Gate: the r15 callers corpus of
+  fastapi, pydantic, rich, hono and zod (2,028 answers), develop vs branch on
+  one index each through a long-lived MCP server: 240 `unknown` → `incomplete`
+  (fastapi 224, pydantic 16), 0 other verdict or reason changes, 0 new
+  `complete`; 345 of 707 `unknown` answers have `enumerated: true` (175 with
+  k ≤ 3), and every true caller missing from them is at a listed site (GT2 on
+  222 Python answers, hand labels on 12 hono / zod answers: 0 violations).
+  Median payload, develop → branch: full +0–7.5 %, compact +3–14 %.
 
 - **The MCP server loads the call graph and the certified snapshot lease at
   start** (#1855, RFC-0042 Phase 1). After the `initialize` answer, a
