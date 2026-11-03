@@ -40,6 +40,7 @@ from .callers_checks import (
     prove,
     prove_edges,
 )
+from .callers_class_subscript import drop_class_constructions
 from .callers_confidence import (
     ORDER_CONFIDENCE,
     ORDER_INDEX,
@@ -813,6 +814,10 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             # #1759：项目外函数产出的可调用对象不经点名到达不了项目内的目标。
             declaring_sites, excluded_sites = drop_external_producers(
                 cache, self.project_root, declaring_sites, excluded_sites
+            )
+            # PR-1：调用被下标的项目类（`Cls[T](...)`）只构造实例，到达不了任意方法。
+            declaring_sites, excluded_sites = drop_class_constructions(
+                cache, self.project_root, declaring_sites, excluded_sites, count_name
             )
         unresolved_in_declaring_files = (
             None if declaring_sites is None else len(declaring_sites)

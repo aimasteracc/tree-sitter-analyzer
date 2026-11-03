@@ -53,6 +53,10 @@ _TRAILING_NAME = re.compile(r"(?:^|\.)\s*([A-Za-z_$][\w$]*)$")
 #: 把调用转发给前缀对象本身的尾段名（``f.call(...)``、``f.__call__()``）：
 #: 被调用的仍是前缀计算出的对象，因此标记看整段文本。
 _FORWARDERS = frozenset({"call", "apply", "__call__"})
+#: PR-1：ECMAScript 私有名 ``#x``——只能点名同一类体里字面上叫 ``#x`` 的成员。
+_PRIVATE_NAME = re.compile(r"^#[A-Za-z_$][\w$]*$")
+#: 私有名规则适用的文件（TS / JS）；其余语言里 ``#`` 不是名字的一部分。
+_PRIVATE_NAME_SUFFIXES = (".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs")
 
 
 def trailing_segment(text: str) -> str | None:
@@ -133,11 +137,18 @@ def is_function_literal(callee_full: str) -> bool:
     return bool(inner) and _FUNCTION_LITERAL_HEAD.match(inner or "") is not None
 
 
-def could_name_target(callee_full: str, target: str) -> bool:
+def could_name_target(
+    callee_full: str, target: str, *, private_names: bool = False
+) -> bool:
     """调用文本是否可能点名 ``target``：同名，或名字在运行时计算。
 
     无法判定的形状（空文本、``make()()``）一律返回 True——多计只会让答案停在
     ``incomplete`` / ``unknown``，少计才会在真实调用边上宣称不存在。
+
+    ``private_names``（TS / JS）：被调用的尾段是私有名 ``#x`` 时，它按词法解析到
+    外层类体里声明的 ``#x``，只可能点名名字恰为 ``#x`` 的目标——从不点名公有的
+    ``x``。经由私有字段到达别的函数（``this.#fn = other``）与普通字段一样需要一次
+    按名引用，由非调用引用门扫描。
     """
     text = (callee_full or "").strip()
     if _TYPE_CONSTRUCTION.match(text):
@@ -154,6 +165,8 @@ def could_name_target(callee_full: str, target: str) -> bool:
     # `[` 无法让它点名目标；尾段是转发名或无法切分时退回整段文本（只会更保守）。
     segment = trailing_segment(text)
     scope = text if segment is None or segment.strip() in _FORWARDERS else segment
+    if private_names and segment is not None and _PRIVATE_NAME.match(segment.strip()):
+        return segment.strip() == target
     if not text or any(marker in scope for marker in _COMPUTED_MARKERS):
         return True
     trailing = _TRAILING_NAME.search(text)
@@ -173,7 +186,12 @@ def partition_by_target(
     kept: list[dict[str, Any]] = []
     excluded: list[dict[str, Any]] = []
     for site in sites:
-        if could_name_target(str(site.get("callee") or ""), target):
+        private_names = (
+            str(site.get("file") or "").lower().endswith(_PRIVATE_NAME_SUFFIXES)
+        )
+        if could_name_target(
+            str(site.get("callee") or ""), target, private_names=private_names
+        ):
             kept.append(site)
         else:
             excluded.append(
