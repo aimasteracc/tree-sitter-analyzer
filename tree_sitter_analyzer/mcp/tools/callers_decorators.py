@@ -95,18 +95,65 @@ def registering_decorator(
     """声明上第一个可能登记目标的装饰器文本；没有则为 None。
 
     读取或解析失败的声明返回 :data:`UNREADABLE`——无法读取不等于没有装饰器。
+    没有索引可用，因此 Java 注解一律不豁免（见 :func:`decorator_finding`）。
     """
+    finding = decorator_finding(project_root, declarations)
+    return None if finding is None else finding.text
+
+
+@dataclass(frozen=True)
+class DecoratorFinding:
+    """登记门的发现：装饰器文本、问题码，以及 hint 用的说明（覆写门）。"""
+
+    text: str
+    reason: str = DECORATED_REASON
+    detail: str = ""
+
+
+def decorator_finding(
+    project_root: str,
+    declarations: list[tuple[str, int, str]],
+    *,
+    cache: Any = None,
+    bare: str | None = None,
+) -> DecoratorFinding | None:
+    """登记门：首个可能登记目标的装饰器；没有时取首个无法证明封闭的 ``@Override``。
+
+    PR-2：Java 声明经 ``callers_java_annotations`` 豁免不登记任何东西的
+    ``java.lang`` 注解；``cache`` 为 None 时一律不豁免。读取或解析失败返回
+    :data:`UNREADABLE`。
+    """
+    override: DecoratorFinding | None = None
     for rel_path, line, language in declarations:
         text = FILE_CACHE.read_text(os.path.join(project_root, rel_path))
         if text is None:
-            return UNREADABLE
+            return DecoratorFinding(UNREADABLE)
         decorators = declaration_decorators(text, line, language)
         if decorators is None:
-            return UNREADABLE
+            return DecoratorFinding(UNREADABLE)
+        if language == "java":
+            from .callers_java_annotations import OVERRIDE_REASON, java_findings
+
+            for found in java_findings(
+                cache,
+                project_root,
+                rel_path,
+                text,
+                line,
+                bare,
+                [decorator.text for decorator in decorators],
+            ):
+                if not found.override:
+                    return DecoratorFinding(found.text)
+                if override is None:
+                    override = DecoratorFinding(
+                        found.text, OVERRIDE_REASON, found.detail
+                    )
+            continue
         for decorator in decorators:
             if decorator.qualified not in KNOWN_WRAPPERS:
-                return decorator.text
-    return None
+                return DecoratorFinding(decorator.text)
+    return override
 
 
 def registered_hint(func_name: str, decorator: str) -> str:

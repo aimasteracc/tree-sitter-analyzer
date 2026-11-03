@@ -138,6 +138,46 @@
 
 ### Fixed
 
+- **`nav callers`: a declaration's own name line is not a reference to it, and
+  Java annotations that register nothing no longer block `complete`** (PR-2).
+  - The non-call reference scan skips the line the index records for each
+    same-named declaration. For a Java method that is its first annotation or
+    modifier, so the name line below it counted as a reference (gson
+    `JsonWriter.beforeValue`, blocked only by its own line 806). The line that
+    holds the declaration's name token is now skipped too, but only when the
+    name occurs on it once; a second mention on that line (a parameter, an
+    annotation argument, `this::m` in a one-line body) and every line after
+    the name still count.
+  - The decorator gate treated every Java annotation as "may register".
+    `@SuppressWarnings`, `@Deprecated`, `@SafeVarargs` and `@FunctionalInterface`
+    (simple or `java.lang.` names, not shadowed by a project type or a
+    single-type import) now pass. `@Override` passes only when the override is
+    closed in the project: every supertype in the transitive closure of the
+    declaring type (and of its enclosing types) resolves from source to a
+    project type (same file in scope, single-type import, or same package;
+    qualified, `java.lang`, wildcard-only or unresolved names fail), some type
+    in it declares the method, the name is not a `java.lang.Object` method, and
+    every call edge named like the method binds to this declaration or to an
+    external / standard-library receiver. Otherwise the gate reports the new
+    code `OVERRIDE_DISPATCH`, with a `next_step` that says why (for example
+    gson `Adapter.computeValue`: "its supertype `ClassValue` is outside the
+    project"), or names the call sites that may dispatch to it through a
+    supertype (the index has no `extends` edge for a generic supertype such as
+    `extends TypeAdapter<T>`, so these calls do not reach the override as
+    name-only edges). `@Subscribe`, `@Bean`, `@Test` and every other annotation
+    still report `DECORATOR_MAY_REGISTER`; Python and TS decorators are
+    unchanged.
+
+  Gate: the r15 callers corpus of gson, rich, pydantic, fastapi, axios, hono
+  and zod (2,457 answers), develop vs branch on one index each through a
+  long-lived MCP server. 11 gson answers (6 targets, all blocked only by their
+  own name line below `@SuppressWarnings`) move to `complete`, each checked by
+  hand against every `git grep -w` hit; 3 gson answers change only their reason
+  to `OVERRIDE_DISPATCH` (`Adapter.computeValue` stays `unknown`); 0 caller-count
+  changes and 0 changes in the other six repos. An `@Override` sweep over all
+  759 gson overrides moves 3 to `complete` (enum-constant bodies of an abstract
+  method that nothing calls) and 13 from `NON_CALL_REFERENCES` to
+  `OVERRIDE_DISPATCH`.
 - **`nav callers` no longer treats a generic-class construction or a private
   name as "may call anything"** (PR-1). The declaring-file guard
   (`UNRESOLVED_IN_DECLARING_FILE`) counted two call shapes as computed dispatch

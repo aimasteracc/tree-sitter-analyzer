@@ -36,14 +36,17 @@ from .absence_text_kinds import reference_text, text_language
 from .absence_text_refs import CONFIG_LANGUAGE, string_code
 from .callers_alias_refs import alias_reference_check
 from .callers_call_lines import call_edge_lines
+from .callers_declaration_header import without_header_names
 from .callers_decorators import (
     DECORATED_REASON,
     UNREADABLE,
+    DecoratorFinding,
+    decorator_finding,
     registered_hint,
-    registering_decorator,
 )
 from .callers_excluded import EXCLUDED_REASON, excluded_definition, excluded_hint
 from .callers_import_bindings import mask_import_bindings
+from .callers_java_overrides import OVERRIDE_REASON, override_hint
 from .callers_outcomes import Checked, CheckOutcome, NotChecked, Scope, checked
 from .callers_reference_freshness import stale_reference_files
 from .callers_registrations import registration_hint, target_registrations
@@ -337,8 +340,10 @@ def _assess_absence(
         return verdict("unknown", ACCESSOR_REASON, hint)
     checks.append(("accessor", checked(scope)))
     # #1596：守卫按名收窄后，注册表分发须由装饰器登记门兜底。
-    decorator = registering_decorator(project_root, declarations)
-    decorator_outcome = _decorator_outcome(scope, decorator)
+    # PR-2：Java 的被动注解豁免；``@Override`` 只在覆写封闭于项目内时豁免。
+    finding = decorator_finding(project_root, declarations, cache=cache, bare=bare)
+    decorator = None if finding is None else finding.text
+    decorator_outcome = _decorator_outcome(scope, finding)
     if sites:
         checks.append(("non_call_references", checked(scope, NON_CALL_REASON)))
         hint = (
@@ -353,8 +358,12 @@ def _assess_absence(
         )
     checks.append(("non_call_references", checked(scope)))
     checks.append(("registering_decorator", decorator_outcome))
-    if decorator is None:
+    if finding is None or decorator is None:
         return verdict("complete", None, None)
+    if finding.reason == OVERRIDE_REASON:
+        return verdict(
+            "unknown", OVERRIDE_REASON, override_hint(func_name, finding.detail)
+        )
     found = verdict("unknown", DECORATED_REASON, registered_hint(func_name, decorator))
     if decorator == UNREADABLE:
         return found
@@ -371,11 +380,11 @@ def _assess_absence(
     )
 
 
-def _decorator_outcome(scope: Scope, decorator: str | None) -> CheckOutcome:
-    """登记门的结果：读不到装饰器即未能运行。"""
-    if decorator == UNREADABLE:
+def _decorator_outcome(scope: Scope, finding: DecoratorFinding | None) -> CheckOutcome:
+    """登记门的结果：读不到装饰器即未能运行；问题码为登记或覆写分派（PR-2）。"""
+    if finding is not None and finding.text == UNREADABLE:
         return NotChecked(DECORATED_REASON)
-    return checked(scope, DECORATED_REASON if decorator is not None else None)
+    return checked(scope, finding.reason if finding is not None else None)
 
 
 def _stale_verdict(
@@ -550,14 +559,18 @@ def _reference_scan(
         files = _indexed_files(conn, project_root, languages) + [
             (path, text_language(path) or CONFIG_LANGUAGE) for path in config_files
         ]
-        declared_lines = {
+        declared_rows = [
             (str(row[0]), int(row[1]))
             for row in conn.execute(
                 "SELECT file_path, line FROM ast_symbol_rows WHERE name = ?", (bare,)
             )
-        }
+        ]
     except (sqlite3.Error, AttributeError):
         return None
+    declared_lines = set(declared_rows)
+    declared_by_file: dict[str, list[int]] = {}
+    for declared_file, declared_line in declared_rows:
+        declared_by_file.setdefault(declared_file, []).append(declared_line)
     # #1622：调用位置只有在确有调用边时才可跳过；读不到边即无法复核。
     edge_lines = call_edge_lines(cache, bare)
     if edge_lines is None:
@@ -607,9 +620,19 @@ def _reference_scan(
                 text = mask_import_bindings(text, bare, check.masked)
         covered = edge_lines.get(rel_path, frozenset())
         lines = sorted({*_reference_lines(text, pattern, covered), *alias_lines})
-        for line in lines:
-            if (rel_path, line) not in declared_lines:
-                sites.append({"file": rel_path, "line": line})
+        open_lines = [line for line in lines if (rel_path, line) not in declared_lines]
+        if open_lines and rel_path in declared_by_file:
+            # PR-2：声明记在首个注解 / 装饰器行时，名字所在行同样只是声明本身。
+            open_lines = without_header_names(
+                open_lines,
+                text,
+                _data,
+                language,
+                declared_by_file[rel_path],
+                pattern,
+                bare,
+            )
+        sites.extend({"file": rel_path, "line": line} for line in open_lines)
     return _with_foreign(sites, foreign), stamps
 
 
