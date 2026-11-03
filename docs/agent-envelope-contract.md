@@ -156,6 +156,7 @@ the gates skipped after an earlier gate decided.
 | `ACCESSOR_NOT_CALL_EDGES` | The target is a property/accessor; reads are not call edges. | Search attribute reads. |
 | `ACCESSOR_UNCHECKED` | The declaration could not be read, so a property/accessor (whose reads are not call edges) cannot be ruled out (RFC-0040). | Read the declaration; search attribute reads. |
 | `DECORATOR_MAY_REGISTER` | A decorator may register the target for dispatch. When the decorator is on the target's own definition, it is listed as a `registration` caller entry and the answer is `incomplete` (PR-4). | The `registration` entry is a known use; the framework-side callers cannot be listed. Otherwise inspect the decorator. |
+| `OVERRIDE_DISPATCH` | Java: the target carries `@Override`, and a call through its supertype could reach it without a call edge naming it. Either the overridden method is not proved to be declared in the project (an external, `java.lang` or unresolved supertype, a `java.lang.Object` method; e.g. an override of `java.lang.ClassValue.computeValue`, which the JDK calls), or a call named like it is bound elsewhere and may dispatch here (`next_step` names up to 3 sites). `@SuppressWarnings`, `@Deprecated`, `@SafeVarargs` and `@FunctionalInterface` register nothing and do not block (PR-2). | For an external supertype, the callers are outside the project. Otherwise read the named sites and check each receiver's type. |
 <!-- drift:completeness-reasons:end -->
 
 ### Evidence behind the codes (#1672)
