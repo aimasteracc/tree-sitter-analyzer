@@ -4,6 +4,39 @@
 
 ### Added
 
+- **`nav callers` lists a registering decorator as a known use** (PR-4). When the
+  only blocker is `DECORATOR_MAY_REGISTER` and the decorator sits on the
+  target's own definition, the answer lists it as a caller entry with
+  `resolution_kind: "registration"`, `via` (the decorator text), `file` and
+  `line` (`name` is `<module>`; `confidence_tier: "registration"`, ranked after
+  `proven`). The answer becomes `incomplete`: the decorator certainly hands the
+  function to the framework, and the framework-side callers cannot be listed.
+  It never becomes `complete` (the gate keeps its code). Python only, and only
+  for a single unconditional definition (module or class body, not inside a
+  function, `if` or `try`) whose name and class match the query; decorators in
+  `KNOWN_WRAPPERS` are not listed. Compact shows `@app.get("/x")  file:line
+  registration`.
+- **`open_sites` bounds an `unknown` callers answer** (PR-4). Every `unknown`
+  answer carries `open_sites`. `{"total": k, "enumerated": true, "fields":
+  [...]}` means the `k` distinct sites in the named site lists are all the
+  evidence that blocks `complete`: if none of them calls the target or passes it
+  on, nothing else in the indexed project does. The verdict stays `unknown`.
+  `enumerated` is `true` only when every failed check has an untruncated site
+  list (`unresolved_inbound_sites`, `unresolved_sites`, `name_only_sites` with
+  call lines, `non_call_reference_sites`) and the review gates the edge layer
+  skipped were run as well and pass (or only the non-call gate fails, with every
+  later gate passing). Otherwise it is `{"enumerated": false, "reason":
+  "SITES_TRUNCATED" | "NO_SITE_LIST"}`. `next_step` starts with the sites to
+  read; `format=compact` adds `open: k sites (exhaustive)  a.py:3; ...` (up to
+  10) and `open_sites: {total, enumerated}`. Gate: the r15 callers corpus of
+  fastapi, pydantic, rich, hono and zod (2,028 answers), develop vs branch on
+  one index each through a long-lived MCP server: 240 `unknown` → `incomplete`
+  (fastapi 224, pydantic 16), 0 other verdict or reason changes, 0 new
+  `complete`; 345 of 707 `unknown` answers have `enumerated: true` (175 with
+  k ≤ 3), and every true caller missing from them is at a listed site (GT2 on
+  222 Python answers, hand labels on 12 hono / zod answers: 0 violations).
+  Median payload, develop → branch: full +0–7.5 %, compact +3–14 %.
+
 - **The MCP server loads the call graph and the certified snapshot lease at
   start** (#1855, RFC-0042 Phase 1). After the `initialize` answer, a
   background thread runs the work a first `nav callers` query does: it takes

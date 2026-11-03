@@ -181,12 +181,14 @@ async def test_registering_decorator_blocks_complete(tmp_path) -> None:
 
     result = await _callers(root, "lonely")
 
-    assert (result["caller_count"], result["completeness"]) == (0, "unknown")
+    # PR-4: `@register` on lonely's own definition is a known use, listed as a
+    # registration entry; the answer is incomplete, never complete.
+    assert (result["caller_count"], result["completeness"]) == (1, "incomplete")
     assert result["completeness_reason"] == DECORATED_REASON
-    assert result["next_step"] == (
-        "No resolved caller for 'lonely', but it is decorated with `@register`, "
-        "which may register it for dispatch the call graph does not record, so "
-        "this is not evidence of absence."
+    (entry,) = result["callers"]
+    assert (entry["resolution_kind"], entry["via"]) == ("registration", "@register")
+    assert result["next_step"].startswith(
+        "'lonely' is registered by `@register` (mod.py:"
     )
 
 
@@ -363,8 +365,10 @@ async def test_handler_registered_by_decorator_factory_is_unknown(tmp_path) -> N
 
     result = await _callers(root, "handler")
 
-    assert (result["caller_count"], result["completeness"]) == (0, "unknown")
+    # PR-4: the registration itself is listed; the framework side is not.
+    assert (result["caller_count"], result["completeness"]) == (1, "incomplete")
     assert result["completeness_reason"] == DECORATED_REASON
+    assert [c["via"] for c in result["callers"]] == ['@mod.factory("x")']
 
 
 @pytest.mark.asyncio
@@ -377,8 +381,10 @@ async def test_registering_decorator_shapes_block_complete(
 
     result = await _callers(root, "target")
 
-    assert (result["caller_count"], result["completeness"]) == (0, "unknown")
+    # PR-4: listed as a registration entry -> incomplete, never complete.
+    assert (result["caller_count"], result["completeness"]) == (1, "incomplete")
     assert result["completeness_reason"] == DECORATED_REASON
+    assert [c["resolution_kind"] for c in result["callers"]] == ["registration"]
 
 
 #: 字符串与配置文件中的引用（#1624/#1629）：grep 能找到，absence 不得更弱。

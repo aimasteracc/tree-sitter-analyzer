@@ -31,6 +31,13 @@ _VERDICT = re.compile(
     r"(?: \((?P<reasons>[^)]*)\))?(?P<details>; details: format=verbose)?$"
 )
 _EXTRA = re.compile(r"^\+(\d+)$")
+#: PR-4: the exhaustive open-site bound, just before the verdict line.
+_OPEN = re.compile(
+    r"^open: (?P<total>\d+) sites \(exhaustive\)  (?P<sites>.+?)"
+    r"(?:; \+(?P<more>\d+) more \(format=verbose\))?$"
+)
+#: PR-4: sites named inline on the ``open:`` line.
+OPEN_SHOWN = 10
 
 CallerRow = tuple[str, str, int, str]
 
@@ -47,6 +54,8 @@ class CompactShape:
     hidden: int
     #: #1854：默认折叠、未逐行列出的 unconfirmed_receiver 调用方个数。
     collapsed: int = 0
+    #: PR-4: ``(total, named sites, more)`` of an exhaustive bound, else None.
+    open_bound: tuple[int, tuple[str, ...], int] | None = None
 
 
 def _must_match(pattern: re.Pattern[str], line: str) -> re.Match[str]:
@@ -64,6 +73,17 @@ def parse_compact(answer: Mapping[str, Any]) -> CompactShape:
     header = _must_match(_HEADER, lines[0])
     verdict = _must_match(_VERDICT, lines[-1])
     body = lines[1:-1]
+    open_bound = None
+    if body and (opened := _OPEN.match(body[-1])) is not None:
+        named = tuple(opened["sites"].split("; "))
+        open_bound = (int(opened["total"]), named, int(opened["more"] or 0))
+        body = body[:-1]
+        assert answer.get("open_sites") == {
+            "total": open_bound[0],
+            "enumerated": True,
+        }, answer
+    else:
+        assert "open_sites" not in answer, answer
     hidden = 0
     if body and (more := _MORE.match(body[-1])) is not None:
         hidden = int(more["hidden"])
@@ -96,14 +116,15 @@ def parse_compact(answer: Mapping[str, Any]) -> CompactShape:
         total=int(header["total"]),
         hidden=hidden,
         collapsed=collapsed,
+        open_bound=open_bound,
     )
 
 
-# #1854：置信层级的测试侧独立实现。0 = proven，1 = inferred，
-# 2 = unconfirmed_receiver；表外取值、缺失或非字符串一律 2。
+# #1854：置信层级的测试侧独立实现。0 = proven，1 = registration（PR-4），
+# 2 = inferred，3 = unconfirmed_receiver；表外取值、缺失或非字符串一律 3。
 _PROVEN_RESOLUTIONS = ("local", "project")
-_KIND_RANK = {"import_alias": 0, "annotated_receiver": 1}
-UNCONFIRMED_RANK = 2
+_KIND_RANK = {"import_alias": 0, "registration": 1, "annotated_receiver": 2}
+UNCONFIRMED_RANK = 3
 
 
 def tier_rank(caller: Mapping[str, Any]) -> int:
@@ -132,8 +153,11 @@ def _kind(caller: Mapping[str, Any]) -> str:
 
 
 def _row(caller: Mapping[str, Any]) -> CallerRow:
+    name = caller.get("name") or "?"
+    if _kind(caller) == "registration" and caller.get("via"):
+        name = caller["via"]  # PR-4: a registration shows its decorator text
     return (
-        str(caller.get("name") or "?"),
+        str(name),
         str(caller.get("file") or "?"),
         int(caller.get("line") or 0),
         _kind(caller),
@@ -166,7 +190,27 @@ def expected_shape(
         total=total,
         hidden=max(0, total - len(page)),
         collapsed=len(page) - len(listed),
+        open_bound=_expected_open(full, label),
     )
+
+
+def _expected_open(
+    full: Mapping[str, Any], label: str
+) -> tuple[int, tuple[str, ...], int] | None:
+    """PR-4: the bound an ``unknown`` full answer projects, read from its fields."""
+    bound = full.get("open_sites")
+    if label != "unknown" or not isinstance(bound, Mapping):
+        return None
+    if bound.get("enumerated") is not True:
+        return None
+    refs: list[str] = []
+    for field in bound["fields"]:
+        for site in full[field]:
+            ref = f"{site['file']}:{site['line']}"
+            if ref not in refs:
+                refs.append(ref)
+    assert len(refs) == bound["total"], full
+    return len(refs), tuple(refs[:OPEN_SHOWN]), max(0, len(refs) - OPEN_SHOWN)
 
 
 def assert_equivalent(

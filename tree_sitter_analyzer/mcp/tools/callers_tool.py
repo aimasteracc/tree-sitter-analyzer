@@ -50,7 +50,14 @@ from .callers_confidence import (
 )
 from .callers_dispatch import narrow_to_target
 from .callers_external_producers import drop_external_producers
-from .callers_name_only import name_only_fields, name_only_sites, name_only_step
+from .callers_name_only import (
+    name_only_fields,
+    name_only_lines_exact,
+    name_only_sites,
+    name_only_step,
+)
+from .callers_open_sites import FIELD as OPEN_SITES_FIELD
+from .callers_open_sites import open_sites, open_sites_step
 from .callers_outcomes import CheckOutcome, Scope
 from .callers_reason_steps import (
     read_unresolved_inbound,
@@ -811,12 +818,12 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             None if declaring_sites is None else len(declaring_sites)
         )
         # #1672：同名入边的证据——调用点取自调用边的行号，按调用方范围归属。
-        name_only_list = name_only_sites(
-            possible_callers,
+        name_only_lines = (
             call_edge_lines(cache, count_name)
             if possible_callers and cache is not None
-            else None,
+            else None
         )
+        name_only_list = name_only_sites(possible_callers, name_only_lines)
         # #1706：截断前先把声明文件与导入了目标的文件排在前面。
         name_only_list = rank_sites(cache, name_only_list, func_name, file_path)
 
@@ -842,6 +849,11 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             total_callers,
             evidence,
         )
+        # PR-4：目标自身定义上的登记型装饰器是已知的使用，列为 registration 条目；
+        # 登记门的问题码不变，因此答案至多为 incomplete，从不为 complete。
+        registrations = with_confidence(absence.registrations)
+        callers = callers + registrations
+        total_callers += len(registrations)
         proof = prove(ledger.record_all(absence.checks), total_callers)
         completeness = proof.completeness
         reasons = list(proof.reasons)
@@ -898,6 +910,29 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             result["excluded_sites"] = None
             result["excluded_sites_total"] = None
             result["excluded_by_reason"] = None
+        if completeness == "unknown":
+            # PR-4：列出的调用点是否就是阻止 complete 的全部证据。调用边层先判定时
+            # 复核门没有运行，界限只在它们也补跑过之后才算穷尽。
+            bound, bound_fields = open_sites(
+                result,
+                reasons,
+                name_only_exact=name_only_lines_exact(
+                    possible_callers, name_only_lines
+                ),
+                review=lambda: absence
+                if edges.completeness == "complete"
+                else assess_completeness(
+                    cache,
+                    self.project_root,
+                    func_name,
+                    file_path,
+                    "complete",
+                    0,
+                    evidence,
+                ),
+            )
+            result.update(bound_fields)
+            result[OPEN_SITES_FIELD] = bound
         if unattributed_call_sites:
             # #638: module-level call sites have no enclosing function — they
             # are counted here instead of being emitted as un-navigable ghost
@@ -1005,6 +1040,9 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                     func_name, evidence, indexed=_symbol_indexed(cache, func_name)
                 )
             next_step = f"{index_hint} {next_step}" if next_step else index_hint
+        open_step = open_sites_step(func_name, result)
+        if open_step:
+            next_step = f"{open_step} {next_step}" if next_step else open_step
         if next_step:
             result["next_step"] = next_step
 
@@ -1033,6 +1071,8 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             )
         else:
             as_summary_line = f"callers: {func_name!r} has {total_callers} caller(s)"
+            if registrations:
+                as_summary_line += f" ({len(registrations)} registration)"
             as_next_step = result.get("next_step") or (
                 "Review callers above, run tests for affected paths, "
                 "or use nav action=caller_tree for the full blast-radius."

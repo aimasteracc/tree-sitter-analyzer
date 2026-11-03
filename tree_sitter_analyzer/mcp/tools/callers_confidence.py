@@ -19,7 +19,8 @@ callee_resolution       stdlib, external,       unconfirmed_receiver
                         builtin, unknown
 resolution_kind         （无）, import_alias      proven
 resolution_kind         annotated_receiver      inferred
-任一字段                 其他任何值、缺失、非字符串  unconfirmed_receiver
+resolution_kind         registration            registration（PR-4）
+任一字段                其他任何值、缺失、非字符串  unconfirmed_receiver
 =====================  ======================  ====================
 
 ``proven``：解析器把这条调用边绑定到了项目内的定义（self/cls、导入、同文件、
@@ -37,10 +38,14 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 PROVEN = "proven"
+#: PR-4：登记型装饰器（``resolution_kind: "registration"``）——确定的入向使用，
+#: 但不是调用边：框架经由登记调用目标，那些调用方列不出来。单列一层，
+#: 不与调用边混淆；紧凑答复照常列出（不折叠）。
+REGISTRATION = "registration"
 INFERRED = "inferred"
 UNCONFIRMED = "unconfirmed_receiver"
 #: 从最确定到最不确定。
-TIERS = (PROVEN, INFERRED, UNCONFIRMED)
+TIERS = (PROVEN, REGISTRATION, INFERRED, UNCONFIRMED)
 #: 调用方条目上的字段名。``confidence`` 已被 RFC-0038 的数值占用，故另起一名。
 CONFIDENCE_FIELD = "confidence_tier"
 
@@ -58,6 +63,7 @@ CALLEE_RESOLUTION_TIERS: dict[str, str] = {
 #: ``resolution_kind`` 的取值 → 层级；字段缺失即普通已解析边。
 RESOLUTION_KIND_TIERS: dict[str, str] = {
     "import_alias": PROVEN,
+    "registration": REGISTRATION,
     "annotated_receiver": INFERRED,
 }
 
@@ -72,7 +78,7 @@ ORDER_PROPERTY: dict[str, Any] = {
     "default": ORDER_INDEX,
     "description": (
         "index (default) = existing order; confidence = proven callers first, "
-        "then inferred, then unconfirmed_receiver (stable within a tier), "
+        "then registration, inferred, unconfirmed_receiver (stable within a tier), "
         "applied before the limit cut. Each caller carries confidence_tier."
     ),
 }
