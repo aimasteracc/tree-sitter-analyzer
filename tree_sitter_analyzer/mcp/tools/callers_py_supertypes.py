@@ -276,7 +276,7 @@ class _Reader:
                 base = posixpath.dirname(base)
             roots = [base]
         else:
-            roots = _absolute_roots(ref.from_rel)
+            roots = _absolute_roots(self, ref.from_rel)
         found = {
             path
             for root in roots
@@ -288,13 +288,21 @@ class _Reader:
         return next(iter(found), "")
 
 
-def _absolute_roots(from_rel: str) -> list[str]:
-    """Import roots for an absolute module: the project, ``src`` and the file's dirs."""
+def _absolute_roots(reader: _Reader, from_rel: str) -> list[str]:
+    """Import roots for an absolute module: the project, ``src``, and the file's
+    nearest directory that is not a package.
+
+    Python 3 has no implicit relative import: inside a package, ``from logging
+    import Handler`` never names the package's own ``logging.py``. A script (or a
+    pytest test outside a package) has its directory on ``sys.path``: the first
+    directory upward without an ``__init__.py``.
+    """
     roots = ["", "src"]
     current = posixpath.dirname(from_rel)
-    while current:
-        roots.append(current)
+    while current and reader.is_file(posixpath.join(current, "__init__.py")):
         current = posixpath.dirname(current)
+    if current:
+        roots.append(current)
     return roots
 
 
@@ -626,7 +634,9 @@ def _import_value(
     if isinstance(stmt, ast.Import):
         dotted = alias.name if alias.asname else alias.name.split(".", 1)[0]
         return _ModuleRef(module.rel, 0, dotted)
-    if not isinstance(stmt, ast.ImportFrom):
+    if not isinstance(
+        stmt, ast.ImportFrom
+    ):  # pragma: no cover - an alias is always in one
         return "an import the index cannot follow"
     package = _ModuleRef(module.rel, stmt.level, stmt.module or "")
     return _attribute(reader, package, alias.name, hops)
@@ -703,10 +713,7 @@ def _finding(
 
 
 def _clause_text(expr: ast.AST) -> str:
-    try:
-        return ast.unparse(expr)
-    except Exception:  # noqa: BLE001 — a clause we cannot print is still named
-        return "?"
+    return ast.unparse(expr)
 
 
 def _unchecked(rel: str, why: str) -> SupertypeFinding:

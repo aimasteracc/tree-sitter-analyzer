@@ -29,6 +29,7 @@ A file that cannot be read or parsed is the same code with ``unchecked`` set.
 
 from __future__ import annotations
 
+import posixpath
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -261,10 +262,13 @@ def dynamic_supertype_hint(func_name: str, finding: SupertypeFinding) -> str:
 
 
 def python_project_tops(cache: Any) -> frozenset[str] | None:
-    """Every directory and module name of the index's Python files; None if unreadable.
+    """Names a project file could be imported by at top level; None if unreadable.
 
-    A top-level import name in this set may be a project module, so one that does
-    not resolve to a project file is not treated as a third-party package.
+    A module ``x.py`` or a package ``x/__init__.py`` whose directory is not itself
+    a package is importable as ``x`` once that directory is on ``sys.path``. An
+    import of such a name that does not resolve to a project file is not treated
+    as a third-party package. A module inside a package (``pydantic/mypy.py``) or
+    a directory without ``__init__.py`` cannot shadow an installed ``mypy``.
     """
     if cache is None:
         return None
@@ -279,14 +283,27 @@ def python_project_tops(cache: Any) -> frozenset[str] | None:
             )
         except Exception:  # noqa: BLE001 — unreadable: cannot classify
             return None
-        tops: set[str] = set()
-        for (path,) in rows:
-            for part in str(path).replace("\\", "/").split("/"):
-                tops.add(part[:-3] if part.endswith(".py") else part)
-        return frozenset(tops)
+        return _top_names([str(row[0]).replace("\\", "/") for row in rows])
 
     found = snapshot_memo.cached(cache, "supertypes.python_tops", (), read)
     return None if found is None else frozenset(found)
+
+
+def _top_names(paths: list[str]) -> frozenset[str]:
+    packages = {
+        posixpath.dirname(path)
+        for path in paths
+        if posixpath.basename(path) == "__init__.py"
+    }
+    tops: set[str] = set()
+    for path in paths:
+        parent, name = posixpath.split(path)
+        if name != "__init__.py" and name.endswith(".py") and parent not in packages:
+            tops.add(name[:-3])
+    for package in packages:
+        if package and posixpath.dirname(package) not in packages:
+            tops.add(posixpath.basename(package))
+    return frozenset(tops)
 
 
 def _unchecked(rel: str, why: str) -> SupertypeFinding:
