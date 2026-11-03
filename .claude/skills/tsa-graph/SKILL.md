@@ -76,6 +76,19 @@ Returns: `callers: [{name, file, line, callee_resolution, callee_resolved_file},
 The `callee_resolution` field tells you `local` / `project` / `stdlib` /
 `unknown` so you can filter out noise.
 
+Reading a non-`complete` answer (do this before falling back to grep):
+
+- `incomplete` with a `resolution_kind: "registration"` entry (`via:
+  "@app.get(...)"`): the decorator registers the function with a framework.
+  That is a known use; the framework-side callers cannot be listed.
+- `unknown` with `open_sites.enumerated: true`: the `open_sites.total` sites in
+  the `open_sites.fields` lists are all that block `complete`. Read those k
+  sites (compact: the `open:` line). If none calls the target or passes it on,
+  nothing else in the indexed project does, so do not grep.
+- `unknown` with `open_sites.enumerated: false`: the bound is not exhaustive
+  (`SITES_TRUNCATED` / `NO_SITE_LIST`); follow `next_step`, and treat 0 callers
+  as "not known", not "none".
+
 ### Multi-hop case: one `uql` call, not one call per caller
 
 If the answer to the first call would make you call `nav` again **for each

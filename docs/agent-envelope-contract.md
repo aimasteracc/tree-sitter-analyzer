@@ -155,7 +155,7 @@ the gates skipped after an earlier gate decided.
 | `NON_CALL_REFERENCES_UNCHECKED` | The non-call reference scan did not finish within budget. | Retry, or search the name directly. |
 | `ACCESSOR_NOT_CALL_EDGES` | The target is a property/accessor; reads are not call edges. | Search attribute reads. |
 | `ACCESSOR_UNCHECKED` | The declaration could not be read, so a property/accessor (whose reads are not call edges) cannot be ruled out (RFC-0040). | Read the declaration; search attribute reads. |
-| `DECORATOR_MAY_REGISTER` | A decorator may register the target for dispatch. | Inspect the decorator. |
+| `DECORATOR_MAY_REGISTER` | A decorator may register the target for dispatch. When the decorator is on the target's own definition, it is listed as a `registration` caller entry and the answer is `incomplete` (PR-4). | The `registration` entry is a known use; the framework-side callers cannot be listed. Otherwise inspect the decorator. |
 <!-- drift:completeness-reasons:end -->
 
 ### Evidence behind the codes (#1672)
@@ -287,6 +287,90 @@ the `unconfirmed_receiver` callers of the page into one line,
 same number in `unconfirmed_collapsed`; `include_unconfirmed=true` lists them.
 The listed and the folded callers together are the callers of the full answer.
 The numeric `confidence` (0.8) of an annotated entry is a different field.
+
+### Registration entries (PR-4)
+
+A decorator such as `@app.get("/items")` or `@pytest.fixture` hands the function
+to a framework when the `def` runs; the framework then calls it under another
+name, so the call graph has no edge. When `DECORATOR_MAY_REGISTER` is the only
+blocker and the decorator is on **the target's own definition**, the answer
+lists it as a caller entry and becomes `incomplete`:
+
+```json
+{"completeness": "incomplete", "completeness_reasons": ["DECORATOR_MAY_REGISTER"],
+ "caller_count": 1,
+ "callers": [{"name": "<module>", "file": "app/routes.py", "line": 12,
+              "language": "python", "callee_resolution": "local",
+              "callee_resolved_file": "app/routes.py",
+              "resolution_kind": "registration", "via": "@app.get(\"/items\")",
+              "confidence_tier": "registration"}],
+ "next_step": "'read_items' is registered by `@app.get(\"/items\")` (app/routes.py:12), listed as `registration` entries. The framework calls it through that registration, and those framework-side callers cannot be listed, so the list is incomplete; ..."}
+```
+
+- `line` is the decorator's line; `name` is `<module>` (the decorator runs when
+  the module body runs); `via` is the decorator text.
+- `confidence_tier: "registration"` is its own tier, ranked after `proven` and
+  before `inferred`, so a registration is never mistaken for a call edge.
+  `format=compact` lists it (it is not folded) as
+  `@app.get("/items")  app/routes.py:12  registration`.
+- It is never `complete`: the gate keeps its code.
+- Soundness: Python only (a Java annotation such as `@Override` registers
+  nothing); exactly one declaration backs the query, in the queried file; the
+  definition's name and class chain match the query; it is a direct statement of
+  the module body or of class bodies nested in it (a `def` inside a function,
+  `if` or `try` runs conditionally and gets no entry); only decorators outside
+  `KNOWN_WRAPPERS` (`functools.lru_cache`, `staticmethod`, ...) are listed. Any
+  read or parse failure keeps the answer `unknown`.
+
+### Open-site bound (`open_sites`, PR-4)
+
+Every `unknown` answer carries `open_sites`, a bound on what keeps it from
+`complete`. `complete` and `incomplete` answers do not carry it.
+
+```json
+{"completeness": "unknown", "completeness_reasons": ["NAME_ONLY_INBOUND"],
+ "caller_count": 0,
+ "name_only_sites": [{"file": "user.py", "line": 2, "caller": "use"}],
+ "non_call_reference_sites": [{"file": "user.py", "line": 6}],
+ "non_call_references": 1,
+ "open_sites": {"total": 2, "enumerated": true,
+                "fields": ["name_only_sites", "non_call_reference_sites"]},
+ "next_step": "The bound is exhaustive (`open_sites`): these 2 site(s) are all that keep 'Box.fetch' from a complete answer: user.py:2; user.py:6. Read them instead of searching; ..."}
+```
+
+`enumerated: true` means: the `total` distinct `(file, line)` sites in the
+`fields` lists are **all** the evidence that blocks `complete`. If none of them
+calls the target or passes it on (a callback, a rebinding) for a later call,
+nothing else in the indexed project does. Read those sites; do not grep. The
+verdict stays `unknown`: with 0 known callers, `incomplete` would claim a caller
+exists.
+
+This is a trust claim like `complete`. It is `true` only when every failed
+check has a site list that is not truncated (its `*_total` equals its length):
+
+| Failed check | Site list |
+|---|---|
+| `UNRESOLVED_INBOUND` | `unresolved_inbound_sites` |
+| `UNRESOLVED_IN_DECLARING_FILE` | `unresolved_sites` |
+| `NAME_ONLY_INBOUND` | `name_only_sites`, only when every line is a call line from an edge (no fallback to the caller's definition line) |
+| `NON_CALL_REFERENCES` | `non_call_reference_sites` (capped at 5, so at most 5 references), only when every later gate passes |
+
+When the edge layer decides the answer, the review gates (freshness, target,
+unindexed files, reference freshness, accessor, non-call references, decorator)
+did not run; they are run for the bound, and it is `true` only if they all pass
+or only the non-call gate fails. The non-call sites found that way are added to
+the answer. Any other case is `{"enumerated": false, "reason": ...}`:
+
+- `SITES_TRUNCATED`: a site list was capped;
+- `NO_SITE_LIST`: a failed check has no exhaustive site list (accessor,
+  decorator, unattributed module-level sites, an empty call graph, a gate that
+  did not run, approximate name-only lines).
+
+`format=compact` adds one line before the verdict line,
+`open: k sites (exhaustive)  a.py:3; b.py:9` (up to 10 sites, then
+`+n more (format=verbose)`), and the machine field
+`open_sites: {"total": k, "enumerated": true}`; a non-enumerated bound is
+omitted from compact.
 
 The alias is **re-exported** (#1709) when another file imports that name
 (`from .hub import _f`), calls it through a module object (`owner._f()`), or

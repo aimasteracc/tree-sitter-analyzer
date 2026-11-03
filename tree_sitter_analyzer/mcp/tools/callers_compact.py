@@ -28,9 +28,18 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from .callers_confidence import UNCONFIRMED, caller_confidence, order_by_confidence
+from .callers_confidence import (
+    REGISTRATION,
+    UNCONFIRMED,
+    caller_confidence,
+    order_by_confidence,
+)
 
+#: PR-4：``unknown`` 答复上的开放位置界限（见 ``callers_open_sites``）。
+OPEN_SITES_FIELD = "open_sites"
 COMPACT_FORMAT = "compact"
+#: 紧凑答复的 ``open:`` 行内联点名的开放位置数。
+OPEN_SITES_SHOWN = 10
 VERBOSE_FORMAT = "verbose"
 #: ``nav action=callers`` 接受的 ``format`` 值；默认 ``verbose`` 即原有完整答复。
 CALLERS_FORMATS = (COMPACT_FORMAT, VERBOSE_FORMAT)
@@ -104,7 +113,34 @@ def caller_line(caller: Mapping[str, Any]) -> str:
     file = caller.get("file") or "?"
     line = caller.get("line") or 0
     kind = caller.get("resolution_kind") or caller.get("callee_resolution") or "unknown"
+    if kind == REGISTRATION and caller.get("via"):
+        # PR-4：登记条目以装饰器文本代替 ``<module>``。
+        name = caller["via"]
     return f"{name}  {file}:{line}  {kind}"
+
+
+def site_refs(answer: Mapping[str, Any]) -> list[str]:
+    """PR-4：穷尽界限的每个开放位置 ``file:line``，按字段顺序、去重。"""
+    bound = answer.get(OPEN_SITES_FIELD)
+    if not isinstance(bound, Mapping) or bound.get("enumerated") is not True:
+        return []
+    refs: dict[str, None] = {}
+    for field in bound.get("fields") or ():
+        for site in answer.get(field) or ():
+            if isinstance(site, Mapping):
+                refs.setdefault(f"{site.get('file')}:{site.get('line')}", None)
+    return list(refs)
+
+
+def open_line(answer: Mapping[str, Any]) -> str | None:
+    """PR-4：穷尽界限一行：``open: k sites  a.py:3; b.py:9; +n more``。"""
+    refs = site_refs(answer)
+    if not refs:
+        return None
+    shown = "; ".join(refs[:OPEN_SITES_SHOWN])
+    more = len(refs) - OPEN_SITES_SHOWN
+    tail = f"; +{more} more (format=verbose)" if more > 0 else ""
+    return f"open: {len(refs)} sites (exhaustive)  {shown}{tail}"
 
 
 def compact_callers(answer: Any, *, include_unconfirmed: bool = False) -> Any:
@@ -134,6 +170,9 @@ def compact_callers(answer: Any, *, include_unconfirmed: bool = False) -> Any:
         lines.append(f"+{hidden} more (raise limit)")
     verdict = compact_verdict(answer)
     label = verdict_label(answer)
+    opened = open_line(answer) if label == "unknown" else None
+    if opened:
+        lines.append(opened)
     lines.append(f"verdict: {verdict}{'' if label == 'complete' else _DETAILS}")
     compact: dict[str, Any] = {"success": True}
     if isinstance(answer.get("verdict"), str):
@@ -146,6 +185,17 @@ def compact_callers(answer: Any, *, include_unconfirmed: bool = False) -> Any:
             "completeness_reasons": [] if label == "complete" else _reasons(answer),
             # 只在确有折叠时出现：没有折叠的答复与 #1853 的信封同样大小。
             **({"unconfirmed_collapsed": collapsed} if collapsed else {}),
+            # PR-4：只在穷尽界限成立时出现（同一完整答复的投影）。
+            **(
+                {
+                    OPEN_SITES_FIELD: {
+                        "total": answer[OPEN_SITES_FIELD]["total"],
+                        "enumerated": True,
+                    }
+                }
+                if opened
+                else {}
+            ),
             "answer": "\n".join(lines),
         }
     )
