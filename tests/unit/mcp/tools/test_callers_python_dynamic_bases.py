@@ -503,7 +503,10 @@ def test_class_body_attribute_is_gated(tmp_path) -> None:
 
     found = _finding(tmp_path, {"k.py": text}, "k.py", "handler =", "handler")
 
-    assert found is not None
+    assert found is not None and (found.class_name, found.clause) == (
+        "K",
+        "mix(object)",
+    )
 
 
 @pytest.mark.parametrize(
