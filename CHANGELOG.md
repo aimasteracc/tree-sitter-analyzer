@@ -138,6 +138,27 @@
 
 ### Fixed
 
+- **`nav callers` no longer treats a generic-class construction or a private
+  name as "may call anything"** (PR-1). The declaring-file guard
+  (`UNRESOLVED_IN_DECLARING_FILE`) counted two call shapes as computed dispatch
+  that could name any symbol:
+  - Python `Cls[T](...)` (pydantic `_Pipeline[Any, Any](...)`). When `Cls` is
+    provably a plain class (one top-level `class` binding in the file, no
+    metaclass keyword, no `__class_getitem__` in it or its in-file bases, bases
+    only `object`, `typing.Generic` or such in-file classes, decorators only
+    `dataclasses.dataclass`, no dynamic rebinding in the file and no `.Cls =` or
+    `"Cls"` in another indexed Python file), the site only constructs and is
+    excluded with reason `class_subscript_construction`. It still counts for
+    `__init__`, `__new__`, `__post_init__`, `__setattr__`, `__call__`,
+    `__init_subclass__`, `__class_getitem__` and for the class names themselves.
+    `HANDLERS[k]()` and every other subscript keep the guard.
+  - TS/JS `this.#x(...)` (hono `Context.#newResponse`). A private name `#x`
+    names only a target called exactly `#x`, never a public `x` (and a public
+    `.x` never names `#x`). Bracket and computed access are unchanged. The site
+    is excluded with the existing `names_other_symbol` reason.
+
+  On the r15 corpus only answers whose sole blockers were these sites move from
+  `incomplete` / `unknown` to `complete`.
 - **A deadline-interrupted snapshot read is "not read", never "no rows"**
   (#1873). The alias and ES import readers of `nav callers` turned the
   certified snapshot's deadline interrupt into an empty result, so an RFC-0040
