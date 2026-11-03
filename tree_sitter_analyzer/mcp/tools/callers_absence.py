@@ -351,7 +351,7 @@ def _assess_absence(
     decorator_outcome = _decorator_outcome(scope, finding)
     # #1882：类链上有索引跟不上的 extends（mixin 调用等）时，经由超类的分派不留调用边。
     supertype, inherited = (
-        supertype_outcome(scope, project_root, declarations, bare)
+        supertype_outcome(scope, project_root, declarations, bare, cache, owner)
         if sites or finding is None
         else (NotChecked(DYNAMIC_SUPERTYPE_REASON), None)
     )
