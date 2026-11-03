@@ -182,6 +182,7 @@
   No Python member is exempt. Unlike a JS/TS constructor, `__init__` is
   reached by `self.__init__()` in a base class, and a mangled `__m` is reached
   from any base class with the same simple name.
+
 - **Callers gate: 13 ways a wrong `complete` could still pass are closed** (dev
   tooling, `benchmarks/callers_gate`, gate format 2; caches move to
   `<root>/v2/`, so a format-1 gate keeps running on the same root).
