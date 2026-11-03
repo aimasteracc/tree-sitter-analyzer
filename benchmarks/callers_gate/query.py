@@ -1,4 +1,10 @@
-"""Ask every corpus target on one or more long-lived servers and keep the verdict fields."""
+"""Ask every corpus target on one or more long-lived servers and keep the verdict fields.
+
+The kept fields are part of every cached answer file. Changing ``KEEP``,
+``CALLER_FIELDS`` or ``SITE_FIELDS`` requires bumping ``layout.GATE_FORMAT``,
+which invalidates every cache; otherwise old and new rows differ in shape and
+show up as ``other`` changes (noise, never a hidden change).
+"""
 
 from __future__ import annotations
 
