@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from tree_sitter_analyzer.mcp.tools import callers_ts_source as S
 from tree_sitter_analyzer.mcp.tools.callers_ts_source import (
     SourceReader,
     chain_avoids,
@@ -278,3 +279,154 @@ def test_unreadable_listed_file_escapes(tmp_path: Path) -> None:
     reader = _reader(tmp_path, {"t.ts": _DECL})
     assert class_escapes(reader, ["gone.ts"], "t.ts", "T") is True
     assert class_escapes(reader, ["t.ts"], "t.ts", "T") is False
+
+
+# ------------------------------------------------------------ edge shapes
+def test_receiver_shapes_without_a_matching_this_call(tmp_path: Path) -> None:
+    reader = _reader(
+        tmp_path,
+        {
+            "c.ts": _METHODS,
+            "bare.ts": "class C {\n  run() {\n    return m()\n  }\n}\n",
+        },
+    )
+    source, bare = reader.read("c.ts"), reader.read("bare.ts")
+    assert source is not None and bare is not None
+    assert this_is_method_receiver(source, 1, "m", "C", 2) is False
+    assert this_is_method_receiver(source, 15, "m", "C", 15) is False
+    assert this_is_method_receiver(bare, 3, "m", "C", 2) is False
+
+
+def test_chain_longer_than_the_bound_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reader = _reader(
+        tmp_path, {"t.ts": "class A {}\nclass B extends A {}\nclass T extends B {}\n"}
+    )
+    monkeypatch.setattr(S, "_CHAIN_MAX", 1)
+    assert chain_avoids(reader, "t.ts", "T", ("c.ts", "C")) is False
+
+
+def test_memoized_parse_is_reused_and_bounded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _reader(tmp_path, {"a.ts": "class A {}\n", "b.ts": "class B {}\n"})
+
+    class _Fixed:
+        def read_stamped(self, path: str) -> tuple[bytes, tuple[int, ...]] | None:
+            data = Path(path).read_bytes() if Path(path).exists() else None
+            return None if data is None else (data, (len(data), 1, 1, 1, 1))
+
+    monkeypatch.setattr(S, "FILE_CACHE", _Fixed())
+    monkeypatch.setattr(S, "_PARSED_MAX", 1)
+    first = SourceReader(str(tmp_path)).read("a.ts")
+    again = SourceReader(str(tmp_path)).read("a.ts")
+    assert first is not None and again is first
+    assert SourceReader(str(tmp_path)).read("b.ts") is not None
+    assert len(S._PARSED) == 1
+
+
+@pytest.mark.parametrize("mode", ["none", "raise"])
+def test_grammar_failure_reads_as_unparsed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    import tree_sitter_analyzer.language_loader as loader
+
+    def broken(_language: str) -> object:
+        if mode == "raise":
+            raise RuntimeError("no grammar")
+        return None
+
+    reader = _reader(tmp_path, {"a.ts": "class A {}\n"})
+    monkeypatch.setattr(loader, "create_parser_safely", broken)
+    assert reader.read("a.ts") is None
+
+
+def test_import_and_require_shapes_are_collected(tmp_path: Path) -> None:
+    text = (
+        "import './side'\n"
+        "import Def from './d'\n"
+        "import * as ns from './n'\n"
+        "import { a, b as c } from './m'\n"
+        "const { x } = require('./r')\n"
+        "const req = require('./q')\n"
+        "const dyn = await import('./w')\n"
+        "export { a } from './m'\n"
+        "export * from './s'\n"
+        "export const v = 1, w = 2\n"
+        "export function f() {}\n"
+        "export enum E { A }\n"
+        "let { y } = z\n"
+    )
+    source = _reader(tmp_path, {"u.ts": text}).read("u.ts")
+    assert source is not None
+    assert source.module_bindings == {
+        "Def": "./d",
+        "ns": "./n",
+        "req": None,
+        "dyn": None,
+    }
+    assert source.named_imports == {"a": ("./m", "a"), "c": ("./m", "b")}
+    assert {"a", "*"} <= source.reexports
+    assert {"v", "w", "f", "E"} <= source.exported_values
+
+
+@pytest.mark.parametrize(
+    ("files", "escapes"),
+    [
+        # Declared and imported at once: cannot tell which a use means.
+        ({"u.ts": "import { T } from './t'\nclass T {}\nuse(T)\n"}, True),
+        # The module may export this class: it has syntax errors, re-exports the
+        # name, or declares nothing of that name.
+        (
+            {"u.ts": "import * as o from './o'\nuse(o.T)\n", "o.ts": "export {{{\n"},
+            True,
+        ),
+        (
+            {
+                "u.ts": "import * as o from './o'\nuse(o.T)\n",
+                "o.ts": "export { T } from './t'\n",
+            },
+            True,
+        ),
+        (
+            {
+                "u.ts": "import * as o from './o'\nuse(o.T)\n",
+                "o.ts": "export const X = 1\n",
+            },
+            True,
+        ),
+        # Its own `T` shadows: a shorthand use is not this class.
+        ({"u.ts": "const T = 1\nregister({ T })\n"}, False),
+        # A default import binding, then constructed.
+        ({"u.ts": "import T from './t'\nnew T()\n"}, False),
+        # JavaScript class names are identifiers.
+        ({"u.js": "class T {}\nnew T()\n"}, False),
+        # Not an `instanceof` matcher.
+        ({"u.ts": "import { T } from './t'\nnew Box(T)\n"}, True),
+        ({"u.ts": "import { T } from './t'\nexpect(x)[k](T)\n"}, True),
+    ],
+)
+def test_more_escape_shapes(
+    tmp_path: Path, files: dict[str, str], escapes: bool
+) -> None:
+    reader = _reader(tmp_path, {"t.ts": _DECL, **files})
+    assert class_escapes(reader, sorted(files), "t.ts", "T") is escapes
+
+
+def test_escape_scan_bounds_and_unparsed_hits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reader = _reader(tmp_path, {"t.ts": _DECL, "notes.py": "T = 1\n"})
+    assert class_escapes(reader, ["notes.py"], "t.ts", "T") is True
+    monkeypatch.setattr(S, "_ESCAPE_FILES_MAX", 0)
+    assert class_escapes(reader, ["t.ts"], "t.ts", "T") is True
+
+
+def test_node_helpers_on_the_root(tmp_path: Path) -> None:
+    source = _reader(tmp_path, {"t.ts": _DECL + "use(T)\n"}).read("t.ts")
+    assert source is not None
+    assert S._field(source.root) is None
+    assert S._passive_use(source, source.root) is False
+    assert S._instanceof_matcher(source, None) is False
+    assert S._escapes_in(source, "T") is True

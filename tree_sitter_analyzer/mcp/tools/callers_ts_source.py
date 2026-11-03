@@ -391,11 +391,9 @@ def _is_this_member(source: Source, node: Any, name: str) -> bool:
 
 def _enclosing_method(node: Any) -> Any | None:
     current = node.parent
-    while current is not None:
+    while current is not None and current.type not in _THIS_BOUNDARIES:
         if current.type == "method_definition":
             return current
-        if current.type in _THIS_BOUNDARIES:
-            return None
         current = current.parent
     return None
 

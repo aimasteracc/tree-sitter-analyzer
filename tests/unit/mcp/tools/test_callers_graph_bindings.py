@@ -395,3 +395,243 @@ def test_long_site_lists_and_unreadable_edges_keep_every_site(tmp_path: Path) ->
     one = [{"file": "a.ts", "line": 1, "callee": "this.m"}]
     assert bindings.partition(one) == (one, [])
     assert bindings.partition(None) == (None, [])
+
+
+# ------------------------------------------------------------ fake graph and index
+_EDGE_COLUMNS = (
+    "id INTEGER PRIMARY KEY, kind TEXT, caller_name TEXT, file_path TEXT, "
+    "caller_line INTEGER, callee_name TEXT, callee_full TEXT, callee_line INTEGER, "
+    "line INTEGER, language TEXT, callee_resolution TEXT, callee_resolved_file TEXT, "
+    "metadata TEXT"
+)
+
+
+def _fake_cache(rows: list[tuple[Any, ...]], *, jsts: bool = True) -> Any:
+    import sqlite3
+    from types import SimpleNamespace
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(f"CREATE TABLE edges ({_EDGE_COLUMNS})")
+    if jsts:
+        conn.execute("CREATE TABLE ast_index (file_path TEXT, language TEXT)")
+        conn.execute("INSERT INTO ast_index VALUES ('src/nums.ts', 'typescript')")
+    for caller, caller_line, callee_full, line, meta in rows:
+        conn.execute(
+            "INSERT INTO edges (kind, caller_name, file_path, caller_line, callee_name, "
+            "callee_full, callee_line, line, language, callee_resolution, "
+            "callee_resolved_file, metadata) VALUES "
+            "('calls', ?, 'src/nums.ts', ?, ?, ?, ?, ?, 'typescript', ?, '', ?)",
+            (
+                caller,
+                caller_line,
+                callee_full.rpartition(".")[2],
+                callee_full,
+                line,
+                line,
+                "project" if meta else "unknown",
+                meta,
+            ),
+        )
+    return SimpleNamespace(get_conn=lambda: conn)
+
+
+def _ref(name: str, line: int, end: int, receiver: str | None) -> Any:
+    from tree_sitter_analyzer.call_graph import FunctionRef
+
+    return FunctionRef("src/nums.ts", name, line, "typescript", receiver, end)
+
+
+NUM_GTE = _ref("gte", 2, 4, "Num")
+NUM_SET = _ref("setLimit", 5, 7, "Num")
+BIG_GTE = _ref("gte", 11, 13, "Big")
+BIG_SET = _ref("setLimit", 14, 16, "Big")
+
+
+class _FakeGraph:
+    def __init__(
+        self, edges: list[tuple[Any, Any, int]], *, reach: Any = None, refs: Any = None
+    ) -> None:
+        self.edges = edges
+        self.reach = reach
+        self.refs = refs
+
+    def function_refs_in_file(self, _path: str) -> list[Any]:
+        if self.refs == "raise":
+            raise RuntimeError("unreadable")
+        return (
+            self.refs if self.refs is not None else [NUM_GTE, NUM_SET, BIG_GTE, BIG_SET]
+        )
+
+    def call_edges(self) -> list[tuple[Any, Any, int]]:
+        return self.edges
+
+    def reachable_callee_refs_of(self, caller: Any) -> list[Any]:
+        if self.reach == "raise":
+            raise RuntimeError("unreadable")
+        if self.reach is not None:
+            return self.reach
+        return [callee for c, callee, _line in self.edges if c == caller]
+
+
+def _bindings(
+    root: Path,
+    graph: _FakeGraph,
+    rows: list[tuple[Any, ...]],
+    *,
+    targets: list[Any] | None = None,
+    listed: list[dict[str, Any]] | None = None,
+    stale: bool = False,
+    monkeypatch: pytest.MonkeyPatch,
+) -> GraphBindings:
+    from tree_sitter_analyzer.mcp.tools import callers_graph_bindings as G
+
+    path = root / "src" / "nums.ts"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_SIBLINGS, encoding="utf-8")
+    monkeypatch.setattr(
+        G, "stale_reference_files", lambda *_a: ["src/nums.ts"] if stale else []
+    )
+    return GraphBindings(
+        graph, _fake_cache(rows), str(root), targets or [BIG_SET], listed or []
+    )
+
+
+_ROW_NUM = ("gte", 2, "this.setLimit", 3, None)
+_ROW_BIG = ("gte", 11, "this.setLimit", 12, None)
+_SITE_NUM = {"file": "src/nums.ts", "line": 3, "callee": "this.setLimit"}
+_SITE_BIG = {"file": "src/nums.ts", "line": 12, "callee": "this.setLimit"}
+_EDGES = [(NUM_GTE, NUM_SET, 3), (BIG_GTE, BIG_SET, 12)]
+_LISTED = [{"file": "src/nums.ts", "name": "Big.gte", "line": 11}]
+
+
+def test_fake_graph_discharges_both_kinds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bindings = _bindings(
+        tmp_path,
+        _FakeGraph(_EDGES),
+        [_ROW_NUM, _ROW_BIG],
+        listed=_LISTED,
+        monkeypatch=monkeypatch,
+    )
+    kept, dropped = bindings.partition([_SITE_NUM, _SITE_BIG])
+    assert kept == []
+    assert [s["reason_code"] for s in dropped] == [
+        BOUND_ELSEWHERE_REASON,
+        LISTED_EDGE_REASON,
+    ]
+
+
+@pytest.mark.parametrize(
+    ("site", "rows", "graph", "opts"),
+    [
+        # Not JS/TS, no line, computed or other name.
+        (
+            {"file": "a.py", "line": 3, "callee": "self.setLimit"},
+            [_ROW_NUM],
+            _FakeGraph(_EDGES),
+            {},
+        ),
+        ({**_SITE_NUM, "line": 0}, [_ROW_NUM], _FakeGraph(_EDGES), {}),
+        ({**_SITE_NUM, "callee": "HANDLERS[k]"}, [_ROW_NUM], _FakeGraph(_EDGES), {}),
+        ({**_SITE_NUM, "callee": "this.other"}, [_ROW_NUM], _FakeGraph(_EDGES), {}),
+        # No row, two rows, another row that may name the target.
+        (_SITE_NUM, [], _FakeGraph(_EDGES), {}),
+        (
+            _SITE_NUM,
+            [_ROW_NUM, ("gte", 2, "this.setLimit", 3, "x")],
+            _FakeGraph(_EDGES),
+            {},
+        ),
+        (
+            _SITE_NUM,
+            [_ROW_NUM, ("gte", 2, "other.setLimit", 3, None)],
+            _FakeGraph(_EDGES),
+            {},
+        ),
+        (
+            _SITE_NUM,
+            [
+                _ROW_NUM,
+                ("gte", 2, "alias", 3, '{"import_alias": {"name": "setLimit"}}'),
+            ],
+            _FakeGraph(_EDGES),
+            {},
+        ),
+        (_SITE_NUM, [_ROW_NUM, ("gte", 2, "f(", 3, None)], _FakeGraph(_EDGES), {}),
+        # A stale file, a line past the end, no caller name, an unknown caller.
+        (_SITE_NUM, [_ROW_NUM], _FakeGraph(_EDGES), {"stale": True}),
+        (
+            {**_SITE_NUM, "line": 99},
+            [("gte", 2, "this.setLimit", 99, None)],
+            _FakeGraph(_EDGES),
+            {},
+        ),
+        (_SITE_NUM, [("", 0, "this.setLimit", 3, None)], _FakeGraph(_EDGES), {}),
+        (_SITE_NUM, [_ROW_NUM], _FakeGraph(_EDGES, refs="raise"), {}),
+        (_SITE_NUM, [_ROW_NUM], _FakeGraph(_EDGES, refs=[]), {}),
+        # No certain edge, or certain only to another name.
+        (_SITE_NUM, [_ROW_NUM], _FakeGraph([]), {}),
+        # The target is reachable from the caller, or reachability cannot be read.
+        (_SITE_NUM, [_ROW_NUM], _FakeGraph(_EDGES, reach=[BIG_SET]), {}),
+        (_SITE_NUM, [_ROW_NUM], _FakeGraph(_EDGES, reach="raise"), {}),
+        # Bound to a method of another class.
+        (
+            _SITE_NUM,
+            [_ROW_NUM],
+            _FakeGraph([(NUM_GTE, _ref("setLimit", 30, 31, "Zed"), 3)]),
+            {},
+        ),
+        # A module-level function target has no class to prove.
+        (
+            _SITE_NUM,
+            [_ROW_NUM],
+            _FakeGraph(_EDGES),
+            {"targets": [_ref("setLimit", 40, 41, None)]},
+        ),
+        # A listed caller's line whose caller is not in the list.
+        (_SITE_BIG, [_ROW_BIG], _FakeGraph(_EDGES), {}),
+    ],
+)
+def test_fake_graph_keeps_every_unproved_site(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    site: dict[str, Any],
+    rows: list[tuple[Any, ...]],
+    graph: _FakeGraph,
+    opts: dict[str, Any],
+) -> None:
+    bindings = _bindings(tmp_path, graph, rows, monkeypatch=monkeypatch, **opts)
+    assert bindings.partition([site]) == ([site], [])
+
+
+def test_static_call_bound_elsewhere_is_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    text = _SIBLINGS.replace(
+        'this.setLimit("min", v)\n  }\n  protected setLimit(kind: string, v: number)',
+        'Num.setLimit("min", v)\n  }\n  protected setLimit(kind: string, v: number)',
+        1,
+    )
+    bindings = _bindings(
+        tmp_path,
+        _FakeGraph(_EDGES),
+        [("gte", 2, "Num.setLimit", 3, None)],
+        monkeypatch=monkeypatch,
+    )
+    (tmp_path / "src" / "nums.ts").write_text(text, encoding="utf-8")
+    site = {**_SITE_NUM, "callee": "Num.setLimit"}
+    assert bindings.partition([site]) == ([site], [])
+
+
+def test_unreadable_index_listing_keeps_the_site(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tree_sitter_analyzer.mcp.tools import callers_graph_bindings as G
+
+    bindings = _bindings(
+        tmp_path, _FakeGraph(_EDGES), [_ROW_NUM], monkeypatch=monkeypatch
+    )
+    monkeypatch.setattr(bindings, "_cache", _fake_cache([_ROW_NUM], jsts=False))
+    assert bindings.partition([_SITE_NUM]) == ([_SITE_NUM], [])
+    assert G.drop_graph_bound(bindings, [_SITE_NUM], []) == ([_SITE_NUM], [], 0)
