@@ -182,6 +182,42 @@
   No Python member is exempt. Unlike a JS/TS constructor, `__init__` is
   reached by `self.__init__()` in a base class, and a mangled `__m` is reached
   from any base class with the same simple name.
+- **Callers gate: 13 ways a wrong `complete` could still pass are closed** (dev
+  tooling, `benchmarks/callers_gate`, gate format 2; caches move to
+  `<root>/v2/`, so a format-1 gate keeps running on the same root).
+  - An indexer change is no longer invisible: when the base and head index
+    keys differ, the base code also answers on its own index, the report shows
+    both comparisons, "pre-existing" is judged against the base's own index,
+    and every head `complete` that differs from either base set is checked.
+  - The grep oracle maps each hit to its innermost enclosing definition by
+    tree-sitter byte range and needs exactly that caller (name and start line)
+    listed; the answer's `end_line` is no longer trusted (nested functions, two
+    arrows on one line, Java anonymous-class methods).
+  - Aliased imports are followed to their local uses; aliased re-exports and
+    default exports are residual. A module is external only when it is a
+    declared dependency (or under `node_modules`) and no tsconfig
+    `paths`/`baseUrl` or import map can map it into the project.
+  - A receiver or supertype counts as a class only when that file binds the
+    name to it (class declaration or un-aliased import that resolves to it);
+    two classes are related through a common subtype, and an interface is
+    always related.
+  - The compact form is verified: a compact `complete` must be confirmed by the
+    full answer and list the same callers, on every head row; changes of kind
+    `other` are violations by default (`--allow-other-changes`).
+  - An allowed caller change on a `complete` row still goes through the
+    oracles; `allow_items` entries must name `file` and `mode`; a
+    `confidence_tier` change is a caller change.
+  - GT2: an open site is not coverage on a `complete` row, and GT2's own
+    `open_sites` outside a listed caller are residual on changed completes.
+  - Query-time disk memos are disabled in gate servers and base snapshots get
+    mtimes derived from their tree hash, so TSA's `source_fingerprint` can no
+    longer collide between base and head.
+  - Gate indexes build in one audited process (`TSA_INDEX_WORKERS=1`); a child
+    interpreter during the build fails it.
+  - `run --repos <subset>` is recorded as PARTIAL and exits 3 unless
+    `--allow-partial`; a parse error makes a hit residual before any other
+    check.
+
 - **`nav callers` no longer answers `complete` for a JS/TS member under an
   `extends` clause the index cannot follow** (#1882). `class V1 extends
   mix(Proc)` gets no inheritance edge, so `this.getQuery()` in `Proc.run` was

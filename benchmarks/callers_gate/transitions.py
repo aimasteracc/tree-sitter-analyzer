@@ -26,7 +26,16 @@ SITE_SCALARS = (
     "name_only_sites_total",
     "non_call_references",
 )
-CALLER_KEY = ("file", "name", "line", "end_line", "resolution_kind", "via")
+#: Every kept caller field: a changed ``confidence_tier`` is a changed answer too.
+CALLER_KEY = (
+    "file",
+    "name",
+    "line",
+    "end_line",
+    "resolution_kind",
+    "via",
+    "confidence_tier",
+)
 
 
 class RowSetMismatch(ValueError):

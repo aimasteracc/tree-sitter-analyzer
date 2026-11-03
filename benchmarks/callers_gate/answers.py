@@ -113,7 +113,7 @@ def read_answers(
 
 def promote(layout: Layout, tree: str, log: Any = print) -> list[Path]:
     """Copy every validated ``results/<tree>/**`` answer set into ``baseline/<tree>/**``."""
-    source = layout.root / "results" / tree
+    source = layout.results_dir(tree)
     copied: list[Path] = []
     if not source.is_dir():
         return copied

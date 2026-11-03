@@ -8,13 +8,14 @@ Root: ``--root`` or ``TSA_GATE_ROOT`` (default ``C:\\git-private\\tsa-gate``)::
     corpus/gt2/<repo>.json              GT2 (Python repos)
     corpus/labels/<repo>.json           hand labels (hono, zod)
     corpus/manifest.json                sha256 of every corpus file (verified on load)
-    src/<tree>/tree_sitter_analyzer/    base snapshots extracted with ``git archive``
-    index/<repo>/<index-key>/tree/      detached worktree = project root + .ast-cache
-    index/<repo>/<index-key>/manifest.json
-    baseline/<tree>/<index-key>/<repo>.json   base answers (cache)
-    results/<tree>/<index-key>/<repo>.json    head answers (promote -> baseline)
-    runs/<stamp>/report.{md,json}       one directory per run, with server logs
-    locks/<repo>.lock                   one index writer per repo
+    v<format>/                          every cache of one gate format:
+      src/<tree>/tree_sitter_analyzer/    base snapshots extracted with ``git archive``
+      index/<repo>/<index-key>/tree/      detached worktree = project root + .ast-cache
+      index/<repo>/<index-key>/manifest.json
+      baseline/<tree>/<index-key>/<repo>.json   answers of <tree> on that index (cache)
+      results/<tree>/<index-key>/<repo>.json    head answers (promote -> baseline)
+      runs/<stamp>/report.{md,json}       one directory per run, with server logs
+      locks/<repo>.lock                   one index writer per repo
 """
 
 from __future__ import annotations
@@ -28,7 +29,12 @@ DEFAULT_PYTHON = Path(r"C:\git-private\tree-sitter-analyzer\.venv\Scripts\python
 DOGFOOD = Path(r"C:\git-private\tsa-dogfood")
 
 #: Bumped whenever the meaning of a cached file changes; every key includes it.
-GATE_FORMAT = 1
+#: Format 2: query-time memos disabled in gate servers, snapshot mtimes derived
+#: from the tree hash, single-process index builds, base-index comparison.
+GATE_FORMAT = 2
+#: Caches of this format live under ``<root>/v<format>/`` so that a gate of an
+#: older format can keep running on the same root (format 1 used the root itself).
+CACHE_DIR = f"v{GATE_FORMAT}"
 
 
 @dataclass(frozen=True)
@@ -119,7 +125,8 @@ LABEL_SOURCE = {
 
 #: Query form, identical to the PR-1/2/4 manual gates.
 QUERY_ARGS = {"action": "callers", "include_bodies": False, "limit": 5000}
-INDEX_ARGS = {"action": "full", "mode": "full"}
+#: ``workers=1``: the build runs in the audited process (no spawn pool, see ``_boot``).
+INDEX_ARGS = {"action": "full", "mode": "full", "workers": 1}
 
 
 @dataclass(frozen=True)
@@ -151,21 +158,32 @@ class Layout:
     def labels(self, name: str) -> Path:
         return self.corpus / "labels" / f"{name}.json"
 
+    @property
+    def cache(self) -> Path:
+        """Root of every cache of the current format (``<root>/v<format>``)."""
+        return self.root / CACHE_DIR
+
     def src(self, tree: str) -> Path:
-        return self.root / "src" / tree
+        return self.cache / "src" / tree
+
+    def index_root(self, name: str) -> Path:
+        return self.cache / "index" / name
 
     def index_dir(self, name: str, key: str) -> Path:
-        return self.root / "index" / name / key
+        return self.index_root(name) / key
 
     def baseline(self, tree: str, key: str, name: str) -> Path:
-        return self.root / "baseline" / tree / key / f"{name}.json"
+        return self.cache / "baseline" / tree / key / f"{name}.json"
+
+    def results_dir(self, tree: str) -> Path:
+        return self.cache / "results" / tree
 
     def result(self, tree: str, key: str, name: str) -> Path:
-        return self.root / "results" / tree / key / f"{name}.json"
+        return self.results_dir(tree) / key / f"{name}.json"
 
     @property
     def runs(self) -> Path:
-        return self.root / "runs"
+        return self.cache / "runs"
 
     def lock(self, name: str) -> Path:
-        return self.root / "locks" / f"{name}.lock"
+        return self.cache / "locks" / f"{name}.lock"

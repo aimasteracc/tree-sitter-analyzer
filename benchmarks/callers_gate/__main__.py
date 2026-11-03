@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from . import answers, corpus, index_store, keys, sides
-from .layout import DEFAULT_PYTHON, REPOS, Layout
+from .layout import DEFAULT_PYTHON, GATE_FORMAT, REPOS, Layout
 
 #: Servers per side (measured cost: zod ~3.4 s/target, pydantic/fastapi ~0.5 s/target).
 #: 14 servers in total for all 7 repos, one per core of the reference machine.
@@ -66,6 +66,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             args.allow_transition,
             caller_changes=args.allow_caller_changes,
             site_changes=args.allow_site_changes,
+            other_changes=args.allow_other_changes,
         )
         git_dir = (
             Path(args.git_dir).resolve()
@@ -83,6 +84,16 @@ def cmd_run(args: argparse.Namespace) -> int:
     if unknown:
         _log(f"ERROR unknown repos {unknown}")
         return report.EXIT_ERROR
+    skipped = sorted(set(REPOS) - set(repos))
+    if skipped:
+        _log(
+            f"PARTIAL run: not running {skipped}; "
+            + (
+                "--allow-partial given"
+                if args.allow_partial
+                else "the exit code is at least 3 (REVIEW) unless --allow-partial"
+            )
+        )
     jobs = args.jobs or runner.default_jobs()
     run_dir = layout.runs / time.strftime("%Y%m%d-%H%M%S")
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -109,7 +120,11 @@ def cmd_run(args: argparse.Namespace) -> int:
     for run in runs:
         if run.index_key and args.keep_indexes > 0:
             index_store.prune_indexes(
-                layout, REPOS[run.repo], args.keep_indexes, {run.index_key}, _log
+                layout,
+                REPOS[run.repo],
+                args.keep_indexes,
+                {run.index_key, run.base_index_key or run.index_key},
+                _log,
             )
     judged = []
     for run in runs:
@@ -144,6 +159,10 @@ def cmd_run(args: argparse.Namespace) -> int:
             "total": round(time.perf_counter() - started, 1),
         },
         "distributions": len(dists),
+        "partial": bool(skipped),
+        "skipped_repos": skipped,
+        "allow_partial": bool(args.allow_partial),
+        "gate_format": GATE_FORMAT,
     }
     code = report.write_report(run_dir, meta, judged)
     _log(f"report {run_dir / 'report.md'}")
@@ -168,6 +187,19 @@ def _print_summary(
             f"reason-only={len(r['reason_changes_same_verdict'])} violations={len(r['violations'])} "
             f"truth-fail={len(r['truth_failures'])} residual={len(r['residual'])} t={r['timings']}"
         )
+        own = (r.get("comparisons") or {}).get("own_index")
+        if own is not None:
+            own_changed = {
+                k: v
+                for k, v in own["transitions"].items()
+                if k.split("->")[0] != k.split("->")[1]
+            }
+            print(
+                f"  {'':9} vs base on its own index: identical={own['identical_rows']:4} "
+                f"changed-verdicts={own_changed or '-'}"
+            )
+    if meta.get("partial"):
+        print(f"  PARTIAL run: not run {meta.get('skipped_repos')}")
     print(f"  seconds {meta['seconds']}  exit {code}")
 
 
@@ -258,25 +290,37 @@ def _rejudge(
         args.allow_transition,
         caller_changes=args.allow_caller_changes,
         site_changes=args.allow_site_changes,
+        other_changes=args.allow_other_changes,
     )
     meta = payload["meta"]
     judged = []
     for old in payload["repos"]:
         name, key = old["repo"], old.get("index_key", "")
+        base_key = old.get("base_index_key") or key
         pin = REPOS[name]
         _targets, sha = corpus.load_targets(layout, name, manifest)
         qkey = keys.query_key(targets_sha256=sha)
-        rows = {}
-        for side, path in (
-            ("base", layout.baseline(meta["base"]["tree"], key, name)),
-            ("head", layout.result(meta["head"]["tree"], key, name)),
-        ):
-            rows[side] = answers.read_answers(
+        rows: dict[str, list[dict[str, Any]] | None] = {}
+        sources = [
+            ("base", "base", layout.baseline(meta["base"]["tree"], key, name), key),
+            ("head", "head", layout.result(meta["head"]["tree"], key, name), key),
+        ]
+        if base_key != key:
+            sources.append(
+                (
+                    "cross",
+                    "base",
+                    layout.baseline(meta["base"]["tree"], base_key, name),
+                    base_key,
+                )
+            )
+        for label, side, path, ikey in sources:
+            rows[label] = answers.read_answers(
                 path,
-                answers.AnswerKey(meta[side]["tree"], key, name, pin.sha, qkey),
+                answers.AnswerKey(meta[side]["tree"], ikey, name, pin.sha, qkey),
                 _log,
             )
-        if rows["base"] is None or rows["head"] is None:
+        if any(value is None for value in rows.values()):
             judged.append(
                 {
                     "repo": name,
@@ -288,10 +332,13 @@ def _rejudge(
         run = runner.RepoRun(
             name,
             index_key=key,
-            base_rows=rows["base"],
-            head_rows=rows["head"],
+            base_index_key=base_key,
+            base_rows=rows["base"] or [],
+            head_rows=rows["head"] or [],
+            cross_rows=rows.get("cross") or [],
             root=layout.index_dir(name, key) / "tree",
             baseline_source="cache",
+            cross_source="cache" if base_key != key else "",
             timings=old.get("timings", {}),
         )
         judged.append(
@@ -344,7 +391,12 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument(
         "--head", required=True, help="worktree path (dirty edits count) or git ref"
     )
-    r.add_argument("--repos", nargs="+", choices=sorted(REPOS))
+    r.add_argument(
+        "--repos",
+        nargs="+",
+        choices=sorted(REPOS),
+        help="run a subset; the run is recorded as PARTIAL (exit >= 3 unless --allow-partial)",
+    )
     r.add_argument(
         "--jobs", type=int, help="concurrent repos (default from CPUs and free memory)"
     )
@@ -363,6 +415,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     r.add_argument("--allow-caller-changes", action="store_true")
     r.add_argument("--allow-site-changes", action="store_true")
+    r.add_argument(
+        "--allow-other-changes",
+        action="store_true",
+        help="allow changes of kind `other` (default: a violation)",
+    )
+    r.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help="with --repos, let a clean partial run exit 0 (default: 3, REVIEW)",
+    )
     r.add_argument(
         "--git-dir",
         help="TSA checkout that resolves the refs (default: the head worktree)",
@@ -406,6 +468,7 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("--allow-transition", action="append", metavar="A->B")
     rp.add_argument("--allow-caller-changes", action="store_true")
     rp.add_argument("--allow-site-changes", action="store_true")
+    rp.add_argument("--allow-other-changes", action="store_true")
     rp.set_defaults(func=cmd_report)
 
     il = sub.add_parser("import-legacy", help="seed baseline/ from a manual-gate JSON")

@@ -76,6 +76,13 @@ def _free_memory_gb() -> float | None:
 
 @dataclass
 class RepoRun:
+    """One repo of a run.
+
+    ``base_rows``: base code on the head-built index (isolates the query path).
+    ``cross_rows``: base code on the base's own index; set only when the index
+    keys differ (the indexer changed), and then the reference for "pre-existing".
+    """
+
     repo: str
     index_key: str = ""
     index_built: bool = False
@@ -88,6 +95,12 @@ class RepoRun:
     error: str | None = None
     retried: list[dict[str, Any]] = field(default_factory=list)
     retry_context: dict[str, Any] = field(default_factory=dict)
+    base_index_key: str = ""
+    cross_rows: list[dict[str, Any]] = field(default_factory=list)
+    cross_source: str = ""
+    base_root: Path | None = None
+    base_index_built: bool = False
+    query_key: str = ""
 
 
 @dataclass
@@ -109,30 +122,126 @@ class RunContext:
             return sides.materialize(self.layout, self.git_dir, side)
 
 
+def _index_key(ctx: RunContext, pin: RepoPin, side: sides.Side) -> str:
+    return keys.index_key(
+        repo=pin.name,
+        repo_sha=pin.sha,
+        package_blobs=side.blobs,
+        pyproject_blob=side.pyproject_blob,
+        env_fingerprint=ctx.env_key,
+    )
+
+
+def _ensure(
+    ctx: RunContext, pin: RepoPin, key: str, side: sides.Side
+) -> index_store.IndexInfo:
+    """The index ``side``'s code builds for ``pin`` (reused when its manifest is valid)."""
+    return index_store.ensure_index(
+        ctx.layout,
+        pin,
+        key,
+        python=ctx.python,
+        head_pkg_parent=ctx.pkg(side),
+        excluded_modules=keys.query_only_modules(side.blobs),
+        built_by=side.tree,
+        log=ctx.log,
+    )
+
+
+def _cached_answers(
+    ctx: RunContext, pin: RepoPin, tree: str, key: answers.AnswerKey
+) -> list[dict[str, Any]] | None:
+    """``baseline/<tree>/<key>``, else ``results/<tree>/<key>`` promoted to baseline."""
+    path = ctx.layout.baseline(tree, key.index_key, pin.name)
+    cached = answers.read_answers(path, key, ctx.log)
+    if cached is not None:
+        return cached
+    promoted = answers.read_answers(
+        ctx.layout.result(tree, key.index_key, pin.name), key, ctx.log
+    )
+    if promoted is not None:
+        answers.write_answers(path, key, promoted, "promoted:results")
+        ctx.log(
+            f"[{pin.name}] answers of {tree[:12]} promoted from results/ ({key.index_key})"
+        )
+    return promoted
+
+
+def _side_answers(
+    ctx: RunContext,
+    pin: RepoPin,
+    *,
+    label: str,
+    side: sides.Side,
+    key: answers.AnswerKey,
+    root: Callable[[], Path],
+    targets: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], str, float]:
+    """(rows, source, seconds) of ``side``'s code on the index named by ``key``."""
+    cached = _cached_answers(ctx, pin, side.tree, key)
+    if cached is not None:
+        ctx.log(f"[{pin.name}] {label} answers: cache hit ({len(cached)} rows)")
+        return cached, "cache", 0.0
+    rows, secs = compute_side(
+        label=f"{pin.name}-{label}",
+        python=ctx.python,
+        pkg_parent=ctx.pkg(side),
+        root=root(),
+        targets=targets,
+        shards=ctx.shards.get(pin.name, 1),
+        log_dir=ctx.run_dir / "logs",
+        log=ctx.log,
+    )
+    answers.write_answers(
+        ctx.layout.baseline(side.tree, key.index_key, pin.name), key, rows, "computed"
+    )
+    ctx.log(f"[{pin.name}] {label} answers computed in {secs:.0f}s")
+    return rows, "computed", secs
+
+
+def _own_index_answers(
+    ctx: RunContext, pin: RepoPin, out: RepoRun, targets: list[dict[str, Any]]
+) -> None:
+    """Base code on the base's own index: the comparison that sees indexer changes."""
+    started = time.perf_counter()
+    key = answers.AnswerKey(
+        ctx.base.tree, out.base_index_key, pin.name, pin.sha, out.query_key
+    )
+
+    def root() -> Path:
+        info = _ensure(ctx, pin, out.base_index_key, ctx.base)
+        out.base_root, out.base_index_built = info.root, info.built
+        return info.root
+
+    out.cross_rows, out.cross_source, secs = _side_answers(
+        ctx,
+        pin,
+        label="base-own-index",
+        side=ctx.base,
+        key=key,
+        root=root,
+        targets=targets,
+    )
+    out.retry_context["cross"] = (
+        lambda: ctx.pkg(ctx.base),
+        lambda: out.base_root if out.base_root is not None else root(),
+        ctx.layout.baseline(ctx.base.tree, out.base_index_key, pin.name),
+        key,
+    )
+    out.timings["base_own_index"] = time.perf_counter() - started
+    out.timings["cross"] = secs
+
+
 def run_repo(ctx: RunContext, pin: RepoPin) -> RepoRun:
     out = RepoRun(pin.name)
     log = ctx.log
     t0 = time.perf_counter()
     targets, targets_sha = corpus.load_targets(ctx.layout, pin.name, ctx.manifest)
-    query_key = keys.query_key(targets_sha256=targets_sha)
-    out.index_key = keys.index_key(
-        repo=pin.name,
-        repo_sha=pin.sha,
-        package_blobs=ctx.head.blobs,
-        pyproject_blob=ctx.head.pyproject_blob,
-        env_fingerprint=ctx.env_key,
-    )
+    query_key = out.query_key = keys.query_key(targets_sha256=targets_sha)
+    out.index_key = _index_key(ctx, pin, ctx.head)
+    out.base_index_key = _index_key(ctx, pin, ctx.base)
     head_pkg = ctx.pkg(ctx.head)
-    info = index_store.ensure_index(
-        ctx.layout,
-        pin,
-        out.index_key,
-        python=ctx.python,
-        head_pkg_parent=head_pkg,
-        excluded_modules=keys.query_only_modules(ctx.head.blobs),
-        built_by=ctx.head.tree,
-        log=log,
-    )
+    info = _ensure(ctx, pin, out.index_key, ctx.head)
     out.root, out.index_built = info.root, info.built
     out.timings["index"] = time.perf_counter() - t0
     log(
@@ -143,37 +252,22 @@ def run_repo(ctx: RunContext, pin: RepoPin) -> RepoRun:
         ctx.base.tree, out.index_key, pin.name, pin.sha, query_key
     )
     base_path = ctx.layout.baseline(ctx.base.tree, out.index_key, pin.name)
-    cached = answers.read_answers(base_path, base_key, log)
-    if cached is None:
-        promoted = answers.read_answers(
-            ctx.layout.result(ctx.base.tree, out.index_key, pin.name), base_key, log
+    out.base_rows, out.baseline_source, out.timings["base"] = _side_answers(
+        ctx,
+        pin,
+        label="base",
+        side=ctx.base,
+        key=base_key,
+        root=lambda: info.root,
+        targets=targets,
+    )
+    out.baseline_hit = out.baseline_source == "cache"
+    if out.base_index_key != out.index_key:
+        log(
+            f"[{pin.name}] the index keys differ (indexer change): base {out.base_index_key} vs head {out.index_key}"
         )
-        if promoted is not None:
-            answers.write_answers(base_path, base_key, promoted, "promoted:results")
-            cached = promoted
-            log(
-                f"[{pin.name}] base answers promoted from results/ (same tree, same index key)"
-            )
+        _own_index_answers(ctx, pin, out, targets)
     shards = ctx.shards.get(pin.name, 1)
-    if cached is not None:
-        out.base_rows, out.baseline_hit, out.baseline_source = cached, True, "cache"
-        out.timings["base"] = 0.0
-        log(f"[{pin.name}] base answers: cache hit ({len(cached)} rows)")
-    else:
-        rows, secs = compute_side(
-            label=f"{pin.name}-base",
-            python=ctx.python,
-            pkg_parent=ctx.pkg(ctx.base),
-            root=info.root,
-            targets=targets,
-            shards=shards,
-            log_dir=ctx.run_dir / "logs",
-            log=log,
-        )
-        answers.write_answers(base_path, base_key, rows, "computed")
-        out.base_rows, out.baseline_source = rows, "computed"
-        out.timings["base"] = secs
-        log(f"[{pin.name}] base answers computed in {secs:.0f}s")
 
     costs = {
         (r["mode"], r["file"], r["qual"]): float(r.get("seconds") or 0.0)
@@ -202,15 +296,18 @@ def run_repo(ctx: RunContext, pin: RepoPin) -> RepoRun:
     out.head_rows = rows
     out.timings["head"] = secs
     out.timings["total"] = time.perf_counter() - t0
-    out.retry_context = {
-        "targets": targets,
-        "base": (ctx.pkg(ctx.base), base_path, base_key),
-        "head": (
-            head_pkg,
-            ctx.layout.result(ctx.head.tree, out.index_key, pin.name),
-            head_key,
-        ),
-    }
+    out.retry_context.update(
+        {
+            "targets": targets,
+            "base": (lambda: ctx.pkg(ctx.base), info.root, base_path, base_key),
+            "head": (
+                head_pkg,
+                info.root,
+                ctx.layout.result(ctx.head.tree, out.index_key, pin.name),
+                head_key,
+            ),
+        }
+    )
     log(
         f"[{pin.name}] head answers computed in {secs:.0f}s; repo total {out.timings['total']:.0f}s"
     )
@@ -256,6 +353,24 @@ def budget_limited(row: dict[str, Any]) -> bool:
     return bool(compact != full.get("completeness"))
 
 
+def _changed_limited(
+    rows: list[dict[str, Any]], head_rows: list[dict[str, Any]]
+) -> set[tuple[str, str, str]]:
+    """Keys whose answer changed between ``rows`` and head and is budget-limited on a side."""
+    by = {row_key(r): r for r in rows}
+    return {
+        row_key(h)
+        for h in head_rows
+        if row_key(h) in by
+        and classify_pair(by[row_key(h)], h)
+        and (budget_limited(h) or budget_limited(by[row_key(h)]))
+    }
+
+
+def _value(item: Any) -> Any:
+    return item() if callable(item) else item
+
+
 def retry_budget_rows(
     ctx: RunContext, run: RepoRun, attempts: int = MAX_BUDGET_RETRIES
 ) -> None:
@@ -264,32 +379,29 @@ def retry_budget_rows(
     Runs after all repos finished (so with little contention). A retried row
     replaces the cached one only when it is no longer budget-limited; the cache
     file is rewritten with the conclusive answer for the same code and index.
+    Both comparisons count: base vs head on the head index and, when the index
+    keys differ, base on its own index vs head.
     """
-    base_by = {row_key(r): r for r in run.base_rows}
-    keys_ = [
-        row_key(r)
-        for r in run.head_rows
-        if row_key(r) in base_by
-        and classify_pair(base_by[row_key(r)], r)
-        and (budget_limited(r) or budget_limited(base_by[row_key(r)]))
-    ]
-    if not keys_ or run.root is None:
+    wanted = {"base": _changed_limited(run.base_rows, run.head_rows)}
+    if run.cross_rows:
+        wanted["cross"] = _changed_limited(run.cross_rows, run.head_rows)
+    wanted["head"] = set().union(*wanted.values())
+    if not wanted["head"] or run.root is None:
         return
     started = time.perf_counter()
-    wanted = set(keys_)
-    targets = [
-        t
-        for t in run.retry_context["targets"]
-        if (t["mode"], t["file"], t["qual"]) in wanted
-    ]
-    for side in ("base", "head"):
-        rows = run.base_rows if side == "base" else run.head_rows
-        pkg, path, akey = run.retry_context[side]
+    for side in ("base", "cross", "head"):
+        if side not in wanted:
+            continue
+        rows = {"base": run.base_rows, "cross": run.cross_rows, "head": run.head_rows}[
+            side
+        ]
+        pkg, root, path, akey = run.retry_context[side]
         by_key = {row_key(r): r for r in rows}
         pending = [
             t
-            for t in targets
-            if budget_limited(by_key[(t["mode"], t["file"], t["qual"])])
+            for t in run.retry_context["targets"]
+            if (t["mode"], t["file"], t["qual"]) in wanted[side]
+            and budget_limited(by_key[(t["mode"], t["file"], t["qual"])])
         ]
         for attempt in range(1, attempts + 1):
             if not pending:
@@ -297,8 +409,8 @@ def retry_budget_rows(
             fresh, _secs = compute_side(
                 label=f"{run.repo}-{side}-retry{attempt}",
                 python=ctx.python,
-                pkg_parent=pkg,
-                root=run.root,
+                pkg_parent=_value(pkg),
+                root=_value(root),
                 targets=pending,
                 shards=1,
                 log_dir=ctx.run_dir / "logs",
@@ -330,9 +442,11 @@ def retry_budget_rows(
             answers.write_answers(path, akey, new_rows, "computed+budget-retry")
             if side == "base":
                 run.base_rows = new_rows
+            elif side == "cross":
+                run.cross_rows = new_rows
             else:
                 run.head_rows = new_rows
     run.timings["retry"] = time.perf_counter() - started
     ctx.log(
-        f"[{run.repo}] budget retry: {len(keys_)} row(s), {sum(r['conclusive'] for r in run.retried)} conclusive ({run.timings['retry']:.0f}s)"
+        f"[{run.repo}] budget retry: {len(wanted['head'])} row(s), {sum(r['conclusive'] for r in run.retried)} conclusive ({run.timings['retry']:.0f}s)"
     )

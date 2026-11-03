@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 
 from benchmarks.callers_gate import answers, corpus, gitutil, index_store
-from benchmarks.callers_gate.layout import REPOS, Layout
+from benchmarks.callers_gate.layout import GATE_FORMAT, REPOS, Layout
 from benchmarks.callers_gate.oracle_truth import check_rows
 
 ROWS = [
@@ -101,7 +101,7 @@ def test_index_manifest_must_name_this_key_and_be_ready(tmp_path: Path) -> None:
     directory = tmp_path / "k1"
     (directory / "tree" / ".ast-cache").mkdir(parents=True)
     manifest = {
-        "format": 1,
+        "format": GATE_FORMAT,
         "key": "k1",
         "repo": "gson",
         "repo_sha": pin.sha,
@@ -223,7 +223,15 @@ def test_label_misses_on_complete_and_enumerated_answers() -> None:
             [{"file": "c.ts", "name": "g", "line": 1, "end_line": 20}],
         )
     ]
-    assert check_rows("hono", ok, set(), gt2=None, labels=labels)["failures"] == []
+    # coverage comes from the grep oracle (innermost definition), not from end_line
+    cover = {(("bare", "a.py", "A.f"), "c.ts", 5): True}
+    assert check_rows("hono", ok, set(), gt2=None, labels=labels)["failures"] != []
+    assert (
+        check_rows("hono", ok, set(), gt2=None, labels=labels, label_cover=cover)[
+            "failures"
+        ]
+        == []
+    )
 
 
 @pytest.mark.slow_ok  # several real git subprocesses

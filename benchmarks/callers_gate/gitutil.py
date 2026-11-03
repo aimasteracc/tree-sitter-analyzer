@@ -120,6 +120,25 @@ def worktree_blob(worktree: Path, path: str) -> str | None:
     return git(worktree, "hash-object", "--", path).strip()
 
 
+#: Snapshot mtimes are ``EPOCH_NS`` + an offset derived from the tree hash.
+EPOCH_NS = 1_000_000_000 * 10**9
+#: Offsets stay below ~31.7 years, at NTFS's 100 ns resolution.
+_SPAN_100NS = 10**16
+
+
+def tree_stamp_ns(tree: str) -> int:
+    """A file mtime (ns) that is a pure function of ``tree``.
+
+    ``git archive`` of a tree object stamps every file with the current second,
+    and TSA's ``source_fingerprint`` hashes path + size + mtime only, so two
+    different trees with equal file sizes extracted in one second would share a
+    fingerprint (and every cache keyed by it). Stamping each snapshot from its
+    own tree hash makes equal fingerprints imply equal trees (up to a 2^53-ish
+    collision of the stamp), and the same tree always gets the same stamps.
+    """
+    return EPOCH_NS + (int(tree[:16], 16) % _SPAN_100NS) * 100
+
+
 def extract_tree(repo: Path, tree: str, dest: Path, prefix: str = PACKAGE) -> None:
     """Write ``tree`` to ``dest/<prefix>/`` atomically (``git archive`` of a tree object)."""
     if (dest / prefix).is_dir() and (dest / ".complete").is_file():
@@ -132,7 +151,14 @@ def extract_tree(repo: Path, tree: str, dest: Path, prefix: str = PACKAGE) -> No
         for member in tar.getmembers():
             if member.name.startswith(("/", "..")) or ".." in Path(member.name).parts:
                 raise GitError(f"unsafe archive member {member.name!r}")
-        tar.extractall(staging / prefix)  # noqa: S202 - members validated above
+        if hasattr(tarfile, "data_filter"):  # 3.10.12+ / 3.11.4+
+            tar.extractall(staging / prefix, filter="data")
+        else:  # pragma: no cover - older interpreters
+            tar.extractall(staging / prefix)  # noqa: S202 - members validated above
+    stamp = tree_stamp_ns(tree)
+    for path in (staging / prefix).rglob("*"):
+        if path.is_file():
+            os.utime(path, ns=(stamp, stamp))
     (staging / ".complete").write_text(tree, encoding="utf-8")
     if dest.exists():
         shutil.rmtree(dest)
