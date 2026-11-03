@@ -138,6 +138,30 @@
 
 ### Fixed
 
+- **`nav callers` no longer answers `complete` for a JS/TS member under an
+  `extends` clause the index cannot follow** (#1882). `class V1 extends
+  mix(Proc)` gets no inheritance edge, so `this.getQuery()` in `Proc.run` was
+  never offered `V1.getQuery` as a target, and the override answered `complete`
+  with 0 callers. A new review check, `supertype_dispatch` (the 13th required
+  check; a census now shows `{"required": 13, "checked": 13}`), walks the
+  declaring class's `extends` chain from source. It follows a class declared in
+  the same file, a named import from a relative module (through `export ... from`
+  re-exports) and `ns.B` for a relative namespace import. It stops at a known
+  external class: a package import or `require`, or an ECMAScript / web platform
+  global such as `Error`. Any other clause is reported with the new reason
+  `DYNAMIC_SUPERTYPE`, and `next_step` names the class, its file and line, and
+  the clause. Such clauses include a call, a conditional, a cast, a local value,
+  an unresolved import, an unknown identifier, a name bound twice in its file
+  or a cycle. The check covers the declaring class and every class above it,
+  for instance methods, accessors, fields and static methods (a static
+  `this.build()` in a base class dispatches to a subclass's static `build`);
+  constructors are exempt. With callers listed, the answer is `incomplete`.
+  The check only adds blocks: it runs after every other gate, so answers that
+  are already non-complete keep their reasons. Python (#1883) and Java
+  overrides without `@Override` (#1884) have the same gap and are tracked
+  separately.
+  Gate: on the r15 callers corpus (hono, zod, axios, gson, rich, fastapi and pydantic; 2,457 answers), develop 102007ac and the branch were run on one shared index per repo. No verdict changed, no `complete` was lost or added, and no caller count changed. No r15 target sits under an unfollowable clause; the only such clauses in these repos are cast class expressions in a zod test, and those answers are already non-complete at the edge layer. One zod reason changed, `flattenError` from `NON_CALL_REFERENCES` to `NON_CALL_REFERENCES_UNCHECKED`. That was the cold first query hitting the scan budget under load: a recheck on both builds gives `NON_CALL_REFERENCES`.
+
 - **`nav callers` no longer counts a JS/TS call site the call graph already
   binds as an open site** (PR-3). The `UNRESOLVED_INBOUND` and
   `UNRESOLVED_IN_DECLARING_FILE` guards counted every call row the index left

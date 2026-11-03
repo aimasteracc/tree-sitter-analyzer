@@ -143,7 +143,7 @@ def test_edge_problems_keep_their_contract_order_and_severity() -> None:
         "unknown",
     )
     # 调用边层已判定时，复核门不运行：摘要只给出个数。
-    assert prove(ledger, 2).checks == {"required": 12, "checked": 5, "not_run": 7}
+    assert prove(ledger, 2).checks == {"required": 13, "checked": 5, "not_run": 8}
 
 
 # ------------------------------------------------------------ closed skip paths
@@ -233,7 +233,7 @@ async def test_a_census_carries_its_proof(tmp_path, name: str) -> None:
 
     assert result["completeness"] == "complete"
     assert result["completeness_reasons"] == []
-    assert result["completeness_checks"] == {"required": 12, "checked": 12}
+    assert result["completeness_checks"] == {"required": 13, "checked": 13}
 
 
 @pytest.mark.asyncio

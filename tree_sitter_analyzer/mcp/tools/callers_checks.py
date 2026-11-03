@@ -36,6 +36,7 @@ from .callers_reasons import (
     UNCHECKED_REASON,
     UNRESOLVED_INBOUND_REASON,
 )
+from .callers_supertypes import DYNAMIC_SUPERTYPE_REASON
 from .callers_target import UNCHECKED_REASON as TARGET_UNCHECKED_REASON
 from .relation_freshness import UNKNOWN_REASON
 from .unindexed_sources import UNCHECKED_REASON as UNINDEXED_UNCHECKED_REASON
@@ -69,6 +70,7 @@ REQUIRED_CHECKS: Final[tuple[CheckSpec, ...]] = (
     CheckSpec("accessor", REVIEW, ACCESSOR_UNCHECKED_REASON),
     CheckSpec("non_call_references", REVIEW, NON_CALL_UNCHECKED_REASON),
     CheckSpec("registering_decorator", REVIEW, DECORATED_REASON),
+    CheckSpec("supertype_dispatch", REVIEW, DYNAMIC_SUPERTYPE_REASON),
 )
 CHECK_NAMES: Final = frozenset(spec.name for spec in REQUIRED_CHECKS)
 
@@ -195,9 +197,9 @@ def _layer(layer: str) -> tuple[CheckSpec, ...]:
 
 
 def _summary(ledger: Ledger, reached: tuple[CheckSpec, ...]) -> dict[str, Any]:
-    """紧凑、有界（≤ 12 项）的检查摘要。
+    """紧凑、有界（≤ 13 项）的检查摘要。
 
-    ``{"required": 12, "checked": k}``，另有：
+    ``{"required": 13, "checked": k}``，另有：
 
     * ``not_checked``：推导时考察到、却未能运行（或漏记）的检查及其原因码；
     * ``not_run``：复核门按序短路——先行的门已判定答案非 complete 时，其后的门
