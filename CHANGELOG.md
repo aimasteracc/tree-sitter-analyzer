@@ -160,6 +160,28 @@
 
 ### Fixed
 
+- **`nav callers` no longer answers `complete` for a Python method under a
+  base the index cannot follow** (#1883). The index records a Python base only
+  when it is a name or a dotted name, so `class V1(mix(Proc))`,
+  `class V3(*bases)`, `class V8(Alias)` with `Alias = Proc` and
+  `class V9(GProc[int])` got no inheritance edge: `self.get_query()` in
+  `Proc.run` was never offered the override, which answered `complete` with 0
+  callers. The `supertype_dispatch` check (#1882) now covers Python too. It
+  reads the bases of the declaring class, and of every project class above it,
+  with `ast`: a class bound once in the scope that runs the `class` statement,
+  and names imported from project modules (relative or absolute, `src` layout,
+  `__init__` re-exports, `import *`, `mod.Cls`, `Outer.Inner`) are followed.
+  The walk stops at a known external class: a standard-library or third-party
+  module, a builtin such as `object` or `Exception`, or a subscript of one
+  (`Generic[T]`, `Protocol[T]`). Anything else is `DYNAMIC_SUPERTYPE`, and
+  `next_step` names the class, its file and line, and the clause. That covers a
+  call, a starred argument, a conditional, a subscripted project class, a name
+  bound to a value or bound twice, an unbound name, an import that does not
+  resolve to one project file, a `**` class keyword, and a `metaclass=` that is
+  not external, whose `__new__` may rebind the bases, or that defines `mro`.
+  No Python member is exempt. Unlike a JS/TS constructor, `__init__` is
+  reached by `self.__init__()` in a base class, and a mangled `__m` is reached
+  from any base class with the same simple name.
 - **`nav callers` no longer answers `complete` for a JS/TS member under an
   `extends` clause the index cannot follow** (#1882). `class V1 extends
   mix(Proc)` gets no inheritance edge, so `this.getQuery()` in `Proc.run` was

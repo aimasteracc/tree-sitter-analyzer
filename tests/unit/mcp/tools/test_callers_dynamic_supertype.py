@@ -366,10 +366,11 @@ def test_object_literal_methods_and_functions_pass(tmp_path) -> None:
     assert dynamic_supertype(root, [("c.ts", 3, "typescript")], "m") is None
 
 
-def test_non_jsts_declarations_pass(tmp_path) -> None:
-    root = _write(tmp_path, {"m.py": "class K(mix(B)):\n    def m(self): ...\n"})
+def test_other_language_declarations_pass(tmp_path) -> None:
+    # Python rows are walked since #1883 (test_callers_python_dynamic_bases.py).
+    root = _write(tmp_path, {"m.rb": "class K < mix(B)\n  def m; end\nend\n"})
 
-    assert dynamic_supertype(root, [("m.py", 2, "python")], "m") is None
+    assert dynamic_supertype(root, [("m.rb", 2, "ruby")], "m") is None
 
 
 def test_javascript_heritage_and_class_expressions(tmp_path) -> None:

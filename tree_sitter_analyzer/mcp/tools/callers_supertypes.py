@@ -22,6 +22,9 @@ inheritance edges, and fails closed on the first clause it cannot follow:
   name declared twice, a cycle or a chain longer than :data:`_CHAIN_MAX`.
 
 A file that cannot be read or parsed is the same code with ``unchecked`` set.
+
+#1883: Python members get the same check over their class's bases, walked with
+:mod:`ast` in :mod:`.callers_py_supertypes`.
 """
 
 from __future__ import annotations
@@ -125,25 +128,44 @@ class SupertypeFinding:
     why: str
     #: The source could not be read or parsed: the gate did not run.
     unchecked: bool = False
+    #: How the clause relates to the class (#1883: Python "has base").
+    verb: str = "extends"
 
     def describe(self) -> str:
         if self.unchecked:
             return f"{self.why} ({self.file})" if self.file else self.why
         return (
-            f"class `{self.class_name}` ({self.file}:{self.line}) extends "
+            f"class `{self.class_name}` ({self.file}:{self.line}) {self.verb} "
             f"`{self.clause}`, {self.why}"
         )
 
+    @property
+    def receiver(self) -> str:
+        """The base-class receiver of a dispatched call in the clause's language."""
+        return "this" if self.verb == "extends" else "self"
+
 
 def dynamic_supertype(
-    project_root: str, declarations: list[tuple[str, int, str]], bare: str
+    project_root: str,
+    declarations: list[tuple[str, int, str]],
+    bare: str,
+    cache: Any = None,
+    owner: str = "",
 ) -> SupertypeFinding | None:
-    """The first unfollowable supertype clause above a JS/TS member named ``bare``.
+    """The first unfollowable supertype clause above a JS/TS or Python member ``bare``.
 
     ``declarations`` are the target's ``(file, line, language)`` rows; rows that are
-    not a member of a class body (functions, object literal methods), constructors
-    and non-JS/TS files pass.
+    not a member of a class body (functions, object literal methods), JS/TS
+    constructors and files in other languages pass. ``cache`` (the index) tells
+    project modules from third-party ones for Python (#1883); without it a
+    non-stdlib module that is no project file cannot be classified. ``owner`` (the
+    qualified target's class path) skips Python members of other classes.
     """
+    python = [row for row in declarations if row[0].lower().endswith(".py")]
+    if python:
+        python_found = _python_finding(project_root, python, bare, cache, owner)
+        if python_found is not None:
+            return python_found
     reader = SourceReader(project_root)
     for rel, line, _language in declarations:
         if not rel.lower().endswith(JSTS_SUFFIXES):
@@ -156,13 +178,45 @@ def dynamic_supertype(
             if source.has_error:
                 return _unchecked(rel, "the declaring file has a syntax error")
             continue
-        owner = _owner_class(member)
-        if owner is None or _is_constructor(source, member) or _is_private(member):
+        owner_class = _owner_class(member)
+        if (
+            owner_class is None
+            or _is_constructor(source, member)
+            or _is_private(member)
+        ):
             continue
-        found = _walk_chain(reader, source, owner)
+        found = _walk_chain(reader, source, owner_class)
         if found is not None:
             return found
     return None
+
+
+def _python_finding(
+    project_root: str,
+    rows: list[tuple[str, int, str]],
+    bare: str,
+    cache: Any,
+    owner: str,
+) -> SupertypeFinding | None:
+    """#1883: the first finding on a row of the target's own class.
+
+    A file may declare ``bare`` in several classes; for ``V2.m`` the rows of
+    other classes are other symbols. When no row's class is named like the
+    owner (a module-qualified name, an alias), every row counts.
+    """
+    from .callers_py_supertypes import python_dynamic_base
+
+    wanted = owner.rpartition(".")[2]
+    results = [
+        python_dynamic_base(
+            project_root, rel, line, bare, lambda: python_project_tops(cache)
+        )
+        for rel, line, _language in rows
+    ]
+    own = [found for name, found in results if wanted and name == wanted]
+    candidates = own if own else [found for _name, found in results]
+    unread = [found for name, found in results if name is None and found is not None]
+    return next((f for f in [*unread, *candidates] if f is not None), None)
 
 
 def supertype_outcome(
@@ -170,10 +224,12 @@ def supertype_outcome(
     project_root: str,
     declarations: list[tuple[str, int, str]],
     bare: str,
+    cache: Any = None,
+    owner: str = "",
 ) -> tuple[CheckOutcome, SupertypeFinding | None]:
     """The ``supertype_dispatch`` check (RFC-0040) and its finding."""
     try:
-        finding = dynamic_supertype(project_root, declarations, bare)
+        finding = dynamic_supertype(project_root, declarations, bare, cache, owner)
     except Exception as exc:  # noqa: BLE001 — a failed walk is "cannot prove"
         raise_if_interrupted(exc)
         finding = _unchecked("", f"the supertype walk failed ({type(exc).__name__})")
@@ -196,11 +252,41 @@ def dynamic_supertype_hint(func_name: str, finding: SupertypeFinding) -> str:
     return (
         f"No resolved caller for {func_name!r}, but {finding.describe()}. The "
         "index records no inheritance edge for such a clause, so a call through "
-        f"a supertype (for example `this.{func_name.rpartition('.')[2]}()` in a "
+        f"a supertype (for example `{finding.receiver}."
+        f"{func_name.rpartition('.')[2]}()` in a "
         "base class) could reach it without a call edge naming it; this is not "
         "evidence of absence. Read what the clause evaluates to and search its "
         "classes for calls of the method."
     )
+
+
+def python_project_tops(cache: Any) -> frozenset[str] | None:
+    """Every directory and module name of the index's Python files; None if unreadable.
+
+    A top-level import name in this set may be a project module, so one that does
+    not resolve to a project file is not treated as a third-party package.
+    """
+    if cache is None:
+        return None
+    from ...resident import snapshot_memo
+
+    def read() -> frozenset[str] | None:
+        try:
+            rows = (
+                cache.get_conn()
+                .execute("SELECT file_path FROM ast_index WHERE language = 'python'")
+                .fetchall()
+            )
+        except Exception:  # noqa: BLE001 — unreadable: cannot classify
+            return None
+        tops: set[str] = set()
+        for (path,) in rows:
+            for part in str(path).replace("\\", "/").split("/"):
+                tops.add(part[:-3] if part.endswith(".py") else part)
+        return frozenset(tops)
+
+    found = snapshot_memo.cached(cache, "supertypes.python_tops", (), read)
+    return None if found is None else frozenset(found)
 
 
 def _unchecked(rel: str, why: str) -> SupertypeFinding:
@@ -603,5 +689,6 @@ __all__ = [
     "SupertypeFinding",
     "dynamic_supertype",
     "dynamic_supertype_hint",
+    "python_project_tops",
     "supertype_outcome",
 ]
