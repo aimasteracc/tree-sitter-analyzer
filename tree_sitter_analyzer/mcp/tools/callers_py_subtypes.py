@@ -326,7 +326,7 @@ class _Finder:
         """``key`` has a base among ``members``; a failure when it may."""
         for base in index.bases(key, self.tops):
             if isinstance(base, Unknown):
-                if base.mentions & names:
+                if not base.keyword and base.mentions & names:
                     return self.fail(
                         _name(index, key),
                         f"which may be one: class `{_name(index, key)}` "

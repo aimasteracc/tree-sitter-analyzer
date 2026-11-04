@@ -104,6 +104,20 @@ async def test_repro_inherited_implementation_is_not_complete(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_listed_callers_are_not_complete_either(tmp_path) -> None:
+    files = {
+        **_REPRO,
+        "main.py": "from pkg.a import A\n\n\ndef main():\n    return A().m()\n",
+    }
+
+    result = await _answer(tmp_path, files)
+
+    assert result["caller_count"] == 1
+    assert result["completeness"] == "incomplete", result
+    assert result["completeness_reasons"] == [OVERRIDE_REASON]
+
+
+@pytest.mark.asyncio
 async def test_call_in_a_base_inheriting_the_name_is_found(tmp_path) -> None:
     files = {
         **_REPRO,
@@ -153,6 +167,11 @@ async def test_typed_receiver_of_the_other_base_is_found(tmp_path) -> None:
         ),
         # a module attribute
         ("import pkg.a\nfrom pkg.i import I\n\n\nclass B(pkg.a.A, I):\n    pass\n", {}),
+        # a renamed re-export
+        (
+            "from pkg import Base, I\n\n\nclass B(Base, I):\n    pass\n",
+            {"pkg/__init__.py": "from pkg.a import A as Base\nfrom pkg.i import I\n"},
+        ),
         # the other base comes second, the declaring class first, through a package
         (
             "from pkg import A, I\n\n\nclass B(I, A):\n    pass\n",
@@ -539,3 +558,15 @@ def test_racy_index_is_not_kept(tmp_path, monkeypatch) -> None:
     )
 
     assert len(builds) == 2
+
+
+def test_metaclass_naming_the_class_is_not_a_subclass(tmp_path) -> None:
+    files = {
+        **_REPRO,
+        "pkg/b.py": (
+            "from pkg.a import A\n\n\ndef make(base):\n    return type\n\n\n"
+            "class K(metaclass=make(A)):\n    pass\n"
+        ),
+    }
+
+    assert _find(tmp_path, files) is None

@@ -180,6 +180,28 @@
 
 ### Fixed
 
+- **`nav callers` no longer answers `complete` for a Python method that a
+  subclass inherits as another base's method** (#1896). With `class A` (with
+  `m`) in `pkg/a.py`, `class I` (with `m` and `run(self): return self.m()`) in
+  `pkg/i.py` and `class B(A, I)` in `pkg/b.py`, `A.m` answered `complete` with
+  0 callers: `self.m()` in `I.run` is bound to `I.m`, but on a `B` it runs
+  `A.m`. The `supertype_dispatch` check now walks the project subclasses of the
+  declaring class, found from source through the import resolver
+  (transitively; aliased and renamed re-exported imports, `mod.A` and `A[int]`
+  included). When a subclass's ancestry holds another class, unrelated to the
+  declaring one, that declares the name, the method passes only when no call
+  edge named like it may dispatch there (plain calls, calls outside the
+  project, edges bound to this declaration, and receivers whose class is in no
+  such subclass's ancestry do not); otherwise it is `OVERRIDE_DISPATCH`, and
+  `next_step` names the subclass, the other class and the sites. A base that
+  may name the class but cannot be followed (`mix(A)`), a subclass whose
+  ancestry cannot be followed, a file that may declare a subclass but cannot be
+  read or parsed, and more than 4096 subclasses also block. A mangled `__m`
+  and members of external bases are not checked; subclasses outside the
+  project are not considered (closed world, as for Java #1894). The class
+  index is built lazily and cached per project state (index snapshot plus the
+  stat of every indexed Python file). The same answer with listed callers is
+  now `incomplete`.
 - **`nav callers` no longer answers `complete` for a Java method that a
   subtype inherits as another supertype's method** (#1894). With
   `class A { public void m() {} }`, `class B extends A implements I` and

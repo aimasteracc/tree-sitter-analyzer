@@ -61,6 +61,9 @@ class Unknown:
     why: str
     #: Names the clause mentions (and the names they are bound to).
     mentions: frozenset[str]
+    #: A class keyword (``metaclass=``): it may rewrite the bases, but naming a
+    #: class there does not make the class a subclass of it.
+    keyword: bool = False
 
 
 #: A resolved base: a project class, ``None`` for an external one, or unknown.
@@ -239,7 +242,12 @@ def _resolve(reader: _Reader, key: Key) -> tuple[Base, ...]:
             why = "a class keyword the index cannot follow"
         if why is not None:
             bases.append(
-                Unknown(ast.unparse(keyword), why, _mentions(module, [keyword.value]))
+                Unknown(
+                    ast.unparse(keyword),
+                    why,
+                    _mentions(module, [keyword.value]),
+                    keyword=True,
+                )
             )
     return tuple(bases)
 
