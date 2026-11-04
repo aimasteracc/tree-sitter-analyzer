@@ -570,3 +570,119 @@ def test_metaclass_naming_the_class_is_not_a_subclass(tmp_path) -> None:
     }
 
     assert _find(tmp_path, files) is None
+
+
+# --- the class index, directly --------------------------------------------------------
+
+
+def _class_index(tmp_path, files):
+    root = _write(tmp_path, files)
+    return callers_py_class_index.build(root, sorted(files))
+
+
+def test_unparsable_file_renaming_the_class_fails(tmp_path) -> None:
+    files = {**_REPRO, "bad.py": "from pkg.a import A as Z\nclass Bad(:\n"}
+
+    found = _find(tmp_path, files)
+
+    assert found is not None
+    assert "bad.py" in found.describe()
+
+
+def test_value_bound_to_the_class_blocks(tmp_path) -> None:
+    files = {
+        **_REPRO,
+        "pkg/b.py": (
+            "import pkg.a\nfrom pkg.i import I\n\nAlias = pkg.a.A\nAlias = Alias\n\n\n"
+            "class B(Alias, I):\n    pass\n"
+        ),
+    }
+
+    found = _find(tmp_path, files)
+
+    assert found is not None
+    assert "`Alias`" in found.describe()
+
+
+def test_unlocatable_class_has_an_unknown_base(tmp_path) -> None:
+    index = _class_index(tmp_path, _REPRO)
+
+    (base,) = index.bases(("pkg/a.py", 99, 0), lambda: frozenset())
+    assert isinstance(base, callers_py_class_index.Unknown)
+    assert index.klass(("gone.py", 1, 0)) is None
+    assert index.class_at("pkg/a.py", 2, "nope") is None
+
+
+def test_recursion_in_a_base_is_unknown(tmp_path, monkeypatch) -> None:
+    index = _class_index(tmp_path, _REPRO)
+
+    def deep(*_args, **_kwargs):
+        raise RecursionError
+
+    monkeypatch.setattr(callers_py_class_index, "_eval", deep)
+    monkeypatch.setattr(callers_py_class_index, "_keyword_problem", deep)
+    files = {**_REPRO, "pkg/b.py": _B.replace("(A, I)", "(A, metaclass=M)")}
+    index = _class_index(tmp_path, files)
+
+    bases = index.bases(("pkg/b.py", 5, 0), lambda: frozenset())
+
+    assert [base.why for base in bases] == [
+        "a base too deeply nested to follow",
+        "a class keyword the index cannot follow",
+    ]
+
+
+def test_base_in_an_unindexed_file_ends_the_ancestry(tmp_path) -> None:
+    index = _class_index(tmp_path, {k: v for k, v in _REPRO.items() if k != "pkg/a.py"})
+    (tmp_path / "pkg" / "a.py").write_text(_A, encoding="utf-8")
+    index.unreadable.clear()
+    index._files["pkg/a.py"] = None
+
+    found = index.ancestors(("pkg/b.py", 5, 0), lambda: frozenset())
+
+    assert isinstance(found, tuple)
+    assert "not indexed" in found[1].why
+
+
+def test_indexes_of_other_roots_are_evicted(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(callers_py_class_index, "_INDEXES_MAX", 1)
+    monkeypatch.setattr(callers_py_class_index, "_RACY_NS", 0)
+    cache = _Cache(list(_REPRO))
+    one = _write(tmp_path / "one", _REPRO)
+    two = _write(tmp_path / "two", _REPRO)
+
+    callers_py_class_index.project_index(one, cache)
+    callers_py_class_index.project_index(two, cache)
+
+    assert list(callers_py_class_index._INDEXES) == [two]
+    assert isinstance(callers_py_class_index.project_index(one, None), str)
+
+
+def test_no_index_fails(tmp_path) -> None:
+    root = _write(tmp_path, _REPRO)
+
+    found = callers_py_subtypes.python_subtype_finding(
+        root, "pkg/a.py", 2, "m", None, lambda: frozenset()
+    )
+
+    assert found is not None
+    assert "index could not be read" in found.describe()
+
+
+def test_unreadable_binding_is_a_site(tmp_path) -> None:
+    class _Flaky(_Cache):
+        def get_conn(self):
+            conn = self.conn
+
+            class _Conn:
+                def execute(self, sql, *args):
+                    if "WHERE id = ?" in sql:
+                        raise RuntimeError("gone")
+                    return conn.execute(sql, *args)
+
+            return _Conn()
+
+    edge = ("m", "use.py", 5, "x.m", "annotated_receiver", "z.py", 3)
+    cache = _Flaky(list(_REPRO), _SYMBOLS, [edge])
+
+    assert _find(tmp_path, cache=cache) is not None
