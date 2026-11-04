@@ -450,6 +450,20 @@
   path was already safe: its after-read deadline check drops such an answer.
   Answers without a deadline are unchanged.
 
+### Tests
+
+- **Regression guards: a supertype dispatch gap is `incomplete`, never
+  `complete`, when the target has listed callers** (#1899). The suspected
+  gap did not reproduce on develop: `assess_completeness` runs the
+  `supertype_dispatch` check whatever the caller count and downgrades a
+  listed answer to `incomplete`. `test_callers_supertypes_listed.py` pins it
+  for the Java subtype proof (#1894 shape plus one direct caller, several
+  callers, a caller in another package; a subtype adding no declaring type
+  stays `complete`), the Java override proof with and without `@Override`
+  (#1884) and the Python unfollowable base (#1883). The Python subclass path
+  (#1896) and the JS/TS `extends` path (#1882) already had such a test. No
+  code change.
+
 ## [3.1.1] - 2026-11-01
 
 v3.1.1 is a patch release. It fixes how SQLite cursors are finished after an
