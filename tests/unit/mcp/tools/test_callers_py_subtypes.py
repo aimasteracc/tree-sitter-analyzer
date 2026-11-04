@@ -422,6 +422,7 @@ def test_unbound_receiver_is_a_site(tmp_path) -> None:
     found = _find(tmp_path, edges=[("m", "use.py", 5, "x.m", "unknown", "", None)])
 
     assert found is not None
+    assert found.describe().endswith("may dispatch here: use.py:5")
 
 
 def test_receiver_bound_outside_the_mro_passes(tmp_path) -> None:
@@ -435,7 +436,10 @@ def test_receiver_bound_outside_the_mro_passes(tmp_path) -> None:
 def test_unknown_bound_symbol_is_a_site(tmp_path) -> None:
     edge = ("m", "use.py", 5, "x.m", "project", "gone.py", 99)
 
-    assert _find(tmp_path, edges=[edge]) is not None
+    found = _find(tmp_path, edges=[edge])
+
+    assert found is not None
+    assert found.describe().endswith("may dispatch here: use.py:5")
 
 
 def test_unreadable_edges_fail(tmp_path) -> None:
@@ -685,4 +689,7 @@ def test_unreadable_binding_is_a_site(tmp_path) -> None:
     edge = ("m", "use.py", 5, "x.m", "annotated_receiver", "z.py", 3)
     cache = _Flaky(list(_REPRO), _SYMBOLS, [edge])
 
-    assert _find(tmp_path, cache=cache) is not None
+    found = _find(tmp_path, cache=cache)
+
+    assert found is not None
+    assert found.describe().endswith("may dispatch here: use.py:5")
