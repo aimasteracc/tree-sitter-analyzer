@@ -203,6 +203,14 @@ def judge_repo(
     }
     out["violations"] = _violations(diffs, policy, limited)
     out["budget_retries"] = run.retried
+    if run.scip_digest:
+        out["scip"] = scip_summary(run.head_rows, reference)
+        out["scip_digest"] = run.scip_digest
+        unused = {k: v for k, v in out["scip"]["status"].items() if k != "used"}
+        if unused:
+            # A --scip run in which SCIP was ignored proves nothing about SCIP.
+            out["error"] = f"--scip: the SCIP index was not used on every row: {unused}"
+            return out
 
     changed_any = {c.key for diff in diffs.values() for c in diff.changes}
     unchanged = {row_key(r) for r in run.head_rows} - {c.key for c in reference.changes}
@@ -270,6 +278,66 @@ def judge_repo(
     out["grep"] = grep_summary
     out["residual"] = residual
     return out
+
+
+def scip_summary(rows: list[dict[str, Any]], diff: RepoDiff) -> dict[str, Any]:
+    """What the SCIP layer did on the head side of a ``--scip`` run."""
+    status: Counter[str] = Counter()
+    target: Counter[str] = Counter()
+    sites: Counter[str] = Counter()
+    open_reasons: Counter[str] = Counter()
+    added = unlisted_rows = disagreement_rows = 0
+    for row in rows:
+        report = row["full"].get("scip") or {}
+        status[str(report.get("status", "missing"))] += 1
+        mapped = report.get("target") or {}
+        target[
+            "mapped" if mapped.get("mapped") else str(mapped.get("reason", "n/a"))
+        ] += 1
+        sites.update(report.get("sites") or {})
+        open_reasons.update(report.get("open_reasons") or {})
+        added += int(report.get("added_callers") or 0)
+        unlisted_rows += bool(report.get("unlisted_references_total"))
+        disagreement_rows += bool(report.get("disagreements_total"))
+    return {
+        "status": dict(status),
+        "target": dict(target),
+        "sites": dict(sites),
+        "open_reasons": dict(open_reasons.most_common()),
+        "added_callers": added,
+        "rows_with_unlisted_references": unlisted_rows,
+        "rows_with_disagreements": disagreement_rows,
+        "new_complete": [
+            {"mode": c.key[0], "file": c.key[1], "qual": c.key[2]}
+            for c in diff.changes
+            if c.new_complete
+        ],
+    }
+
+
+def _scip_section(repos: list[dict[str, Any]]) -> list[str]:
+    rows = [r for r in repos if r.get("scip")]
+    if not rows:
+        return []
+    lines = [
+        "",
+        "## SCIP evidence (head side, `--scip`)",
+        "",
+        "| repo | status | target | sites | added callers | rows with unlisted refs | rows with disagreements | new complete |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for r in rows:
+        s = r["scip"]
+        lines.append(
+            f"| {r['repo']} | {s['status']} | {s['target']} | {s['sites']} | {s['added_callers']} | "
+            f"{s['rows_with_unlisted_references']} | {s['rows_with_disagreements']} | {len(s['new_complete'])} |"
+        )
+    for r in rows:
+        for item in r["scip"]["new_complete"]:
+            lines.append(
+                f"- {r['repo']} `{item['qual']}` ({item['mode']}, {item['file']})"
+            )
+    return lines
 
 
 def exit_code(
@@ -415,6 +483,9 @@ def render(meta: dict[str, Any], repos: list[dict[str, Any]], code: int) -> str:
     if not (failures or truth or errors):
         lines.append("None.")
     lines += _transitions(repos)
+    scip_lines = _scip_section(repos)
+    if scip_lines:
+        lines += [*scip_lines[1:], ""]
     lines += ["## Reason changes on an unchanged verdict", ""]
     rc = [x for r in repos for x in r.get("reason_changes_same_verdict", [])]
     lines += [

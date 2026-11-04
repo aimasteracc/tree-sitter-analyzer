@@ -6,7 +6,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
 
-from .query import ERROR_FIELDS, SITE_FIELDS
+from .query import ERROR_FIELDS, SCIP_FIELD, SITE_FIELDS
 
 #: Change kinds, in report order.
 KINDS = (
@@ -173,6 +173,7 @@ def classify_pair(base_row: dict[str, Any], head_row: dict[str, Any]) -> list[st
                 "completeness_reasons",
                 "caller_count",
                 "callers",
+                SCIP_FIELD,
                 *SITE_FIELDS,
                 *SITE_SCALARS,
             )
@@ -186,6 +187,7 @@ def classify_pair(base_row: dict[str, Any], head_row: dict[str, Any]) -> list[st
                 "completeness_reasons",
                 "caller_count",
                 "callers",
+                SCIP_FIELD,
                 *SITE_FIELDS,
                 *SITE_SCALARS,
             )

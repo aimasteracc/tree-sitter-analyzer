@@ -90,9 +90,10 @@ def test_a_non_mapping_caller_is_unconfirmed() -> None:
 
 
 def test_tiers_are_ordered_most_confident_first() -> None:
-    # PR-4: registration sits between proven call edges and inferred ones.
-    assert TIERS == (PROVEN, "registration", INFERRED, UNCONFIRMED)
-    assert [tier_rank(t) for t in TIERS] == [0, 1, 2, 3]
+    # PR-4: registration sits between proven call edges and inferred ones; the
+    # opt-in SCIP tier (a compiler-grade binding) sits right after proven.
+    assert TIERS == (PROVEN, "scip", "registration", INFERRED, UNCONFIRMED)
+    assert [tier_rank(t) for t in TIERS] == [0, 1, 2, 3, 4]
     assert tier_rank("nonsense") == tier_rank(UNCONFIRMED)
 
 

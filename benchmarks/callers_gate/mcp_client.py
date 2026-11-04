@@ -54,10 +54,17 @@ class ServerError(RuntimeError):
     pass
 
 
-def server_env(pythonpath: Path, private: Path) -> dict[str, str]:
-    """A clean environment: no inherited TSA_* / TREE_SITTER_* / PYTHON* settings."""
+def server_env(
+    pythonpath: Path, private: Path, extra: dict[str, str] | None = None
+) -> dict[str, str]:
+    """A clean environment: no inherited TSA_* / TREE_SITTER_* / PYTHON* settings.
+
+    ``extra`` (``--scip``: ``TSA_SCIP_INDEX``) is added on top; it is part of
+    the query key of the answers, not of the index key.
+    """
     env = {name: os.environ[name] for name in PASS_THROUGH if name in os.environ}
     env.update(SERVER_ENV_TEMPLATE)
+    env.update(extra or {})
     env["PYTHONPATH"] = str(pythonpath)
     for name in PRIVATE_DIRS:
         path = private / name.lower()
@@ -68,7 +75,13 @@ def server_env(pythonpath: Path, private: Path) -> dict[str, str]:
 
 class Server:
     def __init__(
-        self, python: Path, pkg_parent: Path, root: Path, log: Path, private: Path
+        self,
+        python: Path,
+        pkg_parent: Path,
+        root: Path,
+        log: Path,
+        private: Path,
+        extra_env: dict[str, str] | None = None,
     ) -> None:
         log.parent.mkdir(parents=True, exist_ok=True)
         self._log: BinaryIO = open(log, "ab")  # noqa: SIM115 - closed in close()
@@ -80,7 +93,7 @@ class Server:
             stdout=subprocess.PIPE,
             stderr=self._log,
             cwd=str(root),
-            env=server_env(pkg_parent, private),
+            env=server_env(pkg_parent, private, extra_env),
         )
         self._id = 0
         self._lines: list[bytes] = []

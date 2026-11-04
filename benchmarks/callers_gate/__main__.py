@@ -67,7 +67,11 @@ def cmd_run(args: argparse.Namespace) -> int:
             caller_changes=args.allow_caller_changes,
             site_changes=args.allow_site_changes,
             other_changes=args.allow_other_changes,
+            scip_evidence=bool(args.scip),
         )
+        scip_dir = Path(args.scip).resolve() if args.scip else None
+        if scip_dir is not None and not scip_dir.is_dir():
+            raise OSError(f"--scip: {scip_dir} is not a directory")
         git_dir = (
             Path(args.git_dir).resolve()
             if args.git_dir
@@ -115,6 +119,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         _shards(args.shards),
         _log,
         fresh_base=bool(args.fresh_base),
+        scip_dir=scip_dir,
     )
     if jobs == 1:
         _log("--jobs 1: repos run one after another, one server per side")
@@ -169,6 +174,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         "run_id": run_dir.name,
         "fresh_base": bool(args.fresh_base),
     }
+    if scip_dir is not None:
+        meta["scip"] = {
+            "dir": str(scip_dir),
+            "digests": {run.repo: run.scip_digest for run in runs},
+        }
     code = report.write_report(run_dir, meta, judged)
     _log(f"report {run_dir / 'report.md'}")
     _print_summary(judged, code, meta)
@@ -290,14 +300,16 @@ def _rejudge(
 
     python = _python(layout, args.python)
     manifest = corpus.verify_corpus(layout)
+    meta = payload["meta"]
+    scip_meta = meta.get("scip") or {}
     policy = Policy.load(
         Path(args.policy) if args.policy else None,
         args.allow_transition,
         caller_changes=args.allow_caller_changes,
         site_changes=args.allow_site_changes,
         other_changes=args.allow_other_changes,
+        scip_evidence=bool(scip_meta),
     )
-    meta = payload["meta"]
     judged = []
     for old in payload["repos"]:
         name, key = old["repo"], old.get("index_key", "")
@@ -305,17 +317,17 @@ def _rejudge(
         pin = REPOS[name]
         _targets, sha = corpus.load_targets(layout, name, manifest)
         qkey = keys.query_key(targets_sha256=sha)
+        digest = (scip_meta.get("digests") or {}).get(name) or ""
+        run_id = meta.get("run_id") or run_dir.name
+        head_path = (
+            layout.scip_result(meta["head"]["tree"], key, digest, name, run_id)
+            if digest
+            else layout.result(meta["head"]["tree"], key, name, run_id)
+        )
         rows: dict[str, list[dict[str, Any]] | None] = {}
         sources = [
             ("base", "base", layout.baseline(meta["base"]["tree"], key, name), key),
-            (
-                "head",
-                "head",
-                layout.result(
-                    meta["head"]["tree"], key, name, meta.get("run_id") or run_dir.name
-                ),
-                key,
-            ),
+            ("head", "head", head_path, key),
         ]
         if base_key != key:
             sources.append(
@@ -327,9 +339,14 @@ def _rejudge(
                 )
             )
         for label, side, path, ikey in sources:
+            side_qkey = (
+                keys.query_key(targets_sha256=sha, scip=digest)
+                if label == "head" and digest
+                else qkey
+            )
             rows[label] = answers.read_answers(
                 path,
-                answers.AnswerKey(meta[side]["tree"], ikey, name, pin.sha, qkey),
+                answers.AnswerKey(meta[side]["tree"], ikey, name, pin.sha, side_qkey),
                 _log,
             )
         if any(value is None for value in rows.values()):
@@ -352,6 +369,7 @@ def _rejudge(
             baseline_source="cache",
             cross_source="cache" if base_key != key else "",
             timings=old.get("timings", {}),
+            scip_digest=digest,
         )
         judged.append(
             report.judge_repo(
@@ -447,6 +465,12 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument(
         "--git-dir",
         help="TSA checkout that resolves the refs (default: the head worktree)",
+    )
+    r.add_argument(
+        "--scip",
+        metavar="DIR",
+        help="head side reads DIR/<repo>.scip (+ .manifest.json) via TSA_SCIP_INDEX; "
+        "additive SCIP policy; head answers kept under results-scip/ (never promoted)",
     )
     r.add_argument(
         "--keep-indexes",

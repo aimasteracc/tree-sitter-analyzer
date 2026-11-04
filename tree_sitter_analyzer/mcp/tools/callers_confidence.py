@@ -20,6 +20,7 @@ callee_resolution       stdlib, external,       unconfirmed_receiver
 resolution_kind         （无）, import_alias      proven
 resolution_kind         annotated_receiver      inferred
 resolution_kind         registration            registration（PR-4）
+resolution_kind         scip                    scip（可选 SCIP 证据层）
 任一字段                其他任何值、缺失、非字符串  unconfirmed_receiver
 =====================  ======================  ====================
 
@@ -44,8 +45,11 @@ PROVEN = "proven"
 REGISTRATION = "registration"
 INFERRED = "inferred"
 UNCONFIRMED = "unconfirmed_receiver"
+#: 可选的 SCIP 证据层（``callers_scip``）：编译器级索引证明该调用点调用目标，
+#: TSA 自己的调用图未能绑定它。只在显式开启 SCIP 时出现。
+SCIP = "scip"
 #: 从最确定到最不确定。
-TIERS = (PROVEN, REGISTRATION, INFERRED, UNCONFIRMED)
+TIERS = (PROVEN, SCIP, REGISTRATION, INFERRED, UNCONFIRMED)
 #: 调用方条目上的字段名。``confidence`` 已被 RFC-0038 的数值占用，故另起一名。
 CONFIDENCE_FIELD = "confidence_tier"
 
@@ -64,6 +68,7 @@ CALLEE_RESOLUTION_TIERS: dict[str, str] = {
 RESOLUTION_KIND_TIERS: dict[str, str] = {
     "import_alias": PROVEN,
     "registration": REGISTRATION,
+    "scip": SCIP,
     "annotated_receiver": INFERRED,
 }
 
@@ -78,7 +83,8 @@ ORDER_PROPERTY: dict[str, Any] = {
     "default": ORDER_INDEX,
     "description": (
         "index (default) = existing order; confidence = proven callers first, "
-        "then registration, inferred, unconfirmed_receiver (stable within a tier), "
+        "then scip (opt-in SCIP evidence), registration, inferred, "
+        "unconfirmed_receiver (stable within a tier), "
         "applied before the limit cut. Each caller carries confidence_tier."
     ),
 }
