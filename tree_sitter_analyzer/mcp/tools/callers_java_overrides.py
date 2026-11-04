@@ -78,9 +78,22 @@ class OverrideProof:
 
 
 def override_proof(
-    cache: Any, project_root: str, rel_path: str, text: str, line: int, bare: str
+    cache: Any,
+    project_root: str,
+    rel_path: str,
+    text: str,
+    line: int,
+    bare: str,
+    *,
+    annotated: bool = True,
 ) -> OverrideProof:
-    """Prove the ``@Override`` declaration of ``bare`` at ``line`` is closed."""
+    """Prove the ``@Override`` declaration of ``bare`` at ``line`` is closed.
+
+    #1884: ``annotated=False`` proves the same for a method without
+    ``@Override``, which may still override a supertype method. There, no
+    supertype declaring the name means it overrides nothing: proved, once the
+    supertype names (the declaring type's and its enclosing types') resolve.
+    """
     if bare in OBJECT_METHODS:
         return _fail(
             f"it overrides `java.lang.Object.{bare}`, declared outside the project"
@@ -100,7 +113,8 @@ def override_proof(
     closure = reader.closure(rel_path, [owner])
     if isinstance(closure, str):
         return _fail(closure)
-    if not any(reader.declares(file, node, bare) for file, node in closure):
+    declared = any(reader.declares(file, node, bare) for file, node in closure)
+    if annotated and not declared:
         return _fail("no supertype in the project declares it")
     # A member type inherited by an enclosing type is in scope for the owner's
     # supertype names, so the enclosing types must be closed in the project too.
@@ -109,6 +123,8 @@ def override_proof(
         return _fail(
             enclosing.replace("its supertype", "an enclosing type's supertype")
         )
+    if not declared:
+        return OverrideProof(True)  # #1884: overrides nothing
     owner_name = _name(parsed, owner)
     sites = _dispatch_sites(cache, bare, rel_path, line, owner_name)
     if sites is None:

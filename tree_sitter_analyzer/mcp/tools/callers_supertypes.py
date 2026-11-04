@@ -131,6 +131,8 @@ class SupertypeFinding:
     unchecked: bool = False
     #: How the clause relates to the class (#1883: Python "has base").
     verb: str = "extends"
+    #: Problem code (#1884: a Java override is ``OVERRIDE_DISPATCH``).
+    reason: str = DYNAMIC_SUPERTYPE_REASON
 
     def describe(self) -> str:
         if self.unchecked:
@@ -161,12 +163,23 @@ def dynamic_supertype(
     project modules from third-party ones for Python (#1883); without it a
     non-stdlib module that is no project file cannot be classified. ``owner`` (the
     qualified target's class path) skips Python members of other classes.
+
+    #1884: Java methods that may override a supertype method without
+    ``@Override`` are checked in :mod:`.callers_java_supertypes`.
     """
     python = [row for row in declarations if row[0].lower().endswith(".py")]
     if python:
         python_found = _python_finding(project_root, python, bare, cache, owner)
         if python_found is not None:
             return python_found
+    if any(row[0].lower().endswith(".java") for row in declarations):
+        from .callers_java_supertypes import java_supertype_finding
+
+        java_found = java_supertype_finding(
+            project_root, declarations, bare, cache, owner
+        )
+        if java_found is not None:
+            return java_found
     reader = SourceReader(project_root)
     for rel, line, _language in declarations:
         if not rel.lower().endswith(JSTS_SUFFIXES):
@@ -238,7 +251,7 @@ def supertype_outcome(
         return checked(scope), None
     if finding.unchecked:
         return NotChecked(DYNAMIC_SUPERTYPE_REASON), finding
-    return checked(scope, DYNAMIC_SUPERTYPE_REASON), finding
+    return checked(scope, finding.reason), finding
 
 
 def dynamic_supertype_hint(func_name: str, finding: SupertypeFinding) -> str:
@@ -249,6 +262,13 @@ def dynamic_supertype_hint(func_name: str, finding: SupertypeFinding) -> str:
             f"chain could not be read: {finding.describe()}. A call through a "
             "supertype could reach it without a call edge naming it, so this is "
             "not evidence of absence."
+        )
+    if finding.reason != DYNAMIC_SUPERTYPE_REASON:
+        return (
+            f"No resolved caller for {func_name!r}, but it may override a "
+            f"supertype method (`@Override` is optional): {finding.describe()}. "
+            "A call through the supertype would leave no call edge naming it, so "
+            "this is not evidence of absence."
         )
     return (
         f"No resolved caller for {func_name!r}, but {finding.describe()}. The "
