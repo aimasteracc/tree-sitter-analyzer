@@ -26,7 +26,16 @@ SITE_SCALARS = (
     "name_only_sites_total",
     "non_call_references",
 )
-CALLER_KEY = ("file", "name", "line", "end_line", "resolution_kind", "via")
+#: Every kept caller field: a changed ``confidence_tier`` is a changed answer too.
+CALLER_KEY = (
+    "file",
+    "name",
+    "line",
+    "end_line",
+    "resolution_kind",
+    "via",
+    "confidence_tier",
+)
 
 
 class RowSetMismatch(ValueError):
@@ -63,6 +72,7 @@ class Change:
                 "completeness": full.get("completeness"),
                 "reasons": full.get("completeness_reasons"),
                 "caller_count": full.get("caller_count"),
+                "next_step": full.get("next_step"),
             }
 
         return {
@@ -74,6 +84,7 @@ class Change:
             "kinds": self.kinds,
             "base": side(self.base),
             "head": side(self.head),
+            "delta": self.delta(),
         }
 
     def delta(self) -> dict[str, Any]:

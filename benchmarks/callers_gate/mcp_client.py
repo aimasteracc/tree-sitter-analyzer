@@ -27,10 +27,16 @@ PASS_THROUGH = (
     "PROGRAMFILES",
 )
 #: Fixed variables: part of the env fingerprint (and so of every cache key).
+#: ``TSA_EVIDENCE_STORE=off`` disables the query-time disk memos (evidence-memo,
+#: index facts, reference vocab, certification timeouts): they are keyed by
+#: TSA's ``source_fingerprint`` (path + size + mtime), which two package trees can
+#: share, and some live in the index's shared ``.ast-cache``. ``graph-memo`` has
+#: no switch; ``index_store.block_query_memos`` disables it per index.
 SERVER_ENV_TEMPLATE = {
     "PYTHONUTF8": "1",
     "PYTHONIOENCODING": "utf-8",
     "PYTHONHASHSEED": "0",
+    "TSA_EVIDENCE_STORE": "off",
 }
 #: Per-server private directories (values differ per server; names are fixed).
 PRIVATE_DIRS = (

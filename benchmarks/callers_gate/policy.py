@@ -8,7 +8,10 @@ Default policy (no file, no flags):
 * site-list changes: allowed only on a row whose verdict transition is allowed
   or whose reasons changed (the sites are the evidence for the reason); a site
   change with the same verdict and the same reasons is a violation;
-* caller-count and caller-list changes: violations;
+* caller-count and caller-list changes (a ``confidence_tier`` change included):
+  violations;
+* ``other`` (any kept field outside the kinds above, including the compact
+  answer text): a violation;
 * compact/full disagreement that base did not have, and query errors: always
   violations (no flag can allow them).
 
@@ -18,7 +21,13 @@ Policy file (JSON)::
      "allow_reason_changes": true,
      "allow_caller_changes": false,
      "allow_site_changes": false,
-     "allow_items": [{"repo": "gson", "qual": "JsonWriter.value", "kinds": ["callers"]}]}
+     "allow_other_changes": false,
+     "allow_items": [{"repo": "gson", "mode": "bare", "file": "gson/src/.../JsonWriter.java",
+                      "qual": "JsonWriter.value", "kinds": ["callers"]}]}
+
+An ``allow_items`` entry names exactly one row: ``repo``, ``mode``, ``file`` and
+``qual`` are all required. Allowing a change never skips an oracle: every
+changed head ``complete`` is still checked (see ``report``).
 """
 
 from __future__ import annotations
@@ -32,6 +41,7 @@ from typing import Any
 from .transitions import Change
 
 NEVER_ALLOWED = ("error", "compact")
+ITEM_KEYS = frozenset({"repo", "mode", "file", "qual", "kinds"})
 
 
 class PolicyError(ValueError):
@@ -45,6 +55,7 @@ class Policy:
     allow_caller_changes: bool = False
     allow_site_changes: bool = False
     allow_items: tuple[dict[str, Any], ...] = field(default_factory=tuple)
+    allow_other_changes: bool = False
 
     @classmethod
     def load(
@@ -54,6 +65,7 @@ class Policy:
         *,
         caller_changes: bool = False,
         site_changes: bool = False,
+        other_changes: bool = False,
     ) -> Policy:
         data: dict[str, Any] = {}
         if path is not None:
@@ -68,6 +80,7 @@ class Policy:
                 "allow_reason_changes",
                 "allow_caller_changes",
                 "allow_site_changes",
+                "allow_other_changes",
                 "allow_items",
                 "_note",
             }
@@ -83,9 +96,9 @@ class Policy:
                 )
         items = tuple(data.get("allow_items", ()))
         for item in items:
-            if not isinstance(item, dict) or not {"repo", "qual", "kinds"} <= set(item):
+            if not isinstance(item, dict) or not ITEM_KEYS <= set(item):
                 raise PolicyError(
-                    f"allow_items entries need repo, qual, kinds: {item!r}"
+                    f"allow_items entries need {', '.join(sorted(ITEM_KEYS))}: {item!r}"
                 )
             if set(item["kinds"]) & set(NEVER_ALLOWED):
                 raise PolicyError(f"{NEVER_ALLOWED} can never be allowed: {item!r}")
@@ -97,6 +110,8 @@ class Policy:
             allow_site_changes=bool(data.get("allow_site_changes", False))
             or site_changes,
             allow_items=items,
+            allow_other_changes=bool(data.get("allow_other_changes", False))
+            or other_changes,
         )
 
     def transition_allowed(self, transition: str) -> bool:
@@ -106,15 +121,16 @@ class Policy:
         )
 
     def _item_allows(self, change: Change, kind: str) -> bool:
-        for item in self.allow_items:
-            if (
-                item["repo"] == change.repo
-                and item["qual"] == change.key[2]
-                and kind in item["kinds"]
-            ):
-                if "file" not in item or item["file"] == change.key[1]:
-                    return True
-        return False
+        """An entry naming exactly this row (an entry without file or mode never matches)."""
+        mode, file, qual = change.key
+        return any(
+            item.get("repo") == change.repo
+            and item.get("mode") == mode
+            and item.get("file") == file
+            and item.get("qual") == qual
+            and kind in item.get("kinds", ())
+            for item in self.allow_items
+        )
 
     def violations(self, change: Change) -> list[str]:
         """Human-readable reasons this change is not allowed (empty = allowed)."""
@@ -136,6 +152,8 @@ class Policy:
             elif kind == "reasons" and not self.allow_reason_changes:
                 out.append("reasons")
             elif kind in ("caller_count", "callers") and not self.allow_caller_changes:
+                out.append(kind)
+            elif kind == "other" and not self.allow_other_changes:
                 out.append(kind)
         if (
             "sites" in change.kinds

@@ -7,7 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from benchmarks.callers_gate.oracle_grep import Item, Repo, caller_end_line, check_item
+from benchmarks.callers_gate.oracle_grep import Item, Repo, check_item
+from benchmarks.callers_gate.oracle_scope import owner_at
+from benchmarks.callers_gate.oracle_syntax import family
 
 pytest.importorskip("tree_sitter_java")
 pytest.importorskip("tree_sitter_typescript")
@@ -95,7 +97,7 @@ def test_java_hits_are_classified(tmp_path: Path) -> None:
         name="render",
         file="src/Widget.java",
         qual="Widget.render",
-        callers=[{"file": "src/Widget.java", "line": draw, "end_line": draw}],
+        callers=[{"file": "src/Widget.java", "name": "draw", "line": draw}],
     )
     result = check_item(Repo(root), item)
     got = _classes(result)
@@ -126,7 +128,7 @@ def test_ts_external_imports_prove_a_different_symbol(tmp_path: Path) -> None:
     root = _git_repo(
         tmp_path,
         {
-            "package.json": '{"name": "mylib"}\n',
+            "package.json": '{"name": "mylib", "dependencies": {"external-lib": "1"}}\n',
             "src/parse.ts": PARSE_TS,
             "src/uses.ts": USES_TS,
             "src/local.ts": LOCAL_TS,
@@ -256,16 +258,28 @@ class K {
     return inner(1);
   }
 }
+run(() => inner(2));
 """
 
 
-def test_caller_spans_come_from_the_callers_own_declaration(tmp_path: Path) -> None:
-    root = _git_repo(tmp_path, {"src/spans.ts": SPANS_TS})
-    repo = Repo(root)
-    assert caller_end_line(repo, "src/spans.ts", 1, "outer") == 3
-    assert caller_end_line(repo, "src/spans.ts", 4, "arrow") == 6
-    assert caller_end_line(repo, "src/spans.ts", 8, "method") == 10
-    assert caller_end_line(repo, "src/spans.ts", 2, "outer") is None  # wrong start line
-    assert caller_end_line(repo, "src/spans.ts", 1, "other") is None
-    assert caller_end_line(repo, "src/spans.ts", 1, "<module>") is None
-    assert caller_end_line(repo, "README.md", 1, "outer") is None
+def _owner(repo: Repo, rel: str, needle: bytes, nth: int = 0) -> tuple[str, list[int]]:
+    parsed = repo.tree(rel)
+    if parsed is None:
+        pytest.fail(f"{rel} did not parse")
+    tree, src, grammar = parsed
+    start = -1
+    for _ in range(nth + 1):
+        start = src.index(needle, start + 1)
+    node = tree.root_node.descendant_for_byte_range(start, start + len(needle))
+    line = src[:start].count(b"\n") + 1
+    owner = owner_at(node, family(grammar), line)
+    return owner.name, sorted(owner.starts)
+
+
+def test_a_hit_belongs_to_its_innermost_named_definition(tmp_path: Path) -> None:
+    repo = Repo(_git_repo(tmp_path, {"src/spans.ts": SPANS_TS}))
+    assert _owner(repo, "src/spans.ts", b"inner(a)") == ("outer", [1])
+    assert _owner(repo, "src/spans.ts", b"inner(b)") == ("arrow", [4])
+    assert _owner(repo, "src/spans.ts", b"inner(1)") == ("method", [8])
+    # an anonymous callback is not a definition: the module owns its call
+    assert _owner(repo, "src/spans.ts", b"inner(2)") == ("<module>", [12])

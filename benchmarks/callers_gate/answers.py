@@ -13,7 +13,6 @@ import contextlib
 import hashlib
 import json
 import os
-import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -111,29 +110,71 @@ def read_answers(
         return None
 
 
-def promote(layout: Layout, tree: str, log: Any = print) -> list[Path]:
-    """Copy every validated ``results/<tree>/**`` answer set into ``baseline/<tree>/**``."""
-    source = layout.root / "results" / tree
+def pick_run(
+    paths: list[Path], key: AnswerKey, run_id: str | None, log: Any = print
+) -> list[dict[str, Any]] | None:
+    """The validated rows of one run's head answers, chosen explicitly.
+
+    With ``run_id`` only that run counts. Without it, the candidates must all
+    validate and hold identical rows (then which run does not matter);
+    otherwise nothing is picked and the caller recomputes. Candidates are read
+    without quarantine: a run's results are its record, never moved.
+    """
+    chosen = [p for p in paths if run_id is None or p.parent.name == run_id]
+    rows_seen: list[list[dict[str, Any]]] = []
+    for path in chosen:
+        try:
+            rows_seen.append(
+                validate(json.loads(path.read_text(encoding="utf-8")), key)
+            )
+        except (OSError, ValueError) as exc:
+            log(f"[{key.repo}] results {path} unusable ({exc})")
+            return None
+    if not rows_seen:
+        return None
+    digests = {rows_digest(rows) for rows in rows_seen}
+    if len(digests) != 1:
+        log(
+            f"[{key.repo}] {len(chosen)} runs of tree {key.tree[:12]} disagree; "
+            "pass --run to promote one explicitly"
+        )
+        return None
+    return rows_seen[-1]
+
+
+def promote(
+    layout: Layout, tree: str, log: Any = print, run_id: str | None = None
+) -> list[Path]:
+    """Copy validated ``results/<tree>/<key>/<run>/<repo>.json`` into ``baseline/<tree>/<key>/``.
+
+    One run is picked per (index key, repo) by :func:`pick_run`: ``run_id``
+    when given, else only when every run of that tree agrees.
+    """
+    source = layout.results_dir(tree)
     copied: list[Path] = []
     if not source.is_dir():
         return copied
-    for path in sorted(source.glob("*/*.json")):
-        index_key, repo = path.parent.name, path.stem
+    groups: dict[tuple[str, str], list[Path]] = {}
+    for path in sorted(source.glob("*/*/*.json")):
+        groups.setdefault((path.parent.parent.name, path.stem), []).append(path)
+    for (index_key, repo), paths in sorted(groups.items()):
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-            key = AnswerKey(
-                tree,
-                index_key,
-                repo,
-                payload.get("repo_sha", ""),
-                payload.get("query_key", ""),
-            )
-            validate(payload, key)
+            payload = json.loads(paths[-1].read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
-            log(f"[promote] skip {path}: {exc}")
+            log(f"[promote] skip {paths[-1]}: {exc}")
+            continue
+        key = AnswerKey(
+            tree,
+            index_key,
+            repo,
+            payload.get("repo_sha", ""),
+            payload.get("query_key", ""),
+        )
+        rows = pick_run(paths, key, run_id, log)
+        if rows is None:
+            log(f"[promote] skip {repo} {index_key}: no single validated run")
             continue
         dest = layout.baseline(tree, index_key, repo)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(path, dest)
+        write_answers(dest, key, rows, f"promoted:{run_id or 'agreeing runs'}")
         copied.append(dest)
     return copied

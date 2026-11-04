@@ -66,8 +66,8 @@ def _run(tmp_path: Path, head_row: dict[str, Any]) -> runner.RepoRun:
     run.head_rows = [head_row, _row(OTHER, "complete", [])]
     run.retry_context = {
         "targets": [TARGET, OTHER],
-        "base": (tmp_path, tmp_path / "base.json", key),
-        "head": (tmp_path, tmp_path / "head.json", key),
+        "base": (tmp_path, tmp_path, tmp_path / "base.json", key),
+        "head": (tmp_path, tmp_path, tmp_path / "head.json", key),
     }
     return run
 
@@ -96,7 +96,7 @@ def test_a_conclusive_retry_replaces_the_limited_row_and_rewrites_the_cache(
     assert [r["conclusive"] for r in run.retried] == [True]
     assert (
         answers.read_answers(
-            tmp_path / "head.json", run.retry_context["head"][2], lambda _m: None
+            tmp_path / "head.json", run.retry_context["head"][3], lambda _m: None
         )
         == run.head_rows
     )

@@ -179,7 +179,13 @@ def test_policy_file_flags_and_items(tmp_path: Path) -> None:
             {
                 "allow_transitions": ["*->complete", "unknown->incomplete"],
                 "allow_items": [
-                    {"repo": "gson", "qual": "A.f", "kinds": ["caller_count"]}
+                    {
+                        "repo": "gson",
+                        "mode": "bare",
+                        "file": "a.py",
+                        "qual": "A.f",
+                        "kinds": ["caller_count"],
+                    }
                 ],
             }
         ),
@@ -211,7 +217,19 @@ def test_policy_refuses_malformed_files_and_unallowable_kinds(tmp_path: Path) ->
     with pytest.raises(PolicyError, match="unknown policy keys"):
         Policy.load(path)
     path.write_text(
-        json.dumps({"allow_items": [{"repo": "r", "qual": "q", "kinds": ["error"]}]}),
+        json.dumps(
+            {
+                "allow_items": [
+                    {
+                        "repo": "r",
+                        "mode": "bare",
+                        "file": "f",
+                        "qual": "q",
+                        "kinds": ["error"],
+                    }
+                ]
+            }
+        ),
         encoding="utf-8",
     )
     with pytest.raises(PolicyError, match="can never be allowed"):
@@ -243,4 +261,4 @@ def test_delta_lists_removed_and_added_callers_and_sites() -> None:
     delta = change.delta()
     assert delta["non_call_reference_sites"] == {"-": [("a.py", 806)], "+": []}
     assert delta["callers"]["-"] == []
-    assert delta["callers"]["+"] == [("c.py", "k", 5, 6, None, None)]
+    assert delta["callers"]["+"] == [("c.py", "k", 5, 6, None, None, None)]

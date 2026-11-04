@@ -20,13 +20,43 @@ from pathlib import Path
 from typing import Any
 
 from . import gitutil
-from ._boot import EXCLUSION_VIOLATED, WRONG_PACKAGE
+from ._boot import CHILD_PROCESS, EXCLUSION_VIOLATED, WRONG_PACKAGE
 from .layout import GATE_FORMAT, Layout, RepoPin
 from .mcp_client import BOOT, server_env
 
 #: The checkout setting the r15 corpus clones used (part of the index key).
 CHECKOUT_CONFIG = ("-c", "core.autocrlf=true")
 MANIFEST = "manifest.json"
+#: ``.ast-cache/graph-memo`` holds edge resolutions keyed by TSA's
+#: ``source_fingerprint``; TSA only uses it when it is a real directory, so a
+#: regular file in its place disables it for every server of the index.
+GRAPH_MEMO = "graph-memo"
+GRAPH_MEMO_BLOCKER = (
+    "callers gate: query-time graph memo disabled (base and head share this index;\n"
+    "TSA's source fingerprint is path + size + mtime and can collide across trees)\n"
+)
+
+
+def build_env(pythonpath: Path, private: Path) -> dict[str, str]:
+    """Server environment plus ``TSA_INDEX_WORKERS=1``: the audited process does all the work."""
+    return {**server_env(pythonpath, private), "TSA_INDEX_WORKERS": "1"}
+
+
+def block_query_memos(tree: Path) -> None:
+    """Replace ``.ast-cache/graph-memo`` by a regular file (idempotent)."""
+    memo = tree / ".ast-cache" / GRAPH_MEMO
+    if memo.is_file() and not memo.is_symlink():
+        return
+    if memo.is_symlink():
+        memo.unlink()
+    elif memo.is_dir():
+        shutil.rmtree(memo)
+    memo.write_text(GRAPH_MEMO_BLOCKER, encoding="utf-8")
+
+
+def query_memos_blocked(tree: Path) -> bool:
+    memo = tree / ".ast-cache" / GRAPH_MEMO
+    return memo.is_file() and not memo.is_symlink()
 
 
 class IndexError_(RuntimeError):  # noqa: N801 - avoid shadowing builtins.IndexError
@@ -145,6 +175,7 @@ def ensure_index(
     with repo_lock(layout, pin.name):
         manifest = read_manifest(directory, key, pin)
         if manifest is not None:
+            block_query_memos(directory / "tree")
             touch = {**manifest, "last_used": time.time()}
             (directory / MANIFEST).write_text(
                 json.dumps(touch, indent=1), encoding="utf-8"
@@ -183,12 +214,18 @@ def ensure_index(
                     str(excluded_file),
                 ],
                 cwd=str(tree),
-                env=server_env(head_pkg_parent, directory / "private"),
+                env=build_env(head_pkg_parent, directory / "private"),
                 stdout=build_log,
                 stderr=build_log,
                 check=False,
             )
         seconds = time.perf_counter() - started
+        if proc.returncode == CHILD_PROCESS:
+            detail = out.read_text(encoding="utf-8") if out.is_file() else ""
+            raise IndexError_(
+                f"[{pin.name}] the index build started a child interpreter, whose imports "
+                f"the QUERY_ONLY audit cannot see. {detail}"
+            )
         if proc.returncode == EXCLUSION_VIOLATED:
             detail = out.read_text(encoding="utf-8") if out.is_file() else ""
             raise IndexError_(
@@ -204,6 +241,7 @@ def ensure_index(
                 f"[{pin.name}] index build failed with {proc.returncode} (see {directory / 'build.log'})"
             )
         summary = json.loads(out.read_text(encoding="utf-8"))
+        block_query_memos(tree)
         manifest = {
             "format": GATE_FORMAT,
             "key": key,
@@ -230,7 +268,7 @@ def prune_indexes(
     log: Callable[[str], None],
 ) -> None:
     """Delete all but the ``keep`` most recently used index keys of ``pin`` (never ``protect``)."""
-    base = layout.root / "index" / pin.name
+    base = layout.index_root(pin.name)
     if not base.is_dir():
         return
     entries = []
