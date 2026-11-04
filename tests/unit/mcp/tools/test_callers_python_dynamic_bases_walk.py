@@ -13,6 +13,21 @@ from tree_sitter_analyzer.mcp.tools.callers_supertypes import (
 _MEMBER = "    def m(self):\n        return 1\n"
 
 
+@pytest.fixture(autouse=True)
+def _no_subclass_step_without_an_index(monkeypatch):
+    """These tests call the base walk without an index; the #1896 subclass step
+    (``test_callers_py_subtypes.py``) needs its call edges and fails closed
+    without one. With an index it runs unchanged."""
+    from tree_sitter_analyzer.mcp.tools import callers_py_subtypes
+
+    real = callers_py_subtypes.python_subtype_finding
+
+    def without_index(root, rel, line, bare, cache, tops):
+        return None if cache is None else real(root, rel, line, bare, cache, tops)
+
+    monkeypatch.setattr(callers_py_subtypes, "python_subtype_finding", without_index)
+
+
 def _write(root, files: dict[str, str]) -> str:
     walk.clear_parsed()
     for rel_path, text in files.items():
