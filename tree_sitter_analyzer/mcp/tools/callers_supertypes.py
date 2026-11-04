@@ -231,7 +231,22 @@ def _python_finding(
     own = [found for name, found in results if wanted and name == wanted]
     candidates = own if own else [found for _name, found in results]
     unread = [found for name, found in results if name is None and found is not None]
-    return next((f for f in [*unread, *candidates] if f is not None), None)
+    found = next((f for f in [*unread, *candidates] if f is not None), None)
+    if found is not None:
+        return found
+    # #1896: a subclass may inherit it as the method of another of its bases.
+    from .callers_py_subtypes import python_subtype_finding
+
+    owned = any(wanted and name == wanted for name, _found in results)
+    for (rel, line, _language), (name, _found) in zip(rows, results, strict=True):
+        if name is None or (owned and name != wanted):
+            continue
+        inherited = python_subtype_finding(
+            project_root, rel, line, bare, cache, lambda: python_project_tops(cache)
+        )
+        if inherited is not None:
+            return inherited
+    return None
 
 
 def supertype_outcome(
