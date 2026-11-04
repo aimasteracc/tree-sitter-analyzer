@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import threading
 import time
@@ -101,6 +102,9 @@ class RepoRun:
     base_root: Path | None = None
     base_index_built: bool = False
     query_key: str = ""
+    #: ``--scip``: digest of the repo's SCIP index + manifest, and the head env.
+    scip_digest: str = ""
+    head_env: dict[str, str] | None = None
 
 
 @dataclass
@@ -118,6 +122,8 @@ class RunContext:
     _materialize_lock: threading.Lock = field(default_factory=threading.Lock)
     #: Recompute every base side (no cache) so base and head timings share one load.
     fresh_base: bool = False
+    #: ``run --scip DIR``: the head side reads ``DIR/<repo>.scip`` (+ manifest).
+    scip_dir: Path | None = None
 
     @property
     def run_id(self) -> str:
@@ -238,6 +244,32 @@ def _own_index_answers(
     out.timings["cross"] = secs
 
 
+#: The variable that points a TSA server at a SCIP index.
+SCIP_ENV = "TSA_SCIP_INDEX"
+SCIP_MANIFEST_SUFFIX = ".manifest.json"
+
+
+@dataclass(frozen=True)
+class ScipInput:
+    index: Path
+    manifest: Path
+    digest: str
+
+
+def scip_input(scip_dir: Path, repo: str) -> ScipInput:
+    """``<dir>/<repo>.scip`` and its manifest; both must exist (fail closed)."""
+    index = (scip_dir / f"{repo}.scip").resolve()
+    manifest = index.with_name(index.name + SCIP_MANIFEST_SUFFIX)
+    if not index.is_file() or not manifest.is_file():
+        raise FileNotFoundError(
+            f"--scip: {repo} needs {index.name} and {manifest.name} in {scip_dir}"
+        )
+    digest = hashlib.blake2b(digest_size=12)
+    for path in (index, manifest):
+        digest.update(hashlib.sha256(path.read_bytes()).digest())
+    return ScipInput(index, manifest, digest.hexdigest())
+
+
 def run_repo(ctx: RunContext, pin: RepoPin) -> RepoRun:
     out = RepoRun(pin.name)
     log = ctx.log
@@ -279,6 +311,8 @@ def run_repo(ctx: RunContext, pin: RepoPin) -> RepoRun:
         (r["mode"], r["file"], r["qual"]): float(r.get("seconds") or 0.0)
         for r in out.base_rows
     }
+    scip = scip_input(ctx.scip_dir, pin.name) if ctx.scip_dir else None
+    out.head_env = {SCIP_ENV: str(scip.index)} if scip else None
     rows, secs = compute_side(
         costs=costs,
         label=f"{pin.name}-head",
@@ -289,11 +323,26 @@ def run_repo(ctx: RunContext, pin: RepoPin) -> RepoRun:
         shards=shards,
         log_dir=ctx.run_dir / "logs",
         log=log,
+        extra_env=out.head_env,
     )
     head_key = answers.AnswerKey(
-        ctx.head.tree, out.index_key, pin.name, pin.sha, query_key
+        ctx.head.tree,
+        out.index_key,
+        pin.name,
+        pin.sha,
+        keys.query_key(targets_sha256=targets_sha, scip=scip.digest)
+        if scip
+        else query_key,
     )
-    head_path = ctx.layout.result(ctx.head.tree, out.index_key, pin.name, ctx.run_id)
+    if scip:
+        out.scip_digest = scip.digest
+        head_path = ctx.layout.scip_result(
+            ctx.head.tree, out.index_key, scip.digest, pin.name, ctx.run_id
+        )
+    else:
+        head_path = ctx.layout.result(
+            ctx.head.tree, out.index_key, pin.name, ctx.run_id
+        )
     answers.write_answers(head_path, head_key, rows, "computed")
     out.head_rows = rows
     out.timings["head"] = secs
@@ -457,6 +506,7 @@ def retry_budget_rows(
                 shards=1,
                 log_dir=ctx.run_dir / "logs",
                 log=ctx.log,
+                extra_env=run.head_env if side == "head" else None,
             )
             for row in fresh:
                 key = row_key(row)

@@ -36,6 +36,8 @@ from .callers_reasons import (
     UNCHECKED_REASON,
     UNRESOLVED_INBOUND_REASON,
 )
+from .callers_scip import CHECK_NAME as SCIP_CHECK_NAME
+from .callers_scip import UNCHECKED_REASON as SCIP_UNCHECKED_REASON
 from .callers_supertypes import DYNAMIC_SUPERTYPE_REASON
 from .callers_target import UNCHECKED_REASON as TARGET_UNCHECKED_REASON
 from .relation_freshness import UNKNOWN_REASON
@@ -73,6 +75,14 @@ REQUIRED_CHECKS: Final[tuple[CheckSpec, ...]] = (
     CheckSpec("supertype_dispatch", REVIEW, DYNAMIC_SUPERTYPE_REASON),
 )
 CHECK_NAMES: Final = frozenset(spec.name for spec in REQUIRED_CHECKS)
+#: Checks that exist only for an opt-in evidence source (a review gate each,
+#: run after the required ones). An enabled optional check is required like any
+#: other; a disabled one is absent from the ledger and from the summary, so an
+#: answer without the source is exactly the answer before the source existed.
+OPTIONAL_CHECKS: Final[tuple[CheckSpec, ...]] = (
+    CheckSpec(SCIP_CHECK_NAME, REVIEW, SCIP_UNCHECKED_REASON),
+)
+OPTIONAL_NAMES: Final = frozenset(spec.name for spec in OPTIONAL_CHECKS)
 
 #: 调用边层的“受门控”主因：有调用方时为 incomplete，否则 unknown。
 _GATED = (UNRESOLVED_INBOUND_REASON, DECLARING_FILE_REASON, NAME_ONLY_REASON)
@@ -86,11 +96,47 @@ class Ledger:
     outcomes: Mapping[str, CheckOutcome] = field(
         default_factory=lambda: MappingProxyType({})
     )
+    #: Optional checks this query requires (see :data:`OPTIONAL_CHECKS`).
+    enabled: frozenset[str] = frozenset()
+    #: Optional checks reported as not applicable, with why (e.g. ``stale``).
+    not_applicable: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
 
     def record(self, name: str, outcome: CheckOutcome) -> Ledger:
-        if name not in CHECK_NAMES:
+        if name not in CHECK_NAMES and name not in self.enabled:
             raise ValueError(f"unknown callers check {name!r}")
-        return Ledger(self.scope, MappingProxyType({**self.outcomes, name: outcome}))
+        return Ledger(
+            self.scope,
+            MappingProxyType({**self.outcomes, name: outcome}),
+            self.enabled,
+            self.not_applicable,
+        )
+
+    def enable(self, name: str) -> Ledger:
+        """Require the optional check ``name`` (it fails closed until recorded)."""
+        if name not in OPTIONAL_NAMES:
+            raise ValueError(f"unknown optional callers check {name!r}")
+        return Ledger(
+            self.scope, self.outcomes, self.enabled | {name}, self.not_applicable
+        )
+
+    def skip(self, name: str, why: str) -> Ledger:
+        """Report the optional check ``name`` as not applicable to this query."""
+        if name not in OPTIONAL_NAMES or name in self.enabled:
+            raise ValueError(f"cannot mark {name!r} not applicable")
+        return Ledger(
+            self.scope,
+            self.outcomes,
+            self.enabled,
+            MappingProxyType({**self.not_applicable, name: why}),
+        )
+
+    def specs(self) -> tuple[CheckSpec, ...]:
+        """The checks ``complete`` needs on this query, in reason order."""
+        return REQUIRED_CHECKS + tuple(
+            spec for spec in OPTIONAL_CHECKS if spec.name in self.enabled
+        )
 
     def record_all(self, outcomes: Iterable[tuple[str, CheckOutcome]]) -> Ledger:
         ledger = self
@@ -135,7 +181,7 @@ def prove_edges(ledger: Ledger, total_callers: int) -> Proof:
 
     复核门是否运行取决于它；最终答案只由 :func:`prove` 给出。
     """
-    edge_specs = _layer(EDGE)
+    edge_specs = _layer(ledger, EDGE)
     unchecked: list[str] = []
     problems: list[str] = []
     for spec in edge_specs:
@@ -161,19 +207,19 @@ def prove_edges(ledger: Ledger, total_callers: int) -> Proof:
 def prove(ledger: Ledger, total_callers: int) -> Proof:
     """``complete`` 的唯一构造处：每道必需检查都在目标集上通过才成立。"""
     edges = prove_edges(ledger, total_callers)
-    edge_specs = _layer(EDGE)
+    edge_specs = _layer(ledger, EDGE)
     if edges.completeness != "complete":
         return Proof(edges.completeness, edges.reasons, _summary(ledger, edge_specs))
     downgraded = "incomplete" if total_callers else "unknown"
     reached = list(edge_specs)
-    for spec in _layer(REVIEW):
+    for spec in _layer(ledger, REVIEW):
         reached.append(spec)
         found = ledger.outcome(spec)
         if isinstance(found, NotChecked):
             return Proof(downgraded, (found.reason,), _summary(ledger, tuple(reached)))
         if found.problems:
             return Proof(downgraded, found.problems, _summary(ledger, tuple(reached)))
-    return Proof("complete", (), _summary(ledger, REQUIRED_CHECKS))
+    return Proof("complete", (), _summary(ledger, ledger.specs()))
 
 
 def not_checked_hint(func_name: str, proof: Proof, *, listed: int = 0) -> str:
@@ -192,8 +238,8 @@ def not_checked_hint(func_name: str, proof: Proof, *, listed: int = 0) -> str:
     )
 
 
-def _layer(layer: str) -> tuple[CheckSpec, ...]:
-    return tuple(spec for spec in REQUIRED_CHECKS if spec.layer == layer)
+def _layer(ledger: Ledger, layer: str) -> tuple[CheckSpec, ...]:
+    return tuple(spec for spec in ledger.specs() if spec.layer == layer)
 
 
 def _summary(ledger: Ledger, reached: tuple[CheckSpec, ...]) -> dict[str, Any]:
@@ -213,18 +259,23 @@ def _summary(ledger: Ledger, reached: tuple[CheckSpec, ...]) -> dict[str, Any]:
             count += 1
         else:
             not_checked[spec.name] = found.reason
-    summary: dict[str, Any] = {"required": len(REQUIRED_CHECKS), "checked": count}
+    specs = ledger.specs()
+    summary: dict[str, Any] = {"required": len(specs), "checked": count}
     if not_checked:
         summary["not_checked"] = not_checked
-    skipped = len(REQUIRED_CHECKS) - len(reached)
+    skipped = len(specs) - len(reached)
     if skipped:
         summary["not_run"] = skipped
+    if ledger.not_applicable:
+        summary["not_applicable"] = dict(ledger.not_applicable)
     return summary
 
 
 __all__ = [
     "CHECK_NAMES",
     "EDGE",
+    "OPTIONAL_CHECKS",
+    "OPTIONAL_NAMES",
     "REQUIRED_CHECKS",
     "REVIEW",
     "CheckOutcome",

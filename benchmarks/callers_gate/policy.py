@@ -28,6 +28,14 @@ Policy file (JSON)::
 An ``allow_items`` entry names exactly one row: ``repo``, ``mode``, ``file`` and
 ``qual`` are all required. Allowing a change never skips an oracle: every
 changed head ``complete`` is still checked (see ``report``).
+
+``run --scip`` adds one rule set (``scip_evidence``): the SCIP evidence layer may
+only *add* callers whose ``confidence_tier`` is ``scip`` (no caller removed, the
+count grows by exactly the added ones), *close* open sites (every head site
+list is a subset of the base list; a non-call reference list may appear only
+where the base never ran that check), add ``SCIP_RESOLVED_OTHER`` to
+``excluded_by_reason`` and change ``next_step``. ``unknown->incomplete`` is
+allowed when SCIP added a caller. Losing ``complete`` stays a violation.
 """
 
 from __future__ import annotations
@@ -38,7 +46,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .transitions import Change
+from .query import SITE_FIELDS
+from .transitions import CALLER_KEY, SITE_SCALARS, Change, _callers
 
 NEVER_ALLOWED = ("error", "compact")
 ITEM_KEYS = frozenset({"repo", "mode", "file", "qual", "kinds"})
@@ -56,6 +65,8 @@ class Policy:
     allow_site_changes: bool = False
     allow_items: tuple[dict[str, Any], ...] = field(default_factory=tuple)
     allow_other_changes: bool = False
+    #: ``run --scip``: the additive SCIP rules (module docstring).
+    scip_evidence: bool = False
 
     @classmethod
     def load(
@@ -66,6 +77,7 @@ class Policy:
         caller_changes: bool = False,
         site_changes: bool = False,
         other_changes: bool = False,
+        scip_evidence: bool = False,
     ) -> Policy:
         data: dict[str, Any] = {}
         if path is not None:
@@ -112,6 +124,7 @@ class Policy:
             allow_items=items,
             allow_other_changes=bool(data.get("allow_other_changes", False))
             or other_changes,
+            scip_evidence=scip_evidence,
         )
 
     def transition_allowed(self, transition: str) -> bool:
@@ -143,7 +156,11 @@ class Policy:
             if self._item_allows(change, kind):
                 continue
             if kind == "verdict":
-                verdict_ok = self.transition_allowed(change.transition)
+                verdict_ok = self.transition_allowed(change.transition) or (
+                    self.scip_evidence
+                    and change.transition == "unknown->incomplete"
+                    and scip_additions_only(change)
+                )
                 if not verdict_ok:
                     lost = change.base.get("completeness") == "complete"
                     out.append(
@@ -152,9 +169,11 @@ class Policy:
             elif kind == "reasons" and not self.allow_reason_changes:
                 out.append("reasons")
             elif kind in ("caller_count", "callers") and not self.allow_caller_changes:
-                out.append(kind)
+                if not (self.scip_evidence and scip_additions_only(change)):
+                    out.append(kind)
             elif kind == "other" and not self.allow_other_changes:
-                out.append(kind)
+                if not (self.scip_evidence and scip_other_only(change)):
+                    out.append(kind)
         if (
             "sites" in change.kinds
             and not self._item_allows(change, "sites")
@@ -163,6 +182,69 @@ class Policy:
             explained = ("verdict" in change.kinds and verdict_ok) or (
                 "reasons" in change.kinds and self.allow_reason_changes
             )
-            if not explained:
+            if not explained and not (self.scip_evidence and scip_sites_shrink(change)):
                 out.append("sites")
         return out
+
+
+_TIER = CALLER_KEY.index("confidence_tier")
+SCIP_TIER = "scip"
+SCIP_OTHER_REASON = "SCIP_RESOLVED_OTHER"
+
+
+def scip_additions_only(change: Change) -> bool:
+    """Head callers = base callers + callers of tier ``scip`` (and the count agrees)."""
+    base, head = _callers(change.base), _callers(change.head)
+    rest = list(head)
+    for caller in base:
+        if caller not in rest:
+            return False
+        rest.remove(caller)
+    if not rest or any(caller[_TIER] != SCIP_TIER for caller in rest):
+        return False
+    before, after = change.base.get("caller_count"), change.head.get("caller_count")
+    return isinstance(before, int) and after == before + len(rest)
+
+
+def scip_sites_shrink(change: Change) -> bool:
+    """Every head site list is a subset of the base list; totals never grow."""
+    for name in SITE_FIELDS:
+        base, head = change.base.get(name), change.head.get(name)
+        if head is None:
+            if base is not None:
+                return False
+            continue
+        if base is None:
+            # A review-gate list where the base never ran the gate (edges blocked).
+            if name != "non_call_reference_sites":
+                return False
+            continue
+        key = lambda s: (s.get("file"), s.get("line"), s.get("callee"))  # noqa: E731
+        if not {key(s) for s in head} <= {key(s) for s in base}:
+            return False
+    for name in SITE_SCALARS:
+        base, head = change.base.get(name), change.head.get(name)
+        if name == "open_sites" or base == head:
+            continue
+        if name == "non_call_references":
+            if base is not None:
+                return False
+            continue
+        if not (isinstance(base, int) and isinstance(head, int) and head <= base):
+            return False
+    return True
+
+
+def scip_other_only(change: Change) -> bool:
+    """The only other differences are ``next_step`` and SCIP exclusions."""
+    keys = set(change.base) | set(change.head)
+    for name in keys - {"next_step", "excluded_by_reason"}:
+        if name in ("scip", "callers", *SITE_FIELDS, *SITE_SCALARS):
+            continue
+        if change.base.get(name) != change.head.get(name):
+            return False
+    base = dict(change.base.get("excluded_by_reason") or {})
+    head = dict(change.head.get("excluded_by_reason") or {})
+    head.pop(SCIP_OTHER_REASON, None)
+    base.pop(SCIP_OTHER_REASON, None)
+    return base == head

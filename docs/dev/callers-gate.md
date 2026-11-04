@@ -309,6 +309,41 @@ changed `complete -> complete` rows alike) is checked:
   same-named classes are unioned). A Java class used without an import (same
   package) is not a provable receiver.
 
+## `run --scip`: measuring the opt-in SCIP evidence layer
+
+`run --scip DIR` runs the head side with `TSA_SCIP_INDEX=DIR/<repo>.scip`; each
+repo needs `<repo>.scip` and `<repo>.scip.manifest.json` (written by
+`python -m tree_sitter_analyzer.mcp.tools.callers_scip_manifest` in a checkout
+of the pinned commit, right after the indexer). Use it with the TS / JS repos
+(`--repos hono zod axios --allow-partial`). Without `--scip`, nothing changes:
+the same keys, rows and policy as before the option existed.
+
+- The head query key includes a digest of the index and its manifest, and the
+  head answers go to `results-scip/<tree>/<index-key>/<digest>/<run-id>/`, so
+  `promote` never sees them. The base side is the ordinary cached baseline.
+- Head rows keep the answer's `scip` report; it is never compared.
+- The policy gains the additive SCIP rules (`policy.py`): callers may only be
+  *added*, each with `confidence_tier: "scip"`, and the count grows by exactly
+  those; site lists may only shrink (a non-call reference list may appear where
+  the base never ran that gate); `excluded_by_reason` may only gain
+  `SCIP_RESOLVED_OTHER`; `unknown->incomplete` is allowed when SCIP added a
+  caller. Losing `complete` stays a violation. Every oracle runs unchanged on
+  every new or changed `complete`.
+- A repo on which any head row reports `scip.status` other than `used` is an
+  ERROR: a run in which the index was ignored proves nothing.
+- `report.md` gains a "SCIP evidence" table (status, target mapping, site
+  outcomes, added callers, rows with unlisted references or disagreements) and
+  lists every new `complete`.
+
+Building the indexes (TS: the project's `node_modules`; JS: an `allowJs`
+tsconfig kept outside the checkout, passed as the project with `--cwd`):
+
+```powershell
+npx -y @sourcegraph/scip-typescript@0.6.1 index --output <dir>\hono.scip . adapters/aws-lambda ...
+npx -y @sourcegraph/scip-typescript@0.6.1 index --cwd <axios checkout> --output <dir>\axios.scip <outside>\tsconfig.json
+py -3 -m tree_sitter_analyzer.mcp.tools.callers_scip_manifest --project <checkout> --index <dir>\hono.scip
+```
+
 ## Trust model
 
 **What a PASS (exit 0) guarantees**, for the 2,457 corpus targets of the 7

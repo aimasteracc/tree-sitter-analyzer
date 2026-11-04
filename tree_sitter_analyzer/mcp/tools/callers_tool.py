@@ -77,6 +77,13 @@ from .callers_reasons import (
     UNCHECKED_REASON,
     UNRESOLVED_INBOUND_REASON,
 )
+from .callers_scip import UNLISTED_REASON as SCIP_UNLISTED_REASON
+from .callers_scip import (
+    open_layer,
+    restrict_open_sites,
+    scip_check,
+    unlisted_step,
+)
 from .callers_site_rank import rank_sites
 from .callers_target_set import (
     sole_definition_file,
@@ -857,6 +864,51 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         name_only_list = name_only_sites(possible_callers, name_only_lines)
         # #1706：截断前先把声明文件与导入了目标的文件排在前面。
         name_only_list = rank_sites(cache, name_only_list, func_name, file_path)
+        # 可选的 SCIP 证据层（仅 TS/JS，需显式开启）：只为上面已列出的调用点分类。
+        scip = (
+            open_layer(
+                self.project_root,
+                file_path,
+                func_name,
+                qualified=is_qualified,
+                graph=lambda: query_graph.get()[0],
+            )
+            if self.project_root
+            else None
+        )
+        scip_inbound_excluded: list[dict[str, Any]] = []
+        if scip is not None and scip.active:
+            applied = scip.apply(
+                query_graph.get()[0],
+                declaring=declaring_sites,
+                excluded=excluded_sites,
+                unresolved=unresolved_list,
+                possible=possible_callers,
+                call_lines=name_only_lines,
+                listed=all_listed,
+                target_file=str(file_path).replace("\\", "/"),
+            )
+            declaring_sites, excluded_sites = applied.declaring, applied.excluded
+            unresolved_in_declaring_files = (
+                None if declaring_sites is None else len(declaring_sites)
+            )
+            if unresolved_list is not None:
+                unresolved_list = applied.unresolved
+                unresolved_inbound = len(unresolved_list or [])
+            scip_inbound_excluded = applied.unresolved_excluded
+            possible_callers = applied.possible
+            name_only_inbound = len(possible_callers)
+            name_only_list = rank_sites(
+                cache,
+                name_only_sites(possible_callers, name_only_lines),
+                func_name,
+                file_path,
+            )
+            scip_callers = with_confidence(applied.callers)
+            all_listed = all_listed + scip_callers
+            total_callers += len(scip_callers)
+            truncated = total_callers > listed_cap
+            callers = (callers + scip_callers)[:listed_cap]
 
         # #1632 / RFC-0040：每道调用边检查报告 Checked 或 NotChecked；complete 只能
         # 由 prove() 在全部必需检查都通过时构成——漏记的检查按未运行处理。
@@ -885,7 +937,22 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         registrations = with_confidence(absence.registrations)
         callers = callers + registrations
         total_callers += len(registrations)
-        proof = prove(ledger.record_all(absence.checks), total_callers)
+        review_ledger = ledger.record_all(absence.checks)
+        if scip is not None:
+            review_ledger = scip_check(
+                scip,
+                review_ledger,
+                scope,
+                callers=all_listed + registrations,
+                open_lists=(
+                    unresolved_list,
+                    declaring_sites,
+                    name_only_list,
+                    absence.fields.get("non_call_reference_sites"),
+                ),
+                excluded=excluded_sites,
+            )
+        proof = prove(review_ledger, total_callers)
         completeness = proof.completeness
         reasons = list(proof.reasons)
         if absence.stale_files:
@@ -926,12 +993,15 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         else:
             result["unresolved_sites"] = None
             result["unresolved_sites_total"] = None
-        if graph_bound_inbound:
+        if scip is not None:
+            result["scip"] = scip.report()
+        inbound_excluded = graph_bound_inbound + scip_inbound_excluded
+        if inbound_excluded:
             # PR-3：不再计入 `unresolved_inbound` 的调用点及其理由，可复核。
-            result["unresolved_inbound_excluded"] = graph_bound_inbound[
+            result["unresolved_inbound_excluded"] = inbound_excluded[
                 :_UNRESOLVED_SITES_CAP
             ]
-            result["unresolved_inbound_excluded_total"] = len(graph_bound_inbound)
+            result["unresolved_inbound_excluded_total"] = len(inbound_excluded)
         if excluded_sites is not None:
             # The negative space, auditable. `excluded_by_reason` is the summary a
             # caller reads to decide whether "not a census" is alarming; the list
@@ -969,7 +1039,7 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 ),
             )
             result.update(bound_fields)
-            result[OPEN_SITES_FIELD] = bound
+            result[OPEN_SITES_FIELD] = restrict_open_sites(bound, scip)
         if unattributed_call_sites:
             # #638: module-level call sites have no enclosing function — they
             # are counted here instead of being emitted as un-navigable ghost
@@ -981,17 +1051,25 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             next_step = f"{name_step} {next_step}" if next_step else name_step
         if completeness != "complete" and result.get("verdict") != "NOT_FOUND":
             # #1706：已列出调用方时同样点名主因的证据，而不是通用的“Review callers”。
-            evidence_step = reason_step(
-                reasons[0] if reasons else None,
-                func_name,
-                result,
-                unresolved_sites=unresolved_list,
-                declaring_sites=declaring_sites,
-                absence_hint=absence.hint,
-            ) or (
-                not_checked_hint(func_name, proof, listed=total_callers)
-                if proof.primary in _UNCHECKED_STEP_REASONS
-                else None
+            evidence_step = (
+                reason_step(
+                    reasons[0] if reasons else None,
+                    func_name,
+                    result,
+                    unresolved_sites=unresolved_list,
+                    declaring_sites=declaring_sites,
+                    absence_hint=absence.hint,
+                )
+                or (
+                    unlisted_step(func_name, scip)
+                    if scip is not None and proof.primary == SCIP_UNLISTED_REASON
+                    else None
+                )
+                or (
+                    not_checked_hint(func_name, proof, listed=total_callers)
+                    if proof.primary in _UNCHECKED_STEP_REASONS
+                    else None
+                )
             )
             if evidence_step:
                 next_step = (
@@ -1064,6 +1142,10 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                         "holds no call edges at all. An empty graph cannot "
                         "distinguish 'nothing calls it' from 'never populated', "
                         "so do not treat this as absence."
+                    )
+                elif proof.primary == SCIP_UNLISTED_REASON and scip is not None:
+                    index_hint = unlisted_step(func_name, scip) or not_checked_hint(
+                        func_name, proof
                     )
                 elif proof.primary == UNCHECKED_REASON:
                     index_hint = (

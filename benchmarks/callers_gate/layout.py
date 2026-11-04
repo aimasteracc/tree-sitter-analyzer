@@ -14,6 +14,7 @@ Root: ``--root`` or ``TSA_GATE_ROOT`` (default ``C:\\git-private\\tsa-gate``)::
       index/<repo>/<index-key>/manifest.json
       baseline/<tree>/<index-key>/<repo>.json   answers of <tree> on that index (cache)
       results/<tree>/<index-key>/<run-id>/<repo>.json   head answers of one run (promote -> baseline)
+      results-scip/<tree>/<index-key>/<scip-digest>/<run-id>/<repo>.json   head answers with --scip (never promoted)
       runs/<stamp>/report.{md,json}       one directory per run, with server logs
       locks/<repo>.lock                   one index writer per repo
 """
@@ -185,6 +186,14 @@ class Layout:
     def result_runs(self, tree: str, key: str, name: str) -> list[Path]:
         """Every run's head answers for (tree, index key, repo), oldest run id first."""
         return sorted((self.results_dir(tree) / key).glob(f"*/{name}.json"))
+
+    def scip_result(
+        self, tree: str, key: str, digest: str, name: str, run_id: str
+    ) -> Path:
+        """Head answers of a ``--scip`` run: kept apart, so ``promote`` never sees them."""
+        return (
+            self.cache / "results-scip" / tree / key / digest / run_id / f"{name}.json"
+        )
 
     @property
     def runs(self) -> Path:

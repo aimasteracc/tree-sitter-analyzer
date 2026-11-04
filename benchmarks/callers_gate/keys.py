@@ -83,17 +83,22 @@ def index_key(
     )
 
 
-def query_key(*, targets_sha256: str) -> str:
-    """Key of one answer set beyond (tree, index key): the targets and the query form."""
-    return _digest(
-        {
-            "kind": "query",
-            "format": GATE_FORMAT,
-            "args": QUERY_ARGS,
-            "forms": ["full", "compact"],
-            "targets": targets_sha256,
-        }
-    )
+def query_key(*, targets_sha256: str, scip: str | None = None) -> str:
+    """Key of one answer set beyond (tree, index key): the targets and the query form.
+
+    ``scip`` is the digest of the SCIP index + manifest a ``--scip`` head side
+    reads; without it the key is exactly the key of a run without SCIP.
+    """
+    parts: dict[str, Any] = {
+        "kind": "query",
+        "format": GATE_FORMAT,
+        "args": QUERY_ARGS,
+        "forms": ["full", "compact"],
+        "targets": targets_sha256,
+    }
+    if scip is not None:
+        parts["scip"] = scip
+    return _digest(parts)
 
 
 def env_fingerprint(

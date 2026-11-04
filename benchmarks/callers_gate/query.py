@@ -49,9 +49,15 @@ CALLER_FIELDS = (
 ERROR_FIELDS = ("__error__", "__text__")
 
 
-def slim(payload: dict[str, Any]) -> dict[str, Any]:
+#: ``--scip`` only: the answer's SCIP evidence report (never compared, see transitions).
+SCIP_FIELD = "scip"
+
+
+def slim(payload: dict[str, Any], *, keep_scip: bool = False) -> dict[str, Any]:
     """The fields the gate compares (same shape as the PR-1/2/4 manual gates)."""
     keep: dict[str, Any] = {k: payload.get(k) for k in KEEP if k in payload}
+    if keep_scip:
+        keep[SCIP_FIELD] = payload.get(SCIP_FIELD)
     for field in ERROR_FIELDS:
         if field in payload:
             keep[field] = payload[field]
@@ -74,7 +80,11 @@ def slim(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def ask_all(
-    server: Server, targets: list[dict[str, Any]], progress: Callable[[int], None]
+    server: Server,
+    targets: list[dict[str, Any]],
+    progress: Callable[[int], None],
+    *,
+    keep_scip: bool = False,
 ) -> list[dict[str, Any]]:
     rows = []
     for target in targets:
@@ -92,7 +102,7 @@ def ask_all(
         rows.append(
             {
                 **target,
-                "full": slim(full),
+                "full": slim(full, keep_scip=keep_scip),
                 "seconds": seconds,
                 "bytes": size,
                 "compact": compact_row,
@@ -114,8 +124,13 @@ def compute_side(
     log_dir: Path,
     log: Callable[[str], None],
     costs: dict[tuple[str, str, str], float] | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> tuple[list[dict[str, Any]], float]:
-    """Rows in target order. ``shards`` servers share the index (see :func:`split`)."""
+    """Rows in target order. ``shards`` servers share the index (see :func:`split`).
+
+    ``extra_env`` (``--scip``) reaches every server and makes the rows keep
+    the answer's ``scip`` report.
+    """
     slices = split(targets, shards, costs)
     done = [0]
     lock = threading.Lock()
@@ -137,9 +152,10 @@ def compute_side(
             root,
             log_dir / f"{label}.{index}.stderr.log",
             log_dir / f"private-{label}-{index}",
+            extra_env,
         )
         try:
-            return ask_all(server, slices[index], progress)
+            return ask_all(server, slices[index], progress, keep_scip=bool(extra_env))
         finally:
             server.close()
 

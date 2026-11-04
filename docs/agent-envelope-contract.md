@@ -129,7 +129,7 @@ still hold for the unchanged files (#1672).
 `REQUIRED_CHECKS` ([`callers_checks.py`](../tree_sitter_analyzer/mcp/tools/callers_checks.py))
 ran over the queried target set and found nothing. A check that did not run makes the
 answer `unknown` (or `incomplete` with callers listed) with a code naming it. The bounded
-`completeness_checks` field shows the proof: `{"required": 13, "checked": 13}` on a census;
+`completeness_checks` field shows the proof: `{"required": 13, "checked": 13}` on a census (14 when the opt-in SCIP check `scip_agreement` applies);
 otherwise `not_checked` maps each check that did not run to its code, and `not_run` counts
 the gates skipped after an earlier gate decided.
 <!-- drift:completeness-reasons:start -->
@@ -158,6 +158,8 @@ the gates skipped after an earlier gate decided.
 | `DECORATOR_MAY_REGISTER` | A decorator may register the target for dispatch. When the decorator is on the target's own definition, it is listed as a `registration` caller entry and the answer is `incomplete` (PR-4). | The `registration` entry is a known use; the framework-side callers cannot be listed. Otherwise inspect the decorator. |
 | `OVERRIDE_DISPATCH` | Java: the target carries `@Override`, and a call through its supertype could reach it without a call edge naming it. Either the overridden method is not proved to be declared in the project (an external, `java.lang` or unresolved supertype, a `java.lang.Object` method; e.g. an override of `java.lang.ClassValue.computeValue`, which the JDK calls), or a call named like it is bound elsewhere and may dispatch here (`next_step` names up to 3 sites). `@SuppressWarnings`, `@Deprecated`, `@SafeVarargs` and `@FunctionalInterface` register nothing and do not block (PR-2). | For an external supertype, the callers are outside the project. Otherwise read the named sites and check each receiver's type. |
 | `DYNAMIC_SUPERTYPE` | JS/TS: the target is a class member that may override a supertype member (an instance or static method, accessor or field; not a constructor), and its class, or a class above it, has an `extends` clause the index cannot follow: a call (`extends mix(Proc)`), a conditional, a cast, a local value, an import that does not resolve to one project class, an unknown identifier, a duplicated name or a cycle (#1882). The index records no inheritance edge for it, so a call through a supertype (`this.getQuery()` in a base class) could reach the target without a call edge naming it. The chain is read from source; a package import or an ECMAScript / web platform global (`Error`, `HTMLElement`) ends it as a known external class. Also reported when a file on the chain could not be read or parsed. Python (#1883): the same for any class member when its class, or a project class above it, has a base the index cannot follow: a call (`class V1(mix(Proc))`), a starred argument, a conditional, a subscripted project class (`GProc[int]`), a name bound to a value (`Alias = Proc`) or bound twice, an unbound name, an import that does not resolve to one project file, a `**` class keyword, or a `metaclass=` that is not external, may rebind the bases in `__new__` or defines `mro`. Standard-library and third-party classes, builtins (`object`, `Exception`) and their subscripts (`Generic[T]`) end the walk; no Python member is exempt. `next_step` names the class, its file and line, and the clause. | Read what the clause evaluates to, and search those classes for calls of the method through `this` / `self` or a supertype receiver. |
+| `SCIP_UNLISTED_REFERENCE` | Opt-in SCIP evidence (TS/JS; `scip.status` is `used`): the SCIP index references the target at a place that no listed caller and no open site covers (`scip.unlisted_references`). The check is `scip_agreement`, required only when the SCIP layer is used. | Read each `scip.unlisted_references` entry: it is a caller or a use TSA did not attribute. |
+| `SCIP_AGREEMENT_UNCHECKED` | Opt-in SCIP evidence: the `scip_agreement` check could not be evaluated. | Retry; regenerate the SCIP index and its manifest if it persists. |
 <!-- drift:completeness-reasons:end -->
 
 ### Evidence behind the codes (#1672)
@@ -279,6 +281,7 @@ the entry gets the less confident of the two; any value not in the table below
 | `callee_resolution` | `stdlib`, `external`, `builtin`, `unknown` | `unconfirmed_receiver` |
 | `resolution_kind` | absent, `import_alias` | `proven` |
 | `resolution_kind` | `annotated_receiver` | `inferred` |
+| `resolution_kind` | `scip` | `scip` (opt-in SCIP evidence, below) |
 
 `proven`: the resolver bound the call edge to a project definition (self/cls,
 an import, the same file, a unique function, a class-name or constructed
@@ -391,6 +394,59 @@ that binds the same name **on its own**, by renaming something
 (`from .other import g as _f`, or its own `from .core import f as _f`) or by
 defining `_f`, is not a re-export: its uses are checked against its own import
 line.
+### Opt-in SCIP evidence (`scip`, TS/JS)
+
+A compiler-grade SCIP index (scip-typescript) can bind call sites TSA enumerated
+but could not bind. It is opt in: set `TSA_SCIP_INDEX=<path>` (relative to the
+project root) or put the index at `.ast-cache/scip/index.scip`. TSA never runs
+the indexer. Beside the index, `<index>.manifest.json` records the git tree,
+the hash of every uncommitted or untracked file, the lockfile hashes and the
+index hash; write it right after indexing with
+`python -m tree_sitter_analyzer.mcp.tools.callers_scip_manifest --project . --index <index>`.
+
+Without either opt-in the answer has no `scip` field and no extra check: it is
+exactly the answer without this layer. With it, `scip.status` is one of:
+
+| `scip.status` | Meaning |
+|---|---|
+| `used` | The manifest matches the project; the evidence below applies. |
+| `stale` | No manifest, or it no longer matches (another commit, edited or untracked files, a changed lockfile, a rewritten index). No evidence. |
+| `absent` | `TSA_SCIP_INDEX` names a missing file. No evidence. |
+| `invalid` | The index or manifest cannot be decoded, or another indexer wrote it. No evidence. |
+| `unsupported_language` | The target is not TS/JS (Python and Java stay out). No evidence. |
+
+`used` also reports `scip.target`: `{"mapped": true, "symbols": [...]}`, or
+`{"mapped": false, "reason": ...}` (`not_found`, `ambiguous`,
+`file_not_indexed`, `tsa_definition_mismatch`) and then no evidence. When there
+is no evidence, `completeness_checks.not_applicable` holds
+`{"scip_agreement": <status or target_<reason>>}` and the answer is today's.
+
+With evidence, SCIP only classifies the sites TSA listed (`unresolved_inbound_sites`,
+`unresolved_sites`, `name_only_sites`):
+
+- `proven_target`: every occurrence of the name on the site resolves to the
+  target or to a trusted other symbol, at least one to the target, and TSA and
+  SCIP agree on the enclosing definition. The definition is listed as a caller
+  with `resolution_kind: "scip"`, `confidence_tier: "scip"`.
+- `proven_other`: every occurrence resolves to a trusted other symbol: a bare
+  call bound to another function, a subclass override, a member of an
+  unrelated class that declares a private / `#private` / protected member, or
+  a core ECMAScript type. The site is dropped with `reason_code:
+  "SCIP_RESOLVED_OTHER"` (in `excluded_sites`, `unresolved_inbound_excluded`
+  and `scip.resolved_other`).
+- otherwise `open`, as today: interfaces, type literals, non-nominal classes,
+  lib.dom / `@types`, `.d.ts` declarations, supertype members, locals and
+  function-valued properties are never trusted, and a line whose text holds
+  the name more often than SCIP reports, or a position with two symbols, gives
+  no evidence.
+
+SCIP never removes a TSA caller; a listed caller in whose span SCIP sees no
+reference is logged in `scip.disagreements`. A SCIP reference to the target
+outside every listed caller and open site fails the `scip_agreement` check
+(`SCIP_UNLISTED_REFERENCE`), and an exhaustive `open_sites` bound becomes
+`{"enumerated": false, "reason": "SCIP_UNLISTED_REFERENCE"}`. `scip.sites`
+counts the three outcomes; lists in `scip` are capped at 20 with `*_total`
+beside them.
 ### Inherited `self.m()` calls (#1677)
 
 When the enclosing class does not define `m`, `self.m()` / `cls.m()` is a

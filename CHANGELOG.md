@@ -4,6 +4,26 @@
 
 ### Added
 
+- **Opt-in SCIP evidence for `nav callers` on TS / JS** (`callers_scip*.py`).
+  Set `TSA_SCIP_INDEX=<path>` or put a scip-typescript index at
+  `.ast-cache/scip/index.scip`, with a manifest beside it
+  (`python -m tree_sitter_analyzer.mcp.tools.callers_scip_manifest --project .
+  --index <index>`: git tree, hashes of dirty files and lockfiles, index hash).
+  TSA never runs the indexer. The layer only classifies the sites TSA already
+  enumerated: a site whose every occurrence of the name resolves to the target
+  (or a trusted other symbol) adds its enclosing definition as a caller with
+  `confidence_tier: "scip"`; a site that resolves only to trusted other symbols
+  (another function, a subclass override, a nominal unrelated class, a core
+  ECMAScript type) is dropped as `SCIP_RESOLVED_OTHER`; everything else stays
+  open. SCIP never removes a TSA caller, and a SCIP reference TSA lists nowhere
+  is the new blocker `SCIP_UNLISTED_REFERENCE` (optional check
+  `scip_agreement`). A stale, absent or undecodable index, an unsupported
+  language (Python, Java) or an ambiguous target gives no evidence and exactly
+  today's answer; `scip.status` says which. Without the opt-in the answer is
+  byte-identical to before. The protobuf reader is stdlib-only (no new
+  dependency). `benchmarks.callers_gate run --scip DIR` measures it with an
+  additive policy. See `docs/agent-envelope-contract.md` and
+  `docs/dev/callers-gate.md`.
 - **Callers verification gate (dev tooling, `benchmarks/callers_gate`).**
   `py -3 -m benchmarks.callers_gate {setup,run,promote,precheck,report}`
   replaces the per-PR manual replay of the r15 callers corpus. It keeps the 7
