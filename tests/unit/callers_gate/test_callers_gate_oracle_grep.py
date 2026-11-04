@@ -264,7 +264,8 @@ run(() => inner(2));
 
 def _owner(repo: Repo, rel: str, needle: bytes, nth: int = 0) -> tuple[str, list[int]]:
     parsed = repo.tree(rel)
-    assert parsed is not None
+    if parsed is None:
+        pytest.fail(f"{rel} did not parse")
     tree, src, grammar = parsed
     start = -1
     for _ in range(nth + 1):

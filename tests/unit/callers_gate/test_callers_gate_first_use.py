@@ -106,7 +106,6 @@ def test_jobs_1_runs_repos_one_after_another_with_one_server_per_side(
     runner.run_all(ctx, list(REPOS), jobs=1)
     assert not overlap[0]
     assert seen_shards == [1] * len(REPOS)
-    assert threading.active_count() >= 1
 
 
 def test_fresh_base_ignores_cached_answers(
