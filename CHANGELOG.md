@@ -201,7 +201,9 @@
   project are not considered (closed world, as for Java #1894). The class
   index is built lazily and cached per project state (index snapshot plus the
   stat of every indexed Python file). The same answer with listed callers is
-  now `incomplete`.
+  now `incomplete`. Callers gate: no verdict changed on any repo; 6 pydantic
+  rows keep their verdict and reasons but lose an exhaustive open-site bound
+  (a base naming a rename of the class that the resolver cannot follow).
 - **`nav callers` no longer answers `complete` for a Java method that a
   subtype inherits as another supertype's method** (#1894). With
   `class A { public void m() {} }`, `class B extends A implements I` and
