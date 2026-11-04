@@ -85,6 +85,8 @@ class _Module:
     globals_declared: frozenset[str]
     has_getattr: bool
     _bindings: dict[int, dict[str, list[ast.AST]]] = field(default_factory=dict)
+    #: ``from m import *`` statements of the module scope (#1896: read per lookup).
+    _stars: list[ast.ImportFrom] | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def bindings(self, scope: ast.AST) -> dict[str, list[ast.AST]]:
@@ -96,12 +98,15 @@ class _Module:
             return found
 
     def stars(self) -> list[ast.ImportFrom]:
-        return [
-            node
-            for node in _scope_nodes(self.tree)
-            if isinstance(node, ast.ImportFrom)
-            and any(alias.name == "*" for alias in node.names)
-        ]
+        with self._lock:
+            if self._stars is None:
+                self._stars = [
+                    node
+                    for node in _scope_nodes(self.tree)
+                    if isinstance(node, ast.ImportFrom)
+                    and any(alias.name == "*" for alias in node.names)
+                ]
+            return list(self._stars)
 
 
 def _parse(rel: str, data: bytes) -> _Module | None:

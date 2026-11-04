@@ -24,7 +24,11 @@ from __future__ import annotations
 
 import pytest
 
-from tree_sitter_analyzer.mcp.tools import callers_py_subtypes, callers_py_supertypes
+from tree_sitter_analyzer.mcp.tools import (
+    callers_py_class_index,
+    callers_py_subtypes,
+    callers_py_supertypes,
+)
 from tree_sitter_analyzer.mcp.tools.callers_java_overrides import OVERRIDE_REASON
 from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
 
@@ -62,7 +66,7 @@ async def _index(root, files: dict[str, str]) -> str:
 
 def _write(root, files: dict[str, str]) -> str:
     callers_py_supertypes.clear_parsed()
-    callers_py_subtypes.clear_indexes()
+    callers_py_class_index.clear_indexes()
     for rel_path, text in files.items():
         path = root / rel_path
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -246,7 +250,9 @@ async def test_mangled_private_name_stays_complete(tmp_path) -> None:
     files = {
         **_REPRO,
         "pkg/a.py": _A.replace("def m", "def __m"),
-        "pkg/i.py": _I.replace("m(self)", "__m(self)").replace("self.m()", "self.__m()"),
+        "pkg/i.py": _I.replace("m(self)", "__m(self)").replace(
+            "self.m()", "self.__m()"
+        ),
     }
 
     result = await _answer(tmp_path, files, "A.__m")
@@ -486,14 +492,14 @@ def test_class_without_the_member_is_not_checked(tmp_path) -> None:
 
 def test_index_is_built_once_per_state(tmp_path, monkeypatch) -> None:
     builds: list[int] = []
-    real = callers_py_subtypes._build
+    real = callers_py_class_index.build
 
     def counting(*args, **kwargs):
         builds.append(1)
         return real(*args, **kwargs)
 
-    monkeypatch.setattr(callers_py_subtypes, "_build", counting)
-    monkeypatch.setattr(callers_py_subtypes, "_RACY_NS", 0)
+    monkeypatch.setattr(callers_py_class_index, "build", counting)
+    monkeypatch.setattr(callers_py_class_index, "_RACY_NS", 0)
     cache = _Cache(list(_REPRO), _SYMBOLS, [_SELF_SITE])
 
     assert _find(tmp_path, cache=cache) is not None
@@ -518,13 +524,13 @@ def test_index_is_built_once_per_state(tmp_path, monkeypatch) -> None:
 
 def test_racy_index_is_not_kept(tmp_path, monkeypatch) -> None:
     builds: list[int] = []
-    real = callers_py_subtypes._build
+    real = callers_py_class_index.build
 
     def counting(*args, **kwargs):
         builds.append(1)
         return real(*args, **kwargs)
 
-    monkeypatch.setattr(callers_py_subtypes, "_build", counting)
+    monkeypatch.setattr(callers_py_class_index, "build", counting)
     cache = _Cache(list(_REPRO), _SYMBOLS, [_SELF_SITE])
 
     _find(tmp_path, cache=cache)

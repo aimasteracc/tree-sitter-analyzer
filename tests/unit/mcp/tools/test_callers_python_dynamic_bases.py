@@ -130,6 +130,21 @@ _PLAIN = (
 )
 
 
+@pytest.fixture(autouse=True)
+def _no_subclass_step_without_an_index(monkeypatch):
+    """Most tests here call the base walk without an index; the #1896 subclass
+    step (``test_callers_py_subtypes.py``) needs its call edges and fails closed
+    without one. With an index (the end-to-end tests) it runs unchanged."""
+    from tree_sitter_analyzer.mcp.tools import callers_py_subtypes
+
+    real = callers_py_subtypes.python_subtype_finding
+
+    def without_index(root, rel, line, bare, cache, tops):
+        return None if cache is None else real(root, rel, line, bare, cache, tops)
+
+    monkeypatch.setattr(callers_py_subtypes, "python_subtype_finding", without_index)
+
+
 #: Some resolved call, so the project's evidence base is not empty.
 _CALLS = "def main():\n    return helper()\n\n\ndef helper():\n    return 1\n"
 
