@@ -277,8 +277,12 @@ def test_constructor_and_field_rows_pass(tmp_path) -> None:
     }
     root = _write(tmp_path, files)
 
-    assert java_supertype_finding(root, [("p/K.java", 4, "java")], "K", _Cache()) is None
-    assert java_supertype_finding(root, [("p/K.java", 3, "java")], "K", _Cache()) is None
+    assert (
+        java_supertype_finding(root, [("p/K.java", 4, "java")], "K", _Cache()) is None
+    )
+    assert (
+        java_supertype_finding(root, [("p/K.java", 3, "java")], "K", _Cache()) is None
+    )
 
 
 def test_unparsable_file_is_unchecked(tmp_path) -> None:
@@ -304,7 +308,9 @@ def test_no_index_is_found(tmp_path) -> None:
     root = _write(tmp_path, _PLAIN)
     line = _line_of(_PLAIN["q/Sub.java"], "subOnly")
 
-    found = java_supertype_finding(root, [("q/Sub.java", line, "java")], "subOnly", None)
+    found = java_supertype_finding(
+        root, [("q/Sub.java", line, "java")], "subOnly", None
+    )
 
     assert found is not None
     assert found.reason == OVERRIDE_REASON
@@ -316,7 +322,7 @@ def test_rows_of_other_classes_are_skipped_for_a_qualified_target(tmp_path) -> N
             "package p;\n"
             "public class N {\n"
             "  int go() { return 1; }\n"
-            "  static class In implements Runnable {\n"
+            "  static class In implements java.util.EventListener {\n"
             "    public void run() {}\n"
             "    void go() {}\n"
             "  }\n"
@@ -359,3 +365,63 @@ def test_unchecked_java_finding_is_not_checked(tmp_path) -> None:
     assert isinstance(outcome, NotChecked)
     assert outcome.reason == DYNAMIC_SUPERTYPE_REASON
     assert finding is not None
+
+
+# --- known JDK supertypes -----------------------------------------------------
+
+_JDK_FILES = {
+    "p/X.java": (
+        "package p;\n"
+        "import java.io.Closeable;\n"
+        "import java.io.Serializable;\n"
+        "public class X implements Cloneable, Closeable, Serializable {\n"
+        "  public X withVersion() { return this; }\n"
+        "  public void close() {}\n"
+        "  Object readResolve() { return this; }\n"
+        "}\n"
+    ),
+}
+
+
+def test_jdk_type_without_the_name_ends_the_walk(tmp_path) -> None:
+    found = _finding(tmp_path, _JDK_FILES, "p/X.java", "withVersion", "withVersion")
+
+    assert found is None
+
+
+@pytest.mark.parametrize(
+    ("needle", "bare", "qualified"),
+    [
+        ("void close", "close", "java.io.Closeable.close"),
+        ("readResolve", "readResolve", "java.io.Serializable.readResolve"),
+    ],
+)
+def test_jdk_type_with_the_name_is_found(tmp_path, needle, bare, qualified) -> None:
+    found = _finding(tmp_path, _JDK_FILES, "p/X.java", needle, bare)
+
+    assert found is not None
+    assert f"`{qualified}`" in found.describe()
+
+
+def test_project_type_shadowing_a_jdk_name_fails(tmp_path) -> None:
+    cache = _Cache(classes=[("Cloneable", "z/Cloneable.java")])
+    files = {
+        **_JDK_FILES,
+        "z/Cloneable.java": "package z;\npublic interface Cloneable {}\n",
+    }
+
+    found = _finding(tmp_path, files, "p/X.java", "withVersion", "withVersion", cache)
+
+    assert found is not None
+    assert "`Cloneable` is outside the project" in found.describe()
+
+
+def test_jdk_name_outside_java_lang_needs_its_import(tmp_path) -> None:
+    files = {
+        "p/X.java": _JDK_FILES["p/X.java"].replace("import java.io.Closeable;\n", "")
+    }
+
+    found = _finding(tmp_path, files, "p/X.java", "withVersion", "withVersion")
+
+    assert found is not None
+    assert "`Closeable` is outside the project" in found.describe()

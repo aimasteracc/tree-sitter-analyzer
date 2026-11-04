@@ -184,8 +184,8 @@ def test_ambiguous_same_package_supertype_is_not_resolved(tmp_path) -> None:
             "`java.util.AbstractList` is not a simple",
         ),
         (
-            "class Impl extends Base implements Runnable {",
-            "`Runnable` is outside the project",
+            "class Impl extends Base implements EventListener {",
+            "`EventListener` is outside the project",
         ),
     ],
 )

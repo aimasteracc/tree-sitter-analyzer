@@ -16,7 +16,10 @@ So an ``@Override`` lets ``complete`` through only when both are ruled out:
 * **every** supertype in the transitive closure of the declaring type resolves to
   a type declared in the project, read from source (``extends`` / ``implements``,
   Java's name-resolution order: same file, single-type import, same package);
-  any qualified, wildcard-only, ``java.lang`` or otherwise unresolved name fails;
+  any qualified, wildcard-only, ``java.lang`` or otherwise unresolved name fails,
+  except a JDK type whose overridable members are known
+  (:mod:`.callers_java_jdk`, #1884): it ends the walk, and fails only when it
+  declares the method's name;
   so does a method named like a ``java.lang.Object`` method (an implicit
   supertype of every class), a record, or a closure larger than
   :data:`_MAX_TYPES`;
@@ -39,6 +42,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from typing import Any
 
+from .callers_java_jdk import KnownType, known_type
 from .evidence_file_cache import FILE_CACHE
 
 #: completeness reason: the target overrides a supertype method, and a call through
@@ -64,6 +68,8 @@ _ALL_TYPE_DECLARATIONS = _TYPE_DECLARATIONS | {
     "annotation_type_declaration",
 }
 _PACKAGE = re.compile(r"^\s*package\s+([\w.]+)\s*;", re.MULTILINE)
+#: File of a closure entry that is a known JDK type (#1884).
+_JDK = "<jdk>"
 
 
 @dataclass(frozen=True)
@@ -113,6 +119,16 @@ def override_proof(
     closure = reader.closure(rel_path, [owner])
     if isinstance(closure, str):
         return _fail(closure)
+    external = next(
+        (
+            node.qualified
+            for file, node in closure
+            if file == _JDK and bare in node.members
+        ),
+        None,
+    )
+    if external is not None:
+        return _fail(f"it overrides `{external}.{bare}`, declared outside the project")
     declared = any(reader.declares(file, node, bare) for file, node in closure)
     if annotated and not declared:
         return _fail("no supertype in the project declares it")
@@ -182,7 +198,7 @@ class _Reader:
 
     def closure(self, rel_path: str, starts: list[Any]) -> list[tuple[str, Any]] | str:
         """Every supertype of ``starts`` (transitively) as ``(file, node)``, or why not."""
-        seen: set[tuple[str, int]] = set()
+        seen: set[tuple[str, int | str]] = set()
         found: list[tuple[str, Any]] = []
         queue: list[tuple[str, Any]] = [(rel_path, start) for start in starts]
         while queue:
@@ -191,17 +207,21 @@ class _Reader:
                 resolved = self._resolve(file, node, supertype)
                 if isinstance(resolved, str):
                     return resolved
-                key = (resolved[0], int(resolved[1].start_byte))
+                key = _key(resolved)
                 if key in seen:
                     continue
                 seen.add(key)
                 if len(seen) > _MAX_TYPES:
                     return "its supertype closure is too large to check"
                 found.append(resolved)
-                queue.append(resolved)
+                if resolved[0] != _JDK:  # a known JDK type ends the walk
+                    queue.append(resolved)
         return found
 
     def declares(self, rel_path: str, node: Any, bare: str) -> bool:
+        """A project type in the closure declares a method ``bare``."""
+        if rel_path == _JDK:
+            return False
         parsed = self.parse(rel_path)
         if parsed is None:
             return False
@@ -239,6 +259,10 @@ class _Reader:
             return candidates
         if len(candidates) == 1:
             return candidates[0]
+        if not candidates and not same_file:
+            known = known_type(self._cache, name, imported)
+            if known is not None:
+                return _JDK, known
         where = "outside the project" if not candidates else "ambiguous in the project"
         return f"its supertype `{name}` is {where}"
 
@@ -265,6 +289,12 @@ class _Reader:
                 if node.type in _ALL_TYPE_DECLARATIONS and _name(parsed, node) == name
             )
         return found
+
+
+def _key(resolved: tuple[str, Any]) -> tuple[str, int | str]:
+    if isinstance(resolved[1], KnownType):
+        return resolved[0], resolved[1].qualified
+    return resolved[0], int(resolved[1].start_byte)
 
 
 def _parse(text: str) -> _Parsed | None:
