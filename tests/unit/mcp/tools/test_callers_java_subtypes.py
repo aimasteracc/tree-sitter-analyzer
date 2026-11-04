@@ -290,3 +290,137 @@ def test_proof_without_index_fails(tmp_path) -> None:
     )
 
     assert not proof.proved
+
+
+# --- fail-closed paths ----------------------------------------------------------
+
+
+def _proof(tmp_path, files, rel, needle, bare, cache):
+    root = _write(tmp_path, files)
+    text = files[rel]
+    return subtype_proof(cache, root, rel, text, _line_of(text, needle), bare)
+
+
+def test_unparsable_declaring_text_fails(tmp_path) -> None:
+    root = _write(tmp_path, _REPRO)
+
+    _subtype, proof = subtype_proof(_Cache(), root, "p/A.java", "class {", 1, "m")
+
+    assert not proof.proved
+    assert "parsed" in proof.detail
+
+
+def test_unlocated_declaration_fails(tmp_path) -> None:
+    _subtype, proof = _proof(tmp_path, _REPRO, "p/A.java", "class A", "zz", _Cache())
+
+    assert not proof.proved
+    assert "located" in proof.detail
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "package p;\npublic final class A implements Cloneable {\n  public void m() {}\n}\n",
+        "package p;\npublic enum A {\n  X;\n  public void m() {}\n}\n",
+    ],
+)
+def test_final_classes_and_enums_have_no_subtypes_to_walk(tmp_path, text) -> None:
+    files = {**_REPRO, "p/A.java": text}
+
+    _subtype, proof = _proof(tmp_path, files, "p/A.java", "void m", "m", _Cache())
+
+    assert proof.proved
+
+
+def test_unreadable_call_edges_fail(tmp_path) -> None:
+    class _NoEdges(_Cache):
+        def __init__(self) -> None:
+            super().__init__(classes=_classes(_REPRO))
+            self.conn.execute("DROP TABLE edges")
+
+    _subtype, proof = _proof(tmp_path, _REPRO, "p/A.java", "void m", "m", _NoEdges())
+
+    assert not proof.proved
+    assert "call edges" in proof.detail
+
+
+def test_unreadable_type_rows_fail(tmp_path) -> None:
+    cache = _Cache()
+    cache.conn.execute("DROP TABLE ast_symbol_rows")
+
+    _subtype, proof = _proof(tmp_path, _REPRO, "p/A.java", "void m", "m", cache)
+
+    assert not proof.proved
+    assert "types could not be read" in proof.detail
+
+
+def test_unreadable_candidate_file_fails(tmp_path) -> None:
+    cache = _Cache(classes=[*_classes(_REPRO), ("Gone", "p/Gone.java")])
+
+    _subtype, proof = _proof(tmp_path, _REPRO, "p/A.java", "void m", "m", cache)
+
+    assert not proof.proved
+    assert "p/Gone.java" in proof.detail
+
+
+def test_unparsable_candidate_file_fails(tmp_path) -> None:
+    files = {**_REPRO, "p/Bad.java": "package p;\nclass Bad extends A { void x( }\n"}
+
+    found = _finding(tmp_path, files, "p/A.java", "void m", "m")
+
+    assert found is not None
+    assert "p/Bad.java" in found.describe()
+
+
+def test_too_many_subtypes_fail(tmp_path, monkeypatch) -> None:
+    from tree_sitter_analyzer.mcp.tools import callers_java_subtypes
+
+    monkeypatch.setattr(callers_java_subtypes, "_MAX_SUBTYPES", 1)
+
+    found = _finding(tmp_path, _PLAIN, "q/A.java", "void m", "m")
+
+    assert found is not None
+    assert "too many subtypes" in found.describe()
+
+
+def test_nested_generic_arguments_are_stripped(tmp_path) -> None:
+    files = {
+        **_REPRO,
+        "p/A.java": "package p;\npublic class A<T> {\n  public void m() {}\n}\n",
+        "p/B.java": (
+            "package p;\nimport java.util.List;\n"
+            "public class B extends A<List<String>> implements I {}\n"
+        ),
+    }
+
+    found = _finding(tmp_path, files, "p/A.java", "void m", "m", _UNBOUND)
+
+    assert found is not None
+    assert "`B`" in found.describe()
+
+
+def test_import_of_another_type_of_the_name_is_not_a_subtype(tmp_path) -> None:
+    files = {
+        **_REPRO,
+        "p/B.java": "package p;\nimport x.A;\npublic class B extends A implements I {}\n",
+    }
+
+    found = _finding(tmp_path, files, "p/A.java", "void m", "m", _UNBOUND)
+
+    assert found is None
+
+
+def test_import_of_the_name_from_the_target_package_still_fails(tmp_path) -> None:
+    files = {
+        **_REPRO,
+        "r/B.java": (
+            "package r;\nimport p.A;\nimport p.A;\npublic class B extends A {}\n"
+        ),
+        "r/A.java": "package r;\npublic class A {}\n",
+        "s/A.java": "package p;\npublic class A {}\n",
+    }
+
+    found = _finding(tmp_path, files, "p/A.java", "void m", "m", _UNBOUND)
+
+    assert found is not None
+    assert "may extend it" in found.describe()

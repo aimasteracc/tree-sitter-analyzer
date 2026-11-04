@@ -229,9 +229,7 @@ def _extends(
     parsed = reader.parse(file)
     if parsed is None:
         return _fail("a file that may declare a subtype could not be parsed")
-    for supertype in _direct_supertypes(node):
-        if isinstance(supertype, tuple):
-            continue
+    for supertype in _direct_supertypes(node):  # a declaration: never a tuple
         raw = parsed.source[supertype.start_byte : supertype.end_byte].decode(
             "utf-8", "replace"
         )
