@@ -49,6 +49,7 @@ from .callers_java_overrides import (
     _parse,
     override_proof,
 )
+from .callers_java_subtypes import SUBTYPE_VERB, subtype_proof
 from .callers_supertypes import SupertypeFinding
 from .evidence_file_cache import FILE_CACHE
 
@@ -94,18 +95,38 @@ def _row_finding(
         return None, None
     owner = _owner_type(method)
     name = None if owner is None else _name(parsed, owner)
-    if owner is not None and not _has_supertype(owner) and bare not in OBJECT_METHODS:
+    if owner is None or _has_supertype(owner) or bare in OBJECT_METHODS:
+        proof = override_proof(
+            cache, project_root, rel, text, line, bare, annotated=False
+        )
+        if not proof.proved:
+            return name, _override_finding(bare, rel, line, name, proof.detail)
+    # #1894: a subtype may inherit it as the method of another of its supertypes.
+    subtype, inherited = subtype_proof(cache, project_root, rel, text, line, bare)
+    if inherited.proved:
         return name, None
-    proof = override_proof(cache, project_root, rel, text, line, bare, annotated=False)
-    if proof.proved:
-        return name, None
-    return name, SupertypeFinding(
-        bare,
+    if not subtype:
+        return name, _override_finding(bare, rel, line, name, inherited.detail)
+    return name, _override_finding(
+        subtype, rel, line, name, inherited.detail, verb=SUBTYPE_VERB
+    )
+
+
+def _override_finding(
+    clause: str,
+    rel: str,
+    line: int,
+    name: str | None,
+    detail: str,
+    verb: str = "declares",
+) -> SupertypeFinding:
+    return SupertypeFinding(
+        clause,
         rel,
         line,
         name or "<anonymous>",
-        proof.detail,
-        verb="declares",
+        detail,
+        verb=verb,
         reason=OVERRIDE_REASON,
     )
 

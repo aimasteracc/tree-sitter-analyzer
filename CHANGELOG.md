@@ -180,6 +180,25 @@
 
 ### Fixed
 
+- **`nav callers` no longer answers `complete` for a Java method that a
+  subtype inherits as another supertype's method** (#1894). With
+  `class A { public void m() {} }`, `class B extends A implements I` and
+  `m()` in a default method of `I`, `A.m` answered `complete` with 0 callers:
+  the call edge is bound to `I.m`, and `A` has no supertype, so the override
+  proof never ran. The `supertype_dispatch` check now also walks the project
+  subtypes of the declaring type (found from source, transitively; generic,
+  nested and cross-package clauses included). When a subtype's supertype
+  closure holds another type declaring the name, the method passes only when
+  every call edge named like it is bound to this declaration or outside the
+  project; otherwise it is `OVERRIDE_DISPATCH`, and `next_step` names the
+  subtype, the other type and the sites. A JDK type with that member, a
+  subtype whose supertypes do not resolve, a clause that may name the type but
+  does not resolve, or more than 128 subtypes also block. Abstract and
+  bodiless interface methods, `final` classes, enums, records and anonymous
+  bodies are not walked; subtypes outside the project are not considered
+  (closed world, as for the override proof). Callers gate: all 7 repos
+  unchanged (one pydantic site-list change under load was identical on a
+  re-run).
 - **`nav callers` no longer answers `complete` for a Java method that
   overrides a supertype method without `@Override`** (#1884). `@Override` is
   optional, but the PR-2 override gate ran only on annotated methods, so
