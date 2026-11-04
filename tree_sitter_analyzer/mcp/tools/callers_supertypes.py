@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ...graph.read_interrupt import raise_if_interrupted
+from .callers_java_subtypes import SUBTYPE_VERB
 from .callers_outcomes import CheckOutcome, NotChecked, Scope, checked
 from .callers_ts_source import JSTS_SUFFIXES, Source, SourceReader
 
@@ -262,6 +263,13 @@ def dynamic_supertype_hint(func_name: str, finding: SupertypeFinding) -> str:
             f"chain could not be read: {finding.describe()}. A call through a "
             "supertype could reach it without a call edge naming it, so this is "
             "not evidence of absence."
+        )
+    if finding.verb == SUBTYPE_VERB:
+        return (
+            f"No resolved caller for {func_name!r}, but a subtype may inherit it "
+            f"as the method of another supertype: {finding.describe()}. "
+            "A call through that supertype would leave no call edge naming it, "
+            "so this is not evidence of absence."
         )
     if finding.reason != DYNAMIC_SUPERTYPE_REASON:
         return (
