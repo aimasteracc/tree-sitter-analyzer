@@ -180,6 +180,28 @@
 
 ### Fixed
 
+- **`nav callers` no longer answers `complete` for a Java method that
+  overrides a supertype method without `@Override`** (#1884). `@Override` is
+  optional, but the PR-2 override gate ran only on annotated methods, so
+  `B.make` in `class B extends A<String>` answered `complete` with 0 callers
+  although `make()` in `A.run` dispatches to it (the index has no `extends`
+  edge for a generic supertype, #1880). The `supertype_dispatch` check now runs
+  the same proof on every non-static, non-private Java method whose declaring
+  type has a supertype (a named type with `extends` / `implements`, an
+  anonymous class or an enum constant body), and on every method named like a
+  `java.lang.Object` method. It passes only when every supertype resolves in
+  the project and none declares the name, or one does and every call edge
+  named like it is bound to this declaration or outside the project; otherwise
+  the answer is `OVERRIDE_DISPATCH`. A declaring file that cannot be read or
+  parsed is `DYNAMIC_SUPERTYPE` (check not run). A few JDK interfaces with a
+  known member set (`Cloneable`, `Serializable` with its serialization hooks,
+  `AutoCloseable`, `Closeable`, `Flushable`, `Comparable`, `Runnable`,
+  `Iterable`) end the walk instead of failing it, unless a project type of the
+  same name could shadow them; a method named like one of their members
+  overrides a JDK method and stays `OVERRIDE_DISPATCH`. Callers gate: all 7
+  repos unchanged (gson: 55 `complete` targets, 10 of them unannotated
+  instance methods of types with a supertype, each checked against its
+  supertypes in source).
 - **`nav callers` no longer answers `complete` for a Python method under a
   base the index cannot follow** (#1883). The index records a Python base only
   when it is a name or a dotted name, so `class V1(mix(Proc))`,

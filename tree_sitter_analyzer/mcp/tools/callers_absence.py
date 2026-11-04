@@ -377,7 +377,7 @@ def _assess_absence(
         if inherited is None:
             return verdict("complete", None, None)
         hint = dynamic_supertype_hint(func_name, inherited)
-        return verdict("unknown", DYNAMIC_SUPERTYPE_REASON, hint)
+        return verdict("unknown", inherited.reason, hint)
     if finding.reason == OVERRIDE_REASON:
         return verdict(
             "unknown", OVERRIDE_REASON, override_hint(func_name, finding.detail)
