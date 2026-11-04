@@ -489,6 +489,7 @@ class SemanticClassifyTool(BaseMCPTool):
         try:
             old_result = subprocess.run(  # nosec B603,B607
                 ["git", "show", f"{old_ref}:{file_path}"],
+                stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -503,6 +504,7 @@ class SemanticClassifyTool(BaseMCPTool):
         try:
             new_result = subprocess.run(  # nosec B603,B607
                 ["git", "show", f"{new_ref}:{file_path}"],
+                stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",

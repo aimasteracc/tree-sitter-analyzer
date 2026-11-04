@@ -46,6 +46,7 @@ def _run_git(args: list[str], cwd: str | None = None) -> tuple[int, str]:
     try:
         result = subprocess.run(  # nosec B603
             ["git"] + args,
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             encoding="utf-8",

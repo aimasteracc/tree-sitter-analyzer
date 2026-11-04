@@ -159,6 +159,7 @@ class ShellNotifier:
         try:
             proc = subprocess.Popen(  # noqa: S603 - shell=False below
                 argv,
+                stdin=subprocess.DEVNULL,
                 shell=False,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,

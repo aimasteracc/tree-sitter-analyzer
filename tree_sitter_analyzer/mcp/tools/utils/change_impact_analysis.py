@@ -1241,6 +1241,7 @@ def _classify_changed_files(
 
             old_proc = subprocess.run(  # nosec B603,B607
                 ["git", "show", f"HEAD:{file_path}"],
+                stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",

@@ -204,6 +204,12 @@
   now `incomplete`. Callers gate: no verdict changed on any repo; 6 pydantic
   rows keep their verdict and reasons but lose an exhaustive open-site bound
   (a base naming a rename of the class that the resolver cannot follow).
+- **Subprocesses no longer inherit the MCP server's stdin** (#1891). Every
+  `subprocess.run` / `Popen` call in `tree_sitter_analyzer/` now passes
+  `stdin=subprocess.DEVNULL` (31 call sites), so a child such as `git` can
+  no longer hang on Windows by sharing the MCP stdio pipe (#1890 fixed one
+  place). A unit test scans the package AST and fails if a new subprocess or
+  asyncio-subprocess call omits `stdin`/`input`.
 - **`nav callers` no longer answers `complete` for a Java method that a
   subtype inherits as another supertype's method** (#1894). With
   `class A { public void m() {} }`, `class B extends A implements I` and
