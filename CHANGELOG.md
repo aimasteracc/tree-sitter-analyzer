@@ -194,6 +194,13 @@
   traceback through `linecache`, which stats the frame's source file. A
   two-test probe reproduces the extra stat on 3.13 and not on 3.12. The test
   now requires each of its own paths to be stat'ed exactly once.
+- **`PYTEST_XDIST_AUTO_NUM_WORKERS` sizes `-n auto` again.** The suite's
+  `pytest_xdist_auto_num_workers` hook replaces xdist's own sizing, which is
+  the code that reads the variable, so CI's `"4"` and the documented `=1` /
+  `=2` local settings were ignored off Windows. `macos-latest` hands out
+  3- and 5-vCPU machines of the same image. On recent develop runs, 3 workers
+  took 595-911 s (one hit the 900 s session timeout) and 5 workers 349-409 s.
+  The hook now returns the configured count.
 - **SQLite connections close with their owner instead of waiting for the
   garbage collector** (#1904). Three production paths left a connection open
   until a garbage-collection cycle: a cache's thread-local WAL writer when its
