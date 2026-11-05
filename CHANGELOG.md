@@ -190,15 +190,18 @@
   atomically replaces the build path; a source change during the copy still
   fails with `SealBusy` and publishes nothing. Windows keeps the bounded wait.
 - **Root cause of the `test_scope_prune_failure_rolls_back_all_stale_rows`
-  flake pinned with a deterministic witness** (#1815). The test's fixture
-  indexes through the generation store, and on Linux / macOS a leftover handle
-  on the private build database at seal made the old
-  `PRAGMA journal_mode=DELETE` fail at once with `database is locked`, so
-  nothing was published and the test failed before its rollback check. Fixed
-  in production by #1822 (bounded busy retry), #1832 (no zombie cursors) and
-  #1903 (byte-copy seal). Two new POSIX tests keep a reader open on the build
-  database during the fixture's index: with the pre-#1822 seal it does not
-  publish; with the current seal it publishes both files.
+  flake pinned with a deterministic witness** (#1815). The first-attempt
+  traceback, recovered on CI from the code at the time, is
+  `sqlite3.OperationalError: database is locked` at
+  `PRAGMA journal_mode=DELETE` in `GenerationStore.seal`. The test's fixture
+  indexes through the generation store. On Linux and macOS (Python 3.13 lanes)
+  another handle in the process still had the private build database open,
+  and the old seal had no busy handling, so `index_project` raised before the
+  rollback check. The busy seal is now handled by #1822 (bounded retry) and
+  #1903 (byte-copy seal on POSIX). Two new POSIX tests keep a reader open on
+  the build database during the fixture's index. With the pre-#1822 seal the
+  index does not publish; with the current seal it publishes both files. The
+  handle itself is still tracked in #1904.
 - **The callers gate runs on Python 3.10 again.** Its child interpreters were
   started with `python -P`, a 3.11+ flag, so the 3.10 full-suite lane failed
   with `Unknown option: -P` (red on develop since #1888). The gate now sets
