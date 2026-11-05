@@ -59,7 +59,22 @@ def _cleanup_pytest_git_repos() -> None:
 
 
 def pytest_xdist_auto_num_workers(config) -> int:
-    """Cap automatic xdist worker sizing on Windows."""
+    """Size ``-n auto``: ``PYTEST_XDIST_AUTO_NUM_WORKERS`` wins, then the defaults.
+
+    This hook replaces xdist's own sizing, which is what reads the variable, so
+    it must honour it itself. Without that, CI's ``PYTEST_XDIST_AUTO_NUM_WORKERS:
+    "4"`` and the documented ``=1`` / ``=2`` local settings were ignored off
+    Windows: a 3-vCPU macOS runner ran 3 workers and took 595-911 s against the
+    900 s session timeout, while 5-vCPU runners of the same image took 349-409 s.
+    """
+    configured = os.environ.get("PYTEST_XDIST_AUTO_NUM_WORKERS", "").strip()
+    if configured:
+        try:
+            return max(1, int(configured))
+        except ValueError:
+            raise pytest.UsageError(
+                f"PYTEST_XDIST_AUTO_NUM_WORKERS must be an integer, got {configured!r}"
+            ) from None
     if sys.platform == "win32":
         return 4
     return os.cpu_count() or 4
