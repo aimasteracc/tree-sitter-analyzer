@@ -25,6 +25,7 @@ import pytest
 
 from tree_sitter_analyzer.mcp.tools import callers_py_supertypes
 from tree_sitter_analyzer.mcp.tools.callers_java_overrides import OVERRIDE_REASON
+from tree_sitter_analyzer.mcp.tools.callers_reasons import NAME_ONLY_REASON
 from tree_sitter_analyzer.mcp.tools.callers_supertypes import (
     DYNAMIC_SUPERTYPE_REASON,
 )
@@ -66,8 +67,8 @@ _PLAIN = {
     ),
 }
 
-#: The override paths (#1884: ``A<String>`` has no ``extends`` edge, so the
-#: call in ``A.run`` is bound to ``A.make`` and is not a name-only site).
+#: The override paths (#1884). Since #1880 ``A<String>`` has an ``extends`` edge,
+#: so the call in ``A.run`` is offered to the override as a name-only site.
 _OVERRIDE = {
     "o/A.java": (
         "package o;\n"
@@ -176,7 +177,7 @@ async def test_override_dispatch_with_a_listed_caller_is_incomplete(
 
     result = await _answer(tmp_path, files, f"{cls}.make")
 
-    _incomplete(result, 1, OVERRIDE_REASON)
+    _incomplete(result, 1, NAME_ONLY_REASON)
     assert "o/A.java:3" in result["next_step"], result["next_step"]
 
 
