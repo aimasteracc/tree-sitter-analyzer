@@ -91,7 +91,7 @@ class RouteCache:
         self._finalizer = weakref.finalize(
             self, _close_connections, self._connections, self._connection_lock
         )
-        self._finalizer.atexit = False  # type: ignore[misc]  # 文档化的可写属性
+        self._finalizer.atexit = False  # type: ignore[misc,unused-ignore]  # 可写属性；旧 typeshed 误报
         with self._conn() as conn:
             conn.executescript(_ROUTE_CACHE_SCHEMA)
             conn.commit()

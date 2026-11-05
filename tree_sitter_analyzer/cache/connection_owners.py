@@ -40,5 +40,5 @@ def close_with(owner: object, connection: sqlite3.Connection) -> weakref.finaliz
     """``owner`` 被回收时关闭 ``connection``；返回的终结器可提前调用（幂等）。"""
     finalizer = weakref.finalize(owner, close_owned, connection)
     # 解释器退出时不代为关闭：此时其他线程的连接不能关闭，SQLite 自行释放。
-    finalizer.atexit = False  # type: ignore[misc]  # 文档化的可写属性
+    finalizer.atexit = False  # type: ignore[misc,unused-ignore]  # 可写属性；旧 typeshed 误报
     return finalizer
