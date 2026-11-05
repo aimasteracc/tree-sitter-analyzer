@@ -23,6 +23,9 @@ from tests import (  # noqa: E402
     pytest_shard,
     pytest_tool_response_guard,
 )
+from tests.hypothesis_local_constants import (  # noqa: E402
+    disable_local_constants,
+)
 from tests.pytest_temp_hygiene import (  # noqa: E402
     cleanup_pytest_temp_root,
     configure_pytest_temp_root,
@@ -50,6 +53,9 @@ hypothesis_settings.register_profile(
     "tree_sitter_analyzer", deadline=None, database=None
 )
 hypothesis_settings.load_profile("tree_sitter_analyzer")
+# Cost-determinism fix: stop Hypothesis AST-scanning every imported project
+# module on the first string draw (see tests/hypothesis_local_constants.py).
+disable_local_constants()
 
 
 def _cleanup_pytest_git_repos() -> None:
