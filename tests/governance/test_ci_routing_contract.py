@@ -73,7 +73,7 @@ def test_no_coverage_suites_have_runtime_headroom() -> None:
         # 3-vCPU macos-latest machines need up to ~1020 s for the session; the
         # override must stay below the 20-minute step so the session reports.
         budgets = re.findall(
-            r"runner\.os == 'macOS' && '--session-timeout=(\d+)'",
+            r"runner\.os == 'macOS' && format\('--shard=\{0\}/2 --session-timeout=(\d+)'",
             no_coverage.group("body"),
         )
         assert budgets == ["1080"], job_name
@@ -127,7 +127,7 @@ def test_pr_ci_uses_fast_matrix_while_release_keeps_full_matrix() -> None:
     )
     assert pr_matrix is not None
     pr_body = pr_matrix.group("body")
-    assert pr_body.count("python-version:") == 4
+    # 4 axes + the second macOS shard (#1910).\n    assert pr_body.count("python-version:") == 5
     assert 'python-version: "3.10"' not in pr_body
     assert 'python-version: "3.12"' not in pr_body
     assert 'python-version: "3.13"' in pr_body

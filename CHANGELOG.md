@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **macOS CI lanes run as 2 deterministic shards** (#1910). `macos-latest` 3-vCPU machines needed up to 982 s against a 1080 s session budget. Both the full and the PR matrix now run each macOS version as `--shard=1/2` and `--shard=2/2` (`tests/pytest_shard.py`: `zlib.crc32` of the node id, no new dependency, no stored durations); the shards are disjoint and their union is the unsharded selection. Ubuntu and Windows lanes are unchanged. `tests/governance/test_ci_shard_contract.py` pins the partition and the matrix wiring; the `Quality Gate` check still aggregates `needs.test.result`.
+
 ### Added
 
 - **Opt-in SCIP evidence for `nav callers` on TS / JS** (`callers_scip*.py`).
