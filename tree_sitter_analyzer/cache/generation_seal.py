@@ -20,6 +20,7 @@ import os
 import sqlite3
 import time
 from collections.abc import Callable
+from typing import Any
 
 from .admission import INDEX_WRITER_BUSY, IndexWriteAdmissionError
 from .seal_creators import creators
@@ -43,8 +44,10 @@ class SealBusy(IndexWriteAdmissionError):
 
     default_code = INDEX_WRITER_BUSY
 
-    def __init__(self) -> None:
+    def __init__(self, first_busy: dict[str, Any] | None = None) -> None:
         super().__init__(SEAL_BUSY)
+        #: 第一次忙时的持有者证据（``leave_wal`` 的 ``fallback`` 路径交给调用方记录）。
+        self.first_busy = first_busy
 
 
 def _is_busy(exc: sqlite3.OperationalError) -> bool:
@@ -71,11 +74,17 @@ def leave_wal(
     timeout: float | None = None,
     clock: Callable[[], float] | None = None,
     sleep: Callable[[float], None] | None = None,
+    fallback: bool = False,
 ) -> str:
     """执行 ``PRAGMA journal_mode=DELETE`` 并返回结果模式；忙时有界重试。
 
     #1831：第一次忙时先记下持有者证据，再做一次循环回收——只被引用环引用、
     尚未关闭的本进程连接在回收时关闭，不必等满期限。
+
+    ``fallback``：调用方期满后另有出路（#1902 封存字节副本）并自行记录创建栈。
+    此时跳过期满时的堆扫描取证（第二次证据、``holder_objects`` 引用链、创建栈），
+    第一次证据随 :class:`SealBusy` 交给调用方。#1909：这些扫描在大进程里要数秒
+    CPU（Linux CI 上整个忙路径 3.4-5.6 s，慢 macOS 上约 10 s），远超 1 s 的短等待。
     """
     clock = clock or time.monotonic
     sleep = sleep or time.sleep
@@ -99,6 +108,8 @@ def leave_wal(
         outcome = _switch(connection)
         if isinstance(outcome, str):
             return outcome
+    if fallback:
+        raise SealBusy(first_busy=first) from outcome
     # #1848：期满后（不占用忙等待期限）再指出持有者对象及其引用链。
     logger.warning(
         "%s after %.1f s: first busy %s; at deadline %s; holders %s; creators %s",

@@ -180,6 +180,26 @@
 
 ### Fixed
 
+- **A candidate command's process-group grace period is now a real upper
+  bound** (#1908). On POSIX, `terminate_group` waits up to `GROUP_GRACE_S`
+  (2 s) for the group to go away after SIGTERM, but slept a whole poll step
+  each round. When the group stayed signalable after its leader was reaped,
+  a poll step longer than the grace (the over-cap test sets it to 30 s) slept
+  past the deadline. That tripped the 30 s per-test timeout on macOS. Each
+  step is now cut to the time left, so the wait never exceeds the grace.
+- **Sealing a still-held build database by copy now skips the heap-scan
+  forensics at the deadline** (#1909). #1903 waits only 1 s before copying,
+  but at the end of that wait `leave_wal` still ran its full at-deadline
+  evidence: a second holder snapshot, `holder_objects` reference chains, and
+  creation stacks. Each scans the whole heap. A CI probe measured the busy
+  seal at 3.4-5.6 s on Linux and 6-9 s on macOS, and 13.2 s once in the seal
+  test, which pushed `index_project` past the 10 s it was meant to beat. When
+  the caller can copy, `leave_wal` now raises right after the wait and hands
+  the first-busy evidence to the caller, which logs it with the creation
+  stacks it already collects. The no-fallback path keeps the full evidence.
+  The seal test now asserts the behaviour instead of end-to-end wall time:
+  the short budget was requested with the fallback, total sleep stayed within
+  it, the database was still busy, and the copy was taken.
 - **An LSP request no longer reports a timeout when the answer has already
   arrived.** The reader can settle a request's future in the same event-loop
   iteration in which its timer fires; `asyncio.wait_for` then raised a timeout

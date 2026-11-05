@@ -504,14 +504,17 @@ class GenerationStore:
             # 只读 WAL 库的读者会另建可写 -wal/-shm；切回回滚日志使版本只剩主库。
             # #1821：这一步 SQLite 不调用忙处理器，由 leave_wal 按忙等待期限重试。
             # #1902：能改封存副本时只短暂等待，之后不再依赖残留句柄自行释放。
+            # #1909：能改封存副本时期满不做堆扫描取证；创建栈与首次证据在下方记录。
+            copyable = reseal_supported()
             try:
                 journal = leave_wal(
                     connection,
                     database=database,
-                    timeout=SEAL_HOLDER_WAIT_S if reseal_supported() else None,
+                    timeout=SEAL_HOLDER_WAIT_S if copyable else None,
+                    fallback=copyable,
                 )
             except SealBusy as busy:
-                if not reseal_supported():
+                if not copyable:
                     raise
                 held, journal = busy, ""
         finally:
@@ -528,9 +531,10 @@ class GenerationStore:
             journal = "delete"
             logger.warning(
                 "%s: build database still held after %.1f s; sealed a byte copy; "
-                "creators %s",
+                "first busy %s; creators %s",
                 SEAL_BUSY,
                 SEAL_HOLDER_WAIT_S,
+                held.first_busy,
                 held_by,
             )
         if journal != "delete" or any(
