@@ -180,6 +180,35 @@
 
 ### Fixed
 
+- **An LSP request no longer reports a timeout when the answer has already
+  arrived.** The reader can settle a request's future in the same event-loop
+  iteration in which its timer fires; `asyncio.wait_for` then raised a timeout
+  even though the result, or the server's error, was already there. The
+  request now returns that outcome. A near-zero timeout reproduces the race on
+  every run (all three reader-failure cases failed before the fix), which is
+  what a loaded Windows runner hit with the test's 0.02 s timeout.
+- **The scoped-stat count test counts only its own files.** It patches the
+  process-wide `os.stat`, so on Python 3.13 an unclosed SQLite connection left
+  by an earlier test, reclaimed by the garbage collector mid-test, added one
+  stat: pytest's unraisable-exception hook formats the ResourceWarning's
+  traceback through `linecache`, which stats the frame's source file. A
+  two-test probe reproduces the extra stat on 3.13 and not on 3.12. The test
+  now requires each of its own paths to be stat'ed exactly once.
+- **`PYTEST_XDIST_AUTO_NUM_WORKERS` sizes `-n auto` again.** The suite's
+  `pytest_xdist_auto_num_workers` hook replaces xdist's own sizing, which is
+  the code that reads the variable, so CI's `"4"` and the documented `=1` /
+  `=2` local settings were ignored off Windows. `macos-latest` hands out
+  3- and 5-vCPU machines of the same image. On recent develop runs, 3 workers
+  took 586-911 s and 5 workers 349-409 s. The hook now returns the configured
+  count. Four workers on the slower machines measured 691-706 s (three lanes),
+  so this change alone does not remove the timeout risk.
+- **macOS test lanes get a 1080 s session budget instead of 900 s.** On the
+  3-vCPU machines the full session ran 586-911 s over 17 recent lanes. The run
+  that timed out was 89 % done at 911 s, which projects to about 1020 s. The
+  5-vCPU machines stay near 400 s, and progress showed no stalled test. The
+  ten slowest tests add up to about 155 s of roughly 2700 worker-seconds, so
+  speeding them up cannot close the gap. 1080 s still leaves room under the
+  20-minute step. Other platforms keep the pytest.ini 900 s.
 - **SQLite connections close with their owner instead of waiting for the
   garbage collector** (#1904). Three production paths left a connection open
   until a garbage-collection cycle: a cache's thread-local WAL writer when its
