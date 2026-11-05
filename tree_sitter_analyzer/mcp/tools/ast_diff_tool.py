@@ -489,6 +489,7 @@ class ASTDiffTool(BaseMCPTool):
         try:
             old_result = subprocess.run(
                 ["git", "show", f"{old_ref}:{file_path}"],
+                stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -502,6 +503,7 @@ class ASTDiffTool(BaseMCPTool):
         try:
             new_result = subprocess.run(
                 ["git", "show", f"{new_ref}:{file_path}"],
+                stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
