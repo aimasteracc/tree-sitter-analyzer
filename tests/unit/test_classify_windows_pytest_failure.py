@@ -218,7 +218,8 @@ def test_coverage_failure_retains_diagnostics(tmp_path: Path, profile: str) -> N
     assert artifact["with"]["path"] == "pytest-output.txt"
     assert artifact["with"]["name"] == (
         "pytest-failure-${{ inputs.matrix-profile }}-${{ matrix.os }}"
-        "-py${{ matrix.python-version }}-attempt${{ github.run_attempt }}"
+        "-py${{ matrix.python-version }}-shard${{ matrix.shard || 1 }}"
+        "-attempt${{ github.run_attempt }}"
     )
     bash = "/bin/bash" if sys.platform == "darwin" else shutil.which("bash")
     assert bash is not None
