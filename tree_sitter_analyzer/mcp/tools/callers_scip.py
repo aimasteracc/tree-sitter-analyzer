@@ -30,6 +30,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+from . import callers_scip_imports as imports
 from . import callers_scip_symbols as sym
 from .callers_outcomes import NotChecked, Scope, checked
 from .callers_scip_index import ROLE_IMPORT, Occurrence
@@ -50,7 +51,6 @@ PROVEN_OTHER = "proven_other"
 OPEN = "open"
 #: Listed entries in the ``scip`` field (totals are kept beside them).
 LIST_CAP = 20
-_IMPORT_LINE = re.compile(r"^\s*(?:import\b|export\s*(?:\{|\*|type\s*\{))")
 MODULE = "<module>"
 
 
@@ -91,6 +91,7 @@ class ScipLayer:
     #: TSA's call graph (lazily built), for caller spans and attribution.
     graph: Callable[[], Any] | None = None
     _verdicts: dict[tuple[str, int, str], SiteVerdict] = field(default_factory=dict)
+    _import_spans: dict[str, tuple[imports.Span, ...]] = field(default_factory=dict)
 
     @property
     def active(self) -> bool:
@@ -396,14 +397,18 @@ class ScipLayer:
         out = []
         for target in sorted(src.targets):
             for file, occ in index.references.get(target, ()):
-                if occ.roles & ROLE_IMPORT:
-                    continue
-                lines = src.lines(file)
-                text = lines[occ.line] if occ.line < len(lines) else ""
-                if _IMPORT_LINE.match(text):
+                if occ.roles & ROLE_IMPORT or self._in_import(file, occ):
                     continue
                 out.append((file, occ))
         return out
+
+    def _in_import(self, file: str, occ: Occurrence) -> bool:
+        """Whether ``occ`` lies inside an import / export-list statement (#1892)."""
+        spans = self._import_spans.get(file)
+        if spans is None:
+            spans = imports.import_spans(file, self.source.lines(file))
+            self._import_spans[file] = spans
+        return imports.covers(spans, occ.line, occ.col, occ.end_line, occ.end_col)
 
     def _callers_without_reference(
         self, callers: list[dict[str, Any]], refs: list[tuple[str, Occurrence]]
