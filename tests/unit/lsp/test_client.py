@@ -417,6 +417,36 @@ async def test_reader_failure_is_not_a_successful_empty_result(
         await client._stop()
 
 
+@pytest.mark.parametrize("outcome", ["result", "error", "unsettled"])
+async def test_timeout_yields_to_an_outcome_already_settled(
+    tmp_path, monkeypatch, outcome
+):
+    # Python 3.11's wait_for resolves this race itself; force the 3.12+ shape
+    # (timeout raised although the future is settled) on every version.
+    import tree_sitter_analyzer.lsp.client as module
+
+    async def racing_wait_for(fut, timeout):
+        if outcome == "result":
+            fut.set_result({"uri": "file:///a.py"})
+        elif outcome == "error":
+            fut.set_exception(module.LspProtocolError("peer refused"))
+        raise asyncio.TimeoutError
+
+    client = LspClient("python", str(tmp_path))
+    client._proc = _ProtocolPeer(tmp_path / "target.py", mode="silent")
+    monkeypatch.setattr(module.asyncio, "wait_for", racing_wait_for)
+    if outcome == "result":
+        answer = await client._request("textDocument/definition", {})
+        assert answer == {"uri": "file:///a.py"}
+    elif outcome == "error":
+        with pytest.raises(module.LspProtocolError, match="peer refused"):
+            await client._request("textDocument/definition", {})
+    else:
+        with pytest.raises(module.LspTimeoutError, match="timed out"):
+            await client._request("textDocument/definition", {})
+    assert client._pending == {}
+
+
 async def test_send_failure_does_not_leak_pending_request(tmp_path):
     # PR #1352：发送本身失败时，注册的 Future 也必须撤销。
     client = LspClient("python", str(tmp_path))
