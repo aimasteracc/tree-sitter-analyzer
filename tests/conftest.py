@@ -20,6 +20,7 @@ from hypothesis import settings as hypothesis_settings  # noqa: E402
 from tests import (  # noqa: E402
     pytest_crash_guard,
     pytest_hang_watchdog,
+    pytest_shard,
     pytest_tool_response_guard,
 )
 from tests.pytest_temp_hygiene import (  # noqa: E402
@@ -81,12 +82,14 @@ def pytest_xdist_auto_num_workers(config) -> int:
 
 def pytest_addoption(parser):
     pytest_hang_watchdog.add_options(parser)
+    pytest_shard.add_options(parser)
 
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config):
     """Configure pytest with custom markers and safety checks."""
     configure_pytest_temp_root(config)
+    pytest_shard.validate(config)
     # #1675: the tools/list definition cache writes under the user's home; the
     # suite builds definitions live unless a test opts in with its own dir.
     os.environ.setdefault("TSA_TOOL_DEFINITION_CACHE_DIR", "off")
@@ -163,7 +166,8 @@ def pytest_configure(config):
 
 
 def pytest_collection_modifyitems(config, items):
-    """只对已登记的不稳定测试禁用重跑。"""
+    """按 --shard 选择本分片 (#1910)；只对已登记的不稳定测试禁用重跑。"""
+    pytest_shard.apply(config, items)
     for item in items:
         if "quarantine" in item.keywords:
             item.add_marker(pytest.mark.flaky(reruns=0, reruns_delay=0))
