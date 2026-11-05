@@ -10,8 +10,10 @@
 
 ``B.make`` answered ``complete`` with 0 callers, although ``make()`` in
 ``A.run`` dispatches to it: the call edge is bound to ``A.make``, and the index
-has no ``extends`` edge for the generic supertype ``A<String>`` (#1880) that
-could offer the override.
+had no ``extends`` edge for the generic supertype ``A<String>`` that could offer
+the override. #1880 added that edge (the answer is now ``NAME_ONLY_INBOUND``
+with the site), but the check stays: it does not depend on the index for
+external supertypes, anonymous classes and enum constant bodies.
 
 The ``supertype_dispatch`` check therefore runs the same proof
 (:func:`~.callers_java_overrides.override_proof` with ``annotated=False``) on

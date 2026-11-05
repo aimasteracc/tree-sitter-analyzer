@@ -7,9 +7,11 @@ supertype. Two ways in leave no call edge that names the target:
    (gson ``Adapter.computeValue`` overrides ``java.lang.ClassValue.computeValue``):
    the JDK or a framework calls it. Nothing in the project can prove absence.
 2. **Supertype dispatch inside the project.** ``adapter.write(out, v)`` with
-   ``TypeAdapter<T> adapter`` is bound to ``TypeAdapter.write``. The index has no
-   ``extends`` edge for a generic supertype (``extends TypeAdapter<T>``), so the
-   override in a subclass may not be offered as a possible target.
+   ``TypeAdapter<T> adapter`` is bound to ``TypeAdapter.write``. Since #1880 the
+   index has the ``extends`` edge for a generic supertype, so the call graph
+   offers the override as a possible target; the source check below still runs,
+   because an index built before #1880, an unresolved call edge or a supertype
+   reached only through a placeholder leaves no such evidence.
 
 So an ``@Override`` lets ``complete`` through only when both are ruled out:
 
