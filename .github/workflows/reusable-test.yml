@@ -154,7 +154,12 @@ jobs:
       timeout-minutes: 20
       run: |
         set +e
+        # macos-latest hands out 3- and 5-vCPU machines of one image. The
+        # 3-vCPU ones need 590-910 s for this session (one hit the 900 s
+        # pytest.ini budget at 89 % done), the 5-vCPU ones 350-410 s; 1080 s
+        # still leaves the 20-minute step time to report.
         uv run pytest tests/ -n auto -q --tb=short --maxfail=200 \
+          ${{ runner.os == 'macOS' && '--session-timeout=1080' || '' }} \
           --ignore=tests/e2e \
           -m "not slow and not e2e and not network and not benchmark and not full_language" \
           2>&1 | tee pytest-output.txt
@@ -326,7 +331,9 @@ jobs:
       timeout-minutes: 20
       run: |
         set +e
+        # macOS session budget: see the same step in test-matrix-pr.
         uv run pytest tests/ -n auto -v --tb=short --maxfail=200 \
+          ${{ runner.os == 'macOS' && '--session-timeout=1080' || '' }} \
           --ignore=tests/e2e \
           -m "not slow and not e2e and not network and not benchmark and not full_language" \
           2>&1 | tee pytest-output.txt

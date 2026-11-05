@@ -70,6 +70,13 @@ def test_no_coverage_suites_have_runtime_headroom() -> None:
             r"(?m)^      timeout-minutes:\s*20\s*$",
             no_coverage.group("body"),
         ), job_name
+        # 3-vCPU macos-latest machines need up to ~1020 s for the session; the
+        # override must stay below the 20-minute step so the session reports.
+        budgets = re.findall(
+            r"runner\.os == 'macOS' && '--session-timeout=(\d+)'",
+            no_coverage.group("body"),
+        )
+        assert budgets == ["1080"], job_name
 
 
 def test_coverage_suites_dump_stuck_test_stacks() -> None:

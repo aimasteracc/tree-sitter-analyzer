@@ -199,8 +199,16 @@
   the code that reads the variable, so CI's `"4"` and the documented `=1` /
   `=2` local settings were ignored off Windows. `macos-latest` hands out
   3- and 5-vCPU machines of the same image. On recent develop runs, 3 workers
-  took 595-911 s (one hit the 900 s session timeout) and 5 workers 349-409 s.
-  The hook now returns the configured count.
+  took 586-911 s and 5 workers 349-409 s. The hook now returns the configured
+  count. Four workers on the slower machines measured 691-706 s (three lanes),
+  so this change alone does not remove the timeout risk.
+- **macOS test lanes get a 1080 s session budget instead of 900 s.** On the
+  3-vCPU machines the full session ran 586-911 s over 17 recent lanes. The run
+  that timed out was 89 % done at 911 s, which projects to about 1020 s. The
+  5-vCPU machines stay near 400 s, and progress showed no stalled test. The
+  ten slowest tests add up to about 155 s of roughly 2700 worker-seconds, so
+  speeding them up cannot close the gap. 1080 s still leaves room under the
+  20-minute step. Other platforms keep the pytest.ini 900 s.
 - **SQLite connections close with their owner instead of waiting for the
   garbage collector** (#1904). Three production paths left a connection open
   until a garbage-collection cycle: a cache's thread-local WAL writer when its

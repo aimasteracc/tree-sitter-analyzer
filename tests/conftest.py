@@ -64,8 +64,7 @@ def pytest_xdist_auto_num_workers(config) -> int:
     This hook replaces xdist's own sizing, which is what reads the variable, so
     it must honour it itself. Without that, CI's ``PYTEST_XDIST_AUTO_NUM_WORKERS:
     "4"`` and the documented ``=1`` / ``=2`` local settings were ignored off
-    Windows: a 3-vCPU macOS runner ran 3 workers and took 595-911 s against the
-    900 s session timeout, while 5-vCPU runners of the same image took 349-409 s.
+    Windows, and ``-n auto`` followed ``os.cpu_count()`` (3 or 5 on macos-latest).
     """
     configured = os.environ.get("PYTEST_XDIST_AUTO_NUM_WORKERS", "").strip()
     if configured:
