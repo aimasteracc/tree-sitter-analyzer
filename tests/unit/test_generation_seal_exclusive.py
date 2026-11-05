@@ -353,3 +353,60 @@ def test_seal_does_not_retry_errors_other_than_busy():
 
     with pytest.raises(sqlite3.OperationalError, match="disk I/O error"):
         leave_wal(Broken(), sleep=lambda _s: pytest.fail("must not wait"))
+
+
+class _AlwaysBusy:
+    def execute(self, _sql):
+        raise sqlite3.OperationalError("database is locked")
+
+
+def _fake_clock():
+    now = [0.0]
+
+    def sleep(seconds: float) -> None:
+        now[0] += seconds
+
+    return (lambda: now[0]), sleep
+
+
+@pytest.mark.parametrize("fallback", [True, False])
+def test_seal_fallback_skips_deadline_heap_forensics(monkeypatch, caplog, fallback):
+    # #1909：调用方能改封存副本时，期满不再做数秒 CPU 的堆扫描取证；
+    # 首次证据随 SealBusy 交给调用方。没有出路时照旧完整取证。
+    from tree_sitter_analyzer.cache import generation_seal
+
+    scans: list[str] = []
+    monkeypatch.setattr(
+        generation_seal,
+        "holder_evidence",
+        lambda _db: scans.append("evidence") or {"n": len(scans)},
+    )
+    monkeypatch.setattr(
+        generation_seal,
+        "holder_objects",
+        lambda *_a, **_k: scans.append("objects") or [],
+    )
+    monkeypatch.setattr(
+        generation_seal, "creators", lambda *_a, **_k: scans.append("creators") or []
+    )
+    clock, sleep = _fake_clock()
+    with caplog.at_level("WARNING", logger=generation_seal.__name__):
+        with pytest.raises(generation_seal.SealBusy) as raised:
+            generation_seal.leave_wal(
+                _AlwaysBusy(),
+                database="index.db",
+                timeout=1.0,
+                clock=clock,
+                sleep=sleep,
+                fallback=fallback,
+            )
+    if fallback:
+        assert (scans, raised.value.first_busy, caplog.text) == (
+            ["evidence"],
+            {"n": 1},
+            "",
+        )
+    else:
+        assert scans == ["evidence", "evidence", "objects", "creators"]
+        assert raised.value.first_busy is None
+        assert "first busy {'n': 1}" in caplog.text
