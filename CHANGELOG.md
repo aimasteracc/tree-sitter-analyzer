@@ -180,6 +180,7 @@
 
 ### Fixed
 
+- **The test hang watchdog no longer crashes a passing Windows session** (xdist). `pytest_sessionfinish` read each worker's faulthandler dump with an unguarded `read_bytes()`; on Windows a dump a worker still holds open can raise `OSError: [Errno 22]`, turning a green run red. Reads now retry briefly and a dump that stays unreadable is reported in the terminal summary instead of raising. Readable dumps are reported as before.
 - **A candidate command's process-group grace period is now a real upper
   bound** (#1908). On POSIX, `terminate_group` waits up to `GROUP_GRACE_S`
   (2 s) for the group to go away after SIGTERM, but slept a whole poll step
