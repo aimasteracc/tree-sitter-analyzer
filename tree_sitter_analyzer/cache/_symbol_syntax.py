@@ -134,6 +134,7 @@ def _javascript_parents(node: Any, source: str) -> list[str]:
 #: Java clauses that list a type's interfaces (``implements`` of a class / enum /
 #: record, ``extends`` of an interface).
 _JAVA_INTERFACE_CLAUSES = frozenset({"super_interfaces", "extends_interfaces"})
+_JAVA_ANNOTATIONS = frozenset({"marker_annotation", "annotation"})
 
 
 def _java_parents(node: Any, source: str) -> list[str]:
@@ -157,16 +158,31 @@ def _java_parents(node: Any, source: str) -> list[str]:
     return [name for name in names if name]
 
 
+def java_superclass(node: Any, source: str) -> str | None:
+    """The ``extends`` type of a Java class (as in :func:`_java_parents`), if any.
+
+    #1880: ``parents`` lists the superclass and the interfaces alike; the typed
+    resolver needs to know which one is the superclass (a class method wins over
+    an interface method).
+    """
+    clause = next((c for c in node.children if c.type == "superclass"), None)
+    if clause is None:
+        return None
+    return next(
+        (
+            name
+            for child in clause.named_children
+            if (name := _java_type_name(child, source))
+        ),
+        None,
+    )
+
+
 def _java_type_name(node: Any, source: str) -> str | None:
     """``A`` / ``pkg.A`` for a Java class type node; None for anything else."""
     if node.type == "annotated_type":
         node = next(
-            (
-                c
-                for c in node.named_children
-                if c.type != "marker_annotation" and c.type != "annotation"
-            ),
-            None,
+            (c for c in node.named_children if c.type not in _JAVA_ANNOTATIONS), None
         )
         return None if node is None else _java_type_name(node, source)
     if node.type == "generic_type":

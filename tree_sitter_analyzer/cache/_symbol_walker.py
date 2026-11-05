@@ -30,6 +30,7 @@ from ._symbol_syntax import (
     _find_parent_class,
     _node_text,
     _scala_symbol_from_node,
+    java_superclass,
     jsts_class_expression_name,
 )
 
@@ -909,6 +910,10 @@ class _SymbolWalker:
         parents = _extract_parent_classes(node, self.source, self.language)
         if parents:
             symbol["parents"] = parents
+        if self.language == "java":
+            superclass = java_superclass(node, self.source)
+            if superclass:
+                symbol["superclass"] = superclass  # #1880
         self._add_python_docstring(symbol, node)
         self.symbols.append(symbol)
 

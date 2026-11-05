@@ -22,6 +22,10 @@ from tree_sitter_analyzer.cache.extraction import _worker_index_file
 
 
 def _parents(tmp_path: Path, source: str, name: str) -> list[str]:
+    return list(_symbol(tmp_path, source, name).get("parents") or [])
+
+
+def _symbol(tmp_path: Path, source: str, name: str) -> dict:
     path = tmp_path / "Shapes.java"
     path.write_text(source, encoding="utf-8")
     result = _worker_index_file((str(path), str(tmp_path), "java"))
@@ -29,7 +33,7 @@ def _parents(tmp_path: Path, source: str, name: str) -> list[str]:
     symbols = json.loads(result["symbols_json"])["symbols"]
     found = [s for s in symbols if s.get("name") == name and s.get("kind") == "class"]
     assert len(found) == 1, found
-    return list(found[0].get("parents") or [])
+    return dict(found[0])
 
 
 @pytest.mark.parametrize(
@@ -87,6 +91,22 @@ def test_java_supertype_shapes(
     tmp_path: Path, source: str, name: str, expected: list[str]
 ) -> None:
     assert _parents(tmp_path, source, name) == expected
+
+
+@pytest.mark.parametrize(
+    ("source", "name", "expected"),
+    [
+        pytest.param(
+            "class B extends @Ann pkg.A<T> implements I {}\n", "B", "pkg.A", id="class"
+        ),
+        pytest.param("class B implements I, J {}\n", "B", None, id="no-extends"),
+        pytest.param("interface J extends K<T> {}\n", "J", None, id="interface"),
+    ],
+)
+def test_java_superclass_is_recorded(
+    tmp_path: Path, source: str, name: str, expected: str | None
+) -> None:
+    assert _symbol(tmp_path, source, name).get("superclass") == expected
 
 
 def test_class_without_supertype_has_no_parents(tmp_path: Path) -> None:
