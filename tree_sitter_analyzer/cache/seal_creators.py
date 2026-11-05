@@ -129,7 +129,8 @@ def _normalized(database: str) -> str:
 
 def _state(connection: sqlite3.Connection) -> str:
     try:
-        connection.total_changes  # noqa: B018 - 已关闭的连接在此抛出
+        # cursor() 在各版本上都先查线程、再查是否已关闭；不执行任何语句。
+        connection.cursor().close()
     except sqlite3.ProgrammingError as exc:
         return "closed" if "closed" in str(exc) else "open (other thread)"
     except Exception:  # noqa: BLE001 - 尽力而为

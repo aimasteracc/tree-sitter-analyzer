@@ -15,6 +15,7 @@ import os
 import sqlite3
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
@@ -281,3 +282,72 @@ def test_sealed_copy_warning_names_the_holder_creator(tmp_path, monkeypatch, cap
     ]
     assert len(copied) == 1
     assert "held_seal" in copied[0]
+
+
+def test_close_owned_tolerates_the_wrong_thread_and_close_errors(caplog):
+    made: list[sqlite3.Connection] = []
+    worker = threading.Thread(target=lambda: made.append(sqlite3.connect(":memory:")))
+    worker.start()
+    worker.join()
+    with caplog.at_level("DEBUG", logger=connection_owners.__name__):
+        connection_owners.close_owned(made[0])  # 其他线程创建：不能在此关闭
+
+        class Failing:
+            def close(self) -> None:
+                raise sqlite3.OperationalError("injected close failure")
+
+        connection_owners.close_owned(Failing())  # type: ignore[arg-type]
+    assert "not closed from this thread" in caplog.text
+    assert "injected close failure" in caplog.text
+
+
+def test_route_cache_finalizer_logs_a_failing_close(caplog):
+    import tree_sitter_analyzer.registry.route_cache as route_cache
+
+    class Failing:
+        def close(self) -> None:
+            raise sqlite3.OperationalError("injected close failure")
+
+    connections = {Failing()}
+    with caplog.at_level("DEBUG", logger=route_cache.__name__):
+        route_cache._close_connections(connections, threading.Lock())  # type: ignore[arg-type]
+    assert connections == set()
+    assert "injected close failure" in caplog.text
+
+
+def test_creators_report_states_uris_and_never_raise(tmp_path, monkeypatch):
+    seal_creators.install()
+    seal_creators.install()  # 幂等
+    database = _generation_database(tmp_path)
+    assert seal_creators.creators(None) == []
+    uri = Path(database).as_uri() + "?mode=rwc"
+    opened, release = threading.Event(), threading.Event()
+
+    def hold_in_another_thread() -> None:
+        connection = sqlite3.connect(uri, uri=True)
+        opened.set()
+        release.wait(10)
+        connection.close()
+
+    worker = threading.Thread(target=hold_in_another_thread)
+    worker.start()
+    try:
+        assert opened.wait(10)
+        found = seal_creators.creators(database)
+        assert [entry["state"] for entry in found] == ["open (other thread)"]
+
+        def broken():
+            raise RuntimeError("injected scan failure")
+
+        monkeypatch.setattr(seal_creators.gc, "get_objects", broken)
+        assert seal_creators.creators(database)[0]["error"].startswith("RuntimeError")
+        monkeypatch.undo()
+    finally:
+        release.set()
+        worker.join()
+
+
+def test_audit_hook_never_raises_on_odd_arguments():
+    seal_creators._audit("sqlite3.connect", ())
+    seal_creators._audit("sqlite3.connect/handle", ())
+    seal_creators._audit("open", ("x", "r", 0))
