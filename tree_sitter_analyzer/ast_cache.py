@@ -245,8 +245,12 @@ class ASTCache(
             unindexed_database_uri,
         )
 
+        from .cache.connection_owners import close_with
+
         uri = unindexed_database_uri()
         self._unindexed_anchor = open_unindexed_anchor(uri)
+        # #1904：调用方从不 close 缓存对象时，锚连接随缓存对象一起关闭，不留给回收器。
+        close_with(self, self._unindexed_anchor)
         self._unindexed_uri = uri
         return True
 

@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import sqlite3
 import threading
+import weakref
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -34,6 +36,7 @@ from typing import Any
 #   3 — #1650: the Django scanner read the wrong call field and cached an
 #       empty route list for every ``urls.py``; drop those rows.
 _SCANNER_VERSION = 3
+logger = logging.getLogger(__name__)
 
 _ROUTE_CACHE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS route_cache (
@@ -53,6 +56,20 @@ CREATE TABLE IF NOT EXISTS route_cache_meta (
 """
 
 
+def _close_connections(
+    connections: set[sqlite3.Connection], lock: threading.Lock
+) -> None:
+    """关闭并清空 ``connections``；连接均以 ``check_same_thread=False`` 打开。"""
+    with lock:
+        owned = tuple(connections)
+        connections.clear()
+    for conn in owned:
+        try:
+            conn.close()
+        except sqlite3.Error as exc:  # 回收路径上不抛出，留下诊断
+            logger.debug("route cache connection close failed: %s", exc)
+
+
 class RouteCache:
     """SQLite-backed cache for per-file route detection.
 
@@ -69,6 +86,12 @@ class RouteCache:
         self._connection_lock = threading.Lock()
         self._connections: set[sqlite3.Connection] = set()
         self._connection_generation = 0
+        # #1904：所有者从不调用 close() 时（如 MCP 工具持有的检测器随服务丢弃），
+        # 缓存对象被回收即关闭全部连接，不让 WAL 连接留在引用环里等回收器。
+        self._finalizer = weakref.finalize(
+            self, _close_connections, self._connections, self._connection_lock
+        )
+        self._finalizer.atexit = False  # type: ignore[misc,unused-ignore]  # 可写属性；旧 typeshed 误报
         with self._conn() as conn:
             conn.executescript(_ROUTE_CACHE_SCHEMA)
             conn.commit()

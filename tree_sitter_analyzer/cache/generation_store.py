@@ -41,6 +41,8 @@ from .generation_selector import (
     decode_generation_selector,
 )
 from .seal_copy import reseal_by_copy, reseal_supported
+from .seal_creators import creators as seal_creators
+from .seal_creators import install as install_seal_creators
 from .source_hash_budget import (
     SOURCE_HASH_BYTE_BUDGET,
     SourceHashBudgetExceeded,
@@ -64,6 +66,8 @@ LEASE_TIMEOUT_S = 30.0
 #: #1902：封存时等待残留句柄释放的上限（秒）；之后改为封存字节副本（POSIX）。
 SEAL_HOLDER_WAIT_S = 1.0
 logger = logging.getLogger(__name__)
+# #1904：私有构建库上的连接记下创建栈，封存忙时据此指出创建者。
+install_seal_creators()
 
 
 def _lease_busy(exc: sqlite3.OperationalError) -> bool:
@@ -513,6 +517,8 @@ class GenerationStore:
         finally:
             connection.close()
         if held is not None:
+            # 复制之前取证：副本替换路径后，残留连接不再指向私有库路径。
+            held_by = seal_creators(database)
             reseal_by_copy(database, cause=held)
             info = database.lstat()
             self._database_identities[selector.generation_id] = (
@@ -521,9 +527,11 @@ class GenerationStore:
             )
             journal = "delete"
             logger.warning(
-                "%s: build database still held after %.1f s; sealed a byte copy",
+                "%s: build database still held after %.1f s; sealed a byte copy; "
+                "creators %s",
                 SEAL_BUSY,
                 SEAL_HOLDER_WAIT_S,
+                held_by,
             )
         if journal != "delete" or any(
             os.path.lexists(f"{database}{suffix}")
