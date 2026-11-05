@@ -17,6 +17,13 @@ import weakref
 import pytest
 
 
+def _without_reseal(monkeypatch) -> None:
+    """#1902: keep the typed busy path under test; POSIX would seal a byte copy."""
+    from tree_sitter_analyzer.cache import generation_store
+
+    monkeypatch.setattr(generation_store, "reseal_supported", lambda: False)
+
+
 class _Tracker:
     def __init__(self) -> None:
         self.opened: list[tuple[weakref.ref[sqlite3.Connection], str, str, str]] = []
@@ -235,6 +242,7 @@ def test_seal_still_held_after_the_wait_is_a_typed_busy_error(tmp_path, monkeypa
     holders: list[sqlite3.Connection] = []
     _hold_build_database(monkeypatch, holders)
     monkeypatch.setattr(generation_seal, "SEAL_BUSY_TIMEOUT_S", 0.05)
+    _without_reseal(monkeypatch)
     cache = ASTCache(str(tmp_path))
     try:
         with pytest.raises(generation_seal.SealBusy) as raised:
@@ -310,6 +318,7 @@ def test_seal_busy_logs_holder_evidence(tmp_path, monkeypatch, caplog):
     holders: list[sqlite3.Connection] = []
     _hold_build_database(monkeypatch, holders)
     monkeypatch.setattr(generation_seal, "SEAL_BUSY_TIMEOUT_S", 0.05)
+    _without_reseal(monkeypatch)
     cache = ASTCache(str(tmp_path))
     try:
         with caplog.at_level("WARNING", logger=generation_seal.__name__):

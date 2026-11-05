@@ -79,7 +79,6 @@ def leave_wal(
     clock = clock or time.monotonic
     sleep = sleep or time.sleep
     budget = SEAL_BUSY_TIMEOUT_S if timeout is None else timeout
-    deadline = clock() + budget
     outcome = _switch(connection)
     if isinstance(outcome, str):
         return outcome
@@ -89,6 +88,9 @@ def leave_wal(
     if isinstance(outcome, str):
         logger.warning("%s released by garbage collection: %s", SEAL_BUSY, first)
         return outcome
+    # #1902：期限从证据与回收之后起算。大进程里两者可能就要 1 s 以上，否则较短的
+    # 期限还没等过一次就已用完。
+    deadline = clock() + budget
     delay = _FIRST_DELAY_S
     while (remaining := deadline - clock()) > 0:
         sleep(min(delay, remaining))

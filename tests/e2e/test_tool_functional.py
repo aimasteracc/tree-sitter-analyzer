@@ -1,7 +1,8 @@
 """通过真实 MCP stdio 校验主要工具的功能和响应封装。
 
 所有八个门面都经过初始化、路由和序列化。搜索案例使用独立的单符号项目，
-精确验证冷索引错误、可执行恢复提示及构建后的真实命中；其余案例使用 TSA
+精确验证冷索引错误、可执行恢复提示及构建后的真实命中；nav 案例同样使用
+两文件项目（#1902：工作量固定，不随 TSA 仓库增长）；其余案例使用 TSA
 检出目录，保留各自的健康、安全和结构行为校验。
 """
 
@@ -29,8 +30,8 @@ FACADE_WIRE_CASES = [
         "nav",
         {
             "action": "test_map",
-            "symbol": "build_nav_facade",
-            "file_path": "tree_sitter_analyzer/mcp/tools/nav_facade.py",
+            "symbol": "build_wire_widget",
+            "file_path": "wire_app.py",
             "output_format": "json",
         },
     ),
@@ -86,11 +87,18 @@ EXPECTED_FACADE_NAMES = [
     "viz",
 ]
 
-# The nav wire case cold-builds the repository-wide call graph. This is a
-# functional framing contract, not a latency assertion; dedicated smoke tests
-# own latency budgets. PR #1308 added enough indexed Python to exceed the
-# generic client wait on Linux while still completing inside pytest's 60 s cap.
-_FACADE_WIRE_TIMEOUTS = {"nav": 45.0}
+# #1902: the wire cases are a framing contract, not a latency assertion. The nav
+# case used to cold-build the call graph of the whole TSA checkout (close to the
+# 45 s client wait on CI; it timed out 3 of 4 times on #1898), a workload that
+# grows with the repository. Like search, it now runs on a two-file project.
+_NAV_FIXTURE_FILES = {
+    "wire_app.py": "def build_wire_widget():\n    return 1\n",
+    "tests/test_wire_app.py": (
+        "from wire_app import build_wire_widget\n\n\n"
+        "def test_build_wire_widget():\n"
+        "    assert build_wire_widget() == 1\n"
+    ),
+}
 
 
 def _json_text_payload(response: dict) -> dict:
@@ -199,13 +207,31 @@ class TestFacadeWireContract:
                 )
             )
             _assert_agent_wire_envelope(indexed, "index")
-        response = client.call(
-            facade_name,
-            arguments,
-            timeout=_FACADE_WIRE_TIMEOUTS.get(facade_name, 25.0),
-        )
+        if facade_name == "nav":
+            for relative, text in _NAV_FIXTURE_FILES.items():
+                path = tmp_path / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text, encoding="utf-8")
+            bound = _json_text_payload(
+                client.call(
+                    "set_project_path", {"project_path": str(tmp_path.resolve())}
+                )
+            )
+            assert bound["project_root"] == str(tmp_path.resolve())
+            indexed = _json_text_payload(
+                client.call(
+                    "index",
+                    {"action": "cache", "mode": "index", "output_format": "json"},
+                )
+            )
+            _assert_agent_wire_envelope(indexed, "index")
+        response = client.call(facade_name, arguments, timeout=25.0)
         payload = _json_text_payload(response)
         _assert_agent_wire_envelope(payload, facade_name)
+        if facade_name == "nav":
+            assert payload["test_functions"] == [
+                "tests/test_wire_app.py::test_build_wire_widget"
+            ]
         if facade_name == "search":
             assert payload["match_count"] == 1
             assert payload["file_count"] == 1
