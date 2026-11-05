@@ -404,7 +404,10 @@ async def test_reader_failure_is_not_a_successful_empty_result(
 
     client = LspClient("python", str(tmp_path))
     client._proc = _ProtocolPeer(tmp_path / "target.py", mode=mode)
-    monkeypatch.setattr(module, "_LSP_TIMEOUT", 0.02)
+    # The timer is already due when the reader settles the future in the same
+    # loop iteration, which is the race a loaded runner hits with any short
+    # timeout. The available reader outcome must win over the timeout.
+    monkeypatch.setattr(module, "_LSP_TIMEOUT", 1e-9)
     client._reader_task = asyncio.create_task(client._reader_loop())
     try:
         with pytest.raises(RuntimeError, match=error):

@@ -180,6 +180,20 @@
 
 ### Fixed
 
+- **An LSP request no longer reports a timeout when the answer has already
+  arrived.** The reader can settle a request's future in the same event-loop
+  iteration in which its timer fires; `asyncio.wait_for` then raised a timeout
+  even though the result, or the server's error, was already there. The
+  request now returns that outcome. A near-zero timeout reproduces the race on
+  every run (all three reader-failure cases failed before the fix), which is
+  what a loaded Windows runner hit with the test's 0.02 s timeout.
+- **The scoped-stat count test counts only its own files.** It patches the
+  process-wide `os.stat`, so on Python 3.13 an unclosed SQLite connection left
+  by an earlier test, reclaimed by the garbage collector mid-test, added one
+  stat: pytest's unraisable-exception hook formats the ResourceWarning's
+  traceback through `linecache`, which stats the frame's source file. A
+  two-test probe reproduces the extra stat on 3.13 and not on 3.12. The test
+  now requires each of its own paths to be stat'ed exactly once.
 - **SQLite connections close with their owner instead of waiting for the
   garbage collector** (#1904). Three production paths left a connection open
   until a garbage-collection cycle: a cache's thread-local WAL writer when its
