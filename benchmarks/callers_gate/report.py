@@ -24,6 +24,7 @@ from typing import Any
 
 from . import corpus
 from .layout import LABEL_SOURCE, REPOS, Layout
+from .mcp_client import SAFE_PATH_ENV
 from .oracle_truth import check_compact, check_rows, label_sites
 from .policy import Policy
 from .runner import RepoRun, budget_limited, check_missing
@@ -57,11 +58,11 @@ def _oracle(
     req, resp = work / f"{name}-request.json", work / f"{name}-response.json"
     req.write_text(json.dumps(request), encoding="utf-8")
     proc = subprocess.run(
-        [str(python), "-s", "-P", "-m", ORACLE_MODULE, str(req), str(resp)],
+        [str(python), "-s", "-m", ORACLE_MODULE, str(req), str(resp)],
         capture_output=True,
         text=True,
         check=False,
-        env={**os.environ, "PYTHONPATH": str(GATE_CODE_ROOT)},
+        env={**os.environ, **SAFE_PATH_ENV, "PYTHONPATH": str(GATE_CODE_ROOT)},
     )
     if proc.returncode != 0:
         raise RuntimeError(f"{name} oracle failed: {proc.stderr.strip()[-2000:]}")

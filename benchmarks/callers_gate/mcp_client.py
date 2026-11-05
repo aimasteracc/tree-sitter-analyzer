@@ -12,6 +12,11 @@ from typing import Any, BinaryIO
 
 BOOT = Path(__file__).with_name("_boot.py")
 
+#: ``python -P`` as an environment variable: keep the script directory and the
+#: working directory off ``sys.path``. ``-P`` is a 3.11+ flag that 3.10 rejects;
+#: 3.10 ignores the variable. Not part of the env fingerprint (same behaviour).
+SAFE_PATH_ENV = {"PYTHONSAFEPATH": "1"}
+
 #: Parent variables passed through unchanged (tool locations, Windows plumbing).
 PASS_THROUGH = (
     "PATH",
@@ -65,6 +70,7 @@ def server_env(
     env = {name: os.environ[name] for name in PASS_THROUGH if name in os.environ}
     env.update(SERVER_ENV_TEMPLATE)
     env.update(extra or {})
+    env.update(SAFE_PATH_ENV)
     env["PYTHONPATH"] = str(pythonpath)
     for name in PRIVATE_DIRS:
         path = private / name.lower()
@@ -88,7 +94,7 @@ class Server:
         self.log_path = log
         pkg_dir = pkg_parent / "tree_sitter_analyzer"
         self.proc = subprocess.Popen(
-            [str(python), "-s", "-P", str(BOOT), "server", str(pkg_dir), str(root)],
+            [str(python), "-s", str(BOOT), "server", str(pkg_dir), str(root)],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=self._log,

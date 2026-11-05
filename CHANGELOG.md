@@ -180,6 +180,11 @@
 
 ### Fixed
 
+- **The callers gate runs on Python 3.10 again.** Its child interpreters were
+  started with `python -P`, a 3.11+ flag, so the 3.10 full-suite lane failed
+  with `Unknown option: -P` (red on develop since #1888). The gate now sets
+  `PYTHONSAFEPATH=1`, which 3.11+ treats like `-P`; it is not part of the env
+  fingerprint, so existing gate caches stay valid.
 - **`nav callers` no longer answers `complete` for a Python method that a
   subclass inherits as another base's method** (#1896). With `class A` (with
   `m`) in `pkg/a.py`, `class I` (with `m` and `run(self): return self.m()`) in

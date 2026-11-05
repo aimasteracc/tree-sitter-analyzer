@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,7 +11,7 @@ from pathlib import Path
 from . import gitutil
 from .keys import env_fingerprint
 from .layout import Layout
-from .mcp_client import SERVER_ENV_TEMPLATE
+from .mcp_client import SAFE_PATH_ENV, SERVER_ENV_TEMPLATE
 
 
 class SideError(RuntimeError):
@@ -85,10 +86,11 @@ def environment(python: Path) -> tuple[str, str, list[str]]:
         "print(json.dumps({'v':sys.version,'d':sorted(f\"{d.metadata['Name']}=={d.version}\" for d in m.distributions())}))"
     )
     proc = subprocess.run(
-        [str(python), "-s", "-P", "-c", probe],
+        [str(python), "-s", "-c", probe],
         capture_output=True,
         text=True,
         check=False,
+        env={**os.environ, **SAFE_PATH_ENV},
     )
     if proc.returncode != 0:
         raise SideError(f"gate interpreter {python} failed: {proc.stderr.strip()}")
