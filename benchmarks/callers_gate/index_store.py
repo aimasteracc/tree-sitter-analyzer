@@ -205,7 +205,6 @@ def ensure_index(
                 [
                     str(python),
                     "-s",
-                    "-P",
                     str(BOOT),
                     "index",
                     str(head_pkg_parent / "tree_sitter_analyzer"),
