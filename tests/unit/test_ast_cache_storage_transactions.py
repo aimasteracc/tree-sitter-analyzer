@@ -1,5 +1,6 @@
 """#1376：test_ast_cache_storage_transactions 行为组；测试主体保留，中文文档和 UTF-8 修正单独校验。"""
 
+import os
 import sqlite3
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -267,6 +268,81 @@ def test_scope_prune_failure_rolls_back_all_stale_rows(cache, monkeypatch):
     remaining = {str(row[0]) for row in conn.execute("SELECT file_path FROM ast_index")}
 
     assert remaining == original_paths
+
+
+requires_posix_reseal = pytest.mark.skipif(
+    os.name != "posix", reason="Windows cannot replace a file another handle holds"
+)
+
+
+def _hold_build_database_at_seal(monkeypatch) -> list[sqlite3.Connection]:
+    """封存前在私有构建库上打开一个空闲读者，封存期间一直不关闭。"""
+    from tree_sitter_analyzer.cache import generation_store
+
+    seal = generation_store.GenerationStore.seal
+    holders: list[sqlite3.Connection] = []
+
+    def held_seal(self, selector):
+        reader = sqlite3.connect(
+            self.database(selector).as_uri() + "?mode=ro", uri=True
+        )
+        reader.execute("SELECT COUNT(*) FROM sqlite_master").fetchone()
+        holders.append(reader)
+        return seal(self, selector)
+
+    monkeypatch.setattr(generation_store.GenerationStore, "seal", held_seal)
+    return holders
+
+
+@requires_posix_reseal
+def test_scope_prune_fixture_fails_with_the_pre_1821_seal(cache, monkeypatch):
+    # 见证 #1815 的失败条件：恢复旧封存（直接切回回滚日志、不重试、不改封副本），
+    # 一个残留句柄就足以让夹具的 index_project 不发布。
+    from tree_sitter_analyzer.cache import generation_store
+
+    monkeypatch.setattr(
+        generation_store,
+        "leave_wal",
+        lambda connection, **_kwargs: str(
+            connection.execute("PRAGMA journal_mode=DELETE").fetchone()[0]
+        ),
+    )
+    holders = _hold_build_database_at_seal(monkeypatch)
+    try:
+        try:
+            published = cache.index_project(workers=0).get("published")
+        except sqlite3.OperationalError as exc:
+            assert "locked" in str(exc)
+            published = False
+    finally:
+        for holder in holders:
+            holder.close()
+
+    assert holders, "the seal must run with the extra handle open"
+    assert published is False
+
+
+@requires_posix_reseal
+def test_scope_prune_fixture_publishes_while_a_handle_holds_the_build_db(
+    cache, monkeypatch
+):
+    # #1815：上一个测试在 POSIX CI 上偶发失败。其夹具的 index_project 封存私有构建库时，
+    # 同进程里还有一个句柄（#1831 的僵尸游标、#1904 未识别的持有者）打开着该库；
+    # 旧封存的 journal_mode=DELETE 不调用忙处理器，立即报 ``database is locked``，
+    # ast_index 为空或 index_project 直接抛错。这里确定性地保持一个读者打开。
+    holders = _hold_build_database_at_seal(monkeypatch)
+    try:
+        assert cache.index_project(workers=0)["published"] is True
+        paths = {
+            str(row[0])
+            for row in cache.get_conn().execute("SELECT file_path FROM ast_index")
+        }
+    finally:
+        for holder in holders:
+            holder.close()
+
+    assert holders, "the seal must run with the extra handle open"
+    assert paths == {"src/main.py", "src/util.js"}
 
 
 def test_single_file_edge_write_failure_is_index_error(tmp_path, monkeypatch):
