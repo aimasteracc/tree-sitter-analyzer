@@ -15,6 +15,13 @@ from pathlib import Path
 import pytest
 
 
+def _without_reseal(monkeypatch) -> None:
+    """#1902: keep the typed busy path under test; POSIX would seal a byte copy."""
+    from tree_sitter_analyzer.cache import generation_store
+
+    monkeypatch.setattr(generation_store, "reseal_supported", lambda: False)
+
+
 @pytest.fixture(autouse=True)
 def _ample_chain_budget(monkeypatch):
     """慢 CI 上每步扫描全堆可能用尽默认时间上限；用例断言的是链的形状，不是耗时。"""
@@ -90,6 +97,7 @@ def _busy_seal_log(tmp_path, monkeypatch, caplog, make_holder) -> str:
     owners: list[object] = []
     _seal_with_holder(monkeypatch, make_holder, owners)
     monkeypatch.setattr(generation_seal, "SEAL_BUSY_TIMEOUT_S", 0.05)
+    _without_reseal(monkeypatch)
     cache = ASTCache(str(project))
     try:
         with caplog.at_level("WARNING", logger=generation_seal.__name__):
