@@ -17,6 +17,7 @@ from tree_sitter_analyzer.mcp.tools.callers_java_supertypes import (
     java_supertype_finding,
 )
 from tree_sitter_analyzer.mcp.tools.callers_outcomes import Checked, NotChecked
+from tree_sitter_analyzer.mcp.tools.callers_reasons import NAME_ONLY_REASON
 from tree_sitter_analyzer.mcp.tools.callers_supertypes import (
     DYNAMIC_SUPERTYPE_REASON,
     dynamic_supertype_hint,
@@ -164,7 +165,10 @@ async def test_unannotated_override_of_a_generic_supertype_is_not_complete(
 
     assert result["caller_count"] == 0
     assert result["completeness"] == "unknown"
-    assert result["completeness_reasons"] == [OVERRIDE_REASON]
+    # #1880: the index now has the `B extends A<String>` edge, so the call graph
+    # offers `B.make` as a possible target of `make()` in `A.run`: the answer
+    # names that site as name-only evidence before the source check runs.
+    assert result["completeness_reasons"] == [NAME_ONLY_REASON]
     assert "p/A.java:3" in result["next_step"]
     assert "carries `@Override`" not in result["next_step"]
 
@@ -177,7 +181,8 @@ async def test_repro_annotated_override_and_the_base_are_unchanged(tmp_path) -> 
     base = await _callers(root, "A.make")
 
     assert annotated["completeness"] == "unknown"
-    assert annotated["completeness_reasons"] == [OVERRIDE_REASON]
+    assert annotated["completeness_reasons"] == [NAME_ONLY_REASON]
+    assert "p/A.java:3" in annotated["next_step"]
     assert base["completeness"] == "complete"
     assert base["caller_count"] == 1
 

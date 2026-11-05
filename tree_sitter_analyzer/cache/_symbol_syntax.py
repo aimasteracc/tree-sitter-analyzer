@@ -131,24 +131,59 @@ def _javascript_parents(node: Any, source: str) -> list[str]:
     ]
 
 
+#: Java clauses that list a type's interfaces (``implements`` of a class / enum /
+#: record, ``extends`` of an interface).
+_JAVA_INTERFACE_CLAUSES = frozenset({"super_interfaces", "extends_interfaces"})
+
+
 def _java_parents(node: Any, source: str) -> list[str]:
-    superclass = [
-        _node_text(parent, source)
-        for child in node.children
-        if child.type == "superclass"
-        for parent in child.children
-        if parent.type == "type_identifier"
-    ]
-    interfaces = [
-        _node_text(parent, source)
-        for child in node.children
-        if child.type == "super_interfaces"
-        for type_list in child.children
-        if type_list.type == "type_list"
-        for parent in type_list.children
-        if parent.type == "type_identifier"
-    ]
-    return superclass + interfaces
+    """Direct supertypes as written, without type arguments or type annotations.
+
+    #1880: ``extends A<String>`` (``generic_type``), ``extends pkg.A``
+    (``scoped_type_identifier``), ``extends @Ann A`` (``annotated_type``) and an
+    interface's ``extends`` (``extends_interfaces``) all used to be dropped, so
+    the index had no supertype edge for them. ``pkg.A<T>`` is recorded as
+    ``pkg.A``; a node that is not a type name is skipped.
+    """
+    supertypes: list[Any] = []
+    for child in node.children:
+        if child.type == "superclass":
+            supertypes.extend(child.named_children)
+        elif child.type in _JAVA_INTERFACE_CLAUSES:
+            for type_list in child.named_children:
+                if type_list.type == "type_list":
+                    supertypes.extend(type_list.named_children)
+    names = (_java_type_name(supertype, source) for supertype in supertypes)
+    return [name for name in names if name]
+
+
+def _java_type_name(node: Any, source: str) -> str | None:
+    """``A`` / ``pkg.A`` for a Java class type node; None for anything else."""
+    if node.type == "annotated_type":
+        node = next(
+            (
+                c
+                for c in node.named_children
+                if c.type != "marker_annotation" and c.type != "annotation"
+            ),
+            None,
+        )
+        return None if node is None else _java_type_name(node, source)
+    if node.type == "generic_type":
+        node = node.named_children[0] if node.named_children else None
+        return None if node is None else _java_type_name(node, source)
+    if node.type == "type_identifier":
+        return _node_text(node, source) or None
+    if node.type == "scoped_type_identifier":
+        parts = [
+            _java_type_name(part, source)
+            for part in node.named_children
+            if part.type in ("type_identifier", "scoped_type_identifier")
+        ]
+        if not parts or not all(parts):
+            return None
+        return ".".join(str(part) for part in parts)
+    return None
 
 
 def _cpp_parents(node: Any, source: str) -> list[str]:
