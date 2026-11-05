@@ -44,10 +44,19 @@ _pending = threading.local()
 _installed = False
 
 
+def _text(database: object) -> str | None:
+    """审计参数的文本形式；Python 3.10 以文件系统编码的 ``bytes`` 传入路径。"""
+    if isinstance(database, os.PathLike):
+        database = os.fspath(database)
+    if isinstance(database, bytes):
+        return os.fsdecode(database)
+    return database if isinstance(database, str) else None
+
+
 def is_generation_database(database: object) -> bool:
     """``database`` 是否指向版本存储中的主库（路径、``Path`` 或 ``file:`` URI）。"""
-    text = os.fspath(database) if isinstance(database, os.PathLike) else database
-    if not isinstance(text, str) or _STORE_MARKER not in text:
+    text = _text(database)
+    if text is None or _STORE_MARKER not in text:
         return False
     path = text.split("?", 1)[0]
     return path.replace("\\", "/").endswith("/" + _DATABASE_NAME)
@@ -70,10 +79,10 @@ def _audit(event: str, args: tuple[Any, ...]) -> None:
         return
     try:
         if event == _CONNECT:
-            database = args[0] if args else None
+            database = _text(args[0]) if args else None
             _pending.record = (
                 {
-                    "database": str(database),
+                    "database": database,
                     "thread": threading.current_thread().name,
                     "created_at": time.time(),
                     "stack": _stack(),

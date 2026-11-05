@@ -142,6 +142,10 @@ def test_route_cache_connections_close_with_the_cache(tmp_path):
 def test_generation_database_paths_are_recognized():
     build = os.path.join("p", ".ast-cache", "index-generations", "generations", "g1")
     assert seal_creators.is_generation_database(os.path.join(build, "index.db"))
+    # Python 3.10 passes the path to the audit hook as file-system bytes.
+    assert seal_creators.is_generation_database(
+        os.fsencode(os.path.join(build, "index.db"))
+    )
     assert seal_creators.is_generation_database(
         "file:///p/.ast-cache/index-generations/generations/g1/index.db?mode=ro"
     )
