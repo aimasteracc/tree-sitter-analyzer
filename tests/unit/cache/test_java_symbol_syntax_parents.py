@@ -15,9 +15,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from tree_sitter_analyzer.cache._symbol_syntax import (
+    _java_parents,
+    _java_type_name,
+    java_superclass,
+)
 from tree_sitter_analyzer.cache.extraction import _worker_index_file
 
 
@@ -157,3 +163,39 @@ def test_index_records_generic_supertype_edges(tmp_path: Path) -> None:
     # Java supertype edges keep the ``class:Name`` placeholder (#1743).
     assert targets == ["class:A", "class:Comparable"]
     assert "B" in children.get("A", set())
+
+
+def _node(type_: str, *children: object, text: str = "") -> SimpleNamespace:
+    return SimpleNamespace(
+        type=type_,
+        children=list(children),
+        named_children=list(children),
+        text=text.encode("utf-8"),
+    )
+
+
+def test_malformed_type_nodes_are_skipped() -> None:
+    """Incomplete parser nodes give no parent instead of a wrong one."""
+    ident = _node("type_identifier", text="A")
+    assert (
+        _java_type_name(_node("annotated_type", _node("marker_annotation")), "") is None
+    )
+    assert _java_type_name(_node("generic_type"), "") is None
+    assert _java_type_name(_node("scoped_type_identifier"), "") is None
+    empty = _node("type_identifier", text="")
+    assert _java_type_name(_node("scoped_type_identifier", ident, empty), "") is None
+    assert _java_type_name(_node("array_type", ident), "") is None
+    clause = _node("super_interfaces", _node("comment"), _node("type_list", ident))
+    assert _java_parents(_node("class_declaration", clause), "") == ["A"]
+    superclass = _node("superclass", _node("array_type", ident))
+    assert java_superclass(_node("class_declaration", superclass), "") is None
+
+
+def test_non_java_classes_record_no_superclass(tmp_path: Path) -> None:
+    path = tmp_path / "m.py"
+    path.write_text("class B(A):\n    pass\n", encoding="utf-8")
+    result = _worker_index_file((str(path), str(tmp_path), "python"))
+    classes = [
+        s for s in json.loads(result["symbols_json"])["symbols"] if s["name"] == "B"
+    ]
+    assert classes and "superclass" not in classes[0]
