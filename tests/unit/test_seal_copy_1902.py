@@ -48,7 +48,7 @@ def test_a_held_build_database_is_sealed_as_a_copy_and_published(
     tmp_path, monkeypatch, caplog
 ):
     from tree_sitter_analyzer.ast_cache import ASTCache
-    from tree_sitter_analyzer.cache import generation_seal
+    from tree_sitter_analyzer.cache import generation_seal, generation_store
 
     (tmp_path / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
     holders: list[sqlite3.Connection] = []
@@ -56,7 +56,7 @@ def test_a_held_build_database_is_sealed_as_a_copy_and_published(
     cache = ASTCache(str(tmp_path))
     started = time.monotonic()
     try:
-        with caplog.at_level("WARNING"):
+        with caplog.at_level("WARNING", logger=generation_store.__name__):
             assert cache.index_project()["published"] is True
         elapsed = time.monotonic() - started
         assert cache.get_stats()["total_files"] == 1
