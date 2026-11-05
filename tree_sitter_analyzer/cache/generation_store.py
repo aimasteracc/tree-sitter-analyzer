@@ -35,12 +35,12 @@ from .generation_reader_release import release_idle_readers
 from .generation_retirement import retire_generations, retire_unpublished
 from .generation_routing import read_selector
 from .generation_seal import SEAL_BUSY, SealBusy, leave_wal
-from .seal_copy import reseal_by_copy, reseal_supported
 from .generation_selector import (
     GenerationSelector,
     InvalidGenerationSelector,
     decode_generation_selector,
 )
+from .seal_copy import reseal_by_copy, reseal_supported
 from .source_hash_budget import (
     SOURCE_HASH_BYTE_BUDGET,
     SourceHashBudgetExceeded,

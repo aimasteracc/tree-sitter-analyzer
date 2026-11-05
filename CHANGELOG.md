@@ -180,6 +180,15 @@
 
 ### Fixed
 
+- **A refresh is no longer lost when another handle keeps the build database
+  open at seal** (#1902). Leaving WAL needs an exclusive lock, and SQLite counts
+  SHARED locks per inode inside the process, so any leftover handle on the
+  private build file made `PRAGMA journal_mode=DELETE` fail for the whole
+  10 s wait (`INDEX_WRITER_BUSY` / `INDEX_GENERATION_SEAL_BUSY`). On CI that
+  handle had no Python connection or cursor (`holders []`). On POSIX the seal
+  now waits 1 s, then seals a byte copy of the checkpointed build file and
+  atomically replaces the build path; a source change during the copy still
+  fails with `SealBusy` and publishes nothing. Windows keeps the bounded wait.
 - **The callers gate runs on Python 3.10 again.** Its child interpreters were
   started with `python -P`, a 3.11+ flag, so the 3.10 full-suite lane failed
   with `Unknown option: -P` (red on develop since #1888). The gate now sets
@@ -463,6 +472,11 @@
 
 ### Tests
 
+- **The `nav` facade wire E2E case runs on a two-file project** (#1902). It
+  ran `nav action=test_map` on the TSA checkout, which cold-builds the whole
+  repository's index and call graph (about 105 s cold in a local Linux run, close
+  to the 45 s client wait on CI), and timed out 3 of 4 times on #1898. Its work
+  is now fixed-size and it uses the generic 25 s wait.
 - **Regression guards: a supertype dispatch gap is `incomplete`, never
   `complete`, when the target has listed callers** (#1899). The suspected
   gap did not reproduce on develop: `assess_completeness` runs the
