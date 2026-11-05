@@ -22,6 +22,7 @@ import time
 from collections.abc import Callable
 
 from .admission import INDEX_WRITER_BUSY, IndexWriteAdmissionError
+from .seal_creators import creators
 from .seal_diagnostics import holder_evidence
 from .seal_holders import holder_objects
 
@@ -100,11 +101,13 @@ def leave_wal(
             return outcome
     # #1848：期满后（不占用忙等待期限）再指出持有者对象及其引用链。
     logger.warning(
-        "%s after %.1f s: first busy %s; at deadline %s; holders %s",
+        "%s after %.1f s: first busy %s; at deadline %s; holders %s; creators %s",
         SEAL_BUSY,
         budget,
         first,
         holder_evidence(database),
         holder_objects(database, exclude=connection),
+        # #1904：Python 看不到的持有者（已关闭却仍持锁）由创建栈指出。
+        creators(database, exclude=connection),
     )
     raise SealBusy() from outcome

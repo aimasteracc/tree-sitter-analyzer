@@ -180,6 +180,28 @@
 
 ### Fixed
 
+- **SQLite connections close with their owner instead of waiting for the
+  garbage collector** (#1904). Three production paths left a connection open
+  until a garbage-collection cycle: a cache's thread-local WAL writer when its
+  thread exits (`close()` only closes the calling thread's connection), the
+  in-memory anchor of a never-indexed project when its cache is dropped without
+  `close()`, and route-cache connections when the detector's owner (such as
+  the MCP tool) never closes it. Each is now closed when its owner goes away:
+  in the owning thread when the thread exits, and before the connection's own
+  finalizer when the owner is collected. On Python 3.13 the finalizer closes
+  an unclosed connection without clearing its statement cache; if the object
+  outlives that, SQLite keeps the file and its locks open while Python reports
+  the connection as closed. That state matches the still-unidentified
+  build-database holder at seal.
+- **Seal-busy evidence names who opened the build database** (#1904). An audit
+  hook records a bounded creation stack for each connection opened on a
+  version-store `index.db`. Every other audit event costs two string
+  compares (about 0.14 µs; about 2 ms on a 152-file cold index), and records
+  hold only the connection id, never the connection. The
+  `INDEX_GENERATION_SEAL_BUSY` warning and the "sealed a byte copy" warning
+  now include `creators`: every live connection on that file, open or closed,
+  with its thread and creation stack, so the next CI occurrence names the code
+  that opened the holder. Seal behaviour is unchanged.
 - **A refresh is no longer lost when another handle keeps the build database
   open at seal** (#1902). Leaving WAL needs an exclusive lock, and SQLite counts
   SHARED locks per inode inside the process, so any leftover handle on the
