@@ -10,6 +10,22 @@
 
 ### Fixed
 
+- **`nav callers format=compact` no longer drops `open_sites` silently after a budget miss** (#1923).
+  An `unknown` answer whose edge layer failed reruns the review gates only for
+  the `open_sites` bound, and those gates have wall-clock budgets (the non-call
+  reference scan, the absence freshness scan). When one ran out, the bound read
+  `NO_SITE_LIST`, the same as a structural gap, and the compact answer omitted
+  `open_sites` without saying why. The gate asks the compact form in a separate
+  call, so under load the same code on the same row gave a compact answer with
+  and without the bound. A review gate that could not run on this call (a
+  `*_UNCHECKED` code, or `SOURCE_SCOPE_UNKNOWN`) now gives
+  `{"enumerated": false, "reason": "REVIEW_UNCHECKED", "unchecked": <code>}`,
+  and the compact answer carries it with an `open: unchecked (<code>); re-ask or
+  format=verbose` line. The verdict and reasons are unchanged (still `unknown`,
+  never `complete`); structural skips still read `NO_SITE_LIST`. The callers gate
+  now treats an unchecked bound, or a compact bound that differs from the full
+  answer's projection, as budget-limited and re-asks the row.
+
 - **Cold first `nav callers`: the certification walk runs its file system calls on 4 threads** (#1835).
   A fresh process pays the certified index capture before its first answer:
   four pathname walks of the source scope (two before the index read, two

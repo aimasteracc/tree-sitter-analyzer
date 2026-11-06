@@ -36,6 +36,10 @@ _OPEN = re.compile(
     r"^open: (?P<total>\d+) sites \(exhaustive\)  (?P<sites>.+?)"
     r"(?:; \+(?P<more>\d+) more \(format=verbose\))?$"
 )
+#: #1923: a bound that failed because a review gate could not run on this call.
+_OPEN_UNCHECKED = re.compile(
+    r"^open: unchecked \((?P<code>[A-Z_]+)\); re-ask or format=verbose$"
+)
 #: PR-4: sites named inline on the ``open:`` line.
 OPEN_SHOWN = 10
 
@@ -56,6 +60,8 @@ class CompactShape:
     collapsed: int = 0
     #: PR-4: ``(total, named sites, more)`` of an exhaustive bound, else None.
     open_bound: tuple[int, tuple[str, ...], int] | None = None
+    #: #1923: the gate code of a bound that could not be checked, else None.
+    open_unchecked: str | None = None
 
 
 def _must_match(pattern: re.Pattern[str], line: str) -> re.Match[str]:
@@ -74,7 +80,16 @@ def parse_compact(answer: Mapping[str, Any]) -> CompactShape:
     verdict = _must_match(_VERDICT, lines[-1])
     body = lines[1:-1]
     open_bound = None
-    if body and (opened := _OPEN.match(body[-1])) is not None:
+    open_unchecked = None
+    if body and (gap := _OPEN_UNCHECKED.match(body[-1])) is not None:
+        open_unchecked = gap["code"]
+        body = body[:-1]
+        assert answer.get("open_sites") == {
+            "enumerated": False,
+            "reason": "REVIEW_UNCHECKED",
+            "unchecked": open_unchecked,
+        }, answer
+    elif body and (opened := _OPEN.match(body[-1])) is not None:
         named = tuple(opened["sites"].split("; "))
         open_bound = (int(opened["total"]), named, int(opened["more"] or 0))
         body = body[:-1]
@@ -117,6 +132,7 @@ def parse_compact(answer: Mapping[str, Any]) -> CompactShape:
         hidden=hidden,
         collapsed=collapsed,
         open_bound=open_bound,
+        open_unchecked=open_unchecked,
     )
 
 
@@ -191,7 +207,20 @@ def expected_shape(
         hidden=max(0, total - len(page)),
         collapsed=len(page) - len(listed),
         open_bound=_expected_open(full, label),
+        open_unchecked=_expected_unchecked(full, label),
     )
+
+
+def _expected_unchecked(full: Mapping[str, Any], label: str) -> str | None:
+    """#1923: the gate code an ``unknown`` full answer's unchecked bound names."""
+    bound = full.get("open_sites")
+    if label != "unknown" or not isinstance(bound, Mapping):
+        return None
+    if bound.get("enumerated") is not False or bound.get("reason") != (
+        "REVIEW_UNCHECKED"
+    ):
+        return None
+    return str(bound.get("unchecked") or "REVIEW_UNCHECKED")
 
 
 def _expected_open(

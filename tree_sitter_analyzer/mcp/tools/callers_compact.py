@@ -16,6 +16,8 @@
 #1854：调用方按 :mod:`callers_confidence` 的层级稳定排序，``unconfirmed_receiver``
 层默认折叠为计数行（``unconfirmed_collapsed`` 字段给出同一数目）。列出的与折叠的
 合起来正是完整答复本页的调用方；判定与原因码不受折叠影响。
+    open: <k> sites (exhaustive)  a.py:3; ...   # PR-4：仅 unknown 且界限穷尽时
+    open: unchecked (<gate code>); re-ask or format=verbose   # #1923
     verdict: complete
     verdict: incomplete (<top reasons>); details: format=verbose
     verdict: unknown (<top reasons>); details: format=verbose
@@ -46,6 +48,11 @@ CALLERS_FORMATS = (COMPACT_FORMAT, VERBOSE_FORMAT)
 #: 判定行列出的原因码个数，其余以 ``+N`` 计数。
 TOP_REASONS = 3
 
+#: #1923：原因码以此结尾表示一道检查本次未能运行（期限用尽、文件读不到）。
+UNCHECKED_SUFFIX = "_UNCHECKED"
+#: #1923：``open_sites`` 因某道复核门本次未能运行而不成立；``unchecked`` 给出该门的码。
+REVIEW_UNCHECKED = "REVIEW_UNCHECKED"
+UNCHECKED_KEY = "unchecked"
 _NOT_COMPLETE_LABELS = frozenset({"incomplete"})
 _DETAILS = "; details: format=verbose"
 INCLUDE_UNCONFIRMED = "include_unconfirmed"
@@ -143,6 +150,25 @@ def open_line(answer: Mapping[str, Any]) -> str | None:
     return f"open: {len(refs)} sites (exhaustive)  {shown}{tail}"
 
 
+def unchecked(reason: Any) -> bool:
+    """#1923：``reason`` 是否点名一道本次未能运行的检查（``*_UNCHECKED``）。"""
+    return isinstance(reason, str) and reason.endswith(UNCHECKED_SUFFIX)
+
+
+def unchecked_bound(answer: Mapping[str, Any]) -> str | None:
+    """#1923：界限因复核门本次未能运行而不成立时，返回该门的原因码。
+
+    这是与负载相关的缺口（换一次调用可能成立），紧凑答复必须点名它，
+    而不是像结构性的 ``NO_SITE_LIST`` 那样省略界限。
+    """
+    bound = answer.get(OPEN_SITES_FIELD)
+    if not isinstance(bound, Mapping) or bound.get("enumerated") is not False:
+        return None
+    if bound.get("reason") != REVIEW_UNCHECKED:
+        return None
+    return str(bound.get(UNCHECKED_KEY) or REVIEW_UNCHECKED)
+
+
 def compact_callers(answer: Any, *, include_unconfirmed: bool = False) -> Any:
     """把完整 callers 答复投影为紧凑答复；失败答复原样返回。
 
@@ -171,8 +197,11 @@ def compact_callers(answer: Any, *, include_unconfirmed: bool = False) -> Any:
     verdict = compact_verdict(answer)
     label = verdict_label(answer)
     opened = open_line(answer) if label == "unknown" else None
+    gap = unchecked_bound(answer) if label == "unknown" and not opened else None
     if opened:
         lines.append(opened)
+    elif gap:
+        lines.append(f"open: unchecked ({gap}); re-ask or format=verbose")
     lines.append(f"verdict: {verdict}{'' if label == 'complete' else _DETAILS}")
     compact: dict[str, Any] = {"success": True}
     if isinstance(answer.get("verdict"), str):
@@ -194,6 +223,15 @@ def compact_callers(answer: Any, *, include_unconfirmed: bool = False) -> Any:
                     }
                 }
                 if opened
+                # #1923：本次未能运行的复核门使界限不成立——点名原因，绝不静默省略。
+                else {
+                    OPEN_SITES_FIELD: {
+                        "enumerated": False,
+                        "reason": REVIEW_UNCHECKED,
+                        UNCHECKED_KEY: gap,
+                    }
+                }
+                if gap
                 else {}
             ),
             "answer": "\n".join(lines),

@@ -398,15 +398,43 @@ def budget_limited(row: dict[str, Any]) -> bool:
 
     TSA reports ``*_UNCHECKED`` when a check ran out of time, and the compact
     form is computed by a separate call that may land on the other side of a
-    budget. Such a row is re-asked once the machine is quieter.
+    budget. Such a row is re-asked once the machine is quieter. #1923: the
+    ``open_sites`` bound reruns review gates under their own budgets, so an
+    ``open_sites`` that says ``*_UNCHECKED``, or a compact bound that differs from
+    the full answer's, is budget-limited too.
     """
     full = row["full"]
     if any(
         str(r).endswith("_UNCHECKED") for r in full.get("completeness_reasons") or ()
     ):
         return True
-    compact = (row.get("compact") or {}).get("completeness")
-    return bool(compact != full.get("completeness"))
+    bound = full.get("open_sites")
+    if isinstance(bound, dict) and str(bound.get("reason") or "").endswith(
+        "_UNCHECKED"
+    ):
+        return True
+    compact = row.get("compact") or {}
+    if compact.get("completeness") != full.get("completeness"):
+        return True
+    # #1923: the compact call computes its own bound; one that landed on the
+    # other side of a budget carries a different (or no) ``open_sites``.
+    return bool(compact.get("open_sites") != _projected_bound(full))
+
+
+def _projected_bound(full: dict[str, Any]) -> dict[str, Any] | None:
+    """The ``open_sites`` the compact form projects from this full answer."""
+    bound = full.get("open_sites")
+    if full.get("completeness") != "unknown" or not isinstance(bound, dict):
+        return None
+    if bound.get("enumerated") is True:
+        return {"total": bound.get("total"), "enumerated": True}
+    if bound.get("reason") == "REVIEW_UNCHECKED":
+        return {
+            "enumerated": False,
+            "reason": "REVIEW_UNCHECKED",
+            "unchecked": bound.get("unchecked") or "REVIEW_UNCHECKED",
+        }
+    return None
 
 
 def check_missing(row: dict[str, Any]) -> bool:
