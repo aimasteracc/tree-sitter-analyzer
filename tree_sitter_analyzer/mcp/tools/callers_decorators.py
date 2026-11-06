@@ -26,8 +26,11 @@ RFC-0028 §1.2 的守卫在 0 调用方时按名收窄（#1596），注册表分
 from __future__ import annotations
 
 import ast
+import hashlib
 import os
 import re
+import threading
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any
 
@@ -309,29 +312,98 @@ def _tree_sitter_decorators(
     text: str, line: int, language: str
 ) -> list[Decorator] | None:
     """非 Python：tree-sitter 中挂在该声明上的装饰器 / 注解，一律不豁免。"""
+    table = _ts_decorator_table(text, language)
+    if table is None:
+        return None
+    return [Decorator(raw, None) for raw, start, end in table if start <= line <= end]
+
+
+#: 一个挂在声明上的装饰器：(折叠空白后的文本, 头部起始行, 头部结束行)，均为 1 起。
+_TsDecorator = tuple[str, int, int]
+
+#: RFC-0043 原型（默认关闭）：按 (语言, 文本摘要) 保留装饰器表。
+PARSE_MEMO_ENV = "TSA_RESIDENT_PARSE_MEMO"
+#: 原型备忘录的条目上限（每条只是一张装饰器表，不保留语法树）。
+PARSE_MEMO_MAX_ENTRIES = 256
+_parse_memo: OrderedDict[tuple[str, bytes], tuple[_TsDecorator, ...] | None] = (
+    OrderedDict()
+)
+_parse_memo_lock = threading.Lock()
+
+
+def _parse_memo_enabled() -> bool:
+    return os.environ.get(PARSE_MEMO_ENV, "").strip() == "1"
+
+
+def parse_memo_size() -> int:
+    """备忘录当前条目数（测试与诊断用）。"""
+    with _parse_memo_lock:
+        return len(_parse_memo)
+
+
+def clear_parse_memo() -> None:
+    """清空备忘录（测试；内存压力）。"""
+    with _parse_memo_lock:
+        _parse_memo.clear()
+
+
+def _ts_decorator_table(text: str, language: str) -> tuple[_TsDecorator, ...] | None:
+    """文本中每个挂在声明上的装饰器（源码顺序）；无法解析为 None。
+
+    RFC-0043：结果只取决于 ``text`` 与 ``language``。开启备忘录时按文本摘要复用；
+    文本仍由调用方每次按 stat 证据实时读取，文件一变摘要即变，因此不改变新鲜度。
+    """
+    if not _parse_memo_enabled():
+        return _build_ts_decorator_table(text, language)
+    key = (language, hashlib.blake2b(text.encode("utf-8"), digest_size=16).digest())
+    with _parse_memo_lock:
+        if key in _parse_memo:
+            _parse_memo.move_to_end(key)
+            return _parse_memo[key]
+    table = _build_ts_decorator_table(text, language)
+    with _parse_memo_lock:
+        _parse_memo[key] = table
+        _parse_memo.move_to_end(key)
+        while len(_parse_memo) > PARSE_MEMO_MAX_ENTRIES:
+            _parse_memo.popitem(last=False)
+    return table
+
+
+def _parse_tree_sitter(text: str, language: str) -> tuple[bytes, Any] | None:
+    """``(源码字节, 根节点)``；没有 grammar 时为 None。"""
     from ...language_loader import create_parser_safely
 
+    parser = create_parser_safely(language)
+    if parser is None:
+        return None
+    source = text.encode("utf-8")
+    return source, parser.parse(source).root_node
+
+
+def _build_ts_decorator_table(
+    text: str, language: str
+) -> tuple[_TsDecorator, ...] | None:
     try:
-        parser = create_parser_safely(language)
-        if parser is None:
-            return None
-        source = text.encode("utf-8")
-        root = parser.parse(source).root_node
+        parsed = _parse_tree_sitter(text, language)
     except Exception:  # noqa: BLE001 — grammar 故障即“无法解析”，保守处理
         return None
-    found: list[Decorator] = []
+    if parsed is None:
+        return None
+    source, root = parsed
+    found: list[_TsDecorator] = []
     stack: list[Any] = [root]
     while stack:
         node = stack.pop()
         if node.type in _TS_DECORATOR_TYPES:
             owner = _ts_owner(node)
-            if owner is not None and _ts_header_holds(node, owner, line):
+            if owner is not None:
                 raw = source[node.start_byte : node.end_byte].decode("utf-8", "replace")
-                found.append(Decorator(_WHITESPACE.sub(" ", raw).strip(), None))
+                start, end = _ts_header_span(node, owner)
+                found.append((_WHITESPACE.sub(" ", raw).strip(), start, end))
             continue
         # 逆序压栈，使装饰器按源码顺序出现。
         stack.extend(reversed(node.children))
-    return found
+    return tuple(found)
 
 
 def _ts_owner(node: Any) -> Any | None:
@@ -363,9 +435,9 @@ def _ts_is_declaration(node: Any) -> bool:
     return str(node.type).endswith(_TS_DECLARATION_SUFFIXES)
 
 
-def _ts_header_holds(decorator: Any, owner: Any, line: int) -> bool:
-    """``line`` 是否落在装饰器起始行到声明名字所在行之间（均为 1 起）。"""
+def _ts_header_span(decorator: Any, owner: Any) -> tuple[int, int]:
+    """装饰器起始行到声明名字所在行（均为 1 起）；声明行落在其间才算挂在该声明上。"""
     name = owner.child_by_field_name("name")
     end = int((name or owner).start_point[0]) + 1
     start = int(min(decorator.start_point[0], owner.start_point[0])) + 1
-    return start <= line <= end
+    return start, end
