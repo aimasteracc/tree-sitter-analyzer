@@ -17,7 +17,8 @@ from tree_sitter_analyzer.language_loader import create_parser_safely
 def _scopes(source: str) -> dict[tuple[int, str], str | None]:
     """``(line, full_name) -> kotlin_scope`` of every call in ``source``."""
     parser = create_parser_safely("kotlin")
-    assert parser is not None
+    if parser is None:
+        pytest.fail("the Kotlin grammar is not available")
     tree = parser.parse(source.encode("utf-8"))
     _definitions, calls = walk_tree(tree.root_node, source, "kotlin")
     return {
