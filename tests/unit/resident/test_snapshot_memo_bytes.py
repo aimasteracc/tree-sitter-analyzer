@@ -119,6 +119,21 @@ def test_table_estimate_scales_with_rows() -> None:
     assert small >= exact  # errs high: per-row overhead on top of the rows
 
 
+def test_sqlite_rows_count_their_fields() -> None:
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT ? AS a, ? AS b", ("x" * 500, "y" * 500)).fetchone()
+    conn.close()
+    with_rows = MappingProxyType({"n": (row,)})
+    plain = MappingProxyType({"n": (("x" * 500, "y" * 500),)})
+
+    assert snapshot_memo.estimate_entry(
+        ("table", "t"), with_rows, table=True
+    ) == snapshot_memo.estimate_entry(("table", "t"), plain, table=True)
+
+
 def test_a_new_snapshot_of_a_root_releases_its_bytes() -> None:
     snapshot_memo.cached(_Snap(snapshot="s1"), "r", (), lambda: _rows(20))
     before = snapshot_memo.stats()["bytes"]

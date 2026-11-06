@@ -39,6 +39,7 @@ Trust (RFC-0042 R0/R1):
 
 from __future__ import annotations
 
+import sqlite3
 import sys
 import threading
 from collections import OrderedDict
@@ -238,10 +239,19 @@ def estimate_entry(entry: Hashable, value: Any, *, table: bool = False) -> int:
         sample = list(islice(value.items(), _TABLE_SAMPLE))
         if not sample:
             return sys.getsizeof(value) + estimate_bytes(entry)
-        measured = sum(estimate_bytes(k) + estimate_bytes(v) for k, v in sample)
+        measured = sum(estimate_bytes(k) + estimate_bytes(_plain(v)) for k, v in sample)
         mean = measured / len(sample) + _ROW_OVERHEAD
         return int(rows * mean) + sys.getsizeof(value) + estimate_bytes(entry)
-    return estimate_bytes(value) + estimate_bytes(entry)
+    return estimate_bytes(_plain(value)) + estimate_bytes(entry)
+
+
+def _plain(value: Any) -> Any:
+    """``sqlite3.Row`` values as tuples, so their fields are counted (ES alias rows)."""
+    if isinstance(value, sqlite3.Row):
+        return tuple(value)
+    if isinstance(value, tuple):
+        return tuple(_plain(item) for item in value)
+    return value
 
 
 def stats() -> dict[str, int]:
