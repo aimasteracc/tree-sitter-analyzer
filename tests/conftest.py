@@ -457,6 +457,12 @@ def _reset_all_singletons():
             "clear",
             lambda fn: fn(),
         ),
+        # RFC-0043：解析派生事实按内容摘要记忆在进程内（默认开启）；每个测试如同新进程。
+        (
+            "tree_sitter_analyzer.resident.parse_facts",
+            "clear",
+            lambda fn: fn(),
+        ),
         (
             "tree_sitter_analyzer.mcp.tools.callers_external_producers",
             "clear_shapes",
