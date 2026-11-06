@@ -27,6 +27,13 @@ when, for every failed check:
 Anything else (an accessor, a decorator, unattributed module-level sites, an
 unchecked or stale gate, a truncated list) is ``{"enumerated": false, "reason":
 ...}``; see :data:`TRUNCATED` and :data:`NO_SITE_LIST`.
+
+#1923: when a review gate could not run on this call (a ``*_UNCHECKED`` code, or
+``SOURCE_SCOPE_UNKNOWN`` from a freshness scan that ran out of time), the bound
+is ``{"enumerated": false, "reason": "REVIEW_UNCHECKED", "unchecked": <code>}``,
+not ``NO_SITE_LIST``: it failed for a load-dependent cause, and the compact
+projection carries it (``open: unchecked (<code>)``) instead of silently
+omitting the bound. The verdict is unaffected: it is still ``unknown``.
 """
 
 from __future__ import annotations
@@ -37,14 +44,15 @@ from typing import Any
 from .callers_absence import NON_CALL_REASON, AbsenceVerdict
 from .callers_checks import REQUIRED_CHECKS, REVIEW
 from .callers_compact import OPEN_SITES_FIELD as FIELD
-from .callers_compact import site_refs
-from .callers_outcomes import Checked
+from .callers_compact import REVIEW_UNCHECKED, UNCHECKED_KEY, site_refs, unchecked
+from .callers_outcomes import Checked, NotChecked
 from .callers_reasons import (
     DECLARING_FILE_REASON,
     EDGE_REASONS,
     NAME_ONLY_REASON,
     UNRESOLVED_INBOUND_REASON,
 )
+from .relation_freshness import UNKNOWN_REASON as FRESHNESS_UNKNOWN_REASON
 
 #: A blocking check's site list was capped.
 TRUNCATED = "SITES_TRUNCATED"
@@ -87,7 +95,7 @@ def open_sites(
     verdict = review()
     review_sites, failure, extra = _review_bound(verdict)
     if failure is not None:
-        return _not_enumerated(failure), {}
+        return _not_enumerated(failure, extra.get(UNCHECKED_KEY)), {}
     sites = edge_sites + review_sites
     distinct = {(str(site.get("file")), site.get("line")) for _field, site in sites}
     if not distinct:
@@ -112,8 +120,17 @@ def open_sites_step(func_name: str, answer: Mapping[str, Any]) -> str | None:
     )
 
 
-def _not_enumerated(code: str) -> dict[str, Any]:
-    return {"enumerated": False, "reason": code}
+def _not_enumerated(code: str, gate_code: str | None = None) -> dict[str, Any]:
+    bound: dict[str, Any] = {"enumerated": False, "reason": code}
+    if gate_code is not None:
+        bound[UNCHECKED_KEY] = gate_code
+    return bound
+
+
+def _transient(reason: str) -> bool:
+    """#1923: a review gate's NotChecked code for a transient cause (a budget ran
+    out, a file could not be read), as opposed to a structural skip."""
+    return unchecked(reason) or reason == FRESHNESS_UNKNOWN_REASON
 
 
 def _edge_bound(
@@ -143,9 +160,16 @@ def _review_bound(
     if verdict is None:
         return [], NO_SITE_LIST, {}
     outcomes = dict(verdict.checks) | dict(verdict.trailing)
-    failed = []
+    failed: list[tuple[str, tuple[str, ...]]] = []
     for name in _REVIEW_NAMES:
         found = outcomes.get(name)
+        if isinstance(found, NotChecked) and _transient(found.reason):
+            if any(failed_name != "non_call_references" for failed_name, _ in failed):
+                return [], NO_SITE_LIST, {}  # already structural either way
+            # #1923: the gate ran out of time (or could not read a file) on this
+            # call. Say so instead of a structural NO_SITE_LIST, so the answer
+            # (and its compact projection) names a transient cause.
+            return [], REVIEW_UNCHECKED, {UNCHECKED_KEY: found.reason}
         if not isinstance(found, Checked):
             return [], NO_SITE_LIST, {}
         if found.problems:

@@ -127,3 +127,48 @@ def test_unchanged_rows_are_not_retried(
     run = _run(tmp_path, _row(TARGET, "complete", []))
     runner.retry_budget_rows(_ctx(tmp_path), run)
     assert run.retried == []
+
+
+# --- #1923: the open_sites bound has budgets of its own ---------------------
+
+_BOUND = {"total": 8, "enumerated": True, "fields": ["unresolved_sites"]}
+
+
+def _unknown(full_bound: Any, compact_bound: Any) -> dict[str, Any]:
+    """The hono ``HonoRequest.addValidatedData`` shape: unknown, an exhaustive
+    bound in the full answer, and whatever bound the separate compact call got."""
+    row = _row(TARGET, "unknown", ["UNRESOLVED_IN_DECLARING_FILE", "NAME_ONLY_INBOUND"])
+    row["full"]["open_sites"] = full_bound
+    row["compact"]["open_sites"] = compact_bound
+    return row
+
+
+def test_a_compact_answer_that_lost_the_bound_is_budget_limited() -> None:
+    assert runner.budget_limited(_unknown(_BOUND, None))
+    assert not runner.budget_limited(_unknown(_BOUND, {"total": 8, "enumerated": True}))
+    # A structural non-bound projects to no compact bound: forms agree.
+    assert not runner.budget_limited(
+        _unknown({"enumerated": False, "reason": "NO_SITE_LIST"}, None)
+    )
+
+
+def test_an_unchecked_bound_is_budget_limited_in_either_form() -> None:
+    unchecked = {
+        "enumerated": False,
+        "reason": "REVIEW_UNCHECKED",
+        "unchecked": "NON_CALL_REFERENCES_UNCHECKED",
+    }
+    assert runner.budget_limited(_unknown(unchecked, unchecked))
+    assert runner.budget_limited(_unknown(_BOUND, unchecked))
+
+
+def test_a_compact_answer_that_lost_the_bound_is_re_asked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    good = _unknown(_BOUND, {"total": 8, "enumerated": True})
+    monkeypatch.setattr(runner, "compute_side", lambda **kw: ([good], 0.1))
+    run = _run(tmp_path, good)
+    run.base_rows[0] = _unknown(_BOUND, None)  # the flaky base answer
+    runner.retry_budget_rows(_ctx(tmp_path), run)
+    assert run.base_rows[0] == good
+    assert [(r["side"], r["conclusive"]) for r in run.retried] == [("base", True)]

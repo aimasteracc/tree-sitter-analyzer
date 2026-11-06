@@ -130,7 +130,12 @@ def test_review_gate_that_did_not_run_blocks_enumeration() -> None:
 
     bound, _ = _bound(_edge_listed(), ["NAME_ONLY_INBOUND"], review=review)
 
-    assert bound == {"enumerated": False, "reason": NO_SITE_LIST}
+    # #1923: a gate that could not run on this call is named, not NO_SITE_LIST.
+    assert bound == {
+        "enumerated": False,
+        "reason": "REVIEW_UNCHECKED",
+        "unchecked": "ACCESSOR_UNCHECKED",
+    }
 
 
 def test_missing_review_verdict_blocks_enumeration() -> None:
