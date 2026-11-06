@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### Added
+
+- **RFC-0043 prototype: opt-in memo of the per-text decorator table for `nav callers`** (#1855).
+  The registering-decorator gate (RFC-0040) re-parsed the target's declaring
+  file with tree-sitter and walked the whole tree on every review-gated query;
+  on zod that was about 0.7 s per query. With `TSA_RESIDENT_PARSE_MEMO=1` the
+  walk's result (decorator text and declaration-header lines, no syntax tree)
+  is kept per `(language, digest of the text)`, at most 256 entries. The text is
+  still read through the stamp-validated file cache on every request, so an
+  edited file has a new digest and is parsed again; freshness and answers are
+  unchanged. Default off. `benchmarks/resident/corpus_replay.py` replays every
+  stored callers-gate answer in-process (identity and warm latency by answer
+  kind) and `benchmarks/resident/copy_gate_index.py` copies a gate index to a
+  scratch root without writing the gate cache. RFC-0043 records the 7-repo
+  measurements: graph reads are 0.5–2.3 % of warm time; the review gates are
+  70–93 %.
+
 ### Changed
 
 - **SQL Platform Compatibility runs macOS as one job instead of four.** macOS arm64 runners are capacity-constrained, and each of the four `macos-latest` Python 3.10-3.13 jobs did only ~30 s of work while needing its own runner. `sql-platform-compat.yml` now runs one `Test Compatibility (macos-latest, Python 3.10-3.13)` job that loops over all four versions (`uv run --python`), keeps per-version results in collapsible log groups, continues past a failing version and fails the job if any version failed. Ubuntu/Windows stay a per-version matrix; `SQL Platform Compatibility` is still the single reusable-workflow job the `Quality Gate` aggregates. `tests/governance/test_ci_sql_macos_contract.py` pins the four-version macOS coverage. macOS jobs per run: 6 -> 3 (PR, SQL lane routed), 10 -> 7 (full validation).
