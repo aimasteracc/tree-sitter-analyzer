@@ -209,7 +209,10 @@ def _candidates(
         text = FILE_CACHE.read_text(os.path.join(project_root, file))
         if text is None:
             return _fail(f"{file}, which may declare a subtype, could not be read")
-        if not clause.search(text):
+        # RFC-0043: the clause names ``name`` as a whole word, so a text without the
+        # substring cannot match; the substring test is exact and far cheaper than
+        # the lazy clause scan over every Java type file.
+        if name not in text or not clause.search(text):
             continue
         parsed = reader.parse(file, text)
         if parsed is None:

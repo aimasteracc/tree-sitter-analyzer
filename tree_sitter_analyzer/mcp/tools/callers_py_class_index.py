@@ -36,6 +36,7 @@ from .callers_py_supertypes import (
     _eval,
     _keyword_problem,
     _Module,
+    _parse,
     _Reader,
     _scopes_for,
 )
@@ -128,8 +129,7 @@ class ClassIndex:
         """The classes of ``rel``; None when it cannot be read or parsed."""
         with self._lock:
             if rel not in self._files:
-                module = _Reader(self.root, lambda: None).module(rel)
-                self._files[rel] = None if module is None else _file_facts(module)
+                self._files[rel] = _read_file_facts(self.root, rel)
             return self._files[rel]
 
     def klass(self, key: Key) -> ClassFacts | None:
@@ -288,6 +288,29 @@ def _base(
 
 
 # --- per file -------------------------------------------------------------------------
+
+
+def _read_file_facts(root: str, rel: str) -> FileFacts | None:
+    """The classes and renames of ``rel`` as read now; None when unreadable or unparsable.
+
+    RFC-0043: :func:`_file_facts` is a pure function of the file's bytes (and
+    ``rel``, which every fact names), so it is reused per content digest across
+    index states (a renewed snapshot or a refresh rebuilds the index but not the
+    facts of unchanged files). The bytes are read live through the evidence file
+    cache on every call; no syntax tree is kept.
+    """
+    from ...resident import parse_facts
+
+    found = FILE_CACHE.read_stamped(os.path.join(root, *rel.split("/")))
+    if found is None:
+        return None
+    data = found[0]
+
+    def compute() -> FileFacts | None:
+        module = _parse(rel, data)
+        return None if module is None else _file_facts(module)
+
+    return parse_facts.facts("py.class_facts", "python", data, compute, extra=(rel,))
 
 
 def _file_facts(module: _Module) -> FileFacts:

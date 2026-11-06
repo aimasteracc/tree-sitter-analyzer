@@ -69,6 +69,11 @@ def measure(repo: str) -> dict[str, Any]:
         certain = sum(len(v) for v in graph._callers.values())
         possible = sum(len(v) for v in graph._possible_callers.values())
         nodes = len(graph._functions)
+        from tree_sitter_analyzer import call_graph_memo
+
+        # RFC-0043 §4: the byte budget's estimate must never fall below retained.
+        estimate = call_graph_memo.estimate_state_bytes(graph._export_state())
+        rec["memo_estimate_mb"] = round(estimate / 1e6, 1)
         rec.update(
             built=bool(graph._built),
             nodes=nodes,

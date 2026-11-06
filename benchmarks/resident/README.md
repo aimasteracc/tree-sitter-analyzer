@@ -16,7 +16,7 @@ tree-sitter-analyzer --project-root PATH --full-index
 | `prof_callers.py` | In-process stage buckets of `nav callers` (exclusive time per stage), `first` or `warm` | Motivation, buckets table |
 | `mcp_latency.py` | Through a real MCP stdio server: `initialize`, the first query after start, warm, after idle; `--inproc` adds the MCP-layer (facade, encode, transport) share, overall and per answer kind (`mcp_layer_by_kind_ms`) | V2 |
 | `idle_probe.py` | In-process: warm, then the query after an idle gap past the 35 s snapshot TTL | §4.4 |
-| `graph_size.py` | Files, symbols, graph nodes and edges, retained and peak MB of the call-graph state | §8, V3 |
+| `graph_size.py` | Files, symbols, graph nodes and edges, retained and peak MB of the call-graph state, and the byte-budget estimate `memo_estimate_mb` (must stay above `retained_mb`; RFC-0043 §4) | §8, V3 |
 | `statcost.py` | Unit cost of `os.stat` / `realpath` / one walk on this host | §9 |
 | `corpus_replay.py` | Replays every stored callers-gate answer of one repo in-process: 0-diff answer identity (the gate's `slim` projection) plus first-touch and repeat latency by answer kind and stage | RFC-0043 |
 | `copy_gate_index.py` | Copies a callers-gate index to a scratch root and rebinds the copy (selector + manifest), so measurements never write the gate cache | RFC-0043 |

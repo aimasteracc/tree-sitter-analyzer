@@ -1,0 +1,104 @@
+{
+ "repo": "gson",
+ "rows": 215,
+ "rss_start_mb": 50.8,
+ "first_query_s": 1.61,
+ "rss_after_first_mb": 136.5,
+ "rounds": [
+  {
+   "round": 1,
+   "all": {
+    "n": 215,
+    "median_ms": 36.2,
+    "p90_ms": 85.1,
+    "max_ms": 2048.8,
+    "mean_ms": 62.9
+   },
+   "by_kind": {
+    "edge_only": {
+     "n": 47,
+     "median_ms": 6.6,
+     "p90_ms": 16.0,
+     "max_ms": 19.7,
+     "mean_ms": 8.5
+    },
+    "review": {
+     "n": 168,
+     "median_ms": 40.6,
+     "p90_ms": 102.0,
+     "max_ms": 2048.8,
+     "mean_ms": 78.1
+    }
+   },
+   "stages_ms_per_query": {
+    "G.review.assess_completeness": 40.59,
+    "G.review._reference_scan": 12.34,
+    "F.check.relation_source_evidence(freshness)": 2.8,
+    "J.infra.is_index_rebuilding": 1.6,
+    "G.review._reference_lines": 0.93,
+    "A.certified_index_read.enter": 0.83,
+    "B.graph_object": 0.41,
+    "F.check.declaring_file_unresolved": 0.41,
+    "G.review._is_accessor": 0.39,
+    "F.check.narrow_to_target": 0.39,
+    "F.check.declaring_file_excluded": 0.3,
+    "F.check.unattributed_sites": 0.2,
+    "F.check.rank_sites": 0.09,
+    "F.check.read_unresolved_inbound": 0.09,
+    "G.review.prove": 0.05
+   },
+   "unwrapped_ms_per_query": 1.21
+  },
+  {
+   "round": 2,
+   "all": {
+    "n": 215,
+    "median_ms": 37.7,
+    "p90_ms": 81.5,
+    "max_ms": 1850.9,
+    "mean_ms": 60.4
+   },
+   "by_kind": {
+    "edge_only": {
+     "n": 47,
+     "median_ms": 6.0,
+     "p90_ms": 16.4,
+     "max_ms": 23.4,
+     "mean_ms": 8.2
+    },
+    "review": {
+     "n": 168,
+     "median_ms": 42.6,
+     "p90_ms": 93.3,
+     "max_ms": 1850.9,
+     "mean_ms": 75.0
+    }
+   },
+   "stages_ms_per_query": {
+    "G.review.assess_completeness": 39.02,
+    "G.review._reference_scan": 11.86,
+    "F.check.relation_source_evidence(freshness)": 2.88,
+    "J.infra.is_index_rebuilding": 1.7,
+    "G.review._reference_lines": 0.97,
+    "A.certified_index_read.enter": 0.88,
+    "B.graph_object": 0.44,
+    "F.check.narrow_to_target": 0.43,
+    "G.review._is_accessor": 0.36,
+    "F.check.declaring_file_unresolved": 0.14,
+    "F.check.rank_sites": 0.09,
+    "G.review.prove": 0.05
+   },
+   "unwrapped_ms_per_query": 1.25
+  }
+ ],
+ "rss_end_mb": 141.2,
+ "n_diff_rows": 0,
+ "diffs": [],
+ "stored": {
+  "tree": "ccb67d8955954fdbe640d346a876831e20c4a62c",
+  "index_key": "4e91fbf2ad56f91f411e969f",
+  "repo": "gson",
+  "repo_sha": "e2292f9c9f2e07a4791827e8eea34aa7d80545d6",
+  "query_key": "148f5e017fc4261380c8a751"
+ }
+}
