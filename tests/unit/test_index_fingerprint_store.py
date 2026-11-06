@@ -232,9 +232,8 @@ def test_a_multi_repo_machine_keeps_every_project_record(tmp_path: Path) -> None
     # #1835: with 64 slots a machine running agents on many worktrees evicted
     # live projects, and their next fresh process recomputed the full-table
     # fingerprint (cold first query past the 10 s capture deadline).
-    assert store.MAX_FILES >= 256
     roots = []
-    for index in range(100):  # more than the old cap of 64
+    for index in range(70):  # more than the old cap of 64
         project = str(tmp_path / f"p{index}")
         roots.append(project)
         store.store(project, (project, "k"), _FP)

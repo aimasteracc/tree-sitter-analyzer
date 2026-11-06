@@ -83,7 +83,9 @@ def test_walk_stats_entries_of_different_directories_concurrently(
 
     assert unsafe is None
     assert {row[0] for row in rows} == {f"pkg{i}/module.py" for i in range(6)}
-    assert peak > 1, "the walk serialised its per-file lstat calls again"
+    # Six 50 ms lstat calls in six directories on four workers overlap unless
+    # the walk runs them one after another.
+    assert peak > 1, "serialised lstat"  # ratchet: nondeterministic thread overlap
 
 
 def test_large_directory_is_split_into_concurrent_chunks(
@@ -110,7 +112,7 @@ def test_large_directory_is_split_into_concurrent_chunks(
 
     assert unsafe is None
     assert len(rows) == 12
-    assert len(seen_threads) > 1
+    assert len(seen_threads) > 1  # ratchet: nondeterministic thread assignment
 
 
 @pytest.mark.parametrize("seed", [1, 2, 3])
@@ -125,9 +127,15 @@ def test_concurrent_walk_matches_a_single_worker_walk(
     monkeypatch.setattr(portable, "_WALK_WORKERS", 1)
     single = _inventory(tmp_path)
 
+    expected = {
+        (Path(folder) / name).relative_to(tmp_path).as_posix()
+        for folder, _dirs, names in os.walk(tmp_path)
+        for name in names
+        if name.endswith((".py", ".ts"))
+    }
     assert concurrent == single
     assert concurrent[1] is None
-    assert len(concurrent[0]) > 0
+    assert {row[0] for row in concurrent[0]} == expected
 
 
 def test_byte_budget_is_shared_by_all_files(
