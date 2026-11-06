@@ -26,11 +26,8 @@ RFC-0028 §1.2 的守卫在 0 调用方时按名收窄（#1596），注册表分
 from __future__ import annotations
 
 import ast
-import hashlib
 import os
 import re
-import threading
-from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any
 
@@ -214,23 +211,52 @@ def _parsed_python(text: str) -> tuple[ast.Module, dict[str, set[str]]] | None:
 
 
 def _python_decorators(text: str, line: int) -> list[Decorator] | None:
+    table = python_definition_table(text)
+    if table is None:
+        return None
+    return [
+        decorator
+        for _name, first, header, decorators in table
+        if first <= line <= header
+        for decorator in decorators
+    ]
+
+
+#: RFC-0043：一个 Python 定义（``ast.walk`` 顺序）：(名字, 起始行, 定义行, 装饰器)。
+PyDefinition = tuple[str, int, int, tuple[Decorator, ...]]
+
+
+def python_definition_table(text: str) -> tuple[PyDefinition, ...] | None:
+    """文本中每个函数 / 类定义及其装饰器；无法解析为 None。
+
+    RFC-0043：只取决于 ``text``，按内容摘要复用（:mod:`...resident.parse_facts`）；
+    文本由调用方每次实时读取，不保留语法树。
+    """
+    from ...resident import parse_facts
+
+    return parse_facts.facts(
+        "py.definitions", "python", text, lambda: _build_python_definitions(text)
+    )
+
+
+def _build_python_definitions(text: str) -> tuple[PyDefinition, ...] | None:
     parsed = _parsed_python(text)
     if parsed is None:
         return None
     tree, bindings = parsed
-    found: list[Decorator] = []
+    table: list[PyDefinition] = []
     for first, header, node in _python_definitions(text, tree):
-        if not first <= line <= header:
-            continue
+        decorators = []
         for item in node.decorator_list:
             segment = ast.get_source_segment(text, item) or ast.unparse(item)
-            found.append(
+            decorators.append(
                 Decorator(
                     "@" + _WHITESPACE.sub(" ", segment).strip(),
                     _qualify(item, bindings),
                 )
             )
-    return found
+        table.append((str(node.name), int(first), int(header), tuple(decorators)))
+    return tuple(table)
 
 
 #: 一个定义：(装饰器起始行与定义行中的最小者, 定义行, 定义节点)。
@@ -321,52 +347,24 @@ def _tree_sitter_decorators(
 #: 一个挂在声明上的装饰器：(折叠空白后的文本, 头部起始行, 头部结束行)，均为 1 起。
 _TsDecorator = tuple[str, int, int]
 
-#: RFC-0043 原型（默认关闭）：按 (语言, 文本摘要) 保留装饰器表。
+#: RFC-0043 开关（默认开启；``0`` / ``off`` 关闭），见 :mod:`...resident.parse_facts`。
 PARSE_MEMO_ENV = "TSA_RESIDENT_PARSE_MEMO"
-#: 原型备忘录的条目上限（每条只是一张装饰器表，不保留语法树）。
-PARSE_MEMO_MAX_ENTRIES = 256
-_parse_memo: OrderedDict[tuple[str, bytes], tuple[_TsDecorator, ...] | None] = (
-    OrderedDict()
-)
-_parse_memo_lock = threading.Lock()
-
-
-def _parse_memo_enabled() -> bool:
-    return os.environ.get(PARSE_MEMO_ENV, "").strip() == "1"
-
-
-def parse_memo_size() -> int:
-    """备忘录当前条目数（测试与诊断用）。"""
-    with _parse_memo_lock:
-        return len(_parse_memo)
-
-
-def clear_parse_memo() -> None:
-    """清空备忘录（测试；内存压力）。"""
-    with _parse_memo_lock:
-        _parse_memo.clear()
 
 
 def _ts_decorator_table(text: str, language: str) -> tuple[_TsDecorator, ...] | None:
     """文本中每个挂在声明上的装饰器（源码顺序）；无法解析为 None。
 
-    RFC-0043：结果只取决于 ``text`` 与 ``language``。开启备忘录时按文本摘要复用；
-    文本仍由调用方每次按 stat 证据实时读取，文件一变摘要即变，因此不改变新鲜度。
+    RFC-0043：结果只取决于 ``text`` 与 ``language``，按文本摘要复用；文本仍由
+    调用方每次按 stat 证据实时读取，文件一变摘要即变，因此不改变新鲜度。
     """
-    if not _parse_memo_enabled():
-        return _build_ts_decorator_table(text, language)
-    key = (language, hashlib.blake2b(text.encode("utf-8"), digest_size=16).digest())
-    with _parse_memo_lock:
-        if key in _parse_memo:
-            _parse_memo.move_to_end(key)
-            return _parse_memo[key]
-    table = _build_ts_decorator_table(text, language)
-    with _parse_memo_lock:
-        _parse_memo[key] = table
-        _parse_memo.move_to_end(key)
-        while len(_parse_memo) > PARSE_MEMO_MAX_ENTRIES:
-            _parse_memo.popitem(last=False)
-    return table
+    from ...resident import parse_facts
+
+    return parse_facts.facts(
+        "ts.decorators",
+        language,
+        text,
+        lambda: _build_ts_decorator_table(text, language),
+    )
 
 
 def _parse_tree_sitter(text: str, language: str) -> tuple[bytes, Any] | None:

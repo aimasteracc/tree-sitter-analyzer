@@ -1,0 +1,104 @@
+{
+ "repo": "axios",
+ "rows": 214,
+ "rss_start_mb": 50.8,
+ "first_query_s": 1.274,
+ "rss_after_first_mb": 101.0,
+ "rounds": [
+  {
+   "round": 1,
+   "all": {
+    "n": 214,
+    "median_ms": 24.6,
+    "p90_ms": 58.1,
+    "max_ms": 348.3,
+    "mean_ms": 29.6
+   },
+   "by_kind": {
+    "edge_only": {
+     "n": 74,
+     "median_ms": 6.2,
+     "p90_ms": 17.7,
+     "max_ms": 71.5,
+     "mean_ms": 10.5
+    },
+    "review": {
+     "n": 140,
+     "median_ms": 29.8,
+     "p90_ms": 62.0,
+     "max_ms": 348.3,
+     "mean_ms": 39.7
+    }
+   },
+   "stages_ms_per_query": {
+    "G.review._reference_scan": 10.28,
+    "G.review.assess_completeness": 7.06,
+    "F.check.relation_source_evidence(freshness)": 2.13,
+    "J.infra.is_index_rebuilding": 1.45,
+    "G.review._reference_lines": 1.07,
+    "F.check.narrow_to_target": 1.06,
+    "F.check.declaring_file_unresolved": 0.9,
+    "A.certified_index_read.enter": 0.69,
+    "F.check.declaring_file_excluded": 0.53,
+    "F.check.read_unresolved_inbound": 0.44,
+    "E.edges.sql_native_callers": 0.43,
+    "G.review._is_accessor": 0.41,
+    "B.graph_object": 0.32,
+    "F.check.drop_external_producers": 0.29
+   },
+   "unwrapped_ms_per_query": 2.21
+  },
+  {
+   "round": 2,
+   "all": {
+    "n": 214,
+    "median_ms": 27.9,
+    "p90_ms": 62.0,
+    "max_ms": 118.6,
+    "mean_ms": 29.6
+   },
+   "by_kind": {
+    "edge_only": {
+     "n": 74,
+     "median_ms": 5.9,
+     "p90_ms": 19.3,
+     "max_ms": 79.9,
+     "mean_ms": 10.9
+    },
+    "review": {
+     "n": 140,
+     "median_ms": 33.0,
+     "p90_ms": 67.0,
+     "max_ms": 118.6,
+     "mean_ms": 39.5
+    }
+   },
+   "stages_ms_per_query": {
+    "G.review._reference_scan": 12.26,
+    "G.review.assess_completeness": 5.04,
+    "F.check.relation_source_evidence(freshness)": 2.77,
+    "J.infra.is_index_rebuilding": 1.73,
+    "F.check.narrow_to_target": 1.36,
+    "G.review._reference_lines": 1.24,
+    "A.certified_index_read.enter": 0.83,
+    "G.review._is_accessor": 0.5,
+    "E.edges.sql_native_callers": 0.47,
+    "B.graph_object": 0.44,
+    "F.check.declaring_file_unresolved": 0.39,
+    "F.check.drop_external_producers": 0.32,
+    "G.review.prove": 0.06
+   },
+   "unwrapped_ms_per_query": 1.85
+  }
+ ],
+ "rss_end_mb": 148.9,
+ "n_diff_rows": 0,
+ "diffs": [],
+ "stored": {
+  "tree": "ccb67d8955954fdbe640d346a876831e20c4a62c",
+  "index_key": "72354b7a1d1c6142a8b356ef",
+  "repo": "axios",
+  "repo_sha": "fceeb10997ea71778ad8bc9671ad53e9195a707c",
+  "query_key": "aa75bf307c000ab0181c792e"
+ }
+}
