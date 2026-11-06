@@ -17,7 +17,6 @@ SQLite 却因语句缓存仍在而继续打开文件并持锁。这类持有者�
 
 from __future__ import annotations
 
-import gc
 import os
 import sqlite3
 import sys
@@ -27,6 +26,8 @@ import types
 from collections import OrderedDict
 from typing import Any
 from urllib.parse import unquote
+
+from .seal_diagnostics import sqlite_objects
 
 #: 版本存储目录名（``generation_selector`` 的布局）；只有其中的主库值得记录。
 _STORE_MARKER = "index-generations"
@@ -142,10 +143,12 @@ def creators(
     database: str | os.PathLike[str] | None,
     *,
     exclude: object | None = None,
+    objects: list[Any] | None = None,
 ) -> list[dict[str, Any]]:
     """仍存活、创建于 ``database`` 上的连接及其创建栈（有界，绝不抛出）。
 
-    已关闭却仍存活的连接也列出：它可能是仍持锁的僵尸连接。
+    已关闭却仍存活的连接也列出：它可能是仍持锁的僵尸连接。``objects`` 是调用方
+    已取得的 ``sqlite_objects()``，用于多项证据共用一次查找。
     """
     if database is None:
         return []
@@ -156,7 +159,7 @@ def creators(
             records = dict(_records)
         target = _normalized(os.fspath(database))
         found: list[dict[str, Any]] = []
-        for obj in gc.get_objects():
+        for obj in sqlite_objects() if objects is None else objects:
             if obj is exclude or not isinstance(obj, sqlite3.Connection):
                 continue
             record = records.get(id(obj))

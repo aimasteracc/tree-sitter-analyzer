@@ -24,7 +24,7 @@ from typing import Any
 
 from .admission import INDEX_WRITER_BUSY, IndexWriteAdmissionError
 from .seal_creators import creators
-from .seal_diagnostics import holder_evidence
+from .seal_diagnostics import holder_evidence, sqlite_objects
 from .seal_holders import holder_objects
 
 logger = logging.getLogger(__name__)
@@ -110,15 +110,25 @@ def leave_wal(
             return outcome
     if fallback:
         raise SealBusy(first_busy=first) from outcome
-    # #1848：期满后（不占用忙等待期限）再指出持有者对象及其引用链。
+    # #1848：期满后（不占用忙等待期限）再指出持有者对象及其引用链。三项证据共用
+    # 一次对 SQLite 对象的查找；查找失败时各自重试并把失败写进各自的证据。
+    objects = _sqlite_objects()
     logger.warning(
         "%s after %.1f s: first busy %s; at deadline %s; holders %s; creators %s",
         SEAL_BUSY,
         budget,
         first,
-        holder_evidence(database),
-        holder_objects(database, exclude=connection),
+        holder_evidence(database, objects=objects),
+        holder_objects(database, exclude=connection, objects=objects),
         # #1904：Python 看不到的持有者（已关闭却仍持锁）由创建栈指出。
-        creators(database, exclude=connection),
+        creators(database, exclude=connection, objects=objects),
     )
+    del objects  # 异常的回溯保留本帧；列表不得让持有者活得更久
     raise SealBusy() from outcome
+
+
+def _sqlite_objects() -> list[Any] | None:
+    try:
+        return sqlite_objects()
+    except Exception:  # noqa: BLE001 - 诊断绝不改变封存结果；各项证据自行重试
+        return None
