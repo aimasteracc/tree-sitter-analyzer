@@ -8,6 +8,27 @@
 
 ### Fixed
 
+- **Cold first `nav callers`: the certification walk runs its file system calls on 4 threads** (#1835).
+  A fresh process pays the certified index capture before its first answer:
+  four pathname walks of the source scope (two before the index read, two
+  after it), each an `lstat` plus an NTFS change-time probe per file, and a
+  content read of every file on the first walk. Run one after another these
+  calls were most of the first query on Windows. `_portable_inventory` now
+  spreads directories, and 32-entry chunks of large directories, over a
+  small work queue. Each entry gets the same checks and the walk gives the
+  same rows and the same verdicts. Entry, byte and file budgets are still
+  counted over the whole walk. The identity of every scanned directory is
+  re-checked after the walk ends, which covers the window of the old
+  per-directory re-check. Same-session ABBA, medians of fresh processes 2–3
+  on the certified path: fastapi 4.92 s → 3.30 s (v3.0.0: 6.12 s), pydantic
+  3.31 s → 2.74 s (v3.0.0: 3.93 s). Warm queries are unchanged and answers
+  are identical. The ~1.3 s that v3.0.0 showed in the release gate came from
+  the #1710 certification-timeout skip: its slower first capture ran past the
+  10 s deadline, and later processes then took the uncertified fallback.
+  The index fingerprint store now keeps 512 project files instead of 64.
+  A machine running agents on many worktrees had filled all 64 slots, and an
+  evicted project paid a full fingerprint recompute in its next fresh process.
+
 - **SCIP callers layer: multi-line imports no longer raise `SCIP_UNLISTED_REFERENCE`** (#1892).
   `scip_agreement` skipped a target reference only on a line that *starts*
   an import, so a specifier on a continuation line of `import {\n  a,\n  b\n}
