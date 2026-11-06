@@ -80,20 +80,26 @@ GATES = (
     ("scripts/codemap-sync-check.sh", BASH, ()),
 )
 
-#: Gates whose ordinary mode scans the whole test tree. Run twice (root and
-#: non-root cwd), check_loose_assertions --baseline took 24-27 s on CI runners
-#: and timed out at the global 30 s on ubuntu 3.10 (run 40099198915), so it gets
-#: a wider per-test timeout instead of a rerun.
-_WHOLE_TREE_GATE_MARKS = {
-    "scripts/check_loose_assertions.py": (pytest.mark.timeout(120),),
-}
+#: Gates whose ordinary mode ``ast.parse``s the whole test tree (~1450 files).
+#: Run twice on the real tree they take 15-25 s per run on an idle machine and
+#: crossed the 30 s limit on slow runners (ubuntu 3.10 run 40099198915; macOS
+#: shard 1/2 run 42071993107). They are exercised on a small fixture repository
+#: instead (see ``test_whole_tree_gate_output_does_not_depend_on_the_working_directory``);
+#: the real tree is still covered by their ``--self-check`` cases.
+WHOLE_TREE_GATES = frozenset(
+    {"scripts/check_test_encoding.py", "scripts/check_loose_assertions.py"}
+)
 
 #: The gates whose ordinary mode is cheap enough to run twice on every test run.
 CWD_INVARIANT_GATES = tuple(
-    pytest.param(*entry, marks=_WHOLE_TREE_GATE_MARKS.get(entry[0], ()))
+    entry
     for entry in GATES
     if not entry[0].endswith("codemap-sync-check.sh")
+    and entry[0] not in WHOLE_TREE_GATES
 )
+
+#: The whole-tree gates, in the shape the fixture test parametrises over.
+FIXTURE_TREE_GATES = tuple(entry for entry in GATES if entry[0] in WHOLE_TREE_GATES)
 
 
 def test_a_posix_shell_is_available_for_the_shell_gates() -> None:
@@ -106,6 +112,88 @@ def test_a_posix_shell_is_available_for_the_shell_gates() -> None:
         "no usable POSIX shell: `bash` was not found, or (on Windows) it is WSL's "
         "launcher with no distribution installed. Git for Windows provides one at "
         "C:/Program Files/Git/bin/bash.exe."
+    )
+
+
+#: Test files planted in the fixture repository: one encoding-unsafe call and one
+#: placeholder assertion each, so both whole-tree gates report a non-empty scan.
+_FIXTURE_TESTS = {
+    "tests/test_a.py": (
+        "from pathlib import Path\n\n\n"
+        "def test_a() -> None:\n"
+        "    value = Path('x').read_text()\n"
+        "    assert value is not None\n"
+    ),
+    "tests/unit/test_b.py": (
+        "def test_b() -> None:\n"
+        "    with open('y') as handle:\n"
+        "        data = handle.read()\n"
+        "    assert data is not None\n"
+    ),
+    "tests/unit/test_c.py": "def test_c() -> None:\n    assert 1 + 1 == 2\n",
+}
+
+#: What each whole-tree gate must print for the fixture: a non-zero count, so an
+#: empty scan (the cwd-relative defect) cannot pass as a clean one.
+_FIXTURE_EXPECTED_STDOUT = {
+    "scripts/check_test_encoding.py": (
+        "encoding-unsafe text calls in tests/: 2 across 2 files\n"
+    ),
+    "scripts/check_loose_assertions.py": "2\n",
+}
+
+
+def _build_fixture_repo(root: Path, script: str) -> Path:
+    """A minimal repository holding a copy of *script* and ``_FIXTURE_TESTS``."""
+    target = root / script
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes((PROJECT_ROOT / script).read_bytes())
+    for name, body in _FIXTURE_TESTS.items():
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+    (root / "pyproject.toml").write_text(
+        "[project]\nname = 'fixture'\n", encoding="utf-8"
+    )
+    return target
+
+
+@pytest.mark.parametrize(("script", "interpreter", "args"), FIXTURE_TREE_GATES)
+def test_whole_tree_gate_output_does_not_depend_on_the_working_directory(
+    script: str, interpreter: str, args: tuple[str, ...], tmp_path: Path
+) -> None:
+    """Same proof as below for the gates that parse every test file, on a bounded tree.
+
+    The gates anchor their scan to the script's own repository, so a copy placed
+    in a fixture repository scans the fixture. Running it from the fixture root
+    and from the fixture ``scripts/`` still reproduces the cwd-relative defect
+    (it would report an empty scan from ``scripts/``), without parsing the
+    ~1450 real test files twice.
+    """
+    fixture_script = _build_fixture_repo(tmp_path, script)
+
+    outcomes = [
+        subprocess.run(
+            [interpreter, str(fixture_script), *args],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        for cwd in (tmp_path, tmp_path / "scripts")
+    ]
+    from_root, from_non_root = outcomes
+
+    assert (from_root.returncode, from_root.stdout, from_root.stderr) == (
+        0,
+        _FIXTURE_EXPECTED_STDOUT[script],
+        "",
+    )
+    assert (from_non_root.returncode, from_non_root.stdout, from_non_root.stderr) == (
+        from_root.returncode,
+        from_root.stdout,
+        from_root.stderr,
     )
 
 
