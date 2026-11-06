@@ -11,7 +11,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # macOS runs as ONE job below (all four Pythons sequentially): macOS arm64
+        # runners are capacity-constrained and each version needs ~30 s of work.
+        os: [ubuntu-latest, windows-latest]
         python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
@@ -94,3 +96,78 @@ jobs:
 
         if result.returncode != 0:
             sys.exit(result.returncode)
+
+  test-compatibility-macos:
+    # One macOS runner for every supported Python (3.10-3.13) instead of four
+    # runners that each do ~30 s of work. A version failure does not stop the
+    # remaining versions; the job fails at the end if any version failed.
+    name: Test Compatibility (macos-latest, Python 3.10-3.13)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      MACOS_PYTHON_VERSIONS: "3.10 3.11 3.12 3.13"
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+
+    - name: Run SQL compatibility for each Python version
+      shell: bash
+      run: |
+        set -uo pipefail
+        failed=""
+        mkdir -p macos-artifacts
+        for v in $MACOS_PYTHON_VERSIONS; do
+          echo "::group::macOS SQL compatibility, Python $v"
+          (
+            set -euo pipefail
+            export UV_PROJECT_ENVIRONMENT=".venv-$v"
+            uv python install "$v"
+            uv sync --python "$v" --all-extras --dev
+            uv run --python "$v" python -m pytest tests/unit/languages/ -k "test_sql" -v --tb=short
+            uv run --python "$v" python scripts/dump_ast.py examples/sample_database.sql > "macos-artifacts/sample_database_ast_$v.txt"
+            uv run --python "$v" python -m tree_sitter_analyzer.platform_compat.record --output-dir tests/platform_profiles
+            current="tests/platform_profiles/macos/$v/profile.json"
+            baseline="tests/platform_profiles/baseline/macos/$v/profile.json"
+            if [ ! -f "$current" ]; then
+              echo "Error: Generated profile not found at $current"
+              exit 1
+            fi
+            if [ -f "$baseline" ]; then
+              echo "Comparing $current with $baseline..."
+              uv run --python "$v" python -m tree_sitter_analyzer.platform_compat.compare "$baseline" "$current" --fail-on-diff
+            else
+              echo "No baseline found at $baseline. Skipping comparison."
+            fi
+          )
+          rc=$?
+          echo "::endgroup::"
+          if [ "$rc" -eq 0 ]; then
+            echo "RESULT macOS Python $v: PASS"
+          else
+            echo "::error::RESULT macOS Python $v: FAIL (exit $rc)"
+            failed="$failed $v"
+          fi
+        done
+        if [ -n "$failed" ]; then
+          echo "macOS SQL compatibility failed for Python:$failed"
+          exit 1
+        fi
+        echo "macOS SQL compatibility passed for all of: $MACOS_PYTHON_VERSIONS"
+
+    - name: Upload AST Artifact
+      if: always()
+      uses: actions/upload-artifact@v7.0.2
+      with:
+        name: ast-dump-macos-latest
+        path: macos-artifacts/
+        if-no-files-found: ignore
+
+    - name: Upload Profile Artifact
+      if: always()
+      uses: actions/upload-artifact@v7.0.2
+      with:
+        name: profile-macos-latest
+        path: tests/platform_profiles/macos/
+        if-no-files-found: ignore

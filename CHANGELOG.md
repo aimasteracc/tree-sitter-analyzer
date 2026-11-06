@@ -4,6 +4,8 @@
 
 ### Changed
 
+- **SQL Platform Compatibility runs macOS as one job instead of four.** macOS arm64 runners are capacity-constrained, and each of the four `macos-latest` Python 3.10-3.13 jobs did only ~30 s of work while needing its own runner. `sql-platform-compat.yml` now runs one `Test Compatibility (macos-latest, Python 3.10-3.13)` job that loops over all four versions (`uv run --python`), keeps per-version results in collapsible log groups, continues past a failing version and fails the job if any version failed. Ubuntu/Windows stay a per-version matrix; `SQL Platform Compatibility` is still the single reusable-workflow job the `Quality Gate` aggregates. `tests/governance/test_ci_sql_macos_contract.py` pins the four-version macOS coverage. macOS jobs per run: 6 -> 3 (PR, SQL lane routed), 10 -> 7 (full validation).
+
 - **macOS CI lanes run as 2 deterministic shards** (#1910). `macos-latest` 3-vCPU machines needed up to 982 s against a 1080 s session budget. Both the full and the PR matrix now run each macOS version as `--shard=1/2` and `--shard=2/2` (`tests/pytest_shard.py`: `zlib.crc32` of the node id, no new dependency, no stored durations); the shards are disjoint and their union is the unsharded selection. Ubuntu and Windows lanes are unchanged. `tests/governance/test_ci_shard_contract.py` pins the partition and the matrix wiring; the `Quality Gate` check still aggregates `needs.test.result`.
 
 ### Fixed
