@@ -332,3 +332,32 @@ def test_open_site_offers_extensions_too() -> None:
     )
     # ``fun Box.make()`` is indexed without a receiver; a receiver lambda reaches it.
     assert picked == ([], [method, extension])
+
+
+class _Node:
+    """A minimal stand-in for a tree-sitter node (shapes the grammar rarely makes)."""
+
+    def __init__(self, type_, children=(), text=None, start=0, end=0):
+        self.type = type_
+        self.named_children = list(children)
+        self.parent = None
+        self.start_byte, self.end_byte = start, end
+        if text is not None:
+            self.text = text
+        for child in self.named_children:
+            child.parent = self
+
+
+def test_odd_shapes_fail_toward_an_open_site() -> None:
+    from tree_sitter_analyzer import kotlin_call_scope as scope
+
+    # A declaration with no type, name or parameters is not an extension.
+    assert scope._has_receiver_type(_Node("function_declaration"), "x") is False
+    # A lambda whose annotated wrapper is not a call has no host.
+    lam = _Node("lambda_literal")
+    _Node("annotated_lambda", [lam])
+    assert scope._lambda_host(lam, "") == (None, False)
+    # A callee that is not a name (``(f) { }``) has no host name.
+    assert scope._callee_name(_Node("parenthesized_expression"), "") is None
+    # Without ``node.text`` the name is read from the source bytes.
+    assert scope._callee_name(_Node("identifier", start=0, end=3), "let {}") == "let"
