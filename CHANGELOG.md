@@ -6,6 +6,21 @@
 
 - **macOS CI lanes run as 2 deterministic shards** (#1910). `macos-latest` 3-vCPU machines needed up to 982 s against a 1080 s session budget. Both the full and the PR matrix now run each macOS version as `--shard=1/2` and `--shard=2/2` (`tests/pytest_shard.py`: `zlib.crc32` of the node id, no new dependency, no stored durations); the shards are disjoint and their union is the unsharded selection. Ubuntu and Windows lanes are unchanged. `tests/governance/test_ci_shard_contract.py` pins the partition and the matrix wiring; the `Quality Gate` check still aggregates `needs.test.result`.
 
+### Fixed
+
+- **SCIP callers layer: multi-line imports no longer raise `SCIP_UNLISTED_REFERENCE`** (#1892).
+  `scip_agreement` skipped a target reference only on a line that *starts*
+  an import, so a specifier on a continuation line of `import {\n  a,\n  b\n}
+  from "./x"` (also `import type {…}`, `import D, {…}`, `export {…} from`)
+  was reported as unlisted and blocked a valid `complete`. The layer now
+  parses the file with tree-sitter (`callers_scip_imports.py`) and skips a
+  reference only when it lies inside the exact span of an import or
+  export-list statement parsed without errors. A call after the statement on
+  its closing line, code in template literals and comments that look like
+  imports, `import x = NS.y` aliases and `export const` / `export default`
+  values all still count. Dynamic `import("./x")` lines, which the old
+  line-start pattern skipped, now count too (fail-closed).
+
 ### Added
 
 - **Opt-in SCIP evidence for `nav callers` on TS / JS** (`callers_scip*.py`).

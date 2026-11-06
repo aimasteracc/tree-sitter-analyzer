@@ -444,7 +444,12 @@ SCIP never removes a TSA caller; a listed caller in whose span SCIP sees no
 reference is logged in `scip.disagreements`. A SCIP reference to the target
 outside every listed caller and open site fails the `scip_agreement` check
 (`SCIP_UNLISTED_REFERENCE`), and an exhaustive `open_sites` bound becomes
-`{"enumerated": false, "reason": "SCIP_UNLISTED_REFERENCE"}`. `scip.sites`
+`{"enumerated": false, "reason": "SCIP_UNLISTED_REFERENCE"}`. A reference
+inside an import or export-list statement (`import {…} from`, `import type`,
+`export {…} from`, `export *`), on any of its lines (#1892), is not a use and
+is not counted; only positions inside a statement tree-sitter parsed without
+errors qualify, so dynamic `import()`, `export const` values and code after
+the statement on its last line still count. `scip.sites`
 counts the three outcomes; lists in `scip` are capped at 20 with `*_total`
 beside them.
 ### Inherited `self.m()` calls (#1677)
