@@ -5,6 +5,8 @@
 - **Created**: 2026-11-02
 - **Last updated**: 2026-11-02
 - **Tracking issue**: #1855
+- **Follow-up**: RFC-0043 re-measures P1–P3-lite on all 7 gate repos (graph reads 0.5–2.3 % of warm
+  time, review gates 70–93 %) and targets the per-request re-parsing inside the review gates
 - **Builds on**: RFC-0030 (paths and generations are not freshness evidence), RFC-0032 (index writer
   ownership), RFC-0039 (incremental index certification), RFC-0040 (proof-carrying completeness)
 - **Affected source paths** (planned; pin them — reviewers watch for drift here):

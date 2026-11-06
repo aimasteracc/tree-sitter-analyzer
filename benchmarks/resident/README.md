@@ -18,6 +18,8 @@ tree-sitter-analyzer --project-root PATH --full-index
 | `idle_probe.py` | In-process: warm, then the query after an idle gap past the 35 s snapshot TTL | §4.4 |
 | `graph_size.py` | Files, symbols, graph nodes and edges, retained and peak MB of the call-graph state | §8, V3 |
 | `statcost.py` | Unit cost of `os.stat` / `realpath` / one walk on this host | §9 |
+| `corpus_replay.py` | Replays every stored callers-gate answer of one repo in-process: 0-diff answer identity (the gate's `slim` projection) plus first-touch and repeat latency by answer kind and stage | RFC-0043 |
+| `copy_gate_index.py` | Copies a callers-gate index to a scratch root and rebinds the copy (selector + manifest), so measurements never write the gate cache | RFC-0043 |
 
 Targets come from `--sample` (the dogfood `sample.json` format, or a list of
 `{qual|class+name, file}` rows) or, without it, are picked deterministically
@@ -38,6 +40,21 @@ python $B/statcost.py     --repo rich
 For an A/B of the RFC-0042 switch, run `mcp_latency.py` in ABBA order with
 `--env TSA_RESIDENT=off` (A) and without it (B), one fresh server per slot,
 and drop records with `"suspended": true`.
+
+## Answer identity over the callers-gate corpus (RFC-0043)
+
+```powershell
+$B = "benchmarks/resident"
+$G = "C:\git-private\tsa-gate\v2"            # the gate root; read only
+python $B/copy_gate_index.py --src $G/index/rich/<key>/tree --dst <scratch>/rich
+python $B/corpus_replay.py --repo <scratch>/rich `
+    --stored $G/results/<tree>/<key>/<run>/rich.json --rounds 2 --out rich.json
+```
+
+Use the index key and answer file of the tree under test (`report.json` of a
+gate run names both). Set `TSA_EVIDENCE_STORE=off` and `PYTHONHASHSEED=0` as
+the gate servers do. Exit status 1 means at least one row differs from the
+stored answer.
 
 ## P0 measurements (2026-11-02, Windows 11, CPython 3.12.9, `develop` `c9277106`)
 

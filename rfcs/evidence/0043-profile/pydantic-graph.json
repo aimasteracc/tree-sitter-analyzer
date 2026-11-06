@@ -1,0 +1,15 @@
+{
+ "repo": "pydantic",
+ "files": 605,
+ "symbols": 22735,
+ "call_edge_rows": 72856,
+ "build_s_under_tracemalloc": 3.8,
+ "built": true,
+ "nodes": 10597,
+ "certain_edges": 8993,
+ "possible_edges": 52947,
+ "nodes_plus_edges": 72537,
+ "retained_mb": 35.5,
+ "peak_mb": 98.2,
+ "bytes_per_node_edge": 489
+}
