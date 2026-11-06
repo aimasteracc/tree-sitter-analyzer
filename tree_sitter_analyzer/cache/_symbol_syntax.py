@@ -202,6 +202,86 @@ def _java_type_name(node: Any, source: str) -> str | None:
     return None
 
 
+def _kotlin_parents(node: Any, source: str) -> list[str]:
+    """Direct supertypes of a Kotlin class / interface / named companion object.
+
+    #1916: Kotlin had no parent extractor, so no Kotlin class had a supertype
+    edge. ``class A : pkg.B<T>(1), @Ann I, J by d`` gives ``["pkg.B", "I", "J"]``:
+    type arguments, annotations, the constructor call and the delegate are
+    removed. A function type (``(Int) -> Int``) names no class and is skipped.
+    """
+    names = (
+        _kotlin_type_name(type_node, source)
+        for _call, type_node in _kotlin_supertypes(node)
+    )
+    return [name for name in names if name]
+
+
+def kotlin_superclass(node: Any, source: str) -> str | None:
+    """The superclass of a Kotlin class when the syntax identifies it, else None.
+
+    #1916: only a class can be called as a constructor (``: B()``), so that entry
+    is the superclass. An entry without the call may be an interface or a class
+    initialised by a secondary constructor (``class S : B { constructor() :
+    super() }``), so nothing is recorded for it. An interface has no superclass.
+    """
+    if any(child.type == "interface" for child in node.children):
+        return None
+    return next(
+        (
+            name
+            for is_call, type_node in _kotlin_supertypes(node)
+            if is_call and (name := _kotlin_type_name(type_node, source))
+        ),
+        None,
+    )
+
+
+#: ``delegation_specifier`` children that carry a supertype (``: B``, ``: B()``,
+#: ``: I by d``); annotations and function types are not supertypes by name.
+_KOTLIN_SUPERTYPE = frozenset(
+    {"user_type", "constructor_invocation", "explicit_delegation"}
+)
+
+
+def _kotlin_supertypes(node: Any) -> list[tuple[bool, Any]]:
+    """``(called as a constructor, type node)`` per ``delegation_specifier``."""
+    found: list[tuple[bool, Any]] = []
+    for clause in node.children:
+        if clause.type != "delegation_specifiers":
+            continue
+        for specifier in clause.named_children:
+            entry = next(
+                (c for c in specifier.named_children if c.type in _KOTLIN_SUPERTYPE),
+                None,
+            )
+            if entry is None:
+                continue
+            if entry.type == "user_type":
+                found.append((False, entry))
+                continue
+            type_node = next(
+                (c for c in entry.named_children if c.type == "user_type"), None
+            )
+            if type_node is not None:
+                found.append((entry.type == "constructor_invocation", type_node))
+    return found
+
+
+def _kotlin_type_name(node: Any, source: str) -> str | None:
+    """``B`` / ``pkg.B`` for a Kotlin ``user_type``; None for anything else."""
+    if node.type != "user_type":
+        return None
+    parts = [
+        _node_text(child, source)
+        for child in node.named_children
+        if child.type == "identifier"
+    ]
+    if not parts or not all(parts):
+        return None
+    return ".".join(parts)
+
+
 def _cpp_parents(node: Any, source: str) -> list[str]:
     return [
         _node_text(parent, source)
@@ -217,6 +297,7 @@ _PARENT_EXTRACTORS = {
     "javascript": _javascript_parents,
     "typescript": _javascript_parents,
     "java": _java_parents,
+    "kotlin": _kotlin_parents,
     "c": _cpp_parents,
     "cpp": _cpp_parents,
 }
