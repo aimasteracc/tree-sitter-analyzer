@@ -23,6 +23,8 @@
 
 ### Added
 
+- **CI re-queues runs stranded without a hosted runner** (`.github/workflows/ci-runner-requeue.yml`, `scripts/ci_runner_requeue.py`). GitHub cancels a queued job that no hosted runner acquires within about 15-18 minutes ("The job was not acquired by Runner of type hosted even after multiple attempts"); on `macos-latest` (arm64, under GitHub capacity constraints) that left jobs `cancelled` with no runner and zero steps, and the fail-closed `Quality Gate` failed develop although no test failed (runs 42075950677, 42071993107; PR run 42049630824 twice). The gate stays fail-closed. When a CI run fails and every failed or cancelled job is such a stranded job (identified by the check-run annotation, not only by zero steps, so concurrency and manual cancels do not qualify) or the `Quality Gate` itself, the new `workflow_run` workflow re-runs the failed jobs, at most until attempt 3 and only while the run is still the newest CI run for its branch and event. A run with any real failure is never re-run. `workflow_run` workflows load from the default branch, so this takes effect once it reaches `main`. `tests/governance/test_ci_runner_requeue_contract.py` pins the wiring.
+
 - **Opt-in SCIP evidence for `nav callers` on TS / JS** (`callers_scip*.py`).
   Set `TSA_SCIP_INDEX=<path>` or put a scip-typescript index at
   `.ast-cache/scip/index.scip`, with a manifest beside it
