@@ -32,7 +32,8 @@ _REPRO = {
 }
 
 
-async def _answer(tmp_path, name: str) -> dict:
+async def _answers(tmp_path, *names: str) -> list[dict]:
+    """Index the repro once, then ask ``callers`` for each name."""
     from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
 
     for rel_path, text in _REPRO.items():
@@ -43,16 +44,18 @@ async def _answer(tmp_path, name: str) -> dict:
         {"mode": "full", "max_files": 20}
     )
     assert indexed["published"] is True
-    return await CodeGraphCallersTool(str(tmp_path)).execute(
-        {"function_name": name, "include_bodies": False}
-    )
+    tool = CodeGraphCallersTool(str(tmp_path))
+    return [
+        await tool.execute({"function_name": name, "include_bodies": False})
+        for name in names
+    ]
 
 
 @pytest.mark.asyncio
 async def test_override_of_a_generic_kotlin_supertype_is_not_complete(
     tmp_path,
 ) -> None:
-    result = await _answer(tmp_path, "B.make")
+    (result,) = await _answers(tmp_path, "B.make")
 
     # Before #1916: ``complete`` with 0 callers. Now ``this.make()`` in
     # ``A.run`` is a possible target and the answer names that site.
@@ -64,8 +67,7 @@ async def test_override_of_a_generic_kotlin_supertype_is_not_complete(
 
 @pytest.mark.asyncio
 async def test_the_base_method_and_an_unrelated_class_stay_provable(tmp_path) -> None:
-    base = await _answer(tmp_path, "A.make")
-    unrelated = await _answer(tmp_path, "C.make")
+    base, unrelated = await _answers(tmp_path, "A.make", "C.make")
 
     assert base["completeness"] == "complete", base
     assert base["caller_count"] == 1
