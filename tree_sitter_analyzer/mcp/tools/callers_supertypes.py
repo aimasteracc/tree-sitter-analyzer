@@ -42,6 +42,8 @@ from .callers_ts_source import JSTS_SUFFIXES, Source, SourceReader
 
 #: Problem code of the gate (also reported when the gate could not run).
 DYNAMIC_SUPERTYPE_REASON = "DYNAMIC_SUPERTYPE"
+#: Verb of a Kotlin ``override`` finding (#1930).
+KOTLIN_OVERRIDE_VERB = "overrides"
 #: Steps followed along one ``extends`` chain (re-export hops included).
 _CHAIN_MAX = 32
 _CLASS_TYPES = frozenset({"class_declaration", "abstract_class_declaration", "class"})
@@ -132,7 +134,8 @@ class SupertypeFinding:
     unchecked: bool = False
     #: How the clause relates to the class (#1883: Python "has base").
     verb: str = "extends"
-    #: Problem code (#1884: a Java override is ``OVERRIDE_DISPATCH``).
+    #: Problem code (#1884 / #1930: a Java or Kotlin override is
+    #: ``OVERRIDE_DISPATCH``).
     reason: str = DYNAMIC_SUPERTYPE_REASON
 
     def describe(self) -> str:
@@ -166,7 +169,8 @@ def dynamic_supertype(
     qualified target's class path) skips Python members of other classes.
 
     #1884: Java methods that may override a supertype method without
-    ``@Override`` are checked in :mod:`.callers_java_supertypes`.
+    ``@Override`` are checked in :mod:`.callers_java_supertypes`; #1930: Kotlin
+    ``override`` members in :mod:`.callers_kotlin_overrides`.
     """
     python = [row for row in declarations if row[0].lower().endswith(".py")]
     if python:
@@ -181,6 +185,14 @@ def dynamic_supertype(
         )
         if java_found is not None:
             return java_found
+    if any(row[0].lower().endswith((".kt", ".kts")) for row in declarations):
+        from .callers_kotlin_overrides import kotlin_supertype_finding
+
+        kotlin_found = kotlin_supertype_finding(
+            project_root, declarations, bare, cache, owner
+        )
+        if kotlin_found is not None:
+            return kotlin_found
     reader = SourceReader(project_root)
     for rel, line, _language in declarations:
         if not rel.lower().endswith(JSTS_SUFFIXES):
@@ -285,6 +297,12 @@ def dynamic_supertype_hint(func_name: str, finding: SupertypeFinding) -> str:
             f"as the method of another supertype: {finding.describe()}. "
             "A call through that supertype would leave no call edge naming it, "
             "so this is not evidence of absence."
+        )
+    if finding.verb == KOTLIN_OVERRIDE_VERB:
+        return (
+            f"No resolved caller for {func_name!r}, but it is declared `override`: "
+            f"{finding.describe()}. A call through the supertype would leave no "
+            "call edge naming it, so this is not evidence of absence."
         )
     if finding.reason != DYNAMIC_SUPERTYPE_REASON:
         return (
