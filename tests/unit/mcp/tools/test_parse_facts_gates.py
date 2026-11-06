@@ -80,7 +80,7 @@ def test_name_lines_equal_the_live_parse(
 
     assert first == live == again
     assert any(live), "fixture must exercise a header name line"
-    assert parse_facts.stats()["hits"] > 0
+    assert parse_facts.stats()["misses"] == 1  # one parse; every other call hits
 
 
 def test_tree_sitter_declarations_parsed_once_per_text(

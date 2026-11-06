@@ -171,9 +171,18 @@ def test_estimate_counts_nested_values() -> None:
     assert mapping > parse_facts.estimate_bytes({})
 
 
-def test_estimate_stops_at_depth() -> None:
+def _nested(depth: int) -> tuple:
     value: tuple = ()
-    for _ in range(20):
+    for _ in range(depth):
         value = (value,)
+    return value
 
-    assert parse_facts.estimate_bytes(value) > 0
+
+def test_estimate_stops_at_depth() -> None:
+    # Below depth 8 only the container itself is counted, so deeper values cost the same.
+    assert parse_facts.estimate_bytes(_nested(20)) == parse_facts.estimate_bytes(
+        _nested(12)
+    )
+    assert parse_facts.estimate_bytes(_nested(3)) < parse_facts.estimate_bytes(
+        _nested(6)
+    )
