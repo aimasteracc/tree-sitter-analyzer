@@ -379,7 +379,10 @@ def test_seal_fallback_skips_deadline_heap_forensics(monkeypatch, caplog, fallba
     monkeypatch.setattr(
         generation_seal,
         "holder_evidence",
-        lambda _db: scans.append("evidence") or {"n": len(scans)},
+        lambda _db, **_k: scans.append("evidence") or {"n": len(scans)},
+    )
+    monkeypatch.setattr(
+        generation_seal, "sqlite_objects", lambda: scans.append("heap") or []
     )
     monkeypatch.setattr(
         generation_seal,
@@ -407,6 +410,29 @@ def test_seal_fallback_skips_deadline_heap_forensics(monkeypatch, caplog, fallba
             "",
         )
     else:
-        assert scans == ["evidence", "evidence", "objects", "creators"]
+        # 期满的三项证据共用一次 SQLite 对象查找。
+        assert scans == ["evidence", "heap", "evidence", "objects", "creators"]
         assert raised.value.first_busy is None
         assert "first busy {'n': 1}" in caplog.text
+
+
+def test_a_failing_shared_lookup_still_logs_each_evidence(monkeypatch, caplog):
+    # 共用的查找失败时，各项证据自行查找；封存结果仍是类型化的忙错误。
+    from tree_sitter_analyzer.cache import generation_seal
+
+    def broken():
+        raise RuntimeError("injected lookup failure")
+
+    monkeypatch.setattr(generation_seal, "sqlite_objects", broken)
+    clock, sleep = _fake_clock()
+    with caplog.at_level("WARNING", logger=generation_seal.__name__):
+        with pytest.raises(generation_seal.SealBusy):
+            generation_seal.leave_wal(
+                _AlwaysBusy(),
+                database="index.db",
+                timeout=1.0,
+                clock=clock,
+                sleep=sleep,
+            )
+    assert "open_connections" in caplog.text
+    assert "holders [" in caplog.text

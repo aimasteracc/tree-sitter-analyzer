@@ -29,6 +29,23 @@
   A machine running agents on many worktrees had filled all 64 slots, and an
   evicted project paid a full fingerprint recompute in its next fresh process.
 
+- **`INDEX_GENERATION_SEAL_BUSY` evidence costs a fraction of the CPU in a large process** (#1904).
+  When a seal stays busy with no byte-copy fallback, the warning still names
+  the holder objects, their reference chains, the connection creation stacks
+  and the first-busy snapshot, but gathering them no longer walks the heap in
+  Python four times. SQLite connections and cursors (and subclass instances)
+  are found in one C-level pass over the referrers of their types, probed once
+  per process with a fallback to the old full walk; the deadline evidence
+  shares that one lookup; and all reference chains advance together, one heap
+  traversal per step (plus at most one to find `__dict__` owners) instead of
+  one per holder per step and one per dict referrer. The chain time cap drops
+  from 3 s to 1 s, which the batched chains no longer reach where the old ones
+  hit 3 s. Busy-path CPU: 1.8 s to 0.6 s on a 1.5 M-object heap, 5.1 s to
+  1.4 s on a 3 M-object heap with leaked cursors (the rest is the `gc.collect()`
+  that releases cycle-held connections). This kept
+  `test_seal_busy_evidence_names_the_holder_creator` over its 8 s unit budget
+  on CI.
+
 - **SCIP callers layer: multi-line imports no longer raise `SCIP_UNLISTED_REFERENCE`** (#1892).
   `scip_agreement` skipped a target reference only on a line that *starts*
   an import, so a specifier on a continuation line of `import {\n  a,\n  b\n}
@@ -43,6 +60,8 @@
   line-start pattern skipped, now count too (fail-closed).
 
 ### Added
+
+- **CI re-queues runs stranded without a hosted runner** (`.github/workflows/ci-runner-requeue.yml`, `scripts/ci_runner_requeue.py`). GitHub cancels a queued job that no hosted runner acquires within about 15-18 minutes ("The job was not acquired by Runner of type hosted even after multiple attempts"); on `macos-latest` (arm64, under GitHub capacity constraints) that left jobs `cancelled` with no runner and zero steps, and the fail-closed `Quality Gate` failed develop although no test failed (runs 42075950677, 42071993107; PR run 42049630824 twice). The gate stays fail-closed. When a CI run fails and every failed or cancelled job is such a stranded job (identified by the check-run annotation, not only by zero steps, so concurrency and manual cancels do not qualify) or the `Quality Gate` itself, the new `workflow_run` workflow re-runs the failed jobs, at most until attempt 3 and only while the run is still the newest CI run for its branch and event. A run with any real failure is never re-run. `workflow_run` workflows load from the default branch, so this takes effect once it reaches `main`. `tests/governance/test_ci_runner_requeue_contract.py` pins the wiring.
 
 - **Opt-in SCIP evidence for `nav callers` on TS / JS** (`callers_scip*.py`).
   Set `TSA_SCIP_INDEX=<path>` or put a scip-typescript index at

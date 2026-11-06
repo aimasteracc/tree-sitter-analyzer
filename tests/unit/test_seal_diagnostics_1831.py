@@ -6,6 +6,8 @@ import os
 import sqlite3
 import threading
 
+import pytest
+
 from tree_sitter_analyzer.cache import seal_diagnostics
 
 
@@ -74,3 +76,52 @@ def test_open_connections_count_other_threads_but_not_closed_ones():
     finally:
         release.set()
         worker.join(30)
+
+
+class _SubclassedConnection(sqlite3.Connection):
+    pass
+
+
+class _SubclassedCursor(sqlite3.Cursor):
+    pass
+
+
+@pytest.mark.parametrize("via_types", [True, False])
+def test_sqlite_objects_finds_connections_cursors_and_subclasses(
+    monkeypatch, via_types
+):
+    # 经由类型的引用者一次找出全部实例；探测不成立时退回逐个遍历全堆，结果相同。
+    monkeypatch.setattr(seal_diagnostics, "_type_referrers_work", None)
+    if not via_types:
+        monkeypatch.setattr(seal_diagnostics, "_probe_type_referrers", lambda: False)
+    plain = sqlite3.connect(":memory:")
+    sub = sqlite3.connect(":memory:", factory=_SubclassedConnection)
+    cursor = plain.cursor()
+    sub_cursor = _SubclassedCursor(sub)
+    closed = sqlite3.connect(":memory:")
+    closed.close()
+    try:
+        found = {id(obj) for obj in seal_diagnostics.sqlite_objects()}
+        assert seal_diagnostics._type_referrers_work is via_types
+    finally:
+        cursor.close()
+        plain.close()
+        sub.close()
+    assert {id(plain), id(sub), id(cursor), id(sub_cursor), id(closed)} <= found
+    assert id(_SubclassedConnection) not in found  # 类型本身不是实例
+
+
+def test_the_type_referrer_probe_holds_on_this_interpreter():
+    # CI 覆盖的每个 Python 版本上都应走快速路径；否则大进程里的取证又会变慢。
+    assert seal_diagnostics._probe_type_referrers() is True
+
+
+def test_a_failing_count_is_reported_not_raised(monkeypatch):
+    def broken():
+        raise RuntimeError("injected scan failure")
+
+    monkeypatch.setattr(seal_diagnostics, "sqlite_objects", broken)
+    evidence = seal_diagnostics.holder_evidence(None)
+    assert evidence["open_connections"] == "RuntimeError: injected scan failure"
+    # 调用方给出的对象列表直接使用，不再查找。
+    assert seal_diagnostics.holder_evidence(None, objects=[])["open_connections"] == 0
