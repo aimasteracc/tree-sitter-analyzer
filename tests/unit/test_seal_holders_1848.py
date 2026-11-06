@@ -180,7 +180,7 @@ def test_holder_objects_never_raises(monkeypatch):
     def broken():
         raise RuntimeError("heap walk failed")
 
-    monkeypatch.setattr(seal_holders.gc, "get_objects", broken)
+    monkeypatch.setattr(seal_holders, "sqlite_objects", broken)
     assert seal_holders.holder_objects("x.db") == [
         {"error": "RuntimeError: heap walk failed"}
     ]
@@ -330,9 +330,42 @@ def test_classify_skips_objects_it_cannot_inspect(tmp_path):
 
 
 def test_dict_owner_is_none_for_a_plain_dict():
-    from tree_sitter_analyzer.cache.seal_holders import _dict_owner
+    from tree_sitter_analyzer.cache.seal_holders import _dict_owners
 
     mapping = {"x": 1}
     holder = [mapping]
-    assert _dict_owner(mapping, set()) is None
+    assert _dict_owners([mapping]) == {}
+    assert _dict_owners([]) == {}
     del holder
+
+
+def test_all_chains_share_one_heap_walk_per_step(tmp_path, monkeypatch):
+    # 每一步一次全堆遍历（另加至多一次找 ``__dict__`` 的所有者），与候选数无关；
+    # 每条链仍是逐个走时的形状。
+    from tree_sitter_analyzer.cache import seal_holders
+
+    database = tmp_path / "many.db"
+    owners = [_LeakedReaderOwner(sqlite3.connect(database)) for _ in range(3)]
+    walks: list[int] = []
+    real = gc.get_referrers
+
+    def counting(*objs):
+        walks.append(len(objs))
+        return real(*objs)
+
+    monkeypatch.setattr(seal_holders.gc, "get_referrers", counting)
+    try:
+        holders = seal_holders.holder_objects(database, objects=[])
+        assert holders == []
+        holders = seal_holders.holder_objects(
+            database, objects=[owner.held for owner in owners]
+        )
+    finally:
+        monkeypatch.undo()
+        for owner in owners:
+            owner.held.close()  # type: ignore[attr-defined]
+    assert [h["kind"] for h in holders] == ["open_connection"] * 3
+    for holder in holders:
+        assert f"{__name__}._LeakedReaderOwner" in holder["held_by"][0]
+    assert len(walks) <= 2 * seal_holders.MAX_CHAIN
+    assert 3 in walks  # 三条链的第一步共用一次遍历

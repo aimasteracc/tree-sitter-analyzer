@@ -8,6 +8,22 @@
 
 ### Fixed
 
+- **`INDEX_GENERATION_SEAL_BUSY` evidence costs a fraction of the CPU in a large process** (#1904).
+  When a seal stays busy with no byte-copy fallback, the warning still names
+  the holder objects, their reference chains, the connection creation stacks
+  and the first-busy snapshot, but gathering them no longer walks the heap in
+  Python four times. SQLite connections and cursors (and subclass instances)
+  are found in one C-level pass over the referrers of their types, probed once
+  per process with a fallback to the old full walk; the deadline evidence
+  shares that one lookup; and all reference chains advance together, one heap
+  traversal per step (plus at most one to find `__dict__` owners) instead of
+  one per holder per step and one per dict referrer. The chain time cap drops
+  from 3 s to 1 s, which the batched chains no longer reach where the old ones
+  hit 3 s. Busy-path CPU: 1.8 s to 0.6 s on a 1.5 M-object heap, 5.1 s to
+  1.4 s on a 3 M-object heap with leaked cursors (the rest is the `gc.collect()`
+  that releases cycle-held connections). This kept
+  `test_seal_busy_evidence_names_the_holder_creator` over its 8 s unit budget
+  on CI.
 - **SCIP callers layer: multi-line imports no longer raise `SCIP_UNLISTED_REFERENCE`** (#1892).
   `scip_agreement` skipped a target reference only on a line that *starts*
   an import, so a specifier on a continuation line of `import {\n  a,\n  b\n}

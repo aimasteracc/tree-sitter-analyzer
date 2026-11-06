@@ -339,7 +339,7 @@ def test_creators_report_states_uris_and_never_raise(tmp_path, monkeypatch):
         def broken():
             raise RuntimeError("injected scan failure")
 
-        monkeypatch.setattr(seal_creators.gc, "get_objects", broken)
+        monkeypatch.setattr(seal_creators, "sqlite_objects", broken)
         assert seal_creators.creators(database)[0]["error"].startswith("RuntimeError")
         monkeypatch.undo()
     finally:
