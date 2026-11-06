@@ -1,6 +1,7 @@
 # RFC-0043: Warm `nav callers` after the resident graph — measured cost and next steps
 
-- **Status**: draft (measurements, design and one opt-in prototype; no default behaviour change)
+- **Status**: draft (Phase A #1927; Phase B and the §4 byte budget shipped with the parse memo on
+  by default — see "Phase B and the byte budget: what shipped")
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-11-06
 - **Last updated**: 2026-11-06
@@ -330,6 +331,90 @@ The answer-identity check covers **every stored callers-gate answer**:
 The identity holds by construction for Phase A and B (a pure function memoized on its full input);
 the replay is the empirical check that the construction was implemented as claimed.
 
+## Phase B and the byte budget: what shipped (2026-11-06)
+
+### What changed
+
+- **One memo for all parse-derived facts:** `tree_sitter_analyzer/resident/parse_facts.py`.
+  - The key is `(kind, language, extra, blake2b-128 of the content)`.
+  - Values are immutable tables. No syntax tree is kept.
+  - Bounds: at most 4,096 entries and 64 MB (estimated), least recently used first out.
+  - **On by default.** It is off with `TSA_RESIDENT_PARSE_MEMO=0` (`off` / `false` / `no` also
+    work), or with the RFC-0042 kill switch `TSA_RESIDENT=off`.
+  - The Phase A decorator table moved into it.
+- **Facts memoized in this phase:**
+  - the Python definition table: each definition's name, header lines and decorators, in
+    `ast.walk` order. It serves both the registering-decorator gate and the declaration-header
+    check;
+  - the tree-sitter declaration table of the declaration-header check;
+  - the Python class facts of the subtype class index (`callers_py_class_index`). These are
+    keyed with the file's path, because every fact names it, and computed from the exact bytes
+    read on that call. They now survive a renewed snapshot or a refresh, which rebuilds the
+    class index.
+- **Java subtype candidates: a substring pre-test.** In profiling, the Java supertype gate spent
+  most of its time (gson: 8.0 s of 9.4 s over 72 calls) in `callers_java_subtypes._candidates`.
+  That function runs a lazy `extends|implements … name` regex over every Java type file, for every
+  name. The clause regex needs `name` as a whole word, so a text that does not contain the
+  substring cannot match. `name in text` now runs first. The pre-test is exact and is not behind
+  the switch.
+- **Byte budget for `call_graph_memo`:** `TSA_RESIDENT_GRAPH_MB`, default 256. Each stored state is
+  estimated as container entries counted two levels deep × 200 bytes. The measured range is
+  54–155 bytes per entry on the 7 repos, so the estimate errs high: for example rich 17.0 MB
+  estimated against 6.6 MB retained, and pydantic 106 against 35.5 MB, both measured with an
+  earlier 400-byte constant. Least recently used roots are evicted until the count (4 roots) and
+  the bytes are within bounds.
+- **Not done:**
+  - The accessor check stays as it is (< 8 ms per query).
+  - The TypeScript and Python supertype readers already keep stamp-keyed parses (`_PARSED`,
+    `callers_ts_source`), so they are unchanged.
+  - The per-snapshot tables are not yet counted against a byte budget.
+
+**Deviation from §4.** The root that was just stored is never evicted, even when its own estimate
+exceeds the budget. Without this rule, a repository larger than the budget would rebuild its graph
+on every query, which is a severe regression; with it, memory stays at about one graph, as before
+the budget existed. The budget therefore bounds several roots resident at once. "Skip the
+preload" is not needed. A request that holds a state keeps its reference, so an eviction never
+affects an answer in progress.
+
+### Identity (all 2,457 stored callers-gate answers)
+
+Each repo was copied with `copy_gate_index.py`, then run in four slots, A B B A, with one fresh
+process per slot:
+- A: `TSA_RESIDENT_PARSE_MEMO=0`, one round;
+- B: the new default (memo on), two rounds (first touch, then repeat).
+
+**0 differing rows in every slot on all 7 repos.** That is 2 × 2,457 answers with the memo off and
+4 × 2,457 with it on, all equal to the stored gate answers.
+
+### Warm latency, round 1 (first touch of every row), mean / p90 per slot
+
+Both sides include the Java pre-test. The host was shared (other agents running), so slot-to-slot
+noise is ±20–30 % (rich and fastapi show it in both directions).
+
+| Repo (rows) | A (memo off) | B (memo on) | B | A |
+|---|---|---|---|---|
+| rich (492) | 68.7 / 148 ms | 70.2 / 147 ms | 57.4 / 126 ms | 73.9 / 164 ms |
+| pydantic (648) | 233.7 / 485 ms | 170.1 / 394 ms | 153.8 / 347 ms | 254.3 / 555 ms |
+| fastapi (558) | 222.3 / 379 ms | 134.8 / 193 ms | 180.3 / 281 ms | 172.1 / 290 ms |
+| gson (215) | 69.3 / 105 ms | 62.9 / 85 ms | 57.3 / 76 ms | 70.5 / 99 ms |
+| axios (214) | 62.1 / 132 ms | 29.6 / 58 ms | 38.1 / 71 ms | 44.0 / 85 ms |
+| hono (152) | 75.9 / 130 ms | 52.2 / 74 ms | 53.3 / 74 ms | 73.7 / 135 ms |
+| zod (178) | 856.0 / 3,585 ms | 101.0 / 160 ms | 93.1 / 148 ms | 721.5 / 3,108 ms |
+
+- **Against `develop` before this RFC** (the RFC-0043 measurement, same harness):
+  - gson's mean was 127–139 ms. It is now 57–70 ms, with or without the memo, from the Java
+    pre-test.
+  - zod's mean was 818–850 ms; with Phase A it was 144–152 ms, and with Phase B it is 93–101 ms.
+- **Review-gated medians, A → B:**
+  - zod 107–129 → 66–67 ms
+  - hono 75–81 → 55 ms
+  - axios 37–51 → 30–38 ms
+  - pydantic 151–155 → 88–90 ms
+  - gson 47–52 → 40–41 ms
+  - rich 83–86 → 64–79 ms
+- **What remains** is mostly the stat-based freshness floor (§3) and the Python supertype walk
+  over AST trees (`_owner_class`, `_scope_bindings`), which this phase did not change.
+
 ## Three-Surface impact (CLI ↔ MCP parity)
 
 - No CLI flag, MCP action, parameter or payload change.
@@ -391,10 +476,14 @@ the replay is the empirical check that the construction was implemented as claim
 - [x] Measurements on all 7 gate repos and all 2,457 stored answers (this RFC)
 - [x] Phase A prototype behind `TSA_RESIDENT_PARSE_MEMO=1`, default off; unit tests green; 0
       differing rows with the flag on over every stored answer
-- [ ] Phase A on by default (after the callers gate and the replay pass with it on)
-- [ ] Phase B: supertype facts, definition tables, declaration header, accessor — one PR each,
-      each with ABBA and 0 differing rows
-- [ ] §4 byte budget for `call_graph_memo` and the snapshot tables
+- [x] Phase A on by default: 0 differing rows over all 2,457 stored answers with the memo off
+      and on (Phase B PR); the callers gate on the default is left to its owner
+- [x] Phase B (one PR): Python definition table, tree-sitter declaration table, Python class facts
+      of the subtype index, Java subtype substring pre-test; ABBA on all 7 repos, 0 differing rows.
+      Not done: the accessor check (< 8 ms) and the AST walks of the Python supertype reader
+- [x] §4 byte budget for `call_graph_memo` (`TSA_RESIDENT_GRAPH_MB`, default 256; the root just
+      stored is always kept)
+- [ ] §4 byte accounting for the per-snapshot tables
 - [ ] RFC-0042 Phase 5 (watcher-synced freshness) qualified, for single-digit review-gated answers
 
 ## What this RFC does NOT do (deferred)

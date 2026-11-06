@@ -91,34 +91,63 @@ def without_header_names(
 
 
 def _python_name_lines(text: str, recorded: frozenset[int], bare: str) -> set[int]:
-    from .callers_decorators import _parsed_python, _python_definitions
+    from .callers_decorators import python_definition_table
 
-    parsed = _parsed_python(text)
-    if parsed is None:
+    table = python_definition_table(text)
+    if table is None:
         return set()
-    found: set[int] = set()
-    for first, header, node in _python_definitions(text, parsed[0]):
-        if node.name != bare:
-            continue
-        if any(first <= line <= header for line in recorded):
-            found.add(int(header))
-    return found
+    return {
+        header
+        for name, first, header, _decorators in table
+        if name == bare and any(first <= line <= header for line in recorded)
+    }
 
 
 def _tree_sitter_name_lines(
     text: str, recorded: frozenset[int], language: str, bare: str
 ) -> set[int]:
+    table = _tree_sitter_declarations(text, language)
+    return {
+        name_line
+        for name, start, name_line in table
+        if name == bare and any(start <= line <= name_line for line in recorded)
+    }
+
+
+#: RFC-0043: one named declaration of a file: (name, first line, name line), 1-based.
+_Declaration = tuple[str, int, int]
+
+
+def _tree_sitter_declarations(text: str, language: str) -> tuple[_Declaration, ...]:
+    """Every named declaration node of ``text``; empty when it cannot be parsed.
+
+    RFC-0043: a pure function of the text, reused per content digest
+    (:mod:`...resident.parse_facts`); no syntax tree is kept.
+    """
+    from ...resident import parse_facts
+
+    return parse_facts.facts(
+        "ts.declarations",
+        language,
+        text,
+        lambda: _build_tree_sitter_declarations(text, language),
+    )
+
+
+def _build_tree_sitter_declarations(
+    text: str, language: str
+) -> tuple[_Declaration, ...]:
     from ...language_loader import create_parser_safely
 
     try:
         parser = create_parser_safely(language)
         if parser is None:
-            return set()
+            return ()
         source = text.encode("utf-8")
         root = parser.parse(source).root_node
     except Exception:  # noqa: BLE001 — a grammar failure adds nothing (conservative)
-        return set()
-    found: set[int] = set()
+        return ()
+    found: list[_Declaration] = []
     stack: list[Any] = [root]
     while stack:
         node = stack.pop()
@@ -128,13 +157,14 @@ def _tree_sitter_name_lines(
         name = node.child_by_field_name("name")
         if name is None:
             continue
-        if source[name.start_byte : name.end_byte].decode("utf-8", "replace") != bare:
-            continue
-        start = int(node.start_point[0]) + 1
-        name_line = int(name.start_point[0]) + 1
-        if any(start <= line <= name_line for line in recorded):
-            found.add(name_line)
-    return found
+        found.append(
+            (
+                source[name.start_byte : name.end_byte].decode("utf-8", "replace"),
+                int(node.start_point[0]) + 1,
+                int(name.start_point[0]) + 1,
+            )
+        )
+    return tuple(found)
 
 
 __all__ = ["name_lines", "sole_occurrence", "without_header_names"]
