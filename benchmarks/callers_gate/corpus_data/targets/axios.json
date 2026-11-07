@@ -1,0 +1,1500 @@
+[
+{
+"mode": "bare",
+"file": "lib/core/dispatchRequest.js",
+"qual": "onAdapterResolution",
+"name": "onAdapterResolution",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/core/dispatchRequest.js",
+"qual": "onAdapterRejection",
+"name": "onAdapterRejection",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/deprecatedMethod.js",
+"qual": "deprecatedMethod",
+"name": "deprecatedMethod",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "docs/scripts/process-sponsors.js",
+"qual": "getSponsorTier",
+"name": "getSponsorTier",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/core/mergeConfig.js",
+"qual": "getMergedValue",
+"name": "getMergedValue",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/AxiosTransformStream.js",
+"qual": "AxiosTransformStream._read",
+"name": "AxiosTransformStream._read",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/formDataToJSON.js",
+"qual": "normalizeArrays",
+"name": "normalizeArrays",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/utils.js",
+"qual": "toObjectSet",
+"name": "toObjectSet",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/adapters/http.js",
+"qual": "isNodeEnvProxyEnabled",
+"name": "isNodeEnvProxyEnabled",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/utils.js",
+"qual": "isSafeIterable",
+"name": "isSafeIterable",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/core/AxiosHeaders.js",
+"qual": "setHeaders",
+"name": "setHeaders",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/composeSignals.js",
+"qual": "onabort",
+"name": "onabort",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/core/mergeConfig.js",
+"qual": "defaultToConfig2",
+"name": "defaultToConfig2",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/throttle.js",
+"qual": "throttled",
+"name": "throttled",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/utils.js",
+"qual": "findKey",
+"name": "findKey",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/platform/node/index.js",
+"qual": "generateString",
+"name": "generateString",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/utils.js",
+"qual": "isReactNativeBlob",
+"name": "isReactNativeBlob",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/core/dispatchRequest.js",
+"qual": "onAdapterResolution",
+"name": "onAdapterResolution",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/core/dispatchRequest.js",
+"qual": "onAdapterRejection",
+"name": "onAdapterRejection",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/deprecatedMethod.js",
+"qual": "deprecatedMethod",
+"name": "deprecatedMethod",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "docs/scripts/process-sponsors.js",
+"qual": "getSponsorTier",
+"name": "getSponsorTier",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/core/mergeConfig.js",
+"qual": "getMergedValue",
+"name": "getMergedValue",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/AxiosTransformStream.js",
+"qual": "AxiosTransformStream._read",
+"name": "AxiosTransformStream._read",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/formDataToJSON.js",
+"qual": "normalizeArrays",
+"name": "normalizeArrays",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/utils.js",
+"qual": "toObjectSet",
+"name": "toObjectSet",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/adapters/http.js",
+"qual": "isNodeEnvProxyEnabled",
+"name": "isNodeEnvProxyEnabled",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/utils.js",
+"qual": "isSafeIterable",
+"name": "isSafeIterable",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/core/AxiosHeaders.js",
+"qual": "setHeaders",
+"name": "setHeaders",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/composeSignals.js",
+"qual": "onabort",
+"name": "onabort",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/core/mergeConfig.js",
+"qual": "defaultToConfig2",
+"name": "defaultToConfig2",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/throttle.js",
+"qual": "throttled",
+"name": "throttled",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/utils.js",
+"qual": "findKey",
+"name": "findKey",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/platform/node/index.js",
+"qual": "generateString",
+"name": "generateString",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/utils.js",
+"qual": "isReactNativeBlob",
+"name": "isReactNativeBlob",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/utils.js",
+"qual": "_global",
+"name": "_global",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "lib/utils.js",
+"qual": "_global",
+"name": "_global",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/unit/adapters/http.test.js",
+"qual": "HangingConnectAgent.createConnection",
+"name": "createConnection",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/adapters/http.test.js",
+"qual": "HangingConnectAgent.createConnection",
+"name": "HangingConnectAgent.createConnection",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/unit/adapters/http.test.js",
+"qual": "HangingConnectSocket.setTimeout",
+"name": "setTimeout",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/adapters/http.test.js",
+"qual": "HangingConnectSocket.setTimeout",
+"name": "HangingConnectSocket.setTimeout",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "lib/cancel/CancelToken.js",
+"qual": "CancelToken.toAbortSignal",
+"name": "toAbortSignal",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "lib/cancel/CancelToken.js",
+"qual": "CancelToken.toAbortSignal",
+"name": "CancelToken.toAbortSignal",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/unit/adapters/xhr.test.js",
+"qual": "StubEventTarget.listenerCount",
+"name": "listenerCount",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/adapters/xhr.test.js",
+"qual": "StubEventTarget.listenerCount",
+"name": "StubEventTarget.listenerCount",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/Http2Sessions.js",
+"qual": "Http2Sessions.getSession",
+"name": "getSession",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/Http2Sessions.js",
+"qual": "Http2Sessions.getSession",
+"name": "Http2Sessions.getSession",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "lib/core/AxiosHeaders.js",
+"qual": "AxiosHeaders.normalize",
+"name": "normalize",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "lib/core/AxiosHeaders.js",
+"qual": "AxiosHeaders.normalize",
+"name": "AxiosHeaders.normalize",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/unit/prototypePollution.test.js",
+"qual": "ConfigTemplate.marker",
+"name": "marker",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/prototypePollution.test.js",
+"qual": "ConfigTemplate.marker",
+"name": "ConfigTemplate.marker",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "lib/core/AxiosHeaders.js",
+"qual": "AxiosHeaders.getSetCookie",
+"name": "getSetCookie",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "lib/core/AxiosHeaders.js",
+"qual": "AxiosHeaders.getSetCookie",
+"name": "AxiosHeaders.getSetCookie",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "lib/core/Axios.js",
+"qual": "Axios._request",
+"name": "_request",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/core/Axios.js",
+"qual": "Axios._request",
+"name": "Axios._request",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/unit/prototypePollution.test.js",
+"qual": "ConfigTemplate.method",
+"name": "method",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/prototypePollution.test.js",
+"qual": "ConfigTemplate.method",
+"name": "ConfigTemplate.method",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/unit/helpers/formDataToStream.test.js",
+"qual": "SpecFormData.entries",
+"name": "entries",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/helpers/formDataToStream.test.js",
+"qual": "SpecFormData.entries",
+"name": "SpecFormData.entries",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/unit/adapters/http.test.js",
+"qual": "CustomFormData.getHeaders",
+"name": "getHeaders",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/adapters/http.test.js",
+"qual": "CustomFormData.getHeaders",
+"name": "CustomFormData.getHeaders",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "lib/core/AxiosHeaders.js",
+"qual": "AxiosHeaders.parseParameters",
+"name": "parseParameters",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/core/AxiosHeaders.js",
+"qual": "AxiosHeaders.parseParameters",
+"name": "AxiosHeaders.parseParameters",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/cancel/CancelToken.js",
+"qual": "CancelToken.unsubscribe",
+"name": "unsubscribe",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/cancel/CancelToken.js",
+"qual": "CancelToken.unsubscribe",
+"name": "CancelToken.unsubscribe",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/browser/progress.browser.test.js",
+"qual": "MockXMLHttpRequest.getListenerCount",
+"name": "getListenerCount",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/browser/progress.browser.test.js",
+"qual": "MockXMLHttpRequest.getListenerCount",
+"name": "MockXMLHttpRequest.getListenerCount",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/unit/adapters/xhr.test.js",
+"qual": "StubEventTarget.dispatch",
+"name": "dispatch",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/adapters/xhr.test.js",
+"qual": "StubEventTarget.dispatch",
+"name": "StubEventTarget.dispatch",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/unit/adapters/http.test.js",
+"qual": "HangingConnectSocket.setKeepAlive",
+"name": "setKeepAlive",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/adapters/http.test.js",
+"qual": "HangingConnectSocket.setKeepAlive",
+"name": "HangingConnectSocket.setKeepAlive",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "lib/cancel/CancelToken.js",
+"qual": "CancelToken.subscribe",
+"name": "subscribe",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/cancel/CancelToken.js",
+"qual": "CancelToken.subscribe",
+"name": "CancelToken.subscribe",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/core/Axios.js",
+"qual": "Axios.getUri",
+"name": "getUri",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "lib/core/Axios.js",
+"qual": "Axios.getUri",
+"name": "Axios.getUri",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "lib/cancel/CancelToken.js",
+"qual": "CancelToken.source",
+"name": "source",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/cancel/CancelToken.js",
+"qual": "CancelToken.source",
+"name": "CancelToken.source",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/core/AxiosHeaders.js",
+"qual": "AxiosHeaders.accessor",
+"name": "accessor",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/core/AxiosHeaders.js",
+"qual": "AxiosHeaders.accessor",
+"name": "AxiosHeaders.accessor",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/utils.js",
+"qual": "isEmptyObject",
+"name": "isEmptyObject",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/utils.js",
+"qual": "isEmptyObject",
+"name": "isEmptyObject",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "docs/scripts/utils.js",
+"qual": "printErrorMessage",
+"name": "printErrorMessage",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "docs/scripts/utils.js",
+"qual": "printErrorMessage",
+"name": "printErrorMessage",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/adapters/fetch.js",
+"qual": "trackRequestStream",
+"name": "trackRequestStream",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/adapters/fetch.js",
+"qual": "trackRequestStream",
+"name": "trackRequestStream",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/core/AxiosHeaders.js",
+"qual": "normalizeHeader",
+"name": "normalizeHeader",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/core/AxiosHeaders.js",
+"qual": "normalizeHeader",
+"name": "normalizeHeader",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/unit/adapters/http.test.js",
+"qual": "stopUnixServer",
+"name": "stopUnixServer",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/adapters/http.test.js",
+"qual": "stopUnixServer",
+"name": "stopUnixServer",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/adapters/http.js",
+"qual": "isNodeNativeEnvProxySupported",
+"name": "isNodeNativeEnvProxySupported",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/adapters/http.js",
+"qual": "isNodeNativeEnvProxySupported",
+"name": "isNodeNativeEnvProxySupported",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/spread.js",
+"qual": "spread",
+"name": "spread",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/spread.js",
+"qual": "spread",
+"name": "spread",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/shouldBypassProxy.js",
+"qual": "ipv4ToBytes",
+"name": "ipv4ToBytes",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/shouldBypassProxy.js",
+"qual": "ipv4ToBytes",
+"name": "ipv4ToBytes",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/unit/adapters/fetch.test.js",
+"qual": "writeNext",
+"name": "writeNext",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/adapters/fetch.test.js",
+"qual": "writeNext",
+"name": "writeNext",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/setup/formBodyLengthCases.js",
+"qual": "generateType",
+"name": "generateType",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/setup/formBodyLengthCases.js",
+"qual": "generateType",
+"name": "generateType",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/cancel/CancelToken.js",
+"qual": "CancelToken.executor",
+"name": "executor",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/cancel/CancelToken.js",
+"qual": "CancelToken.executor",
+"name": "CancelToken.executor",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/shouldBypassProxy.js",
+"qual": "parseCidrEntry",
+"name": "parseCidrEntry",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/shouldBypassProxy.js",
+"qual": "parseCidrEntry",
+"name": "parseCidrEntry",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/setup/server.js",
+"qual": "makeEchoStream",
+"name": "makeEchoStream",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/setup/server.js",
+"qual": "makeEchoStream",
+"name": "makeEchoStream",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/unit/helpers/AxiosTransformStream.test.js",
+"qual": "collectChunks",
+"name": "collectChunks",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/helpers/AxiosTransformStream.test.js",
+"qual": "collectChunks",
+"name": "collectChunks",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/shouldBypassProxy.js",
+"qual": "trimTrailingDots",
+"name": "trimTrailingDots",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/shouldBypassProxy.js",
+"qual": "trimTrailingDots",
+"name": "trimTrailingDots",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/formDataToBlob.js",
+"qual": "stringBytes",
+"name": "stringBytes",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/formDataToBlob.js",
+"qual": "stringBytes",
+"name": "stringBytes",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/core/AxiosHeaders.js",
+"qual": "trimOWS",
+"name": "trimOWS",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/core/AxiosHeaders.js",
+"qual": "trimOWS",
+"name": "trimOWS",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/smoke/bun/tests/timeout.smoke.test.ts",
+"qual": "createAbortedError",
+"name": "createAbortedError",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/smoke/bun/tests/timeout.smoke.test.ts",
+"qual": "createAbortedError",
+"name": "createAbortedError",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/core/AxiosHeaders.js",
+"qual": "matchHeaderValue",
+"name": "matchHeaderValue",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/core/AxiosHeaders.js",
+"qual": "matchHeaderValue",
+"name": "matchHeaderValue",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/module/esm/tests/helpers/declaration-emit.ts",
+"qual": "makeRequest",
+"name": "makeRequest",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/module/esm/tests/helpers/declaration-emit.ts",
+"qual": "makeRequest",
+"name": "makeRequest",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/unit/helpers/formDataToStream.test.js",
+"qual": "collect",
+"name": "collect",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/helpers/formDataToStream.test.js",
+"qual": "collect",
+"name": "collect",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/cookies.js",
+"qual": "decodeCookieValue",
+"name": "decodeCookieValue",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/cookies.js",
+"qual": "decodeCookieValue",
+"name": "decodeCookieValue",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/setup/formBodyLengthCases.js",
+"qual": "withoutPlatformRandom",
+"name": "withoutPlatformRandom",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/setup/formBodyLengthCases.js",
+"qual": "withoutPlatformRandom",
+"name": "withoutPlatformRandom",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/formDataToJSON.js",
+"qual": "formDataToJSON",
+"name": "formDataToJSON",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/formDataToJSON.js",
+"qual": "formDataToJSON",
+"name": "formDataToJSON",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/adapters/http.js",
+"qual": "enforceMaxContentLength",
+"name": "enforceMaxContentLength",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/adapters/http.js",
+"qual": "enforceMaxContentLength",
+"name": "enforceMaxContentLength",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/toFormData.js",
+"qual": "renderKey",
+"name": "renderKey",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/toFormData.js",
+"qual": "renderKey",
+"name": "renderKey",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/utils.js",
+"qual": "endsWith",
+"name": "endsWith",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/utils.js",
+"qual": "endsWith",
+"name": "endsWith",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/core/AxiosHeaders.js",
+"qual": "formatHeader",
+"name": "formatHeader",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/core/AxiosHeaders.js",
+"qual": "formatHeader",
+"name": "formatHeader",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/adapters/http.js",
+"qual": "normalizeLookup",
+"name": "normalizeLookup",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/adapters/http.js",
+"qual": "normalizeLookup",
+"name": "normalizeLookup",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/shouldBypassProxy.js",
+"qual": "isLoopback",
+"name": "isLoopback",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/shouldBypassProxy.js",
+"qual": "isLoopback",
+"name": "isLoopback",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/readBlob.js",
+"qual": "readBlob",
+"name": "readBlob",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/readBlob.js",
+"qual": "readBlob",
+"name": "readBlob",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "examples/server.js",
+"qual": "listDirs",
+"name": "listDirs",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "examples/server.js",
+"qual": "listDirs",
+"name": "listDirs",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/adapters/fetch.js",
+"qual": "resolveBodyLength",
+"name": "resolveBodyLength",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/adapters/fetch.js",
+"qual": "resolveBodyLength",
+"name": "resolveBodyLength",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/core/Axios.js",
+"qual": "generateHTTPMethod",
+"name": "generateHTTPMethod",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/core/Axios.js",
+"qual": "generateHTTPMethod",
+"name": "generateHTTPMethod",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/unit/adapters/fetch.test.js",
+"qual": "createBrokenDOMExceptionLikeError",
+"name": "createBrokenDOMExceptionLikeError",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/adapters/fetch.test.js",
+"qual": "createBrokenDOMExceptionLikeError",
+"name": "createBrokenDOMExceptionLikeError",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/core/mergeConfig.js",
+"qual": "headersToObject",
+"name": "headersToObject",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/core/mergeConfig.js",
+"qual": "headersToObject",
+"name": "headersToObject",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/unit/adapters/fetch.test.js",
+"qual": "makeUploadStream",
+"name": "makeUploadStream",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/adapters/fetch.test.js",
+"qual": "makeUploadStream",
+"name": "makeUploadStream",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/unit/adapters/bodyLength.test.js",
+"qual": "withUploadServer",
+"name": "withUploadServer",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/adapters/bodyLength.test.js",
+"qual": "withUploadServer",
+"name": "withUploadServer",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/unit/core/settle.test.js",
+"qual": "makeResponse",
+"name": "makeResponse",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/core/settle.test.js",
+"qual": "makeResponse",
+"name": "makeResponse",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/unit/helpers/requestConsistency.test.js",
+"qual": "FormDataMock",
+"name": "FormDataMock",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/helpers/requestConsistency.test.js",
+"qual": "FormDataMock",
+"name": "FormDataMock",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/setup/server.js",
+"qual": "untrackServer",
+"name": "untrackServer",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/setup/server.js",
+"qual": "untrackServer",
+"name": "untrackServer",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/core/AxiosError.js",
+"qual": "redactConfig",
+"name": "redactConfig",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/core/AxiosError.js",
+"qual": "redactConfig",
+"name": "redactConfig",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/adapters/xhr.js",
+"qual": "onloadend",
+"name": "onloadend",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "lib/adapters/xhr.js",
+"qual": "onloadend",
+"name": "onloadend",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/smoke/bun/tests/cancel.smoke.test.ts",
+"qual": "abortError",
+"name": "abortError",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/smoke/bun/tests/cancel.smoke.test.ts",
+"qual": "abortError",
+"name": "abortError",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rollup.config.js",
+"qual": "buildConfig",
+"name": "buildConfig",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rollup.config.js",
+"qual": "buildConfig",
+"name": "buildConfig",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/unit/adapters/fetch.test.js",
+"qual": "RestrictedCacheRequest.onDownloadProgress",
+"name": "onDownloadProgress",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/adapters/fetch.test.js",
+"qual": "RestrictedCacheRequest.onDownloadProgress",
+"name": "RestrictedCacheRequest.onDownloadProgress",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/estimateDataURLDecodedBytes.js",
+"qual": "isPercentEncodedByte",
+"name": "isPercentEncodedByte",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/estimateDataURLDecodedBytes.js",
+"qual": "isPercentEncodedByte",
+"name": "isPercentEncodedByte",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/unit/core/AxiosError.test.js",
+"qual": "makeCircularCause",
+"name": "makeCircularCause",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/core/AxiosError.test.js",
+"qual": "makeCircularCause",
+"name": "makeCircularCause",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/shouldBypassProxy.js",
+"qual": "isIPv4Loopback",
+"name": "isIPv4Loopback",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/shouldBypassProxy.js",
+"qual": "isIPv4Loopback",
+"name": "isIPv4Loopback",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/browser/requests.browser.test.js",
+"qual": "str2ab",
+"name": "str2ab",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/browser/requests.browser.test.js",
+"qual": "str2ab",
+"name": "str2ab",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "docs/scripts/process-sponsors.js",
+"qual": "buildLinks",
+"name": "buildLinks",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "docs/scripts/process-sponsors.js",
+"qual": "buildLinks",
+"name": "buildLinks",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/toFormData.js",
+"qual": "removeBrackets",
+"name": "removeBrackets",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/toFormData.js",
+"qual": "removeBrackets",
+"name": "removeBrackets",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/unit/adapters/xhr.test.js",
+"qual": "queueProgress",
+"name": "queueProgress",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/adapters/xhr.test.js",
+"qual": "queueProgress",
+"name": "queueProgress",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/estimateDataURLDecodedBytes.js",
+"qual": "hexValue",
+"name": "hexValue",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/estimateDataURLDecodedBytes.js",
+"qual": "hexValue",
+"name": "hexValue",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/core/mergeConfig.js",
+"qual": "ownEnumerableKeys",
+"name": "ownEnumerableKeys",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/core/mergeConfig.js",
+"qual": "ownEnumerableKeys",
+"name": "ownEnumerableKeys",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "examples/network_enhanced.js",
+"qual": "enhanceNetworkError",
+"name": "enhanceNetworkError",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "examples/network_enhanced.js",
+"qual": "enhanceNetworkError",
+"name": "enhanceNetworkError",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/unit/adapters/fetch.test.js",
+"qual": "RestrictedCacheRequest.onUploadProgress",
+"name": "onUploadProgress",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/adapters/fetch.test.js",
+"qual": "RestrictedCacheRequest.onUploadProgress",
+"name": "RestrictedCacheRequest.onUploadProgress",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "lib/adapters/fetch.js",
+"qual": "getBodyLength",
+"name": "getBodyLength",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/adapters/fetch.js",
+"qual": "getBodyLength",
+"name": "getBodyLength",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/estimateDataURLDecodedBytes.js",
+"qual": "estimateDataURLBytes",
+"name": "estimateDataURLBytes",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/estimateDataURLDecodedBytes.js",
+"qual": "estimateDataURLBytes",
+"name": "estimateDataURLBytes",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/estimateDataURLDecodedBytes.js",
+"qual": "isBase64Whitespace",
+"name": "isBase64Whitespace",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/estimateDataURLDecodedBytes.js",
+"qual": "isBase64Whitespace",
+"name": "isBase64Whitespace",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/utils.js",
+"qual": "isIterable",
+"name": "isIterable",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/utils.js",
+"qual": "isIterable",
+"name": "isIterable",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "docs/.vitepress/tokenizeSearchText.js",
+"qual": "tokenizeSearchText",
+"name": "tokenizeSearchText",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs/.vitepress/tokenizeSearchText.js",
+"qual": "tokenizeSearchText",
+"name": "tokenizeSearchText",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "lib/adapters/http.js",
+"qual": "clearConnectPhaseTimer",
+"name": "clearConnectPhaseTimer",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/adapters/http.js",
+"qual": "clearConnectPhaseTimer",
+"name": "clearConnectPhaseTimer",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/adapters/http.js",
+"qual": "resolveFamily",
+"name": "resolveFamily",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "lib/adapters/http.js",
+"qual": "resolveFamily",
+"name": "resolveFamily",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "lib/utils.js",
+"qual": "trim",
+"name": "trim",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/utils.js",
+"qual": "trim",
+"name": "trim",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/helpers/estimateDataURLDecodedBytes.js",
+"qual": "estimateDataURLBufferAllocation",
+"name": "estimateDataURLBufferAllocation",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/helpers/estimateDataURLDecodedBytes.js",
+"qual": "estimateDataURLBufferAllocation",
+"name": "estimateDataURLBufferAllocation",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "lib/adapters/adapters.js",
+"qual": "renderReason",
+"name": "renderReason",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "lib/adapters/adapters.js",
+"qual": "renderReason",
+"name": "renderReason",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/unit/adapters/http.test.js",
+"qual": "createHttp2Axios",
+"name": "createHttp2Axios",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/unit/adapters/http.test.js",
+"qual": "createHttp2Axios",
+"name": "createHttp2Axios",
+"r15": "complete"
+}
+]

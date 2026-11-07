@@ -45,10 +45,42 @@ One-time setup (already done on the owner's machine; idempotent):
 py -3 -m benchmarks.callers_gate setup [--python <venv python>]
 ```
 
-`setup` bare-clones the 7 repos at their pinned commits (from the local r10 /
-ts1 clones, hard-linked, else from GitHub), copies the r15 target lists, GT2
-and the hono / zod hand labels into `corpus/`, and records the gate
-interpreter (default: the main checkout's `.venv`).
+`setup` first installs the corpus into `corpus/` (below), then bare-clones the
+7 repos at their pinned commits (from the local r10 / ts1 clones when they
+exist, hard-linked, else from GitHub), and records the gate interpreter
+(default: the main checkout's `.venv`).
+
+### Ground truth
+
+The corpus is versioned in this repo, byte for byte, under
+`benchmarks/callers_gate/corpus_data/` (`.gitattributes` marks it `-text`
+and the pre-commit fixers skip it: the sha256 of the target list is part of
+every answer cache key, so a line-ending change would invalidate every cache):
+
+| file | what it is | source |
+|---|---|---|
+| `targets/<repo>.json` | the 2,457 targets: `mode`, `file`, `qual`, `name` (the qual in qualified mode, else the bare name) and the round-15 verdict `r15` | dogfood round 15 answers, one row per `(mode, file, qual)` in first-seen order |
+| `labels/{hono,zod}.json` | hand labels: per target, its call sites (`calls`), non-call references (`refs`) and calls of other same-named definitions (`other`) | read from every `git grep -n -w -C1` hit at the pin (each file's `_note`) |
+| `manifest.json` | sha256 of every corpus file, GT2 included | |
+
+GT2 (`gt2/{rich,pydantic,fastapi}.json`, ~39 MB) is **not** versioned. It is
+a static Python call graph of each pinned repo (`callers`, `module_callers`,
+`open_sites` for calls it could not resolve, `defs`, ...), generated outside
+this repo by the round-10 dogfood harness (an `ast`-based resolver with MRO
+and constructor-typed receivers) and then corrected by a strict pass after
+#1839 (its `gt2` field records that provenance). That generator is not part of
+the repo, so GT2 cannot be rebuilt here: the versioned manifest pins its
+digests, and `setup` accepts only a `corpus/gt2/` copy with exactly those
+digests. To set up a new gate root, copy `corpus/gt2/` from an existing gate
+root (keep a backup of it), then run `setup`.
+
+`setup` keeps every gate-root corpus file whose digest matches, copies a
+missing or edited target / label file from `corpus_data/`, and fails with the
+file name and the expected digest when GT2 is missing or different; it checks
+every file before it writes any. Every `run`, `report --rejudge` and
+`import-legacy` also requires the gate-root `corpus/manifest.json` to equal
+the versioned one (exit 2 otherwise: run `setup`). A PR that changes the
+corpus changes `corpus_data/`, and the gate root follows on the next `setup`.
 
 ### Exit status of `run`
 
@@ -143,7 +175,7 @@ itself.
 ```
 config.json                                 gate interpreter, pinned SHAs
 repos/<repo>/                               bare clone; never deleted per PR
-corpus/{targets,gt2,labels}/<repo>.json     inputs; corpus/manifest.json holds their sha256
+corpus/{targets,gt2,labels}/<repo>.json     inputs (installed from corpus_data/, GT2 see Ground truth); corpus/manifest.json holds their sha256
 v2/src/<tree>/tree_sitter_analyzer/         base package snapshots (git archive, tree-derived mtimes)
 v2/index/<repo>/<index-key>/tree/           detached worktree at the pin = project root, .ast-cache inside
 v2/index/<repo>/<index-key>/manifest.json   written last; its absence marks a partial build
@@ -192,8 +224,9 @@ the request: format, tree hash, index key, repo, pinned commit, query key
 rows (timings excluded). A file that fails any check is moved to
 `*.corrupt` and the side is recomputed.
 
-**Corpus**: every run re-hashes `corpus/` against `corpus/manifest.json`; any
-drift is exit 2. A missing GT2 or label file is exit 2.
+**Corpus**: every run checks that `corpus/manifest.json` equals the versioned
+`benchmarks/callers_gate/corpus_data/manifest.json` and re-hashes `corpus/`
+against it; any drift is exit 2. A missing GT2 or label file is exit 2.
 
 ## Judging
 
