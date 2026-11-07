@@ -53,6 +53,7 @@ from .oracle_classes import (
     innermost_named_class,
     java_packages,
 )
+from .oracle_kotlin import classify_kotlin
 from .oracle_scope import listed, owner_at
 from .oracle_syntax import CLASS_TYPES, Repo, chain, family, is_field, text, walk
 
@@ -90,6 +91,7 @@ NON_CODE_EXTS = (
     ".gradle",
     ".cfg",
     ".ini",
+    ".api",  # Kotlin binary-compatibility API dumps (kotlinpoet)
 )
 STRING_TYPES = {
     "string",
@@ -98,6 +100,8 @@ STRING_TYPES = {
     "text_block",
     "character_literal",
     "string_fragment",
+    "multiline_string_literal",  # Kotlin """...""" (its ${...} stays code)
+    "string_content",
 }
 INTERPOLATION_TYPES = {"template_substitution", "interpolation"}
 DECL_TYPES = {
@@ -207,6 +211,8 @@ def classify(
                 "string literal equal to the name (possible dynamic dispatch)",
             )
         return "string", ""
+    if fam == "kotlin":
+        return classify_kotlin(repo, item, rel, node)
     parent = node.parent
     if (
         parent is not None

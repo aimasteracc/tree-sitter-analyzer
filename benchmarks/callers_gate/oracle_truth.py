@@ -12,6 +12,8 @@
 * labelled calls on a ``complete`` must be listed callers; whether a site is
   inside a listed caller comes from the grep oracle (innermost definition, see
   :mod:`.oracle_scope`), never from the answer's ``end_line``;
+* a label marked ``external`` (code outside the project calls the target, e.g.
+  an override of a JDK interface method, #1930) fails every ``complete``;
 * a compact ``complete`` must be confirmed by the full answer and list exactly
   the full answer's callers -- on every head row, regardless of the base.
 
@@ -236,6 +238,11 @@ def check_rows(
             stats["labels_checked"] += 1
             if calls:
                 report(row, "label_call_miss", calls)
+            if lab.get("external"):
+                # The label says code outside the project calls the target
+                # (an override of a JDK / library supertype, #1930): no list of
+                # project callers can make it complete.
+                report(row, "label_external_complete", lab["external"])
         if enumerated(full):
             stats["open_sites_checked"] += 1
             if gt2 is not None and (miss := gt2_misses(row, rows, allow_open=True)):

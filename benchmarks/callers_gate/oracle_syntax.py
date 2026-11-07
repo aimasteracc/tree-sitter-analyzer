@@ -22,8 +22,11 @@ GRAMMAR_BY_EXT = {
     ".mjs": "javascript",
     ".cjs": "javascript",
     ".jsx": "javascript",
+    ".kt": "kotlin",
+    ".kts": "kotlin",
 }
 TS_EXTS = (".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".cjs", ".jsx")
+KOTLIN_EXTS = (".kt", ".kts")
 CLASS_TYPES = {
     "class_declaration",
     "abstract_class_declaration",
@@ -56,11 +59,17 @@ def make_parser(grammar: str) -> Any:
         import tree_sitter_javascript as js
 
         return Parser(Language(js.language()))
+    if grammar == "kotlin":
+        import tree_sitter_kotlin as kt
+
+        return Parser(Language(kt.language()))
     raise ValueError(grammar)
 
 
 def family(grammar: str) -> str:
-    return "java" if grammar == "java" else "ts"
+    if grammar in ("java", "kotlin"):
+        return grammar
+    return "ts"
 
 
 def text(node: Any) -> str:
@@ -137,7 +146,7 @@ class Repo:
         return parsed
 
     def files(self, fam: str) -> list[str]:
-        exts = (".java",) if fam == "java" else TS_EXTS
+        exts = {"java": (".java",), "kotlin": KOTLIN_EXTS}.get(fam, TS_EXTS)
         return sorted(
             f
             for f in self.tracked()
