@@ -81,7 +81,8 @@ from ._ast_cache_query_mixin import ASTCacheQueryMixin
 # v52：TS 调用经 ES 模块导入 / 再导出 / 项目包说明符解析到定义，symbols_json 记录 TS 导出形状与再导出（#1764 / #1768）。
 # v53：TS 类的 `extends` 基类写入 parents；`const X = class extends B {...}` 以常量名索引为类（#1765）。
 # v54：Python `@overload` 存根在 symbols_json 中标记 overload，构图时由唯一的实现代表（#1773）。
-_AST_CACHE_EXTRACTOR_VERSION = 54
+# v55：Kotlin 裸调用 / this 调用在边 metadata 中记录隐式接收者范围 kotlin_scope（#1926）。
+_AST_CACHE_EXTRACTOR_VERSION = 55
 
 # Preserve the historical public exception identity after implementation split.
 SchemaIntegrityError.__module__ = __name__
