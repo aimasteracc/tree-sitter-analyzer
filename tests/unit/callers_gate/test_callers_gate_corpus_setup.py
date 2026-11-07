@@ -17,7 +17,8 @@ import pytest
 from benchmarks.callers_gate import corpus
 from benchmarks.callers_gate.layout import GT2_REPOS, LABEL_REPOS, REPOS, Layout
 
-CORPUS_TARGETS = 2457
+#: 2,457 r15 targets of the first 7 repos + 228 kotlinpoet targets (#1933).
+CORPUS_TARGETS = 2685
 
 
 def _quiet(_msg: str) -> None:

@@ -6,7 +6,7 @@ Root: ``--root`` or ``TSA_GATE_ROOT`` (default ``C:\\git-private\\tsa-gate``)::
     repos/<repo>/                       bare clone, pinned commit; never deleted per PR
     corpus/targets/<repo>.json          the r15 callers corpus, one row per target (versioned)
     corpus/gt2/<repo>.json              GT2 (Python repos; too large to version, digest pinned)
-    corpus/labels/<repo>.json           hand labels (hono, zod) (versioned)
+    corpus/labels/<repo>.json           hand labels (hono, zod, kotlinpoet) (versioned)
     corpus/manifest.json                sha256 of every corpus file (versioned; verified on load)
 
 The versioned copies live in ``benchmarks/callers_gate/corpus_data/``.
@@ -45,7 +45,7 @@ class RepoPin:
     name: str
     url: str
     sha: str
-    lang: str  # "python" | "java" | "ts" | "js"
+    lang: str  # "python" | "java" | "ts" | "js" | "kotlin"
     seed_clone: Path  # local clone the corpus was built from (object source)
 
     @property
@@ -105,6 +105,14 @@ REPOS: dict[str, RepoPin] = {
             "ts",
             DOGFOOD / "ts1" / "repos" / "zod",
         ),
+        # #1933: tag 2.4.0. No dogfood clone exists, so setup clones it from GitHub.
+        RepoPin(
+            "kotlinpoet",
+            "https://github.com/square/kotlinpoet",
+            "97e504bbcece8100b653c5d7d7cd1bba0a55b0b3",
+            "kotlin",
+            DOGFOOD / "kt1" / "repos" / "kotlinpoet",
+        ),
     )
 }
 
@@ -114,11 +122,13 @@ LANG_EXTS: dict[str, tuple[str, ...]] = {
     "java": (".java",),
     "js": (".js", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts", ".jsx"),
     "ts": (".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".cjs", ".jsx"),
+    "kotlin": (".kt", ".kts", ".java"),
 }
 
 #: Repos whose ground truth is GT2 (``corpus/gt2/``) and hand labels (``corpus/labels/``).
 GT2_REPOS = ("rich", "pydantic", "fastapi")
-LABEL_REPOS = ("hono", "zod")
+#: kotlinpoet's labels are AI-drafted and pending human review (#1933).
+LABEL_REPOS = ("hono", "zod", "kotlinpoet")
 #: The corpus versioned in this repo, byte for byte: targets, labels and the
 #: manifest (which also pins the digests of the unversioned GT2 files).
 VERSIONED_CORPUS = Path(__file__).resolve().parent / "corpus_data"

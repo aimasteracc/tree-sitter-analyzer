@@ -4,6 +4,27 @@
 
 ### Added
 
+- **Callers gate: kotlinpoet is the 8th repo, with a Kotlin grep-oracle classifier** (#1933).
+  None of the 7 gate repos was Kotlin, so a later PR could bring back a wrong
+  Kotlin `complete` (#1926, #1930) and the gate stayed green. kotlinpoet
+  (tag 2.4.0) adds 114 Kotlin declarations in bare and qualified mode (228
+  targets; the other 7 repos' targets and keys are unchanged), stratified by
+  kind, with labels for 68 of them in `corpus_data/labels/kotlinpoet.json`.
+  **The labels are AI-drafted and pending human review.** A label may carry
+  `external` (an override of a JDK / library supertype, a JUnit `@Test`
+  method, a `@JvmName` bridge): code outside the project calls it, so every
+  head `complete` for it fails (`label_external_complete`). The grep oracle
+  now classifies Kotlin hits (`oracle_kotlin.py`): every named `fun` is a
+  definition; a bare or `this` call in a class body is `other_symbol` only
+  when every enclosing class is provably unrelated to the target's class and
+  no lambda, anonymous function, extension, companion object, object
+  expression, enum entry, labelled `this@X` or script lies in between (#1926);
+  the own declaration of an `override fun` is residual unless every supertype
+  of its class is a project class and one declares the name (#1930). `.api`
+  dumps are non-code and Kotlin raw strings are strings. Without #1928 the
+  gate fails on kotlinpoet (forbidden `unknown -> incomplete` transitions);
+  without #1931 it fails on the 15 JDK / KSP overrides that become `complete`.
+
 - **RFC-0043 prototype: opt-in memo of the per-text decorator table for `nav callers`** (#1855).
   The registering-decorator gate (RFC-0040) re-parsed the target's declaring
   file with tree-sitter and walked the whole tree on every review-gated query;

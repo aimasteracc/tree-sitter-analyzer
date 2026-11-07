@@ -1,8 +1,9 @@
 # Callers gate (`benchmarks/callers_gate`)
 
 A permanent, local verification gate for every PR that can change
-`nav action=callers` verdicts. It replays the r15 callers corpus (7 pinned OSS
-repos, 2,457 targets, full + compact form) on the base and the head code and
+`nav action=callers` verdicts. It replays the callers corpus (8 pinned OSS
+repos, 2,685 targets: the 2,457 r15 targets of 7 repos plus 228 kotlinpoet
+targets, full + compact form) on the base and the head code and
 judges the difference automatically. Base and head first answer on **one
 shared index** (the head build); when the PR changes code the index build
 uses, the base code also answers on **its own index**, so an indexer
@@ -46,8 +47,9 @@ py -3 -m benchmarks.callers_gate setup [--python <venv python>]
 ```
 
 `setup` first installs the corpus into `corpus/` (below), then bare-clones the
-7 repos at their pinned commits (from the local r10 / ts1 clones when they
-exist, hard-linked, else from GitHub), and records the gate interpreter
+8 repos at their pinned commits (from the local r10 / ts1 clones when they
+exist, hard-linked, else from GitHub; kotlinpoet always comes from GitHub),
+and records the gate interpreter
 (default: the main checkout's `.venv`).
 
 ### Ground truth
@@ -59,9 +61,30 @@ every answer cache key, so a line-ending change would invalidate every cache):
 
 | file | what it is | source |
 |---|---|---|
-| `targets/<repo>.json` | the 2,457 targets: `mode`, `file`, `qual`, `name` (the qual in qualified mode, else the bare name) and the round-15 verdict `r15` | dogfood round 15 answers, one row per `(mode, file, qual)` in first-seen order |
-| `labels/{hono,zod}.json` | hand labels: per target, its call sites (`calls`), non-call references (`refs`) and calls of other same-named definitions (`other`) | read from every `git grep -n -w -C1` hit at the pin (each file's `_note`) |
+| `targets/<repo>.json` | the 2,685 targets: `mode`, `file`, `qual`, `name` (the qual in qualified mode, else the bare name) and the round-15 verdict `r15` (`null` for kotlinpoet, which was not in round 15) | dogfood round 15 answers, one row per `(mode, file, qual)` in first-seen order; kotlinpoet: see below |
+| `labels/{hono,zod,kotlinpoet}.json` | hand labels: per target, its call sites (`calls`), non-call references (`refs`) and calls of other same-named definitions (`other`); optionally `external` (below) | read from every `git grep -n -w -C1` hit at the pin (each file's `_note`) |
 | `manifest.json` | sha256 of every corpus file, GT2 included | |
+
+**kotlinpoet** (#1933, tag 2.4.0, the 8th repo) has 114 Kotlin declarations
+in bare and qualified mode (228 rows), stratified by kind: the 8 answers that
+were `complete` at the pin; 15 overrides of JDK / KSP supertypes whose answers
+become `complete` without #1931; 27 targets whose answers change without
+#1928 (bare calls in class bodies and receiver lambdas, #1926); overrides of
+project supertypes, companion and `object` members, top-level and member
+extensions, top-level and local functions, and plain members of main and test
+code. Its labels (68 targets) are **AI-drafted (by Claude) and pending human
+review**: every `git grep -n -w -C1` hit was read, but no person has checked
+them yet. The hard cases (calls inside receiver lambdas, bare calls in class
+bodies, external overrides) are the ones to review first.
+
+A label with `external` (a reason string) says that code outside the project
+calls the target: an override of a JDK or library supertype (#1930), a JUnit
+`@Test` method, a `@JvmName` binary-compatibility bridge. No list of project
+callers can make such a target complete, so every head `complete` for it fails
+(`label_external_complete`). Kotlin's property syntax (`e.simpleName` calls the
+Java getter `getSimpleName()`) and operator conventions (`a + b` calls `plus`)
+are invisible to `git grep`; targets that depend on them are marked `external`
+instead of listing calls grep cannot see.
 
 GT2 (`gt2/{rich,pydantic,fastapi}.json`, ~39 MB) is **not** versioned. It is
 a static Python call graph of each pinned repo (`callers`, `module_callers`,
@@ -291,14 +314,18 @@ changed `complete -> complete` rows alike) is checked:
 - **`open_sites` enumerated answers** (the PR-4 soundness check): each GT2
   caller (Python) or labelled call (hono, zod) must be a listed caller or an
   open site.
-- **Hand labels** (hono, zod): every labelled call of a `complete` must be
-  inside a listed caller; the oracle decides that by innermost definition
-  (below), never by the answer's `end_line`.
+- **Hand labels** (hono, zod, kotlinpoet): every labelled call of a `complete`
+  must be inside a listed caller; the oracle decides that by innermost
+  definition (below), never by the answer's `end_line`. A label marked
+  `external` fails every `complete` (`label_external_complete`). A labelled
+  site inside a parse error is never covered (the Kotlin grammar does not
+  parse some kotlinpoet files fully), so a `complete` for such a target fails
+  until the grammar improves: fail closed.
 - **Compact form** (every head row, regardless of the base): a compact
   `complete` must be confirmed by the full answer (`compact_unconfirmed_complete`)
   and list exactly the full answer's callers, with the same count
   (`compact_callers_mismatch`). Both always fail.
-- **TS / JS / Java**: every `git grep -w` occurrence of the bare name in a
+- **TS / JS / Java / Kotlin**: every `git grep -w` occurrence of the bare name in a
   tracked file is classified with tree-sitter (`oracle_grep.py`):
   - `residual` first if the occurrence is inside a parse error;
   - `caller`: its innermost enclosing definition (by byte range; see
@@ -306,8 +333,11 @@ changed `complete -> complete` rows alike) is checked:
     line. Definitions mirror TSA's attribution: named functions, methods,
     named arrows / function expressions (own name or the `const` they
     initialize), Java methods and constructors including those of an
-    anonymous class body. Anonymous callbacks and lambdas belong to the
-    enclosing definition, top-level code to `<module>` at the hit's line;
+    anonymous class body, and every named Kotlin `fun` (member, top-level,
+    extension, local, inside an object expression). Anonymous callbacks and
+    lambdas belong to the enclosing definition; top-level code, Kotlin `init`
+    blocks, property initializers, getters and secondary constructors to
+    `<module>` at the hit's line;
   - `own_declaration`, `declaration` (another declaration's name token),
     `comment`, `string` (a literal whose text is not exactly the name; a
     literal equal to the name is residual, it may be a dynamic key),
@@ -333,6 +363,41 @@ changed `complete -> complete` rows alike) is checked:
     supertype resolves only when the file binds its name to that class (as
     above); an aliased import or re-export, `extends ns.Base`, a mixin call or
     an unknown name leave the ancestry unresolved;
+  - **Kotlin** (`oracle_kotlin.py`; a `.java` file of a Kotlin repo uses the
+    Java rules, and a Kotlin class is never a provable Java receiver):
+    - a bare call `make()` or `this.make()` inside a class body means
+      `this.make()`, so it may dispatch to an override in a subclass (#1926).
+      It is `other_symbol` only when every enclosing class / `object` is a
+      project class provably unrelated to the target's class (the TS / Java
+      rule above), the target is a plain member of its class (not in a
+      companion object, object expression, enum entry or a member
+      extension), no import binds the name, and nothing between the hit and
+      the class may bring another implicit receiver: any lambda (the oracle
+      trusts no list of receiver-less hosts such as `let` or `map`), an
+      anonymous function, an extension function or property, context
+      receivers, a companion object, an object expression, an enum entry, a
+      labelled `this@X`, a parse error, or a `.kts` script. Top-level code
+      outside all of these has no implicit receiver: `other_symbol` for a
+      member target;
+    - a supertype resolves only as a simple name the file does not alias
+      (`import a.B as C`), does not import from a non-project package, and
+      cannot take from a library star import; `a.B`, an aliased or external
+      import, and an unknown name are unresolved. Kotlin's default imports
+      (`Any`, `Comparable`, `Iterable`, ...) are builtins;
+    - the own declaration of an `override fun` is `residual` unless its
+      class's whole ancestry is project classes and one of them declares the
+      name (#1930): an override of a JDK / library type, of a builtin such as
+      `Comparable`, of an `Any` member (`equals`, `hashCode`, `toString`), or
+      in an object expression / companion / enum entry may be called by code
+      the project does not contain;
+    - a member call on any other receiver (`x.make()`, `super.make()`), a
+      callable reference (`::make`), an infix call and an aliased import are
+      residual; an un-aliased import is `import_export`. A Kotlin function is
+      used only by a call, an infix call or `::name`, so any other
+      occurrence of the bare name (a property read, a named argument label, a
+      type name, a receiver) is `other_symbol`;
+    - raw strings (`"""..."""`) are strings; their `${...}` templates are code.
+    `.api` (binary-compatibility dumps) are `non_code`;
   - `residual` with the reason, for everything else. Only residual items reach
     a human.
 - **Classifier limits (by design conservative).** A target's class comes from
@@ -379,7 +444,7 @@ py -3 -m tree_sitter_analyzer.mcp.tools.callers_scip_manifest --project <checkou
 
 ## Trust model
 
-**What a PASS (exit 0) guarantees**, for the 2,457 corpus targets of the 7
+**What a PASS (exit 0) guarantees**, for the 2,685 corpus targets of the 8
 pinned repos, under the gate interpreter:
 
 - every head answer was computed by exactly the head code (the server refuses
@@ -390,9 +455,10 @@ pinned repos, under the gate interpreter:
   head index and, when the PR touches indexed code, against the base code on
   its own index;
 - every head `complete` that differs from a base answer: lists every GT2
-  caller (Python) and labelled call (hono, zod), and every grep occurrence of
-  its bare name in the repo is provably not an unlisted caller (TS/JS/Java),
-  under the classifier rules above;
+  caller (Python) and labelled call (hono, zod, kotlinpoet), is not labelled
+  `external`, and every grep occurrence of its bare name in the repo is
+  provably not an unlisted caller (TS/JS/Java/Kotlin), under the classifier
+  rules above;
 - every head compact `complete` is confirmed by the full answer, caller for
   caller.
 
@@ -406,7 +472,11 @@ pinned repos, under the gate interpreter:
 - calls the grep oracle cannot see: dynamic dispatch by computed name
   (`obj[name]()`), `eval`, reflection, or a binding through code generation;
   a string literal equal to the name is residual, but a name built at run
-  time is not visible;
+  time is not visible. In Kotlin also property syntax for Java getters
+  (`e.simpleName`), operator conventions (`a + b`, `a[i]`, `for (x in y)`,
+  delegated properties) and calls by JVM name (`@JvmName`);
+- the kotlinpoet labels before a human has reviewed them (they are
+  AI-drafted, see Ground truth);
 - anything the classifier rules prove wrongly: they are deliberately
   conservative (an unresolved case is residual), but they are code, and the
   unit tests in `tests/unit/callers_gate/` are their specification;
