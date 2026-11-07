@@ -4,10 +4,12 @@ Root: ``--root`` or ``TSA_GATE_ROOT`` (default ``C:\\git-private\\tsa-gate``)::
 
     config.json                         interpreter + corpus provenance (written by setup)
     repos/<repo>/                       bare clone, pinned commit; never deleted per PR
-    corpus/targets/<repo>.json          the r15 callers corpus, one row per target
-    corpus/gt2/<repo>.json              GT2 (Python repos)
-    corpus/labels/<repo>.json           hand labels (hono, zod)
-    corpus/manifest.json                sha256 of every corpus file (verified on load)
+    corpus/targets/<repo>.json          the r15 callers corpus, one row per target (versioned)
+    corpus/gt2/<repo>.json              GT2 (Python repos; too large to version, digest pinned)
+    corpus/labels/<repo>.json           hand labels (hono, zod) (versioned)
+    corpus/manifest.json                sha256 of every corpus file (versioned; verified on load)
+
+The versioned copies live in ``benchmarks/callers_gate/corpus_data/``.
     v<format>/                          every cache of one gate format:
       src/<tree>/tree_sitter_analyzer/    base snapshots extracted with ``git archive``
       index/<repo>/<index-key>/tree/      detached worktree = project root + .ast-cache
@@ -114,15 +116,12 @@ LANG_EXTS: dict[str, tuple[str, ...]] = {
     "ts": (".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".cjs", ".jsx"),
 }
 
-#: Corpus sources copied by ``setup`` (read-only inputs, never modified).
-R15_ANSWERS = DOGFOOD / "r15" / "analysis-complete-rate" / "answers.json"
-GT2_SOURCE = {
-    name: DOGFOOD / "r10" / name / "gt-gt2.json"
-    for name in ("rich", "pydantic", "fastapi")
-}
-LABEL_SOURCE = {
-    name: DOGFOOD / "r15" / name / "gt-labels.json" for name in ("hono", "zod")
-}
+#: Repos whose ground truth is GT2 (``corpus/gt2/``) and hand labels (``corpus/labels/``).
+GT2_REPOS = ("rich", "pydantic", "fastapi")
+LABEL_REPOS = ("hono", "zod")
+#: The corpus versioned in this repo, byte for byte: targets, labels and the
+#: manifest (which also pins the digests of the unversioned GT2 files).
+VERSIONED_CORPUS = Path(__file__).resolve().parent / "corpus_data"
 
 #: Query form, identical to the PR-1/2/4 manual gates.
 QUERY_ARGS = {"action": "callers", "include_bodies": False, "limit": 5000}

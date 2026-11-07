@@ -58,3 +58,8 @@
 *.dll binary
 *.dylib binary
 *.exe binary
+
+# The callers-gate corpus is versioned byte for byte (mixed CRLF / LF, no final
+# newline): its sha256 digests are part of every gate cache key, so git must
+# never convert its line endings. Kept last so it overrides ``*.json``.
+benchmarks/callers_gate/corpus_data/** -text

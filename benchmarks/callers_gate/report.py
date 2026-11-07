@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from . import corpus
-from .layout import LABEL_SOURCE, REPOS, Layout
+from .layout import LABEL_REPOS, REPOS, Layout
 from .mcp_client import SAFE_PATH_ENV
 from .oracle_truth import check_compact, check_rows, label_sites
 from .policy import Policy
@@ -222,7 +222,7 @@ def judge_repo(
     )
     labels = (
         corpus.load_json_truth(layout.labels(run.repo), manifest, layout)
-        if run.repo in LABEL_SOURCE
+        if run.repo in LABEL_REPOS
         else None
     )
     cover = {}

@@ -1,0 +1,576 @@
+{
+ "_note": "Hand labels from reading every `git grep -n -w -C1` hit (gt-hits.txt) plus prepared-router.ts:91-105 and matcher.ts:1-15. Targets with duplicated adapters/ vs src/adapter/ copies point at the src/adapter/ copy; calls in adapters/ are `other`.",
+ "getHeaderValue": {
+  "file": "src/adapter/aws-lambda/handler.ts",
+  "calls": [
+   [
+    "src/adapter/aws-lambda/handler.ts",
+    335
+   ],
+   [
+    "src/adapter/aws-lambda/handler.ts",
+    342
+   ]
+  ],
+  "refs": [],
+  "other": [
+   [
+    "adapters/aws-lambda/src/handler.ts",
+    310
+   ],
+   [
+    "adapters/aws-lambda/src/handler.ts",
+    317
+   ]
+  ],
+  "patterns": [
+   "this.m() in own class",
+   "duplicated tree with same-named class/method"
+  ]
+ },
+ "setCookies": {
+  "file": "src/adapter/aws-lambda/handler.ts",
+  "calls": [
+   [
+    "src/adapter/aws-lambda/handler.ts",
+    403
+   ]
+  ],
+  "refs": [],
+  "other": [
+   [
+    "adapters/aws-lambda/src/handler.ts",
+    378
+   ]
+  ],
+  "patterns": [
+   "this.m() in own class",
+   "duplicated tree"
+  ]
+ },
+ "readWebStream": {
+  "file": "src/adapter/aws-lambda/handler.ts",
+  "calls": [
+   [
+    "src/adapter/aws-lambda/handler.ts",
+    158
+   ]
+  ],
+  "refs": [],
+  "other": [
+   [
+    "adapters/aws-lambda/src/handler.ts",
+    140
+   ]
+  ],
+  "patterns": [
+   "async generator called inside arrow-function const",
+   "duplicated tree"
+  ]
+ },
+ "sanitizeHeaderValue": {
+  "file": "src/adapter/aws-lambda/handler.ts",
+  "calls": [
+   [
+    "src/adapter/aws-lambda/handler.ts",
+    515
+   ],
+   [
+    "src/adapter/aws-lambda/handler.ts",
+    522
+   ],
+   [
+    "src/adapter/aws-lambda/handler.ts",
+    550
+   ],
+   [
+    "src/adapter/aws-lambda/handler.ts",
+    557
+   ],
+   [
+    "src/adapter/aws-lambda/handler.ts",
+    644
+   ]
+  ],
+  "refs": [],
+  "other": [
+   [
+    "adapters/aws-lambda/src/handler.ts",
+    484
+   ],
+   [
+    "adapters/aws-lambda/src/handler.ts",
+    491
+   ],
+   [
+    "adapters/aws-lambda/src/handler.ts",
+    516
+   ],
+   [
+    "adapters/aws-lambda/src/handler.ts",
+    523
+   ],
+   [
+    "adapters/aws-lambda/src/handler.ts",
+    607
+   ]
+  ],
+  "patterns": [
+   "call inside arrow callback",
+   "duplicated tree"
+  ]
+ },
+ "addValidatedData": {
+  "file": "src/request.ts",
+  "calls": [
+   [
+    "src/request.test.ts",
+    202
+   ],
+   [
+    "src/request.test.ts",
+    209
+   ],
+   [
+    "src/request.test.ts",
+    210
+   ],
+   [
+    "src/validator/validator.ts",
+    168
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "receiver from `new HonoRequest(...)` local",
+   "property chain receiver c.req (typed Context)"
+  ]
+ },
+ "#getParamValue": {
+  "file": "src/request.ts",
+  "calls": [
+   [
+    "src/request.ts",
+    105
+   ],
+   [
+    "src/request.ts",
+    114
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "private #method via this"
+  ]
+ },
+ "writeln": {
+  "file": "src/utils/stream.ts",
+  "calls": [
+   [
+    "adapters/aws-lambda/test/index.test.ts",
+    926
+   ],
+   [
+    "src/utils/stream.test.ts",
+    28
+   ],
+   [
+    "src/utils/stream.test.ts",
+    30
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "callback parameter typed by library (stream)",
+   "receiver from new StreamingApi(...)"
+  ]
+ },
+ "pull": {
+  "file": "src/utils/stream.ts",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "object-literal method invoked by the runtime (ReadableStream underlying source)"
+  ]
+ },
+ "#newResponse": {
+  "file": "src/context.ts",
+  "calls": [
+   [
+    "src/context.ts",
+    658
+   ],
+   [
+    "src/context.ts",
+    685
+   ],
+   [
+    "src/context.ts",
+    706
+   ],
+   [
+    "src/context.ts",
+    733
+   ],
+   [
+    "src/context.ts",
+    746
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "private #method via this",
+   "arrow-function class fields"
+  ]
+ },
+ "#addRoute": {
+  "file": "src/hono-base.ts",
+  "calls": [
+   [
+    "src/hono-base.ts",
+    151
+   ],
+   [
+    "src/hono-base.ts",
+    154
+   ],
+   [
+    "src/hono-base.ts",
+    167
+   ],
+   [
+    "src/hono-base.ts",
+    183
+   ],
+   [
+    "src/hono-base.ts",
+    247
+   ],
+   [
+    "src/hono-base.ts",
+    401
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "private #method via this inside arrow callbacks in constructor",
+   "other instance receiver subApp.#addRoute"
+  ]
+ },
+ "#dispatch": {
+  "file": "src/hono-base.ts",
+  "calls": [
+   [
+    "src/hono-base.ts",
+    434
+   ],
+   [
+    "src/hono-base.ts",
+    503
+   ],
+   [
+    "src/hono-base.ts",
+    559
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "private #method via this in arrow-function class field"
+  ]
+ },
+ "#handleError": {
+  "file": "src/hono-base.ts",
+  "calls": [
+   [
+    "src/hono-base.ts",
+    456
+   ],
+   [
+    "src/hono-base.ts",
+    465
+   ],
+   [
+    "src/hono-base.ts",
+    482
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "private #method via this, inside .catch arrow"
+  ]
+ },
+ "verifying": {
+  "file": "src/utils/jwt/jws.ts",
+  "calls": [
+   [
+    "src/utils/jwt/jwt.ts",
+    183
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "named import from sibling module"
+  ]
+ },
+ "pemToBinary": {
+  "file": "src/utils/jwt/jws.ts",
+  "calls": [
+   [
+    "src/utils/jwt/jws.ts",
+    73
+   ],
+   [
+    "src/utils/jwt/jws.ts",
+    90
+   ],
+   [
+    "src/utils/jwt/jws.ts",
+    102
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "same-file call"
+  ]
+ },
+ "getKeyAlgorithm": {
+  "file": "src/utils/jwt/jws.ts",
+  "calls": [
+   [
+    "src/utils/jwt/jws.ts",
+    34
+   ],
+   [
+    "src/utils/jwt/jws.ts",
+    45
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "same-file call before definition"
+  ]
+ },
+ "getCSPDirectives": {
+  "file": "src/middleware/secure-headers/secure-headers.ts",
+  "calls": [
+   [
+    "src/middleware/secure-headers/secure-headers.ts",
+    185
+   ],
+   [
+    "src/middleware/secure-headers/secure-headers.ts",
+    196
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "call inside arrow-function const (secureHeaders)"
+  ]
+ },
+ "camelToKebab": {
+  "file": "src/middleware/secure-headers/secure-headers.ts",
+  "calls": [
+   [
+    "src/middleware/secure-headers/secure-headers.ts",
+    297
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "call in .map arrow"
+  ]
+ },
+ "toStringToBuffer": {
+  "file": "src/jsx/base.ts",
+  "calls": [
+   [
+    "src/jsx/base.ts",
+    147
+   ],
+   [
+    "src/jsx/base.ts",
+    230
+   ],
+   [
+    "src/jsx/base.ts",
+    337
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "virtual dispatch with overrides in subclasses",
+   "instanceof-narrowed receiver"
+  ]
+ },
+ "buildAllMatchers": {
+  "file": "src/router/reg-exp-router/router.ts",
+  "calls": [
+   [
+    "src/router/reg-exp-router/prepared-router.ts",
+    100
+   ],
+   [
+    "src/router/reg-exp-router/matcher.ts",
+    12
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "this.m() in anonymous subclass expression",
+   "(this as any).m() in function used as a method"
+  ]
+ },
+ "findMiddleware": {
+  "file": "src/router/reg-exp-router/router.ts",
+  "calls": [
+   [
+    "src/router/reg-exp-router/router.ts",
+    98
+   ],
+   [
+    "src/router/reg-exp-router/router.ts",
+    99
+   ],
+   [
+    "src/router/reg-exp-router/router.ts",
+    120
+   ],
+   [
+    "src/router/reg-exp-router/router.ts",
+    121
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "generic function"
+  ]
+ },
+ "cors": {
+  "file": "src/middleware/cors/index.ts",
+  "calls": [
+   [
+    "src/middleware/cors/index.test.ts",
+    7
+   ],
+   [
+    "src/middleware/cors/index.test.ts",
+    11
+   ],
+   [
+    "src/middleware/cors/index.test.ts",
+    23
+   ],
+   [
+    "src/middleware/cors/index.test.ts",
+    30
+   ],
+   [
+    "src/middleware/cors/index.test.ts",
+    35
+   ],
+   [
+    "src/middleware/cors/index.test.ts",
+    39
+   ],
+   [
+    "src/middleware/cors/index.test.ts",
+    45
+   ],
+   [
+    "src/middleware/cors/index.test.ts",
+    52
+   ],
+   [
+    "src/middleware/cors/index.test.ts",
+    63
+   ],
+   [
+    "src/middleware/cors/index.test.ts",
+    73
+   ],
+   [
+    "src/middleware/cors/index.test.ts",
+    89
+   ],
+   [
+    "src/middleware/cors/index.test.ts",
+    288
+   ],
+   [
+    "src/middleware/cors/index.test.ts",
+    416
+   ],
+   [
+    "src/middleware/cors/index.test.ts",
+    485
+   ],
+   [
+    "src/middleware/cors/index.test.ts",
+    498
+   ],
+   [
+    "src/middleware/cors/index.test.ts",
+    517
+   ]
+  ],
+  "refs": [
+   [
+    "src/middleware/cors/index.test.ts",
+    2
+   ]
+  ],
+  "other": [
+   [
+    "src/middleware/cors/index.ts",
+    27
+   ],
+   [
+    "src/middleware/cors/index.ts",
+    42
+   ],
+   [
+    "src/middleware/cors/index.ts",
+    45
+   ],
+   [
+    "src/middleware/cors/index.ts",
+    100
+   ],
+   [
+    "src/client/types.ts",
+    143
+   ],
+   [
+    "src/request.test.ts",
+    573
+   ],
+   [
+    "src/request.test.ts",
+    590
+   ],
+   [
+    "src/validator/validator.test.ts",
+    1446
+   ]
+  ],
+  "patterns": [
+   "r12 relabel after #1763: `export const cors = (...) =>` (index.ts:63) is a function definition; every cors() call is a call of it"
+  ]
+ }
+}

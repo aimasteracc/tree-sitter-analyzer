@@ -21,6 +21,17 @@
 
 ### Changed
 
+- **Callers gate: the corpus is versioned in the repo; `setup` no longer reads dogfood folders.**
+  The 2,457 targets, the hono / zod hand labels and the corpus manifest are
+  now in `benchmarks/callers_gate/corpus_data/`, byte for byte (`-text`), and
+  `setup` installs them from there. GT2 (~39 MB, generated outside the repo)
+  stays unversioned: the versioned manifest pins its digests, and `setup`
+  fails with the file and the expected digest when the gate-root copy is
+  missing or different, before it writes anything. `run`, `report --rejudge`
+  and `import-legacy` also require the gate-root manifest to equal the
+  versioned one. The digests are unchanged, so every existing cache stays
+  valid.
+
 - **`nav callers`: the review gates reuse parse-derived facts by content digest, on by default (RFC-0043 Phase B)** (#1855).
   The gates re-parsed the declaring files on every request. A new process-wide
   memo (`tree_sitter_analyzer/resident/parse_facts.py`) keeps immutable tables

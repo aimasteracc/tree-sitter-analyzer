@@ -60,7 +60,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     layout = Layout.from_env(args.root)
     try:
         python = _python(layout, args.python)
-        manifest = corpus.verify_corpus(layout)
+        manifest = corpus.verify_gate_corpus(layout)
         policy = Policy.load(
             Path(args.policy) if args.policy else None,
             args.allow_transition,
@@ -243,7 +243,7 @@ def cmd_import_legacy(args: argparse.Namespace) -> int:
     """Seed baseline/ from a PR-1/2/4 manual-gate JSON (``develop`` / ``branch`` rows)."""
     layout = Layout.from_env(args.root)
     python = _python(layout, args.python)
-    manifest = corpus.verify_corpus(layout)
+    manifest = corpus.verify_gate_corpus(layout)
     git_dir = Path(args.git_dir).resolve() if args.git_dir else HERE_REPO
     side = _resolve(layout, args.ref, "seed", git_dir)
     env_key, _v, _d = sides.environment(python)
@@ -299,7 +299,7 @@ def _rejudge(
     from .policy import Policy
 
     python = _python(layout, args.python)
-    manifest = corpus.verify_corpus(layout)
+    manifest = corpus.verify_gate_corpus(layout)
     meta = payload["meta"]
     scip_meta = meta.get("scip") or {}
     policy = Policy.load(
