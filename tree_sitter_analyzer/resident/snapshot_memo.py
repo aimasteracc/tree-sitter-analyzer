@@ -48,6 +48,7 @@ from itertools import islice
 from typing import Any, TypeVar
 
 from . import loader
+from .parse_facts import estimate_bytes
 
 T = TypeVar("T")
 
@@ -232,8 +233,6 @@ def estimate_entry(entry: Hashable, value: Any, *, table: bool = False) -> int:
     rich). A whole-snapshot table can hold hundreds of thousands of rows, so it
     is estimated as rows x the mean size of its first rows.
     """
-    from .parse_facts import estimate_bytes
-
     if table and isinstance(value, Mapping):
         rows = len(value)
         sample = list(islice(value.items(), _TABLE_SAMPLE))
