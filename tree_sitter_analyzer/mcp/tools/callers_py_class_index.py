@@ -31,6 +31,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+from .callers_py_shapes import mentions
 from .callers_py_supertypes import (
     _Class,
     _eval,
@@ -117,11 +118,11 @@ class ClassIndex:
         files = sorted({rel for name in wanted for rel in self.by_word.get(name, ())})
         if not files:
             return []
-        pattern = _shape(wanted, shape)
         found = []
         for rel in files:
             text = FILE_CACHE.read_text(os.path.join(self.root, *rel.split("/")))
-            if text is None or pattern.search(text):
+            # RFC-0043 Phase C: the words the text spells in this shape, per digest.
+            if text is None or mentions(text, wanted, shape):
                 found.append(rel)
         return found
 
@@ -205,22 +206,6 @@ class ClassIndex:
             if best is None or klass.line >= best.line:
                 best = klass
         return None if best is None else best.key
-
-
-def _shape(names: list[str], shape: str) -> re.Pattern[str]:
-    alternation = "|".join(map(re.escape, names))
-    if shape == "rename":
-        return re.compile(
-            rf"\b(?:{alternation})\s+as\s+\w"
-            rf"|^[ \t]*\w+[ \t]*=[ \t]*(?:[\w.]+\.)?(?:{alternation})[ \t]*(?:#.*)?$",
-            re.MULTILINE,
-        )
-    # A class header naming it, or a module-level assignment naming it\n    # (``Base = mix(A)``: :func:`_bound_to` reads only module-level bindings).
-    return re.compile(
-        rf"\bclass\s+\w+\s*\([^:]*?\b(?:{alternation})\b"
-        rf"|^\w+[ \t]*(?::[^=\n]*)?=[^=\n]*\b(?:{alternation})\b",
-        re.MULTILINE,
-    )
 
 
 def class_key(rel: str, node: ast.ClassDef) -> Key:
