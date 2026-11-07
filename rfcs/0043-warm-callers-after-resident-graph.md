@@ -478,7 +478,9 @@ one fresh process per slot, `TSA_EVIDENCE_STORE=off`, `PYTHONHASHSEED=0`:
 - A: `develop` `849254a2` (Phase B, memo on), one round, on pydantic, fastapi and zod.
 
 **0 differing rows in every slot.** With the memo off and on, 2,457 rows each, plus both rounds
-of every B slot. Records: `rfcs/evidence/0043-phase-c/`.
+of every B slot. Records: `rfcs/evidence/0043-phase-c/`. After a fix that only moved an import
+(`e9c04af9`; later commits change only tests and docs), the replay ran again on all 7 repos,
+once with the memo on and once with it off: again 0 differing rows of 2,457 each.
 
 ### Warm latency, round 1 (first touch of every row), mean / p90 per slot
 
