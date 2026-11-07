@@ -172,7 +172,8 @@ def test_entry_bound_keeps_answers(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _write(root: Path, text: str) -> str:
-    (root / "k.py").write_text(text, encoding="utf-8")
+    # Bytes, not text: no newline translation, so each edit below has its own size.
+    (root / "k.py").write_bytes(text.encode("utf-8"))
     return str(root)
 
 
@@ -181,7 +182,7 @@ def test_an_edit_is_read_again(tmp_path: Path) -> None:
     name, _found = walk.python_dynamic_base(root, "k.py", 2, "m", frozenset)
     assert name == "A"
     # A different size: the evidence file cache's stamp changes and it reads again.
-    _write(tmp_path, "def m():\n    pass\n\nclass Z:\n    pass\n")
+    _write(tmp_path, "def m():\n    pass\n\n\nclass Z:\n    pass\n")
     moved, _found = walk.python_dynamic_base(root, "k.py", 2, "m", frozenset)
     _write(tmp_path, "class Zed:\n    def m(self):\n        pass\n")
     renamed, _found = walk.python_dynamic_base(root, "k.py", 2, "m", frozenset)
