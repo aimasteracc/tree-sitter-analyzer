@@ -21,6 +21,23 @@
 
 ### Changed
 
+- **`nav callers`: the Python supertype gate reuses its parse-derived facts by content digest; the per-snapshot memo has a byte budget (RFC-0043 Phase C)** (#1855).
+  The gate walked the whole declaring module twice per target to find the
+  member's class, and the subclass search ran a header / rename regex over
+  every candidate file on every request. Both now come from the parse-facts
+  memo, keyed by the digest of the bytes read live on that request: a member
+  table (names, line spans, the parent class's path; no syntax tree) and, per
+  file and shape, the set of words the regex can match (exactly equivalent:
+  0 differences over 164,968 checks on pydantic, fastapi and rich). The
+  decorator gate's first-touch table build splits a file into lines once
+  instead of once per decorator. The per-snapshot memo now counts its entries
+  and whole-snapshot tables against 128 MB (estimated), dropping least
+  recently used snapshots first and never the one in use. Identity: 0
+  differing rows over all 2,457 stored callers-gate answers with the memo off
+  and on. ABBA against Phase B on a loaded host, means: pydantic 206–236 ->
+  149–160 ms (review-gated median 122–146 -> 77–84 ms), fastapi 514 -> 377–380
+  ms; zod (TypeScript, untouched) unchanged.
+
 - **`nav callers`: the review gates reuse parse-derived facts by content digest, on by default (RFC-0043 Phase B)** (#1855).
   The gates re-parsed the declaring files on every request. A new process-wide
   memo (`tree_sitter_analyzer/resident/parse_facts.py`) keeps immutable tables
