@@ -75,7 +75,8 @@ def _walk_owner(module: Any, line: int, bare: str) -> ast.ClassDef | None:
 
 def _module(text: str) -> Any:
     module = walk._parse("k.py", text.encode("utf-8"))
-    assert module is not None
+    if module is None:
+        raise AssertionError("fixture must parse")
     return module
 
 
