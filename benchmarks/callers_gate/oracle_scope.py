@@ -3,8 +3,9 @@
 TSA attributes a call to the *innermost* enclosing definition (smallest span,
 ``cache/call_edges.py``). Definitions are named functions, methods, named
 arrow functions / function expressions (their own name or the ``const`` they
-initialize) in TS/JS, and methods / constructors in Java, including those of
-an anonymous class body. Anonymous callbacks, lambdas and initializer blocks
+initialize) in TS/JS, methods / constructors in Java, including those of
+an anonymous class body, and every named ``fun`` in Kotlin (member, top-level,
+extension, local). Anonymous callbacks, lambdas and initializer blocks
 are not definitions, so their calls belong to the enclosing definition, or to
 the ``<module>`` pseudo-caller at the call line when there is none.
 
@@ -29,6 +30,11 @@ TS_DEFINITIONS = {
     "function_expression",
 }
 JAVA_DEFINITIONS = {"method_declaration", "constructor_declaration"}
+#: Kotlin: every named ``fun`` (member, top-level, extension, local, or inside an
+#: object expression). Lambdas, anonymous functions, ``init`` blocks, secondary
+#: constructors, getters / setters and property initializers are not
+#: definitions: their calls belong to the enclosing ``fun`` or to ``<module>``.
+KOTLIN_DEFINITIONS = {"function_declaration"}
 _DECLARATION_WRAPPERS = (
     "lexical_declaration",
     "variable_declaration",
@@ -97,6 +103,8 @@ def definition_name(node: Any, fam: str) -> str | None:
     """TSA's name for ``node`` when it is a definition, else None."""
     if fam == "java":
         return _java_name(node) if node.type in JAVA_DEFINITIONS else None
+    if fam == "kotlin":
+        return _java_name(node) if node.type in KOTLIN_DEFINITIONS else None
     return _ts_name(node) if node.type in TS_DEFINITIONS else None
 
 

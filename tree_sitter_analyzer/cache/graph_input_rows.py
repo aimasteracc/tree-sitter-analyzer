@@ -25,7 +25,8 @@ from .helpers import _build_function_entry
 
 #: ``get_call_edges`` 的唯一 SQL（#1559/#1560：带持久化解析列；RFC-0038 / #1618：
 #: 注解绑定的边带上 ``metadata.receiver_binding``；#1670：经改名导入解析的边带上
-#: 目标的真实名字 ``import_alias_name``）。ASTCache 与认证快照共用。
+#: 目标的真实名字 ``import_alias_name``；#1926：Kotlin 裸调用 / this 调用带上
+#: ``kotlin_scope``）。ASTCache 与认证快照共用。
 CALL_EDGE_SQL = (
     "SELECT caller_name, file_path AS caller_file, caller_line, "
     "callee_name, callee_full, callee_line, file_path, language, "
@@ -35,7 +36,10 @@ CALL_EDGE_SQL = (
     "AS receiver_binding, "
     "CASE WHEN callee_resolution = 'project' AND instr(metadata, 'import_alias') > 0 "
     "THEN json_extract(metadata, '$.import_alias.name') END "
-    "AS import_alias_name "
+    "AS import_alias_name, "
+    "CASE WHEN language = 'kotlin' "
+    "THEN json_extract(metadata, '$.kotlin_scope') END "
+    "AS kotlin_scope "
     "FROM edges WHERE kind = 'calls'"
 )
 #: ``get_functions`` 读取的原始列。

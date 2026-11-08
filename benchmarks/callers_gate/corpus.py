@@ -1,16 +1,23 @@
-"""``setup``: the persistent corpus (pinned repos + targets + ground truth) and its checks."""
+"""``setup``: the persistent corpus (pinned repos + targets + ground truth) and its checks.
+
+The targets, the hand labels and the manifest are versioned in
+``benchmarks/callers_gate/corpus_data/`` byte for byte; ``setup`` installs them
+into ``<root>/corpus/``. GT2 is not versioned (~39 MB): the versioned manifest
+pins its digests and ``setup`` accepts only a gate-root copy that matches.
+"""
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
 
 from . import gitutil
-from .layout import GT2_SOURCE, LABEL_SOURCE, R15_ANSWERS, REPOS, Layout, RepoPin
+from .layout import REPOS, VERSIONED_CORPUS, Layout, RepoPin
 
 
 class CorpusError(RuntimeError):
@@ -23,34 +30,6 @@ def sha256_file(path: Path) -> str:
         for block in iter(lambda: handle.read(1 << 20), b""):
             digest.update(block)
     return digest.hexdigest()
-
-
-def r15_targets(answers: list[dict[str, Any]], repo: str) -> list[dict[str, Any]]:
-    """The per-repo target list exactly as the PR-1/2/4 manual gates built it."""
-    seen: set[tuple[str, str, str]] = set()
-    out: list[dict[str, Any]] = []
-    for answer in answers:
-        if answer["repo"] != repo:
-            continue
-        target = answer["target"]
-        if answer["mode"] == "qualified":
-            name = target["qual"]
-        else:
-            name = target.get("name") or target["qual"].rsplit(".", 1)[-1]
-        key = (answer["mode"], target["file"], target["qual"])
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(
-            {
-                "mode": answer["mode"],
-                "file": target["file"],
-                "qual": target["qual"],
-                "name": name,
-                "r15": answer["completeness"],
-            }
-        )
-    return out
 
 
 def clone_repo(layout: Layout, pin: RepoPin, log: Any = print) -> None:
@@ -72,38 +51,86 @@ def clone_repo(layout: Layout, pin: RepoPin, log: Any = print) -> None:
     gitutil.git(dest, "update-ref", "refs/callers-gate/pin", pin.sha)
 
 
-def copy_corpus(layout: Layout, log: Any = print) -> dict[str, str]:
-    """Copy the read-only corpus inputs and return ``relative path -> sha256``."""
-    answers = json.loads(R15_ANSWERS.read_text(encoding="utf-8"))
-    manifest: dict[str, str] = {}
-    for name in REPOS:
-        rows = r15_targets(answers, name)
-        if not rows:
-            raise CorpusError(f"no r15 targets for {name}")
-        path = layout.targets(name)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(rows, indent=0), encoding="utf-8")
-        log(f"[setup] targets {name}: {len(rows)}")
-    for name, src in GT2_SOURCE.items():
-        dst = layout.gt2(name)
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src, dst)
-    for name, src in LABEL_SOURCE.items():
-        dst = layout.labels(name)
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src, dst)
-    for path in sorted(layout.corpus.rglob("*.json")):
-        if path.name == "manifest.json":
-            continue
-        manifest[path.relative_to(layout.corpus).as_posix()] = sha256_file(path)
-    (layout.corpus / "manifest.json").write_text(
-        json.dumps(manifest, indent=1), encoding="utf-8"
-    )
+def versioned_manifest(source: Path | None = None) -> dict[str, str]:
+    """The versioned manifest, after checking every versioned file against it.
+
+    GT2 entries name files that are not versioned (too large); only their
+    digests are pinned here, and :func:`install_corpus` enforces them.
+    """
+    source = source or VERSIONED_CORPUS
+    path = source / "manifest.json"
+    try:
+        manifest = json.loads(path.read_bytes())
+    except (OSError, ValueError) as exc:
+        raise CorpusError(
+            f"versioned corpus manifest unreadable ({path}): this checkout lacks "
+            "benchmarks/callers_gate/corpus_data/"
+        ) from exc
+    if not isinstance(manifest, dict) or not manifest:
+        raise CorpusError(f"versioned corpus manifest empty: {path}")
+    for rel, digest in manifest.items():
+        file = source / rel
+        if file.is_file() and sha256_file(file) != digest:
+            raise CorpusError(f"versioned corpus file changed: {file}")
+        if not file.is_file() and not rel.startswith("gt2/"):
+            raise CorpusError(f"versioned corpus file missing: {file}")
     return manifest
 
 
-def verify_corpus(layout: Layout) -> dict[str, str]:
-    """Manifest entries after checking every file against it; raises on any drift."""
+def _gt2_missing(rel: str, dst: Path, digest: str, state: str) -> CorpusError:
+    return CorpusError(
+        f"{rel}: the gate-root copy {dst} {state}, and GT2 is not reproducible "
+        f"from this repo (its generator was a dogfood harness, see "
+        f"docs/dev/callers-gate.md#ground-truth). Restore the file with sha256 "
+        f"{digest} from a backup of a gate root."
+    )
+
+
+def install_corpus(
+    layout: Layout, log: Any = print, source: Path | None = None
+) -> dict[str, str]:
+    """Bring ``<root>/corpus/`` to exactly the versioned corpus; return its manifest.
+
+    A gate-root file whose digest matches is kept untouched; a missing or
+    edited targets / labels file is copied from the versioned corpus. GT2 must
+    already be in the gate root with the pinned digest. Every file is checked
+    before anything is written, so a failure leaves the gate root as it was.
+    """
+    source = source or VERSIONED_CORPUS
+    manifest = versioned_manifest(source)
+    copies: list[tuple[Path, Path]] = []
+    for rel, digest in sorted(manifest.items()):
+        dst = layout.corpus / rel
+        if dst.is_file() and sha256_file(dst) == digest:
+            continue
+        src = source / rel
+        if src.is_file():
+            copies.append((src, dst))
+            continue
+        state = "differs from the pinned digest" if dst.is_file() else "is missing"
+        raise _gt2_missing(rel, dst, digest, state)
+    for src, dst in copies:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dst.with_name(f"{dst.name}.{os.getpid()}.tmp")
+        shutil.copyfile(src, tmp)
+        os.replace(tmp, dst)
+        log(f"[setup] copied {dst.relative_to(layout.corpus).as_posix()}")
+    target = layout.corpus / "manifest.json"
+    wanted = (source / "manifest.json").read_bytes()
+    if not target.is_file() or target.read_bytes() != wanted:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(wanted)
+    return manifest
+
+
+def verify_corpus(
+    layout: Layout, expected: dict[str, str] | None = None
+) -> dict[str, str]:
+    """Manifest entries after checking every file against it; raises on any drift.
+
+    With ``expected`` (the versioned manifest), the gate-root manifest must
+    also be exactly that one.
+    """
     path = layout.corpus / "manifest.json"
     try:
         manifest = json.loads(path.read_text(encoding="utf-8"))
@@ -111,6 +138,16 @@ def verify_corpus(layout: Layout) -> dict[str, str]:
         raise CorpusError(f"corpus manifest unreadable ({path}): run setup") from exc
     if not isinstance(manifest, dict) or not manifest:
         raise CorpusError("corpus manifest empty: run setup")
+    if expected is not None and manifest != expected:
+        differ = sorted(
+            rel
+            for rel in set(manifest) | set(expected)
+            if manifest.get(rel) != expected.get(rel)
+        )
+        raise CorpusError(
+            f"gate-root corpus {path} differs from the versioned corpus "
+            f"(benchmarks/callers_gate/corpus_data) in {differ}: run setup"
+        )
     for rel, digest in manifest.items():
         file = layout.corpus / rel
         if not file.is_file():
@@ -118,6 +155,11 @@ def verify_corpus(layout: Layout) -> dict[str, str]:
         if sha256_file(file) != digest:
             raise CorpusError(f"corpus file changed since setup: {file}")
     return manifest
+
+
+def verify_gate_corpus(layout: Layout) -> dict[str, str]:
+    """:func:`verify_corpus` against the corpus versioned in this checkout."""
+    return verify_corpus(layout, expected=versioned_manifest())
 
 
 def load_targets(
@@ -142,9 +184,9 @@ def setup(layout: Layout, python: Path, log: Any = print) -> None:
     layout.root.mkdir(parents=True, exist_ok=True)
     if not python.is_file():
         raise CorpusError(f"gate interpreter not found: {python}")
+    manifest = install_corpus(layout, log)
     for pin in REPOS.values():
         clone_repo(layout, pin, log)
-    manifest = copy_corpus(layout, log)
     config = {
         "python": str(python),
         "corpus_files": len(manifest),

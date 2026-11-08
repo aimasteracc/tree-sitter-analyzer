@@ -22,10 +22,12 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
+      # benchmarks/callers_gate/corpus_data/ is versioned byte for byte (its
+      # sha256 digests key the gate caches): no hook may rewrite it.
       - id: trailing-whitespace
-        exclude: \.md$
+        exclude: \.md$|^benchmarks/callers_gate/corpus_data/
       - id: end-of-file-fixer
-        exclude: \.md$
+        exclude: \.md$|^benchmarks/callers_gate/corpus_data/
       - id: check-yaml
         args: [--allow-multiple-documents]
       - id: check-json
@@ -37,6 +39,7 @@ repos:
       - id: check-case-conflict
       - id: mixed-line-ending
         args: [--fix=lf]
+        exclude: ^benchmarks/callers_gate/corpus_data/
       - id: check-ast
       - id: check-builtin-literals
       - id: check-docstring-first

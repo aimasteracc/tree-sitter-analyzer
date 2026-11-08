@@ -4,6 +4,27 @@
 
 ### Added
 
+- **Callers gate: kotlinpoet is the 8th repo, with a Kotlin grep-oracle classifier** (#1933).
+  None of the 7 gate repos was Kotlin, so a later PR could bring back a wrong
+  Kotlin `complete` (#1926, #1930) and the gate stayed green. kotlinpoet
+  (tag 2.4.0) adds 114 Kotlin declarations in bare and qualified mode (228
+  targets; the other 7 repos' targets and keys are unchanged), stratified by
+  kind, with labels for 68 of them in `corpus_data/labels/kotlinpoet.json`.
+  **The labels are AI-drafted and pending human review.** A label may carry
+  `external` (an override of a JDK / library supertype, a JUnit `@Test`
+  method, a `@JvmName` bridge): code outside the project calls it, so every
+  head `complete` for it fails (`label_external_complete`). The grep oracle
+  now classifies Kotlin hits (`oracle_kotlin.py`): every named `fun` is a
+  definition; a bare or `this` call in a class body is `other_symbol` only
+  when every enclosing class is provably unrelated to the target's class and
+  no lambda, anonymous function, extension, companion object, object
+  expression, enum entry, labelled `this@X` or script lies in between (#1926);
+  the own declaration of an `override fun` is residual unless every supertype
+  of its class is a project class and one declares the name (#1930). `.api`
+  dumps are non-code and Kotlin raw strings are strings. Without #1928 the
+  gate fails on kotlinpoet (forbidden `unknown -> incomplete` transitions);
+  without #1931 it fails on the 15 JDK / KSP overrides that become `complete`.
+
 - **RFC-0043 prototype: opt-in memo of the per-text decorator table for `nav callers`** (#1855).
   The registering-decorator gate (RFC-0040) re-parsed the target's declaring
   file with tree-sitter and walked the whole tree on every review-gated query;
@@ -38,6 +59,17 @@
   149–160 ms (review-gated median 122–146 -> 77–84 ms), fastapi 514 -> 377–380
   ms; zod (TypeScript, untouched) unchanged.
 
+- **Callers gate: the corpus is versioned in the repo; `setup` no longer reads dogfood folders.**
+  The 2,457 targets, the hono / zod hand labels and the corpus manifest are
+  now in `benchmarks/callers_gate/corpus_data/`, byte for byte (`-text`), and
+  `setup` installs them from there. GT2 (~39 MB, generated outside the repo)
+  stays unversioned: the versioned manifest pins its digests, and `setup`
+  fails with the file and the expected digest when the gate-root copy is
+  missing or different, before it writes anything. `run`, `report --rejudge`
+  and `import-legacy` also require the gate-root manifest to equal the
+  versioned one. The digests are unchanged, so every existing cache stays
+  valid.
+
 - **`nav callers`: the review gates reuse parse-derived facts by content digest, on by default (RFC-0043 Phase B)** (#1855).
   The gates re-parsed the declaring files on every request. A new process-wide
   memo (`tree_sitter_analyzer/resident/parse_facts.py`) keeps immutable tables
@@ -69,6 +101,8 @@
 
 ### Fixed
 
+- **A Kotlin bare call to an inherited method no longer lets an override answer `complete`** (#1926). In Kotlin, `make()` inside a class body means `this.make()`, but only Java read a bare call that way. So an override in `class B : A()` reached only through `make()` in `A.run` answered `complete` with 0 callers. The extractor now records, on each Kotlin bare / `this` call, which implicit receivers it may use (`kotlin_scope` in the edge metadata), and the call graph reads it. Inside a class, when the caller's class declares exactly one `make` in its file and that file has no receiver-less function `make`, that method is the certain target and every subclass override is a possible one. The site stays open (nothing certain; every project definition `make` and the static candidates are possible targets) when an enclosing lambda, anonymous function or extension may supply its own receiver (`x.apply {}`, `with(x) {}`, `x.run {}`, DSL builders, `fun Box.ext()`), when a lambda is passed to a function the project defines, when the class does not declare `make` (inherited, outer-class or companion member), when the same file has a local or top-level `make`, on a parse error, and on an index built before this change. Lambdas passed to standard-library functions without a receiver (`let`, `also`, `map`, `forEach`, ...) and `apply {}` / `run {}` called on the implicit `this` keep the class scope. Top-level code has no implicit receiver and is unchanged. kotlinpoet (1427 Kotlin methods): no verdict became `complete`, 20 lost callers that sat in receiver scopes (16 `incomplete` -> `unknown`, 4 stay `incomplete` with fewer callers; spot checks: `toBuilder()` inside `fun CodeBlock.returnsWithoutLinebreak()` was bound to `FunSpec.toBuilder` but calls `CodeBlock.toBuilder`; `emitAnnotations(this)` sits in a `buildCodeString {}` receiver lambda). The index key changes (extractor version 55), so indexes are rebuilt.
+- **A Kotlin `override` of an external supertype is no longer `complete`** (#1930). `class F : java.io.Closeable { override fun close() {} }` answered `complete` with 0 callers, although whoever holds a `Closeable` (the JDK, a library, `use { }`) calls it. The `supertype_dispatch` check now runs a Kotlin form of the Java `@Override` gate (`callers_kotlin_overrides.py`) on every function declared `override`: it passes only when it is not a `kotlin.Any` member (`equals` / `hashCode` / `toString`), every supertype in the closure of its class, object, companion object, object expression or enum entry resolves from source to a Kotlin type in the project (nested type in scope, same file, explicit import incl. `as` aliases, same package, star imports), one of them declares the name, and every call edge named like it is bound to this declaration or outside the project. Otherwise the answer is `unknown OVERRIDE_DISPATCH`, and `next_step` names the external supertype (`its supertype `Filer` (`javax.annotation.processing.Filer`) is declared outside the project`). Functions without `override` override nothing in Kotlin and are unchanged. Query path only; the index key does not change. kotlinpoet (1448 Kotlin methods): 16 answers go from `complete, 0` to `unknown` (all overrides of `javax` interfaces such as `Filer`, `Element`, `ErrorType`, `SimpleJavaFileObject`), none becomes more complete; the 2 answers still `complete` are private non-override helpers.
 - **Kotlin classes get supertype edges** (#1916). Kotlin had no parent extractor, so no Kotlin class, interface, `enum class` or named companion object recorded `parents` and the index had no supertype edge for any of them. `this.make()` in `open class A` therefore never offered the override in `class B : A<String>()` as a possible target, and `B.make` answered `complete` with 0 callers. Supertypes are now recorded as written, without type arguments, annotations, the constructor call or the delegate (`class A : pkg.B<T>(1), @Ann I, J by d` gives `pkg.B`, `I`, `J`). A function-type supertype names no class and is skipped. Cross-file Kotlin supertypes keep the `class:Name` placeholder, as Java's do, and the subclass index now reads them, so `B.make` answers `unknown NAME_ONLY_INBOUND` and names the dispatching site. Kotlin class symbols also record their `superclass`, but only when the syntax shows it: the one supertype called as a constructor (`: B()`). An entry without the call may be an interface or a class initialised by a secondary constructor, so nothing is recorded for it. The typed resolver has no Kotlin path, so nothing reads `superclass` yet. An `object` declaration has no class symbol, so it still gets no edge. kotlinpoet: 0 -> 66 Kotlin supertype edges, and the callers answers for all 1427 Kotlin methods are unchanged. The index key changes, so indexes are rebuilt.
 - **`nav callers format=compact` no longer drops `open_sites` silently after a budget miss** (#1923).
   An `unknown` answer whose edge layer failed reruns the review gates only for
