@@ -242,6 +242,25 @@ def test_label_coverage_comes_from_the_oracle_not_from_spans() -> None:
     assert ok["failures"] == []
 
 
+def test_1930_a_label_marked_external_fails_every_complete() -> None:
+    """kotlinpoet: an override of a JDK interface (``Filer.createSourceFile``) is
+    called by code outside the project; no project caller list makes it complete."""
+    labels = {
+        "m": {"file": "src/a.ts", "calls": [], "refs": [], "external": "javax Filer"}
+    }
+    complete = row({"completeness": "complete", "callers": []}, {})
+    result = check_rows("kotlinpoet", [complete], set(), gt2=None, labels=labels)
+    assert [f["kind"] for f in result["failures"]] == ["label_external_complete"]
+    unchanged = check_rows(
+        "kotlinpoet", [complete], {("bare", "src/a.ts", "A.m")}, gt2=None, labels=labels
+    )
+    assert unchanged["failures"] == []
+    assert [p["kind"] for p in unchanged["preexisting"]] == ["label_external_complete"]
+    unknown = row({"completeness": "unknown", "callers": []}, {})
+    quiet = check_rows("kotlinpoet", [unknown], set(), gt2=None, labels=labels)
+    assert quiet["failures"] == [] and quiet["preexisting"] == []
+
+
 def test_a_partial_run_is_never_a_plain_pass() -> None:
     clean = {
         "repo": "gson",

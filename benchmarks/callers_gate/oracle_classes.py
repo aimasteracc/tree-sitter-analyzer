@@ -54,6 +54,32 @@ BUILTIN_SUPERTYPES = {
         "Request",
         "Headers",
     },
+    # Kotlin's default imports (``kotlin.*``, ``kotlin.collections.*``,
+    # ``java.lang.*``): never project code. A type the file imports explicitly
+    # from a non-project package is an unresolved supertype instead.
+    "kotlin": {
+        "Any",
+        "Comparable",
+        "Iterable",
+        "Collection",
+        "List",
+        "Set",
+        "Map",
+        "CharSequence",
+        "Appendable",
+        "Annotation",
+        "Enum",
+        "Throwable",
+        "Exception",
+        "RuntimeException",
+        "Error",
+        "IllegalArgumentException",
+        "IllegalStateException",
+        "UnsupportedOperationException",
+        "Runnable",
+        "AutoCloseable",
+        "Cloneable",
+    },
 }
 UNRESOLVED = "<unresolved>"
 _SUPER_CLAUSES = (
