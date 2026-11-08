@@ -79,5 +79,22 @@ class TestAgentWorkflowDirectoryRejection:
         assert "directory" in payload["error"].lower()
 
 
+class TestDispatchFailureStreamDiscipline:
+    """CLAUDE.md §3 — 诊断信息必须走 stderr，stdout 只放机器可读载荷。
+
+    dogfood 2026-11-09（docs/dev/dogfood-trust-2026-11-09.md P2-1）：命令分派失败时
+    ``cli_main._execute_selected_command`` 在 ``output_error`` 之后又调用
+    ``parser.print_help()``，把整份 usage（371 个 flag，约 90 KB）打到 stdout。
+    ``--format json | jq`` 因此解析失败，不检查退出码的脚本会把 usage 当数据。
+    """
+
+    def test_dispatch_failure_usage_does_not_reach_stdout(self) -> None:
+        proc = _run_cli("--trace-from", "x.py", "--format", "json")
+        _assert_no_traceback(proc)
+        assert proc.returncode == 1
+        assert proc.stdout == ""
+        assert "usage:" in proc.stderr
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))

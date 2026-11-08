@@ -361,7 +361,9 @@ def _execute_selected_command(
             output_error("File path not specified.")
         else:
             output_error("No executable command specified.")
-        parser.print_help()
+        # 诊断信息走 stderr（CLAUDE.md §3）：这里是分派失败，不是 --help 请求，
+        # 把 usage 打到 stdout 会让 `--format json | jq` 解析失败。
+        parser.print_help(sys.stderr)
         sys.exit(1)
 
 

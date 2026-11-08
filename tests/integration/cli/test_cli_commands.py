@@ -122,13 +122,20 @@ class TestCLIInfoCommands:
         """Test CLI with no arguments"""
         monkeypatch.setattr(sys, "argv", ["cli"])
         mock_stderr = StringIO()
+        mock_stdout = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
+        monkeypatch.setattr("sys.stdout", mock_stdout)
 
         with contextlib.suppress(SystemExit):
             main()
 
         error_output = mock_stderr.getvalue()
-        assert error_output == "ERROR: File path not specified.\n"
+        # dogfood 2026-11-09（docs/dev/dogfood-trust-2026-11-09.md P2-1）：分派失败的
+        # usage 曾打到 stdout，违反 CLAUDE.md §3；现在错误与 usage 都在 stderr，
+        # stdout 必须为空，否则 `--format json | jq` 会解析失败。
+        assert error_output.startswith("ERROR: File path not specified.\n")
+        assert "usage:" in error_output
+        assert mock_stdout.getvalue() == ""
 
 
 class TestCLIQueryCommands:
