@@ -519,14 +519,39 @@ def post_index_backfill(
     from .. import call_graph_incremental
 
     call_graph_incremental.note_scope(cache, decision)
-    if changed == 0 and _resolution_is_certified(cache, conn):
-        # 认证通过且输入没变：回填只会重算同样的边。缺 marker / 收敛标记的
-        # 情况一律照旧回填——那是 #1253 的自愈路径，不能在这里省掉。
-        stats["backfill_skipped"] = "CERTIFIED_CONVERGED"
-        stats.setdefault("backfill_errors", 0)
-        return
+    if changed == 0:
+        skip_reason = _noop_skip_reason(cache, conn)
+        if skip_reason is not None:
+            # 输入没变且上一轮已在同一内容上收敛：回填只会重算同样的边。
+            # 缺 marker / 缺收敛记录时一律照旧回填——那是 #1253 的自愈路径。
+            stats["backfill_skipped"] = skip_reason
+            stats.setdefault("backfill_errors", 0)
+            return
     with backfill_scope.active(conn, decision.scope):
         _post_index_backfill(cache, stats, root_fd=root_fd)
+
+
+def _noop_skip_reason(cache: Any, conn: Any) -> str | None:
+    """无变化时是否有证据表明「上一轮已在同一内容上收敛」。None = 照旧回填。
+
+    两条互不替代的证据：
+
+    1. ``CERTIFIED_CONVERGED``：调用图已认证且解析已收敛；
+    2. ``CONVERGED_STABLE_FAILURES``：只差已记录的稳定失败（#1671 的收敛记录，
+       只在全部错误都是稳定失败、回填零错误的完整运行结束时签发，#1735 复用）。
+       缺可选语法的仓库永远走这条：标记按设计保持撤销，但内容确实收敛过。
+    """
+    if _resolution_is_certified(cache, conn):
+        return "CERTIFIED_CONVERGED"
+    try:
+        from .backfill_scope import published_parent
+        from .stable_failures import converged_except_stable_failures
+
+        if converged_except_stable_failures(conn, published_parent(cache)):
+            return "CONVERGED_STABLE_FAILURES"
+    except Exception:  # noqa: BLE001 — 判断不了就回填
+        return None
+    return None
 
 
 def _resolution_is_certified(cache: Any, conn: Any) -> bool:

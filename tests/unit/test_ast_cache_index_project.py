@@ -490,3 +490,52 @@ def test_a_changed_file_still_runs_the_backfills(engine):
 
     assert "backfill_skipped" not in stats
     assert "backfill_errors" in stats
+
+
+def test_a_converged_stable_failure_record_skips_the_backfills(engine, monkeypatch):
+    """只差已记录稳定失败（#1671/#1735）时同样可跳过：内容确实收敛过。"""
+    import tree_sitter_analyzer.cache.stable_failures as stable_failures
+    from tree_sitter_analyzer.cache.indexer import post_index_backfill
+
+    monkeypatch.setattr(
+        stable_failures,
+        "converged_except_stable_failures",
+        lambda conn, parent=None: True,
+    )
+    # 夹具本身是可认证的；把认证分支关掉，专门验证第二条证据。
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.cache.indexer._resolution_is_certified",
+        lambda cache, conn: False,
+    )
+    engine.index_project(workers=0)
+    stats: dict = {"indexed": 0}
+
+    post_index_backfill(engine, stats)
+
+    assert (stats["backfill_skipped"], stats["backfill_errors"]) == (
+        "CONVERGED_STABLE_FAILURES",
+        0,
+    )
+
+
+def test_without_any_convergence_evidence_the_backfills_run(engine, monkeypatch):
+    """既没认证也没收敛记录时照旧回填（#1253 自愈路径）。"""
+    import tree_sitter_analyzer.cache.stable_failures as stable_failures
+    from tree_sitter_analyzer.cache.indexer import post_index_backfill
+
+    monkeypatch.setattr(
+        stable_failures,
+        "converged_except_stable_failures",
+        lambda conn, parent=None: False,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.cache.indexer._resolution_is_certified",
+        lambda cache, conn: False,
+    )
+    engine.index_project(workers=0)
+    stats: dict = {"indexed": 0}
+
+    post_index_backfill(engine, stats)
+
+    assert "backfill_skipped" not in stats
+    assert "backfill_errors" in stats
