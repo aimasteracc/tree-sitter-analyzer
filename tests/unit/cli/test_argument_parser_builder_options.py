@@ -557,3 +557,11 @@ def test_test_map_forwards_the_incremental_flags():
         captured["previous_entries"],
         captured["symbol"],
     ) == ("sha256:abc", ["tests/a.py::t"], "target")
+
+    # --test-map-file 分支同样透传（且不传增量参数时两个键都不出现）。
+    captured.clear()
+    plain = create_argument_parser().parse_args(
+        ["--test-map", "target", "--test-map-file", "src/a.py"]
+    )
+    _dispatch_test_map(plain, _Context(), _Facade(), "json")
+    assert ("file_path" in captured, "if_none_match" in captured) == (True, False)

@@ -20,7 +20,13 @@
 | §12 agent 原生原语（etag/304/delta/capabilities/absence/UQL hint） | 全部落地，CLI+MCP 双面 | §12 |
 | RFC-0044 缺席证书 | 五种全部实现，status = implemented | `rfcs/0044-…` |
 
-唯一遗留：**P1-4**。它需要「依赖图 + 文本引用」双通道设计，不是单点修复，因此保留为下一阶段。
+唯一遗留项 **P1-4** 已在第 42 轮补上第一通道的一半：`change-impact` 现在additionally 输出
+`text_reference_tests`（「文本引用了改动模块、但依赖图没选中」的测试文件，附 `matched` 证据与
+`text_reference_count`）。实测对 `tree_sitter_analyzer/cache/search.py`：依赖图选中 58 个测试，
+文本通道另外指出 **11** 个文件，其中包括此前漏掉的 4 个直接引用者。
+
+它**不**并入 `tests_to_run`——文本匹配不能当确定依赖，所以只作为 advisory 供 agent 取舍；
+真正的召回修复（把文本通道升级为带置信度的选择规则）仍是下一阶段的设计题。
 
 ## 0. 环境与方法
 
