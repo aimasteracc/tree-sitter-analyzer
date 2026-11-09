@@ -339,3 +339,35 @@ help 里限定 "For --change-impact"，但 flag 出现在全局 help，agent 会
 仍待处理（按优先级）：P1-3 `--callers` 的调用行号落在定义行；P1-4 change-impact 测试选择召回缺口；以及 no-op 索引仍重跑调用点回填（~7.4 s）。
 
 **本轮附带发现（未修复）**：修复后 `--ast-cache --ast-cache-mode index` 的 no-op 仍需 ~7.4 s，profile 显示耗时在 `post_index_backfill`（`run_synapse_backfill` 6.5 s、`backfill_cross_file_edges` 3.5 s）——即每次索引都重跑调用点回填，即使源码没有任何变化。这是下一个效率目标。
+
+## 11. 效率调查：no-op 索引的 ~7.4 s 为什么不能顺手砍掉（2026-11-09）
+
+**观测**：本仓库 `--ast-cache --ast-cache-mode index` 的 no-op 运行 7.3–7.4 s（2919 文件、82k 符号）。
+profile 显示大头是 `post_index_backfill`：`run_synapse_backfill` 重新解析了 94,077 条 unknown
+调用边（其中 49,109 条被再次写回），加上 `backfill_cross_file_edges`。
+
+**尝试**：当 `changed == 0`（无文件变化）且 `resolution_converged`（`ast_resolve_state` 指纹等于当前
+`count:max(indexed_at)`）时跳过回填。实测有效——同一仓库 no-op 从 **7.3 s 降到 2.6–3.2 s**，
+响应带 `backfill_skipped: RESOLUTION_CONVERGED`。
+
+**为什么不合并**：两个既有契约测试直接否决了这个改动，且它们记录的是真实事故（PR #1253）：
+
+- `test_fully_cached_missing_marker_reruns_every_backfill`：缓存命中但 call-graph marker 缺失时，
+  必须重跑每一道回填——「缓存命中」不能证明「已经收敛」。
+- `test_fully_cached_failed_retry_keeps_marker_clear`：上一轮回填失败后的重试必须仍可见地失败，
+  marker 保持清空。
+
+**根因**：本仓库 `call_graph_built()` 恒为 `False`——3 个 optional grammar（lua/swift）缺失使调用图
+无法认证——而「缓存命中仍重跑回填」正是要恢复该 marker 的自愈路径。#1253 的语义是：只要认证链不完整，
+重跑回填就是必须的，哪怕付出 4–5 s。因此这不是性能 bug，而是**自愈契约的代价**，不能用一个
+`changed == 0` 的捷径绕过。
+
+**要真正提速，需要先设计**（RFC 级）：
+
+1. 把「投影/解析是否收敛」与「调用图是否可认证」拆成两个独立状态（现在 `call_graph_built`
+   把两者混在一起），并让 `INDEX_CACHE` 响应声明各自的原因；
+2. 对「仅因 optional grammar 不可认证」的仓库给出稳定的不可认证原因，允许收敛标记单独短路；
+3. 或者把 synapse 的「重新解析 unknown 边」改成带 recheck 预算的抽样（记录上次尝试的输入指纹），
+   在保持自愈语义的前提下把 no-op 成本降到 <1 s。
+
+本轮结论：优化已实测有效但**回滚**，优先级让给正确性；下一次需带 RFC/设计说明再动。
