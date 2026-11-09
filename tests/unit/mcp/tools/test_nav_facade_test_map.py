@@ -1076,3 +1076,62 @@ async def test_test_map_without_a_generation_never_claims_unchanged(
         False,
         True,
     )
+
+
+@pytest.mark.asyncio
+async def test_previous_entries_turn_test_map_into_a_delta(monkeypatch) -> None:
+    """§12.2 扩展到 test_map：只回 added/removed/unchanged 与截断状态。"""
+    from tree_sitter_analyzer.mcp.tools.nav_facade import build_nav_facade
+
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+    target_fn = _make_func("covered_fn", "src/core.py")
+    test_caller = _make_func("test_covered", "tests/test_core.py", 5)
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.return_value = [test_caller]
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {
+            "action": "test_map",
+            "symbol": "covered_fn",
+            "previous_entries": ["tests/old.py::test_gone"],
+        }
+    )
+
+    assert (
+        result["delta"]["added"],
+        result["delta"]["removed"],
+        result["delta"]["unchanged_count"],
+    ) == (["tests/test_core.py::test_covered"], ["tests/old.py::test_gone"], 0)
+    assert ("test_functions" in result, result["truncated"]) == (False, False)
+
+
+@pytest.mark.asyncio
+async def test_an_invalid_previous_entries_payload_is_refused_by_test_map() -> None:
+    facade = build_nav_facade(project_root=None)
+
+    result = await facade.execute(
+        {
+            "action": "test_map",
+            "symbol": "x_fn",
+            "previous_entries": "__INVALID__",
+        }
+    )
+
+    assert (result["success"], result["error_code"]) == (False, "INVALID_ARGUMENT")
+
+
+def test_generation_lookup_failure_means_no_generation(monkeypatch) -> None:
+    """世代读取抛异常时返回空串：没有「没变」的承诺。"""
+    import tree_sitter_analyzer.cache.generation_routing as routing
+    import tree_sitter_analyzer.mcp.tools.nav_facade as nav_module
+
+    def _explode(*args, **kwargs):
+        raise RuntimeError("no index")
+
+    monkeypatch.setattr(routing, "resolve_index_location", _explode, raising=False)
+
+    assert nav_module._index_generation_id("/tmp/some-repo") == ""

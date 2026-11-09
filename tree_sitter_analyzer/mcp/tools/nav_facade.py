@@ -353,6 +353,22 @@ def _index_generation_id(project_root: str | None) -> str:
         return ""
 
 
+def _relation_delta(previous: Any, current: list[str]) -> dict[str, Any] | None:
+    """两个「file::name」列表的差集；``previous`` 不是列表时返回 None。
+
+    #1746 同源做法：增量只描述差集，调用方负责把截断状态一起呈现。
+    """
+    if not isinstance(previous, list):
+        return None
+    before = {str(entry) for entry in previous if isinstance(entry, str)}
+    after = {str(entry) for entry in current}
+    return {
+        "added": sorted(after - before),
+        "removed": sorted(before - after),
+        "unchanged_count": len(before & after),
+    }
+
+
 def _test_map_etag(result: dict[str, Any], generation: str) -> str:
     """test_map 答案的指纹（含索引世代：同一世代 + 同一内容才敢说没变）。"""
     import hashlib
@@ -511,6 +527,20 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         symbol: str | None = args.get("symbol") or args.get("function_name")
         file_path: str | None = args.get("file_path")
         requested_etag = str(args.get("if_none_match") or "").strip()
+        previous_entries = args.get("previous_entries")
+        if isinstance(previous_entries, str):
+            from ..utils.format_helper import apply_output_format_to_response
+
+            return apply_output_format_to_response(
+                {
+                    "success": False,
+                    "verdict": "ERROR",
+                    "error_code": "INVALID_ARGUMENT",
+                    "error": "previous_entries must be a JSON array of test entries",
+                    "next_step": "Pass the test_functions array from a previous answer.",
+                },
+                args.get("output_format", "json"),
+            )
 
         if not symbol:
             return {
@@ -678,6 +708,32 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
 
         generation = _index_generation_id(project_root)
         result["answer_etag"] = _test_map_etag(result, generation)
+        delta = _relation_delta(previous_entries, result.get("test_functions") or [])
+        if delta is not None:
+            # 增量只描述差集；截断/去重后的总数必须一并带出，避免把子集当全部。
+            return apply_output_format_to_response(
+                {
+                    "success": True,
+                    "verdict": "INFO",
+                    "symbol": symbol,
+                    "answer_etag": result["answer_etag"],
+                    "truncated": result["truncated"],
+                    "unique_function_count": result["unique_function_count"],
+                    "delta": delta,
+                    "agent_summary": {
+                        "summary_line": (
+                            f"test_map: {symbol!r} delta +{len(delta['added'])} "
+                            f"-{len(delta['removed'])} "
+                            f"={delta['unchanged_count']} unchanged"
+                        ),
+                        "next_step": (
+                            "Apply the added/removed tests; unchanged entries do "
+                            "not need to be re-read."
+                        ),
+                    },
+                },
+                output_format,
+            )
         if requested_etag and generation and requested_etag == result["answer_etag"]:
             # 同一索引世代 + 同一内容指纹：答案不可能变，回最小载荷。
             return apply_output_format_to_response(

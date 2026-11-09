@@ -522,3 +522,38 @@ def test_callers_incremental_flags_reject_a_non_array_payload():
         built["previous_entries"],
         spec.build_tool_args(broken, "json")["previous_entries"],
     ) == ("__INVALID_PREVIOUS_ENTRIES__", "__INVALID_PREVIOUS_ENTRIES__")
+
+
+def test_test_map_forwards_the_incremental_flags():
+    """§12.1/§12.2 的 CLI 半边同样覆盖 --test-map。"""
+    from tree_sitter_analyzer.cli.nav_special_commands import _dispatch_test_map
+
+    captured: dict = {}
+
+    class _Facade:
+        async def execute(self, args):
+            captured.update(args)
+            return {"success": True}
+
+    class _Context:
+        output_json = staticmethod(lambda payload: None)
+        output_error = staticmethod(lambda message: None)
+
+    args = create_argument_parser().parse_args(
+        [
+            "--test-map",
+            "target",
+            "--if-none-match",
+            "sha256:abc",
+            "--previous-entries-json",
+            '["tests/a.py::t"]',
+        ]
+    )
+
+    _dispatch_test_map(args, _Context(), _Facade(), "json")
+
+    assert (
+        captured["if_none_match"],
+        captured["previous_entries"],
+        captured["symbol"],
+    ) == ("sha256:abc", ["tests/a.py::t"], "target")
