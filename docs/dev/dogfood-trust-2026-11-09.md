@@ -144,22 +144,36 @@ agent 每个回合都会重问「X 的调用者是谁吗」，而绝大多数时
   ≈400 B 的 `{unchanged: true}`（不再回 15 KB 列表）。命中条件是「内容指纹相等 **且** 作用域未过期」，
   任何 stale/不确定状态一律回完整答案——实测 stale 后即使 etag 文本相同也回完整答案。
 
-### 12.2 增量答案（`--since <answer_etag>`）
+### 12.2 增量答案（`--previous-entries-json`）
 
 比 304 更进一步：不是「没变」，而是「**变在哪**」。只返回新增/消失的调用方条目
 （`added[] / removed[] / unchanged_count`），像 `git diff` 之于 `cat`。对 agent 的长会话尤其关键：
 它已经在上下文里持有上一版答案，只想要 delta。
 
-**已落地（第 12 轮，`nav action=callers` 的无状态增量）**：请求带 `previous_entries`（上一次答案的
+**已落地（第 12 轮，`nav action=callers` 的无状态增量；CLI 旗标是 `--previous-entries-json`）**：请求带 `previous_entries`（上一次答案的
 条目，agent 本来就在上下文里），服务端按 `(file, line, call_site_line, name)` 对齐后回
 `{delta: {added, removed, unchanged_count}}`；作用域过期时一律回完整答案。实测新增一个调用方并重建
 索引后：`added=1, unchanged=1`，响应里没有 `callers` 列表。
 
-### 12.3 成本预检（`--cost`）
+### 12.3 成本预检（`--capabilities FACADE.ACTION`）
 
-本仓库已经证明成本可以跨两个数量级（`--uql` 1.2 s vs 47 s）。agent 需要**先问价**：
-`tsa --cost "symbol('main').callees()"` → `{tier, estimate_ms, files_scanned, may_exceed_budget}`。
-有了它，agent 可以先选同义的便宜查询，而不是撞上 47 s 才发现。
+本仓库已经证明成本可以跨两个数量级（`--uql` 1.2 s vs 47 s）。agent 需要**先问价**，
+但**没有** `--cost "<query>"` 这种按查询估算的旗标——那是另一个设计（需要按查询复杂度建模）。
+
+现有的是**按动作**的预检，这也是诚实的那一半：
+
+```
+tsa --capabilities nav.callers
+→ {tier: "indexed", cost_class: "indexed", preconditions: [], index_present: true, precondition_met: true}
+```
+
+- `tier` / `cost_class`：`instant`（~毫秒级、不需要索引）还是 `indexed`（需要索引，可能秒级）；
+- `precondition_met`：前置条件是否满足（例如索引在不在），**失败即拒绝**，不会跑到一半才报错；
+- `example`：一条可直接复制的调用样例。
+
+**修订（2026-11-10，第 67 轮）**：本节此前写有 `tsa --cost "symbol('main').callees()"`
+返回 `{tier, estimate_ms, files_scanned, may_exceed_budget}`——该旗标与这些字段**都不存在**。
+按查询估算仍未实现；在它存在之前，agent 应使用上面的按动作预检。
 
 ### 12.4 能力清单（`--capabilities`）
 
