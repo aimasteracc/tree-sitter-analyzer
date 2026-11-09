@@ -451,3 +451,29 @@ agent 只要看到这几条文件没动、index 没重建，就可以安全复�
 
 这些都不是人类用户会主动要求的交互，但对 agent 的「反复问、增量问」是数量级的改进——
 也正是「离不开」的来源：不是功能多，而是**重问几乎免费**。
+
+### 12.7 用法食谱：把「重问」变成「增量问」
+
+三个原语（`answer_etag` / `if_none_match` / `previous_entries`）已经可用。agent 在做多轮任务时的推荐循环：
+
+```text
+第 1 轮   ask:   --callers target
+          keep:  answer_etag, callers[]
+
+第 N 轮   ask:   --callers target  +  previous_entries: <第 1 轮的 callers[]>
+          get:   {delta: {added, removed, unchanged_count}, answer_etag}
+          use:   只把 added / removed 读进上下文；unchanged 不重读
+
+只想知道「有没有变」
+          ask:   --callers target  +  if_none_match: <上一轮 answer_etag>
+          get:   {unchanged: true}（≈400 B）——没变就直接跳过
+```
+
+三条可靠性规则（实现里已强制，不是约定）：
+
+1. `unchanged` 只在「内容指纹相同 **且** 作用域未过期」时成立；否则回完整答案。
+2. `delta` 用调用方身份 `(file, line, call_site_line, name)` 对齐，不靠位置猜。
+3. 任何 `stale`/unknown 状态都会让两个原语失效并回完整答案——宁可多传 15 KB，不给假结论。
+
+**收益量级**：一个 10 轮的「盯着某个函数」任务，从 10 × 15 KB ≈ 150 KB 降到 15 KB + 9 × 400 B ≈ 19 KB；
+真正省下的是 agent 的上下文预算，而这正是长任务最先耗尽的东西。
