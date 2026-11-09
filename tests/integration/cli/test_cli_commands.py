@@ -484,7 +484,9 @@ class TestCLIErrorHandling:
         """Test handling of nonexistent files"""
         nonexistent_path = "/path/that/does/not/exist.java"
         monkeypatch.setattr(
-            sys, "argv", ["cli", nonexistent_path, "--project-root", "/tmp"]
+            sys,
+            "argv",
+            ["cli", nonexistent_path, "--project-root", tempfile.gettempdir()],
         )
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
