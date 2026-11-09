@@ -307,3 +307,32 @@ async def test_stale_source_downgrades_the_answer_to_warn(tmp_path) -> None:
     assert result["completeness_reason"] == "SOURCE_INDEX_MISMATCH"
     assert result["agent_summary"]["verdict"] == "WARN"
     assert result["agent_summary"]["summary_line"].endswith("(index stale)")
+
+
+def test_stale_evidence_never_rewrites_an_error_verdict() -> None:
+    """已经失败的答案保持 ``ERROR``；过期只追加 stale 标记与原因。"""
+    from tree_sitter_analyzer.mcp.tools.relation_freshness import (
+        apply_source_evidence,
+    )
+
+    result = {
+        "verdict": "ERROR",
+        "completeness_reasons": ["RELATION_ERROR"],
+        "next_step": "Fix the invocation and retry.",
+        "agent_summary": {
+            "summary_line": "callers: error",
+            "verdict": "ERROR",
+            "next_step": "Fix the invocation and retry.",
+        },
+    }
+
+    apply_source_evidence(
+        result, {"freshness": "stale", "reason": "SOURCE_INDEX_MISMATCH"}, ["a.py"]
+    )
+
+    assert (
+        result["verdict"],
+        result["stale"],
+        result["agent_summary"]["verdict"],
+    ) == ("ERROR", True, "ERROR")
+    assert result["completeness_reasons"] == ["SOURCE_INDEX_MISMATCH", "RELATION_ERROR"]
