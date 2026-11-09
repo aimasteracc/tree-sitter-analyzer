@@ -21,11 +21,23 @@
    否则它总是在最贵的地方（CI 矩阵）被发现。
 3. 手改 schema 之后要问：有没有派生产物？（表格、skill 副本、README 计数）
 
+### Follow-up (same class, found by sweeping for it)
+
+同一类"1 秒能查却只在全面套件里跑"的检查还有两处，已一并并入快速门：
+
+- `tests/benchmarks/claims`（37 个里 32 个通过、5 个 skip，1.5 秒）：**已发布数字**
+  （README 计数、性能声明）的可执行不变量——CLAUDE.md §11 要求"任何 cost 声明必须有
+  可执行不变量"，但如果它只在全面套件跑，声明烂掉时没人会在意那个时间差；
+- `tests/integration/docs`（文档链接与结构，亚秒级）：坏链接同样属于"生成/编辑后立刻能查"。
+
+快速门：2306 → **2343 passed / 33 skipped，33.6 秒**（上限 5 分钟）。
+
 ### Required guardrail
 
-`pytest.ini` 的 `testpaths` 现在包含 `tests/unit/docs`，
-`DEFAULT_QUICK_TESTPATHS` 同步钉死该目录（`tests/contracts/test_pytest_runtime_contract.py`），
-生成物漂移在本地 40 秒内即被 `test_facade_actions_doc_matches_generator` 抓到。
+`pytest.ini` 的 `testpaths` 现包含 `tests/unit/docs`、`tests/benchmarks/claims`、
+`tests/integration/docs`，三者在 `DEFAULT_QUICK_TESTPATHS`
+（`tests/contracts/test_pytest_runtime_contract.py`）中同步钉死；
+生成物漂移、已发布数字漂移、坏文档链接都在本地 40 秒内被发现。
 ## 2026-11 — 局部重跑会打碎带 attempt 的 artifact 交接
 
 ### Context
