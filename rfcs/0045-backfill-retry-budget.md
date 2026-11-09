@@ -1,6 +1,6 @@
 # RFC-0045: Retry budget for the self-healing backfill pass
 
-- **Status**: draft
+- **Status**: superseded (2026-11-10) — see "Superseded by" below
 - **Author(s)**: agent dogfood round 2026-11-09/10
 - **Created**: 2026-11-10
 - **Last updated**: 2026-11-10
@@ -9,6 +9,22 @@
   - `tree_sitter_analyzer/cache/indexer.py` (`post_index_backfill`, `_post_index_backfill`)
   - `tree_sitter_analyzer/cache/unresolved.py` (convergence marker)
   - `tests/unit/test_ast_cache_projection_state.py`, `tests/unit/test_ast_cache_index_project.py`
+
+## Superseded by
+
+The root cause was found and fixed without this RFC's retry budget: the 7–9 s
+no-op cost came from a **missing #1671 convergence record**, not from the
+retry cadence. With the record present the existing zero-change path applies
+(0.72–0.86 s, measured), and the record lifecycle now keeps it alive across
+edits: zero-change generations inherit the published parent's record
+(`stable_failures.inherit_record`), and a legacy cache gets a
+`zero_change_hint` telling the agent that one `--ast-cache-force` unlocks the
+fast path. Nothing in that path touches #1253.
+
+This RFC stays as the record of the alternative that was considered and is only
+needed if a repository ever has failures that cannot be recorded as stable
+failures. Its invariants (change / failure / force always retry) remain the
+correct answer for that residual case.
 
 ## Summary
 
