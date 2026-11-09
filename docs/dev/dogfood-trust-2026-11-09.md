@@ -331,6 +331,9 @@ help 里限定 "For --change-impact"，但 flag 出现在全局 help，agent 会
 
 | P1-6 `.tsa/index-meta.json` 是矛盾的第二个真相源 | 删除该写入与私有 helper（仓库内无消费者、无文档，且只读分析会在工作区留下貌似权威的索引健康文件）；`.tsa/config.json`（severity 阈值配置）按原设计保留 | 本仓库 `--hotspot` 后只剩 `.tsa/config.json`；`test_handle_hotspot.py` 删除对应 3 处断言 |
 
-仍待处理（按优先级）：P1-3 `--callers` 的调用行号落在定义行；P1-4 change-impact 测试选择召回缺口；P2-5 `--agent-summary-only` 空操作；P2-6 MCP codemap 漏 11 个 action；以及 no-op 索引仍重跑调用点回填（~7.4 s）。
+| P2-5 `--agent-summary-only` 空操作 | 显式传入但没有 `--change-impact` 时 fail closed（exit 2、点名触发 flag，走 #1000 的 wiring 规则）；help 写明 requires | 子进程/进程内测试：误用 exit 2 且 stdout 空；`--change-impact --agent-summary-only` 仍正常 | 
+| P2-6 MCP codemap 漏 11 个 action | codemap 每个 facade 的 action 列表改为与 `inputSchema` 精确相等，并注明 `action=help` 是运行时发现入口；新增契约测试比较 action 集合（漏/多都报） | `test_every_facade_action_has_codemap_parity`：94 个 action 全等（含 8 个 help、`index knowledge/schema`、`viz knowledge`） |
+
+仍待处理（按优先级）：P1-3 `--callers` 的调用行号落在定义行；P1-4 change-impact 测试选择召回缺口；以及 no-op 索引仍重跑调用点回填（~7.4 s）。
 
 **本轮附带发现（未修复）**：修复后 `--ast-cache --ast-cache-mode index` 的 no-op 仍需 ~7.4 s，profile 显示耗时在 `post_index_backfill`（`run_synapse_backfill` 6.5 s、`backfill_cross_file_edges` 3.5 s）——即每次索引都重跑调用点回填，即使源码没有任何变化。这是下一个效率目标。
