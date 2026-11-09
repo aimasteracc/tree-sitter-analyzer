@@ -336,6 +336,48 @@ def _describe_sites(sites: list[dict[str, Any]] | None) -> str:
     return "; ".join(parts)
 
 
+def absence_certificate(result: dict[str, Any]) -> dict[str, Any] | None:
+    """RFC-0044 最小切片：只在能证明「确实没有」时签发缺席证书。
+
+    条件（全部满足才签发）：
+
+    - 调用方列表为空；
+    - ``completeness == "complete"``（RFC-0040 的 13 道检查全部跑过）；
+    - 没有 unresolved / name-only / 声明文件守卫的开放站点。
+
+    否则返回 ``None`` —— 不完整或未知的答案没有资格证明缺席。``entry_point`` /
+    ``script`` / ``untested`` 等更强的规则由 RFC-0044 后续实现。
+    """
+    if result.get("caller_count") != 0:
+        return None
+    if result.get("completeness") != "complete":
+        return None
+    open_sites = (
+        result.get("unresolved_inbound") or 0,
+        result.get("name_only_inbound") or 0,
+        result.get("unresolved_in_declaring_files") or 0,
+    )
+    if any(open_sites):
+        return None
+    return {
+        "kind": "unreferenced",
+        "confidence": "proven",
+        "evidence": [
+            {
+                "kind": "complete_call_graph",
+                "detail": (
+                    "every required caller check ran; 0 resolved, 0 unresolved, "
+                    "0 name-only inbound sites"
+                ),
+            }
+        ],
+        "next_step": (
+            "Treat the absence as a fact: no call edge in the project reaches "
+            "this target."
+        ),
+    }
+
+
 def _caller_identity(entry: dict[str, Any]) -> tuple[Any, ...]:
     """调用方条目的身份：(file, line, call_site_line, name)。"""
     return (
@@ -394,6 +436,7 @@ def answer_etag(result: dict[str, Any]) -> str:
         "completeness_reasons": result.get("completeness_reasons") or [],
         "freshness": (result.get("source_evidence") or {}).get("freshness"),
         "stale": bool(result.get("stale", False)),
+        "absence": result.get("absence"),
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
@@ -1287,6 +1330,9 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             "verdict": verdict,
             "next_step": as_next_step,
         }
+        certificate = absence_certificate(result)
+        if certificate is not None:
+            result["absence"] = certificate
         apply_source_evidence(result, evidence, stale_files)
         # dogfood §12.1：内容相同的答案 → 相同 etag。agent 用它做跨轮次缓存判断。
         result["answer_etag"] = answer_etag(result)

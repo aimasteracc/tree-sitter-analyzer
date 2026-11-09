@@ -78,6 +78,31 @@ Reference implementation:
 `total_matches`), but the four-part shape — flag, exact pre-cap total, listed
 count + cap, interpolated `next_step` — is the contract.
 
+## Absence certificates (`nav action=callers`, RFC-0044)
+
+An empty answer can be a fact. When `caller_count == 0`, `completeness == "complete"`
+(every required caller check ran) and there is no unresolved / name-only / declaring-file
+site, the response carries:
+
+```json
+"absence": {
+  "kind": "unreferenced",
+  "confidence": "proven",
+  "evidence": [{"kind": "complete_call_graph", "detail": "..."}],
+  "next_step": "..."
+}
+```
+
+Rules:
+
+- The field appears **only** on a `complete` zero-caller answer. An `incomplete` or
+  `unknown` answer never carries it — no certificate beats a false one.
+- `confidence: "proven"` is the only value emitted today; RFC-0044 defines the future
+  `possible` value for rules that cannot run (e.g. an unreadable manifest).
+- Additional kinds (`entry_point`, `script`, `untested`) are specified in RFC-0044 but
+  not implemented yet; consumers must treat unknown `kind` values as informational.
+- The certificate is part of the answer content, so it participates in `answer_etag`.
+
 ## `next_step` conventions
 
 - One concrete, imperative action — a command or a tool call, not prose

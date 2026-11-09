@@ -113,7 +113,9 @@ def preflight_action(qualified: str, project_root: str) -> dict[str, Any]:
         entry = None
         label = qualified
         if len(matches) == 1:
-            facade, action = matches[0][0], qualified
+            facade = matches[0][0]
+            action = qualified
+            label = f"{facade}.{action}"
             entry = manifest["tools"][facade]["actions"][action]
         elif len(matches) > 1:
             return {

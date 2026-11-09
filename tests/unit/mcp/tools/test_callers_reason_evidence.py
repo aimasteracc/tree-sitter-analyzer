@@ -641,3 +641,64 @@ async def test_previous_entries_produce_a_delta_not_a_full_list(tmp_path) -> Non
         delta["delta"]["unchanged_count"],
         "callers" in delta,
     ) == ([], [], 1, False)
+
+
+@pytest.mark.asyncio
+async def test_an_empty_complete_answer_carries_an_absence_certificate(
+    tmp_path,
+) -> None:
+    """RFC-0044：0 调用方 + complete + 无开放站点 → proven 缺席证书。"""
+    root = await _index_files(
+        tmp_path,
+        {
+            "a.py": "def used():\n    return 1\n\n\ndef entry():\n    return 2\n",
+            "b.py": "from a import used\n\n\ndef call():\n    return used()\n",
+        },
+    )
+
+    result = await _callers(root, "entry")
+
+    assert (result["caller_count"], result["completeness"]) == (0, "complete")
+    assert (
+        result["absence"]["kind"],
+        result["absence"]["confidence"],
+        result["absence"]["evidence"][0]["kind"],
+    ) == ("unreferenced", "proven", "complete_call_graph")
+
+
+@pytest.mark.asyncio
+async def test_a_referenced_target_has_no_absence_certificate(tmp_path) -> None:
+    root = await _index_files(
+        tmp_path,
+        {
+            "a.py": "def used():\n    return 1\n",
+            "b.py": "from a import used\n\n\ndef call():\n    return used()\n",
+        },
+    )
+
+    result = await _callers(root, "used")
+
+    assert (result["caller_count"], "absence" in result) == (1, False)
+
+
+@pytest.mark.asyncio
+async def test_an_unproven_answer_never_claims_absence(tmp_path) -> None:
+    """不存在/不完整的答案没有资格证明缺席。"""
+    root = await _index_files(tmp_path, {"a.py": "def used():\n    return 1\n"})
+
+    result = await _callers(root, "no_such_symbol")
+
+    assert (result["verdict"], "absence" in result) == ("NOT_FOUND", False)
+
+
+def test_absence_certificate_requires_zero_open_sites() -> None:
+    """即使 completeness 声称 complete，有开放站点也不签发缺席证书。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import absence_certificate
+
+    result = {
+        "caller_count": 0,
+        "completeness": "complete",
+        "unresolved_inbound": 2,
+    }
+
+    assert absence_certificate(result) is None

@@ -151,3 +151,38 @@ def test_cli_preflight_dispatch_is_in_process_safe(monkeypatch) -> None:
     with pytest.raises(SystemExit):
         cli_main._emit_capability_manifest_if_requested(full)
     assert len(captured[1]["tools"]) == 8
+
+
+def test_preflight_resolves_a_unique_bare_action_name() -> None:
+    """`--capabilities callers`（唯一 facade）解析为 nav.callers。"""
+    from tree_sitter_analyzer.capabilities import preflight_action
+
+    result = preflight_action("callers", ".")
+
+    assert (result["success"], result["action"], result["tier"]) == (
+        True,
+        "nav.callers",
+        "indexed",
+    )
+
+
+def test_index_presence_is_false_when_the_cache_cannot_open(monkeypatch) -> None:
+    """读不到缓存时预检说「没有索引」，而不是抛异常。"""
+    import tree_sitter_analyzer.ast_cache as ast_cache
+    import tree_sitter_analyzer.capabilities as capabilities
+
+    def _explode(*args, **kwargs):
+        raise RuntimeError("cache unavailable")
+
+    monkeypatch.setattr(ast_cache, "ASTCache", _explode)
+
+    assert capabilities._index_present(".") is False
+
+
+def test_preflight_rejects_an_unknown_bare_action_name() -> None:
+    """裸名既非唯一也非歧义（0 匹配）→ UNKNOWN_ACTION。"""
+    from tree_sitter_analyzer.capabilities import preflight_action
+
+    result = preflight_action("zzz_no_such_action", ".")
+
+    assert (result["success"], result["error_code"]) == (False, "UNKNOWN_ACTION")
