@@ -3,6 +3,25 @@
 > 为什么 agent 仍然先伸手拿 rg，以及要改什么才能反过来。
 > 本文所有数字都带状态；未复现的观测已剔除，无法归因的已标为「不确定」。
 
+## 最终状态（2026-11-10，随 PR #1939 收束）
+
+本文件按时间记录，早期章节里的数字是**当轮**的测量值，不代表现状。现状如下：
+
+| 项 | 现状 | 依据 |
+|---|---|---|
+| P0-1 坏 `--project-root` | 已修（fail-closed `INVALID_PROJECT_ROOT`） | §3 |
+| P0-2 `--call-graph` 无索引 | 已修（0.53 s `INDEX_MISSING`） | §3 |
+| P1-1 陈旧索引 | 已修（`WARN` + `SOURCE_INDEX_MISMATCH`） | §3 |
+| P1-2 uql 假 `complete` | 已修（`SYMBOL_NOT_DEFINED` gap） | §3 |
+| P1-3 `--callers` 行号 | 已修（`call_site_line`） | §3 / 第 9 轮 |
+| **P1-4 change-impact 测试选择召回** | **未修（需设计：依赖图 + 文本引用通道）** | §4 |
+| P2 系列（hotspot 档位 / index-meta / agent-summary-only / codemap parity） | 已修 | §3 |
+| §11 no-op 索引成本 | 已修：9.08 s → **0.66–0.86 s**（记录生命周期，不动 #1253） | §11 第 26–29 轮 |
+| §12 agent 原生原语（etag/304/delta/capabilities/absence/UQL hint） | 全部落地，CLI+MCP 双面 | §12 |
+| RFC-0044 缺席证书 | 五种全部实现，status = implemented | `rfcs/0044-…` |
+
+唯一遗留：**P1-4**。它需要「依赖图 + 文本引用」双通道设计，不是单点修复，因此保留为下一阶段。
+
 ## 0. 环境与方法
 
 | 项 | 值 |
@@ -348,7 +367,7 @@ help 里限定 "For --change-impact"，但 flag 出现在全局 help，agent 会
 
 | 发现成本（§6 承诺 5） | `docs/CODEMAPS/cli.md` 首页新增「任务 → 命令」表（10 个真实任务 + instant/indexed 两层前置条件 + `--text-search` 与 `--symbol-search` 的区别），所有 flag 均对活解析器校验 | 表内 flag 全量校验通过；`codemap-sync --self-check` OK |
 
-仍待处理（按优先级）：P1-3 `--callers` 的调用行号落在定义行；P1-4 change-impact 测试选择召回缺口；以及 no-op 索引仍重跑调用点回填（~7.4 s）。
+当时的待办：P1-3 行号、P1-4 召回、no-op 索引 ~7.4 s。——**现状见文首「最终状态」**：P1-3 与 no-op 成本已解决，只剩 P1-4。
 
 **本轮附带发现（未修复）**：修复后 `--ast-cache --ast-cache-mode index` 的 no-op 仍需 ~7.4 s，profile 显示耗时在 `post_index_backfill`（`run_synapse_backfill` 6.5 s、`backfill_cross_file_edges` 3.5 s）——即每次索引都重跑调用点回填，即使源码没有任何变化。这是下一个效率目标。
 
