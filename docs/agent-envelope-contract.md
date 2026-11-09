@@ -135,6 +135,35 @@ Four answers support the incremental loop: `callers`, `callees`, `test_map` and 
 - Treat it as the default next call when you have no better plan; it is
   advisory, not binding.
 
+## Repeat answers: cache provenance vs ETag (two different guarantees)
+
+There are two independent mechanisms, and an Agent should know which one it is
+relying on:
+
+| mechanism | what it answers | how to read it |
+|---|---|---|
+| answer cache (RFC-0027) | "was this answer reused without recomputation?" | `provenance.served_from` is exactly `"cache"` or `"computed"` |
+| `answer_etag` / `if_none_match` (§12.1) | "is this the same answer I already have?" | a matching etag returns `{unchanged: true}` instead of the payload |
+
+They answer different questions — cached means *the server did not recompute*,
+unchanged means *you already hold this content*. A cached answer can still differ
+from what you hold (another turn may have changed the scope), and an unchanged
+answer can be produced without any cache.
+
+Cache soundness, verified 2026-11-10 by editing a file between two identical
+`edit action=safe` calls on a temp project:
+
+| call | `provenance.served_from` | wall clock |
+|---|---|---|
+| first | `computed` | 132 ms |
+| identical repeat | `cache` | **0 ms** |
+| same call after an edit | `computed` | 13 ms |
+
+`safe` means single-process. The on-disk answer cache is keyed by the source
+fingerprint (and per `docs/dev/callers-gate.md`, by every answer's cache key incl.
+line endings), so an edit invalidates it rather than serving the previous verdict;
+an unquiet tree skips the cache by design rather than risking a stale hit.
+
 ## JSON control fields
 
 Every public response is one JSON object. Agents branch on `success`, `verdict`,
