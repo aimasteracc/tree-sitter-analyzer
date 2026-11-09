@@ -383,3 +383,62 @@ profile 显示大头是 `post_index_backfill`：`run_synapse_backfill` 重新解
    在保持自愈语义的前提下把 no-op 成本降到 <1 s。
 
 本轮结论：优化已实测有效但**回滚**，优先级让给正确性；下一次需带 RFC/设计说明再动。
+
+## 12. Agent-native primitives（只有 agent 会要求的东西）
+
+前面 11 节是把工具修到「不撒谎、可预算」。这一节是反过来问：**如果按 agent 的工作方式重新设计，
+TSA 应该长成什么样？** 人用工具是一次一问；agent 是**同一个问题反复问、增量问、跨轮次问**。
+由此得到 6 个原语，按「实现成本 × 对 agent 的杠杆」排序。
+
+### 12.1 答案 ETag + `If-None-Match`（最高杠杆）
+
+agent 每个回合都会重问「X 的调用者是谁吗」，而绝大多数时候答案是**没变**。HTTP 早就有 304：
+这里缺一个同价物。
+
+- 响应新增 `answer_etag`（由 `action + 归一化参数 + 索引 generation + 作用域源码状态` 派生）。
+- 请求可带 `if_none_match`；命中时返回最小载荷 `{success:true, unchanged:true, answer_etag}`（≈80 B），
+  而不是 15 KB 的完整调用方列表。
+- **可靠性条件**：只有在「同一索引 generation + 作用域源码复核一致 + 完整性不是 unknown」时才允许
+  返回 unchanged；任何一项不确定都必须回完整答案。ETag 是承诺，不是猜测。
+- 验收：编辑作用域外文件 → 仍返回 304；编辑作用域内文件 → 自动回完整答案（WARN + stale）。
+
+### 12.2 增量答案（`--since <answer_etag>`）
+
+比 304 更进一步：不是「没变」，而是「**变在哪**」。`--since` 时只返回新增/消失的调用方条目
+（`added[] / removed[] / changed[]`），像 `git diff` 之于 `cat`。对 agent 的长会话尤其关键：
+它已经在上下文里持有上一版答案，只想要 delta。
+
+### 12.3 成本预检（`--cost`）
+
+本仓库已经证明成本可以跨两个数量级（`--uql` 1.2 s vs 47 s）。agent 需要**先问价**：
+`tsa --cost "symbol('main').callees()"` → `{tier, estimate_ms, files_scanned, may_exceed_budget}`。
+有了它，agent 可以先选同义的便宜查询，而不是撞上 47 s 才发现。
+
+### 12.4 能力清单（`--capabilities`）
+
+8 个 facade、94 个 action、371 个 flag，agent 的规划成本全在「有哪些动作、它们的代价与前置条件」。
+`--capabilities --format json` 应给出每个 action 的：`tier`（instant/indexed）、`preconditions`、
+`cost_class`、**可直接复制的最小调用示例**、以及 `repair`（失败时该做什么的结构化动作，而不是英文句子）。
+它比 90 KB 的 help 更接近「机器可规划的 API 描述」。
+
+### 12.5 缺席证书（negative-space answers）
+
+`complete` 现在证明的是「列全了」；agent 更需要「**证明不存在**」：例如「这是入口点，所以没有调用者」
+「这是脚本，没有被任何测试覆盖」。把 proof-carrying completeness 扩展到缺席结论，
+返回 `absence: {kind: "entry_point"|"unreferenced"|"untested", evidence: [...]}`，
+让 agent 敢于据此决策，而不是保守地再 grep 一遍。
+
+### 12.6 答案作用域与过期条件（`expires_when`）
+
+agent 常把答案缓存到下一轮。返回 `expires_when: {files: [...], index_generation: "..."}`，
+agent 只要看到这几条文件没动、index 没重建，就可以安全复用——不需要重新提问。
+
+### 实施顺序
+
+1. **12.1 + 12.2**（一个 PR）：都依赖同一份「答案身份 + 源码状态」派生，先做 ETag 再做 delta。
+2. **12.3 + 12.4**（一个 PR）：成本预检与能力清单共享同一张静态元数据表。
+3. **12.5**（需要 RFC）：缺席证书涉及完整性语义扩展。
+4. **12.6**：作为 12.1 的附带字段落地。
+
+这些都不是人类用户会主动要求的交互，但对 agent 的「反复问、增量问」是数量级的改进——
+也正是「离不开」的来源：不是功能多，而是**重问几乎免费**。
