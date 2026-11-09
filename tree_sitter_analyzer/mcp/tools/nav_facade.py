@@ -613,6 +613,31 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
                 ),
             },
         }
+        # RFC-0044 `untested`：目标解析成功、没有任何测试调用边、也没有只靠同名
+        # 匹配的候选时，「没有被任何测试覆盖」是可证明的事实，而不是沉默。
+        if (
+            not test_files_sorted
+            and not result["name_only_test_functions"]
+            and total_edge_count == 0
+        ):
+            result["absence"] = {
+                "kind": "untested",
+                "confidence": "proven",
+                "evidence": [
+                    {
+                        "kind": "complete_test_scan",
+                        "detail": (
+                            f"{len(targets)} resolved target(s), 0 test call edges, "
+                            "0 name-only candidates"
+                        ),
+                    }
+                ],
+                "next_step": (
+                    "No test exercises this symbol: treat that as a fact when "
+                    "judging risk, and add one if the change needs coverage."
+                ),
+            }
+
         source = follow_ups.source_of(symbol)
         if source is not None:
             result = append_next_step(result, hint_after_test_map(source))

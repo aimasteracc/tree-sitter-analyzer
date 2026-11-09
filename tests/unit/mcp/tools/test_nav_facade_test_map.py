@@ -217,6 +217,12 @@ async def test_test_map_no_test_callers() -> None:
     assert result["test_files"] == []
     assert result["test_functions"] == []
     assert result["truncated"] is False
+    # RFC-0044 `untested`：解析成功 + 零测试边 → 可证明的「没测试覆盖」。
+    assert (
+        result["absence"]["kind"],
+        result["absence"]["confidence"],
+        result["absence"]["evidence"][0]["kind"],
+    ) == ("untested", "proven", "complete_test_scan")
 
 
 @pytest.mark.asyncio
@@ -992,3 +998,24 @@ async def test_test_map_marks_name_only_test_caller(tmp_path) -> None:
     assert result["name_only_test_functions"] == [
         "tests/test_gen_store.py::test_publish_any"
     ]
+
+
+@pytest.mark.asyncio
+async def test_test_map_with_a_test_caller_has_no_absence() -> None:
+    """有测试调用边时不出缺席证书。"""
+    from tree_sitter_analyzer.mcp.tools.nav_facade import build_nav_facade
+
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+    target_fn = _make_func("covered_fn", "src/core.py")
+    test_caller = _make_func("test_covered", "tests/test_core.py", 5)
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.return_value = [test_caller]
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute({"action": "test_map", "symbol": "covered_fn"})
+
+    assert ("absence" in result, result["unique_function_count"]) == (False, 1)

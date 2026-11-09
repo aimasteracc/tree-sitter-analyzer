@@ -445,7 +445,7 @@ CLI `--capabilities` 与 MCP 暴露留到下一轮（新 flag 需要同步 codem
 **已实现**：`unreferenced`（第 18 轮）、`entry_point`（第 19 轮，读 `[project.scripts]` /
 `[tool.poetry.scripts]` 与包 `__main__.py`）、`script`（第 22 轮，shebang 硬证据）。三者都是
 `proven` 并附证据；空答案但证据不全时降级为 `unknown` + `possible`（附开放站点计数），
-`NOT_FOUND` 一律不签证书。仍未实现：`untested`。
+`NOT_FOUND` 一律不签证书。`untested`（`nav action=test_map`）也已实现（第 24 轮）。
 
 **设计已提交（第 17 轮）**：`rfcs/0044-absence-certificates.md` —— `absence: {kind, confidence, evidence}`
 只在底层问题 `complete` 时出现；`entry_point / script / unreferenced / untested` 四个保守规则，
