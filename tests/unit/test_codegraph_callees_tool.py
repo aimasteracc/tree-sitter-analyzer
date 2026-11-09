@@ -372,8 +372,10 @@ async def test_new_symbol_absent_from_stale_index_is_not_a_spelling_error(
         {"action": "callees", "symbol": "_dogfood_probe", "include_bodies": False}
     )
 
+    # dogfood 2026-11-09：索引过期时 NOT_FOUND 不是缺席证据，档位降到 WARN
+    # （与 callers 的 stale 语义一致）。
     assert (result["verdict"], result["source_evidence"]) == (
-        "NOT_FOUND",
+        "WARN",
         _STALE,
     )
     assert result["next_step"] == (

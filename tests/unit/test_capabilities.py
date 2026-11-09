@@ -81,7 +81,10 @@ def test_preflight_reports_the_tier_and_live_precondition() -> None:
     indexed = preflight_action("nav.callers", ".")
     instant = preflight_action("search.text", ".")
 
-    assert (indexed["tier"], indexed["precondition_met"]) == ("indexed", True)
+    # 索引是否存在取决于运行环境（仓库里可能没有 .ast-cache），断言两者的
+    # 一致性而不是断言某一侧的取值。
+    assert indexed["tier"] == "indexed"
+    assert indexed["precondition_met"] is (indexed["index_present"] is True)
     assert (instant["tier"], instant["index_present"]) == ("instant", None)
     assert instant["precondition_met"] is True
 

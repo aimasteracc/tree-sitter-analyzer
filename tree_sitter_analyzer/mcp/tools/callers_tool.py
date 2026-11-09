@@ -967,7 +967,14 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # dogfood 2026-11-09 P1-3：调用图路径只给出「调用方函数」（定义行），
         # 调用点坐标在边上。补齐 ``call_site_line``，让 agent 跳到的是调用行
         # 而不是 ``def``；``line`` 语义保持不变。
-        callers = self._attach_call_site_lines(cache, callers, func_name, file_path)
+        # 优先用已构建调用图的边（零额外读，#1873：中断的读不能被吞掉）。
+        callers = self._attach_call_site_lines(
+            cache,
+            callers,
+            func_name,
+            file_path,
+            graph=locals().get("graph"),
+        )
         # #1854：每个调用方带置信层级；order=confidence 在截断前把 proven 排在前面。
         # 只改呈现：总数、各项检查与完整性判定都在别处由同一份证据得出。
         callers = with_confidence(callers)
@@ -1528,27 +1535,46 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         callers: list[dict[str, Any]],
         func_name: str,
         file_path: str | None,
+        graph: Any = None,
     ) -> list[dict[str, Any]]:
         """给缺少 ``call_site_line`` 的调用方条目补上调用点行号。
 
-        调用图路径的条目来自 ``FunctionRef``（只有调用方的定义行）；调用点坐标
-        在 ``edges.callee_line`` 上，一次索引查询即可映射回 (file, caller)。
-        读不到边时原样返回——补不上不冒充坐标。
+        调用图路径的条目来自 ``FunctionRef``（只有调用方的定义行）；调用点是
+        ``CallGraph.call_edges()`` 的第三元。优先用已构建的图（零额外读）。
+        没有图时才退回一次索引查询；``ReadInterrupted`` 必须继续传播——被中断
+        的读不是「没有行」（#1873）。
         """
-        if cache is None or not callers:
+        if not callers:
             return callers
-        try:
-            rows = cache.query_callers(func_name, callee_file=file_path)
-        except Exception:  # noqa: BLE001 — 补注失败不影响答案主体
+        if all(
+            "call_site_line" in entry for entry in callers if isinstance(entry, dict)
+        ):
             return callers
         sites: dict[tuple[str, str], int] = {}
-        for row in rows:
-            name = str(row.get("caller_name") or "")
-            line = int(row.get("callee_line") or 0)
-            if name and line > 0:
-                sites.setdefault((str(row.get("caller_file") or ""), name), line)
+        edges = graph.call_edges() if graph is not None else ()
+        for caller, callee, line in edges:
+            if callee.name != func_name:
+                continue
+            sites.setdefault((str(caller.file_path), str(caller.name)), int(line))
+        if not sites and graph is None and cache is not None:
+            from ...index_snapshot_query import ReadInterrupted
+
+            try:
+                rows = cache.query_callers(func_name, callee_file=file_path)
+            except ReadInterrupted:
+                raise
+            except Exception:  # noqa: BLE001 — 补注失败不影响答案主体
+                return callers
+            for row in rows:
+                name = str(row.get("caller_name") or "")
+                line = int(row.get("callee_line") or 0)
+                if name and line > 0:
+                    sites.setdefault((str(row.get("caller_file") or ""), name), line)
         for entry in callers:
             if not isinstance(entry, dict) or "call_site_line" in entry:
+                continue
+            if is_module_caller(str(entry.get("name") or "")):
+                # 模块级调用点的 ``line`` 本来就是调用行，不再重复标注。
                 continue
             key = (str(entry.get("file") or ""), str(entry.get("name") or ""))
             site = sites.get(key)
