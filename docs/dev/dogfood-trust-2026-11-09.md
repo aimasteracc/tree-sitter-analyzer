@@ -384,6 +384,19 @@ profile 显示大头是 `post_index_backfill`：`run_synapse_backfill` 重新解
 
 本轮结论：优化已实测有效但**回滚**，优先级让给正确性；下一次需带 RFC/设计说明再动。
 
+**第 25 轮进展**：
+
+1. 安全的半边已实现——调用图**已认证**且解析已收敛时，no-op 索引直接跳过回填，响应带
+   `backfill_skipped: CERTIFIED_CONVERGED`；缺 marker/失败重试的两条 #1253 契约测试
+   原样通过（本仓库 `call_graph_built()` 恒 False，所以本仓库不进入这条路径，实测 no-op
+   仍是 8.06 s，符合预期）。
+2. 本仓库这类「永远无法认证」的仓库需要的是**重试预算**而不是跳过：
+   `rfcs/0045-backfill-retry-budget.md` 给出设计（把「多久重试一次」与「要不要重试」分开，
+   失败/变更/force 一律立刻重试，仅对「刚成功但无法认证」的 no-op 生效），
+   RED-first 测试计划与三条 #1253 不变式都写在里面。
+
+要拿到 7.3–8.1 s → <1.5 s 的第二步，需要批准 RFC-0045 后实现。
+
 ## 12. Agent-native primitives（只有 agent 会要求的东西）
 
 前面 11 节是把工具修到「不撒谎、可预算」。这一节是反过来问：**如果按 agent 的工作方式重新设计，

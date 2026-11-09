@@ -519,8 +519,29 @@ def post_index_backfill(
     from .. import call_graph_incremental
 
     call_graph_incremental.note_scope(cache, decision)
+    if changed == 0 and _resolution_is_certified(cache, conn):
+        # 认证通过且输入没变：回填只会重算同样的边。缺 marker / 收敛标记的
+        # 情况一律照旧回填——那是 #1253 的自愈路径，不能在这里省掉。
+        stats["backfill_skipped"] = "CERTIFIED_CONVERGED"
+        stats.setdefault("backfill_errors", 0)
+        return
     with backfill_scope.active(conn, decision.scope):
         _post_index_backfill(cache, stats, root_fd=root_fd)
+
+
+def _resolution_is_certified(cache: Any, conn: Any) -> bool:
+    """调用图已认证 **且** 解析已对当前索引状态收敛时返回 True。
+
+    ``call_graph_built`` 包含认证语义（缺 optional grammar 时为 False），
+    ``resolution_converged`` 读 ``ast_resolve_state`` 指纹。两者缺一律返回
+    False：判断不了就照旧回填，保持 #1253 的自愈语义。
+    """
+    try:
+        from .unresolved import resolution_converged
+
+        return bool(cache.call_graph_built()) and resolution_converged(conn)
+    except Exception:  # noqa: BLE001 — 判断不了就回填
+        return False
 
 
 def _post_index_backfill(

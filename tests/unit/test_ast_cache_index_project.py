@@ -461,3 +461,32 @@ class TestIncrementalRefreshPurgesDeletedFiles:
             None,
             FORCE_REFRESH_STEP,
         )
+
+
+def test_certified_converged_noop_index_skips_the_backfills(engine):
+    """认证通过 + 已收敛 + 无变化：回填重算的是同样的边，直接跳过。"""
+    from tree_sitter_analyzer.cache.indexer import post_index_backfill
+
+    engine.index_project(workers=0)
+    stats: dict = {"indexed": 0, "cached": 2}
+
+    post_index_backfill(engine, stats)
+
+    assert (stats["backfill_skipped"], stats["backfill_errors"]) == (
+        "CERTIFIED_CONVERGED",
+        0,
+    )
+    assert "synapse_backfill" not in stats
+
+
+def test_a_changed_file_still_runs_the_backfills(engine):
+    """有文件变化时照旧回填：这是调用图自愈的唯一入口。"""
+    from tree_sitter_analyzer.cache.indexer import post_index_backfill
+
+    engine.index_project(workers=0)
+    stats: dict = {"indexed": 1}
+
+    post_index_backfill(engine, stats)
+
+    assert "backfill_skipped" not in stats
+    assert "backfill_errors" in stats
