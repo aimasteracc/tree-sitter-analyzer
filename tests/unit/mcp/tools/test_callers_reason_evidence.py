@@ -1156,8 +1156,8 @@ def test_shebang_script_certifies_identification_when_incomplete(tmp_path):
     ]
 
 
-def test_expires_when_names_the_declaring_file_and_generation(tmp_path):
-    """§12.6：作用域 = 声明文件 + 每个调用方文件 + 索引世代。"""
+def test_expires_when_names_the_declaring_file_and_generation():
+    """§12.6：作用域 = 声明文件 + 每个调用方文件 + 答案里已有的源世代。"""
     from tree_sitter_analyzer.mcp.tools.callers_tool import expires_when
 
     result = {
@@ -1167,12 +1167,13 @@ def test_expires_when_names_the_declaring_file_and_generation(tmp_path):
             {"name": "b", "file": "pkg/other.py"},
             {"name": "dup", "file": "tests/test_a.py"},
         ],
+        "source_evidence": {"source_generation": "gen-1"},
     }
 
-    scope = expires_when(result, project_root=str(tmp_path))
+    scope = expires_when(result)
 
     assert scope["files"] == ["pkg/mod.py", "pkg/other.py", "tests/test_a.py"]
-    assert scope["index_generation"] is None
+    assert scope["index_generation"] == "gen-1"
 
 
 def test_expires_when_without_files_is_an_empty_scope() -> None:
@@ -1199,13 +1200,10 @@ def test_expires_when_ignores_non_dict_callers_and_missing_paths() -> None:
     assert scope["files"] == []
 
 
-def test_expires_when_generation_is_null_when_the_index_cannot_be_read() -> None:
-    """读不到索引世代时给 null，而不是编一个：agent 只能靠 files 判断。"""
+def test_expires_when_generation_is_null_when_the_evidence_has_none() -> None:
+    """证据里没有世代就给 null，而不是为了填它去探测文件系统。"""
     from tree_sitter_analyzer.mcp.tools.callers_tool import expires_when
 
-    scope = expires_when(
-        {"file_path": "pkg/mod.py", "callers": []},
-        project_root="/nonexistent/project/root",
-    )
+    scope = expires_when({"file_path": "pkg/mod.py", "callers": []})
 
     assert scope["index_generation"] is None
