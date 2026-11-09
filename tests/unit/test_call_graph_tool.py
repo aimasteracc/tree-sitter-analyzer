@@ -466,3 +466,29 @@ class TestCodeGraphCallToolFileImpact:
         assert result["mode"] == "functions_in_file"
         assert "functions" in result
         assert result["file"] == "main.py"
+
+
+@pytest.mark.asyncio
+async def test_large_unindexed_project_refuses_the_on_the_fly_parse(tmp_path):
+    """#1562 的现场解析预算必须覆盖 ``--call-graph``（dogfood 2026-11-09 P0-2）。
+
+    修复前：2917 文件的无索引仓库在本仓库上静默现场解析 15.4 s，仍返回
+    ``INFO`` + 401 callers，没有任何「没有索引」信号。现在与 ``--callers``
+    一致：超预算立即给 ``INDEX_MISSING`` + 建索引步骤。
+    """
+    root = tmp_path / "big"
+    root.mkdir()
+    for index in range(201):
+        (root / f"m{index}.py").write_text(
+            f"def f{index}():\n    return {index}\n", encoding="utf-8"
+        )
+
+    result = await CodeGraphCallTool(str(root)).execute({"mode": "summary"})
+
+    assert (result["success"], result["verdict"], result["error_code"]) == (
+        True,
+        "WARN",
+        "INDEX_MISSING",
+    )
+    assert result["source_file_count"] == 201
+    assert "index action=cache mode=index" in result["next_step"]
