@@ -389,8 +389,8 @@ def inherit_record(
     record_root = os.path.realpath(os.path.abspath(project_root))
     if inherited.root != record_root or inherited.scope != scope:
         return None
-    if inherited.extractor_version != extractor_version:
-        return None
+    # extractor 版本已由 ``_converged`` 校验（它要求等于当前版本）；这里只补
+    # root/scope 两项记录里没有参与收敛判定的绑定。
     if not issue_record(
         conn,
         project_root=project_root,

@@ -283,3 +283,27 @@ def test_symbol_absence_names_the_fix_instead_of_a_census() -> None:
         "Class.method; refresh the index (index action=cache mode=index) if the "
         "source changed, then retry."
     )
+
+
+def test_an_empty_callers_stage_adds_an_absence_hint() -> None:
+    """空 callers + stage 覆盖完整 → 提示（possible），并指向能签发证书的命令。"""
+    fb = FakeBackends({"t": [sym("t")]}, {"t": callers_payload()})
+
+    payload = _answer({"query": Q}, fb)
+
+    hint = payload["absence_hint"]
+    assert (hint["kind"], hint["confidence"]) == ("possibly_unreferenced", "possible")
+    assert "callers=0" in hint["detail"]
+    assert "nav action=callers" in hint["next_step"]
+
+
+def test_an_incomplete_callers_stage_gets_no_absence_hint() -> None:
+    """stage 覆盖不完整时不给提示：空结果可能只是没查到。"""
+    fb = FakeBackends(
+        {"t": [sym("t")]},
+        {"t": callers_payload(completeness="unknown", reasons=("UNRESOLVED_INBOUND",))},
+    )
+
+    payload = _answer({"query": Q}, fb)
+
+    assert "absence_hint" not in payload

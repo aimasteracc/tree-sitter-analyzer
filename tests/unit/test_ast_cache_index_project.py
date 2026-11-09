@@ -688,3 +688,132 @@ def test_only_a_zero_change_run_may_inherit_the_record():
         _is_zero_change_run({"indexed": 0, "changed_during_run": 1}),
         _is_zero_change_run({"indexed": 0, "backfill_errors": 1}),
     ) == (True, False, False, False, False)
+
+
+def test_the_runner_records_how_many_failures_it_inherited(monkeypatch, tmp_path):
+    """零变化运行继承成功时，统计里要能看到继承条数。"""
+    import sqlite3
+
+    import tree_sitter_analyzer.cache.index_project_runner as runner
+    import tree_sitter_analyzer.cache.stable_failures as stable_failures
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_cache_metadata (key TEXT PRIMARY KEY, value TEXT)")
+    cache = type("C", (), {"project_root": str(tmp_path)})()
+    monkeypatch.setattr(stable_failures, "issue_after_run", lambda *a, **k: False)
+    monkeypatch.setattr(
+        stable_failures,
+        "inherit_record",
+        lambda *a, **k: (stable_failures.StableFailure("a.lua", "a" * 64, "lua"),),
+    )
+    stats: dict = {"indexed": 0, "removed": 0, "backfill_errors": 0}
+
+    runner._issue_stable_failure_record(
+        cache,
+        conn,
+        stats,
+        None,
+        "full",
+        converged=True,
+        stamped=False,
+    )
+
+    assert stats["stable_failures_inherited"] == 1
+
+
+def test_the_runner_surfaces_the_zero_change_hint(monkeypatch, tmp_path):
+    """没有记录、也没有可继承的记录时，响应里要出现那条可执行提示。"""
+    import sqlite3
+
+    import tree_sitter_analyzer.cache.index_project_runner as runner
+    import tree_sitter_analyzer.cache.stable_failures as stable_failures
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_cache_metadata (key TEXT PRIMARY KEY, value TEXT)")
+    cache = type("C", (), {"project_root": str(tmp_path)})()
+    monkeypatch.setattr(stable_failures, "issue_after_run", lambda *a, **k: False)
+    monkeypatch.setattr(stable_failures, "inherit_record", lambda *a, **k: None)
+    stats: dict = {"indexed": 0, "removed": 0, "backfill_errors": 0, "errors": 3}
+
+    runner._issue_stable_failure_record(
+        cache, conn, stats, None, "full", converged=True, stamped=False
+    )
+
+    assert "--ast-cache-force" in stats["zero_change_hint"]
+
+
+def test_inheritance_refuses_a_record_from_another_root_or_scope(tmp_path):
+    """父记录绑定项目根与 scope：不一致时绝不继承。"""
+    from tree_sitter_analyzer.cache import stable_failures
+
+    parent_conn = _record_db(tmp_path / "parent.db")
+    assert stable_failures.issue_record(
+        parent_conn,
+        project_root=str(tmp_path),
+        scope="full",
+        extractor_version=stable_failures.current_extractor_version(),
+        failures=(stable_failures.StableFailure("a.lua", "a" * 64, "lua"),),
+    )
+    child = _record_db(tmp_path / "child.db")
+
+    inherited = stable_failures.inherit_record(
+        child,
+        tmp_path / "parent.db",
+        project_root=str(tmp_path),
+        scope="language:python",
+        extractor_version=stable_failures.current_extractor_version(),
+    )
+
+    assert (inherited, stable_failures.read_record(child)) == (None, None)
+
+
+def test_inheritance_refuses_a_record_from_another_extractor_version(tmp_path):
+    """extractor 版本不一致时绝不继承：旧记录不能代表新提取器的结果。"""
+    from tree_sitter_analyzer.cache import stable_failures
+
+    parent_conn = _record_db(tmp_path / "parent.db")
+    assert stable_failures.issue_record(
+        parent_conn,
+        project_root=str(tmp_path),
+        scope="full",
+        extractor_version=stable_failures.current_extractor_version() - 1,
+        failures=(stable_failures.StableFailure("a.lua", "a" * 64, "lua"),),
+    )
+    child = _record_db(tmp_path / "child.db")
+
+    inherited = stable_failures.inherit_record(
+        child,
+        tmp_path / "parent.db",
+        project_root=str(tmp_path),
+        scope="full",
+        extractor_version=stable_failures.current_extractor_version(),
+    )
+
+    assert (inherited, stable_failures.read_record(child)) == (None, None)
+
+
+def test_inheritance_needs_a_metadata_table_to_write_into(tmp_path):
+    """子库没有控制表时无法签发：返回 None，而不是假装继承成功。"""
+    import sqlite3
+
+    from tree_sitter_analyzer.cache import stable_failures
+
+    parent_conn = _record_db(tmp_path / "parent.db")
+    assert stable_failures.issue_record(
+        parent_conn,
+        project_root=str(tmp_path),
+        scope="full",
+        extractor_version=stable_failures.current_extractor_version(),
+        failures=(stable_failures.StableFailure("a.lua", "a" * 64, "lua"),),
+    )
+    bare = sqlite3.connect(":memory:")
+
+    inherited = stable_failures.inherit_record(
+        bare,
+        tmp_path / "parent.db",
+        project_root=str(tmp_path),
+        scope="full",
+        extractor_version=stable_failures.current_extractor_version(),
+    )
+
+    assert inherited is None
