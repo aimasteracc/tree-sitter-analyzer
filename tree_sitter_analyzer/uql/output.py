@@ -22,6 +22,7 @@ from .coverage import (
     CURSOR_GENERATION_UNVERIFIED,
     INCOMPLETE,
     QUERY_NOT_EXECUTED,
+    SYMBOL_NOT_DEFINED,
     UPSTREAM_INCOMPLETE,
     UPSTREAM_UNKNOWN,
     Coverage,
@@ -261,12 +262,24 @@ def _summary(
         first = (
             gap_stage.own.reasons[0] if gap_stage.own.reasons else coverage.reasons[0]
         )
-        step = (
-            f"Not a census: stage {gap_stage.op} reports {first}. Treat counts as "
-            "lower bounds (incomplete) or unproven (unknown)."
-        )
-        if handles:
-            step += " Drill in with the nav request under evidence[], or detail='full'."
+        if first == SYMBOL_NOT_DEFINED:
+            # dogfood 2026-11-09（P1-2）：索引里 0 个定义时给出可执行的修复动作，
+            # 而不是「这不是普查」这种让 agent 无从下手的句子。
+            names = (gap_stage.note or "").removeprefix("no indexed definition for: ")
+            step = (
+                f"No indexed definition for {names}: check spelling or qualify as "
+                "Class.method; refresh the index (index action=cache mode=index) if "
+                "the source changed, then retry."
+            )
+        else:
+            step = (
+                f"Not a census: stage {gap_stage.op} reports {first}. Treat counts as "
+                "lower bounds (incomplete) or unproven (unknown)."
+            )
+            if handles:
+                step += (
+                    " Drill in with the nav request under evidence[], or detail='full'."
+                )
     if next_cursor:
         step += " More rows: resend the same query with cursor=page.next_cursor."
     verdict = "INFO" if total else "NOT_FOUND"

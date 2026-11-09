@@ -263,3 +263,23 @@ def test_evidence_handles_are_capped_at_three() -> None:
     fb = FakeBackends({"t": [sym("t")]}, callers)
     out = _answer({"query": "symbol('t').callers().callers()"}, fb)
     assert len(out["evidence"]) == 3
+
+
+def test_symbol_absence_names_the_fix_instead_of_a_census() -> None:
+    """dogfood 2026-11-09（P1-2）：不存在符号必须是 unknown + 可执行 next_step。
+
+    修复前：``NOT_FOUND`` + ``complete`` + ``next_step="Answer is complete for
+    every stage."``，agent 会据此收工。
+    """
+    out = _answer({"query": "symbol('missing_name').callers()"}, FakeBackends())
+    assert (out["success"], out["verdict"], out["completeness"]) == (
+        True,
+        "NOT_FOUND",
+        "unknown",
+    )
+    assert out["completeness_reasons"] == ["symbol:SYMBOL_NOT_DEFINED"]
+    assert out["agent_summary"]["next_step"] == (
+        "No indexed definition for missing_name: check spelling or qualify as "
+        "Class.method; refresh the index (index action=cache mode=index) if the "
+        "source changed, then retry."
+    )

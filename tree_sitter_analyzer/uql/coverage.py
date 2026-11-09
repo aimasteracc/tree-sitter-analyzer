@@ -60,6 +60,9 @@ SOURCE_RECHECK_DEADLINE = "SOURCE_RECHECK_DEADLINE"
 
 #: 查询未执行（解析、校验或执行失败），因此答复的完整性未知 (#1811)。
 QUERY_NOT_EXECUTED = "QUERY_NOT_EXECUTED"
+#: 来源阶段请求的名字在索引里 0 个定义：索引可能过期或不完整，因此
+#: 「没有定义」不能被当成「证明不存在」（与 ``nav action=callers`` 同名原因码）。
+SYMBOL_NOT_DEFINED = "SYMBOL_NOT_DEFINED"
 
 UQL_REASONS = frozenset(
     {
@@ -79,6 +82,7 @@ UQL_REASONS = frozenset(
         UPSTREAM_INCOMPLETE,
         UPSTREAM_UNKNOWN,
         CURSOR_GENERATION_UNVERIFIED,
+        SYMBOL_NOT_DEFINED,
     }
 )
 
