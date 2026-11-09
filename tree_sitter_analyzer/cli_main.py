@@ -340,13 +340,22 @@ def _emit_capability_manifest_if_requested(args: argparse.Namespace) -> None:
     清单从注册表派生（8 facade / 94 action），不读索引、不扫源码，因此任何仓库
     任何时刻都能便宜地调用。
     """
-    if not getattr(args, "capabilities", False):
+    requested = getattr(args, "capabilities", None)
+    # 只接受字符串（未使用为 None）；测试替身里的 Mock 不能被当成一次请求。
+    if not isinstance(requested, str):
         return
-    from tree_sitter_analyzer.capabilities import build_capability_manifest
+    from tree_sitter_analyzer.capabilities import (
+        build_capability_manifest,
+        preflight_action,
+    )
     from tree_sitter_analyzer.output_manager import output_json
 
-    project_root = getattr(args, "project_root", None) or os.getcwd()
-    output_json(build_capability_manifest(str(project_root)))
+    project_root = str(getattr(args, "project_root", None) or os.getcwd())
+    if requested:
+        preflight = preflight_action(requested, project_root)
+        output_json(preflight)
+        sys.exit(0 if preflight.get("success") else 1)
+    output_json(build_capability_manifest(project_root))
     sys.exit(0)
 
 

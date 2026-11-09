@@ -13,11 +13,16 @@ from ._analysis_graph_nav import _add_mcp_graph_nav_options
 def _add_analysis_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--capabilities",
-        action="store_true",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="ACTION",
         help=(
             "Machine-readable planning manifest: every facade action with its "
             "tier (instant/indexed), preconditions, cost class and a minimal "
-            "example (JSON; see tree_sitter_analyzer/capabilities.py)."
+            "example (JSON; see tree_sitter_analyzer/capabilities.py). Pass "
+            "FACADE.ACTION (e.g. nav.callers) to preflight one action: same "
+            "entry plus whether its precondition is currently met."
         ),
     )
     """Add source-analysis options."""

@@ -90,3 +90,87 @@ def build_capability_manifest(project_root: str) -> dict[str, Any]:
             ),
         },
     }
+
+
+def preflight_action(qualified: str, project_root: str) -> dict[str, Any]:
+    """单个 action 的预检：规划字段 + 当前前置条件是否满足（dogfood §12.3）。
+
+    ``qualified`` 形如 ``nav.callers``（也接受 ``callers``，按唯一 action 解析）。
+    不执行查询、不建索引：只回答「要花哪一档、现在能不能直接跑」。
+    """
+    manifest = build_capability_manifest(project_root)
+    facade, _, action = qualified.rpartition(".")
+    if facade and action:
+        entry = manifest["tools"].get(facade, {}).get("actions", {}).get(action)
+        label = f"{facade}.{action}"
+    else:
+        matches = [
+            (name, candidate)
+            for name, tool in manifest["tools"].items()
+            for candidate in (action or qualified,)
+            if candidate in tool["actions"]
+        ]
+        entry = None
+        label = qualified
+        if len(matches) == 1:
+            facade, action = matches[0][0], qualified
+            entry = manifest["tools"][facade]["actions"][action]
+        elif len(matches) > 1:
+            return {
+                "success": False,
+                "verdict": "ERROR",
+                "error_code": "AMBIGUOUS_ACTION",
+                "error": f"{qualified!r} matches {len(matches)} facades",
+                "hint": "Pass FACADE.ACTION, e.g. nav.callers.",
+                "candidates": [f"{name}.{candidate}" for name, candidate in matches],
+            }
+    if entry is None:
+        return {
+            "success": False,
+            "verdict": "ERROR",
+            "error_code": "UNKNOWN_ACTION",
+            "error": f"no such action: {label}",
+            "hint": "Run --capabilities (no value) to list every facade action.",
+        }
+    needs_index = "index" in entry["preconditions"]
+    index_present = _index_present(project_root) if needs_index else None
+    return {
+        "success": True,
+        "verdict": "INFO",
+        "action": label,
+        **entry,
+        "index_present": index_present,
+        "precondition_met": (index_present is True) if needs_index else True,
+        "agent_summary": {
+            "summary_line": (
+                f"{label}: {entry['tier']} tier, index "
+                + (
+                    "present"
+                    if index_present
+                    else "missing"
+                    if needs_index
+                    else "not needed"
+                )
+            ),
+            "next_step": (
+                "Run it directly."
+                if (index_present is True or not needs_index)
+                else "Build the index first: --ast-cache --ast-cache-mode index."
+            ),
+        },
+    }
+
+
+def _index_present(project_root: str) -> bool:
+    """廉价判断：项目是否有可用 AST 索引（打开缓存读一次统计）。"""
+    try:
+        from .ast_cache import ASTCache
+
+        cache = ASTCache(project_root)
+        try:
+            stats = cache.get_stats()
+        finally:
+            cache.close()
+        return int(stats.get("total_files") or 0) > 0
+    except Exception:  # noqa: BLE001 — 读不到索引就当没有
+        return False

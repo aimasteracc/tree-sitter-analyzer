@@ -72,3 +72,82 @@ def test_cli_capabilities_flag_emits_the_manifest() -> None:
     assert (proc.returncode, len(payload["tools"])) == (0, 8)
     assert sum(len(tool["actions"]) for tool in payload["tools"].values()) == 94
     assert payload["tiers"]["instant"]
+
+
+def test_preflight_reports_the_tier_and_live_precondition() -> None:
+    """dogfood §12.3：预检回答「要花哪一档、现在能不能直接跑」。"""
+    from tree_sitter_analyzer.capabilities import preflight_action
+
+    indexed = preflight_action("nav.callers", ".")
+    instant = preflight_action("search.text", ".")
+
+    assert (indexed["tier"], indexed["precondition_met"]) == ("indexed", True)
+    assert (instant["tier"], instant["index_present"]) == ("instant", None)
+    assert instant["precondition_met"] is True
+
+
+def test_preflight_rejects_unknown_and_ambiguous_actions() -> None:
+    from tree_sitter_analyzer.capabilities import preflight_action
+
+    unknown = preflight_action("nav.no_such_action", ".")
+    ambiguous = preflight_action("help", ".")
+
+    assert (unknown["success"], unknown["error_code"]) == (False, "UNKNOWN_ACTION")
+    assert (ambiguous["success"], ambiguous["error_code"]) == (
+        False,
+        "AMBIGUOUS_ACTION",
+    )
+    assert len(ambiguous["candidates"]) == 8
+
+
+def test_cli_capabilities_preflights_one_action() -> None:
+    import json
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    project_root = Path(__file__).resolve().parents[2]
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tree_sitter_analyzer",
+            "--capabilities",
+            "nav.callers",
+            "--format",
+            "json",
+        ],
+        cwd=str(project_root),
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+
+    payload = json.loads(proc.stdout)
+    assert (proc.returncode, payload["action"], payload["tier"]) == (
+        0,
+        "nav.callers",
+        "indexed",
+    )
+
+
+def test_cli_preflight_dispatch_is_in_process_safe(monkeypatch) -> None:
+    """进程内覆盖 dispatch 的两条分支（子进程测试不计覆盖率）。"""
+    import pytest
+
+    import tree_sitter_analyzer.cli_main as cli_main
+    import tree_sitter_analyzer.output_manager as output_manager
+
+    captured: list[dict] = []
+    monkeypatch.setattr(output_manager, "output_json", captured.append)
+    namespace = type("Args", (), {"capabilities": "nav.callers", "project_root": "."})()
+
+    with pytest.raises(SystemExit) as excinfo:
+        cli_main._emit_capability_manifest_if_requested(namespace)
+
+    assert (excinfo.value.code, captured[0]["action"]) == (0, "nav.callers")
+
+    full = type("Args", (), {"capabilities": "", "project_root": "."})()
+    with pytest.raises(SystemExit):
+        cli_main._emit_capability_manifest_if_requested(full)
+    assert len(captured[1]["tools"]) == 8
