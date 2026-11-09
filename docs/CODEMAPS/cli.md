@@ -3,6 +3,32 @@
 
 Six installed console-script entry points; the main analyzer and its aliases dispatch through `cli_main.py`.
 
+## Task → Command（先看这张表）
+
+| 任务 | 命令（`--format json` 可加在任意一条上） |
+|---|---|
+| 找字面量（grep 的替代；零索引） | `--text-search "<literal>"` |
+| 找符号定义（含类/方法） | `--symbol-resolve "<symbol>"` |
+| 谁调用了它 | `--callers "<symbol>"` |
+| 哪些测试覆盖它 | `--test-map "<symbol>"` |
+| 改动的测试选择与影响面 | `--change-impact` |
+| 文件结构大纲 | `--outline <file>` |
+| 类层级（子类/父类/树） | `--class-hierarchy --class-hierarchy-mode subclasses --class-hierarchy-class <Class>` |
+| 多跳问题（callers + tests 一次问完） | `--uql "symbol('<symbol>').callers().tests()"` |
+| 建索引（图查询的前置） | `--ast-cache --ast-cache-mode index` |
+| 文件 / 项目健康度 | `--file-health <file>` · `--project-health` |
+| 编辑前风险评估 | `--safe-to-edit <file>` |
+| 首次接入（暖索引 + 写 agent 配置） | `--setup` |
+
+两类答案的前置条件不同，选命令前先看这一行：
+
+- **instant tier**（`--text-search` / `--outline` / `--structure`）：零索引，冷仓库也能立刻作答。
+- **indexed tier**（`--callers` / `--test-map` / `--class-hierarchy` / `--uql` / `--change-impact` 的图部分）：
+  需要先建索引。没有索引时它们会返回 `WARN` + `INDEX_MISSING` + 建索引命令，而不是假装「没有答案」——
+  `--callers`/`--call-graph` 在源文件超过 200 时直接拒答，不会静默现场解析整个仓库。
+
+同义入口只保留一个名字；`--symbol-search` 是 BM25 符号检索（**不是**字面量检索），`--text-search` 才是。
+
 ## Entry Points
 
 | Command | Handler | Purpose |
