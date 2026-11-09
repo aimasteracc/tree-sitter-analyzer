@@ -514,5 +514,11 @@ def test_callers_incremental_flags_reject_a_non_array_payload():
     )
 
     built = spec.build_tool_args(invalid, "json")
+    broken = create_argument_parser().parse_args(
+        ["--callers", "target", "--previous-entries-json", "oops"]
+    )
 
-    assert built["previous_entries"] == "__INVALID_PREVIOUS_ENTRIES__"
+    assert (
+        built["previous_entries"],
+        spec.build_tool_args(broken, "json")["previous_entries"],
+    ) == ("__INVALID_PREVIOUS_ENTRIES__", "__INVALID_PREVIOUS_ENTRIES__")

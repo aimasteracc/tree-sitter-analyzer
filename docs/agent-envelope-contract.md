@@ -99,8 +99,9 @@ Rules:
   `unknown` answer never carries it — no certificate beats a false one.
 - `confidence: "proven"` is the only value emitted today; RFC-0044 defines the future
   `possible` value for rules that cannot run (e.g. an unreadable manifest).
-- Additional kinds (`entry_point`, `script`, `untested`) are specified in RFC-0044 but
-  not implemented yet; consumers must treat unknown `kind` values as informational.
+- Implemented kinds: `unreferenced`, `entry_point` (console script / package `__main__.py`),
+  `script` (file starts with `#!`). `untested` is still specified only; consumers must treat
+  unknown `kind` values as informational.
 - The certificate is part of the answer content, so it participates in `answer_etag`.
 
 ## `next_step` conventions

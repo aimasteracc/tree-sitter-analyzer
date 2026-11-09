@@ -1,6 +1,6 @@
 ---
 name: tsa-graph
-version: 2.1.0
+version: 2.2.0
 description: |
   Code archaeology via call graph + symbol resolution. Answer "who calls X",
   "what does Y call", "where is Z defined", "what's the path from A to B" in
@@ -162,6 +162,27 @@ uv run tree-sitter-analyzer --codegraph-xref <SYMBOL> --output-format toon
 uv run tree-sitter-analyzer --call-path --call-path-source X --call-path-target Y
 uv run tree-sitter-analyzer --uml class --output-format toon
 ```
+
+## Cheap re-asking — the incremental primitives (v3.2)
+
+An agent asks the same "who calls X" many times per task. Do not re-read a full
+15 KB list every turn; use the answer's own identity:
+
+- Responses carry `answer_etag` (`sha256:…`). Ask again with
+  `if_none_match=<etag>` (MCP) / `--if-none-match <etag>` (CLI): a match returns
+  `{success: true, unchanged: true, answer_etag}` (~400 B) instead of the list.
+  A stale scope is never reported unchanged — the full answer comes back.
+- Hold the previous `callers[]` and ask with `previous_entries=[…]`
+  (`--previous-entries-json` on the CLI): you get
+  `{delta: {added, removed, unchanged_count}}` plus the same `completeness`
+  evidence, so only new/removed callers need re-reading.
+- A zero-caller answer that is `complete` carries `absence`
+  (`kind: unreferenced | entry_point`, `confidence: proven`, `evidence`). Treat
+  it as a fact; do not grep to double-check. `entry_point` means the console
+  script / `__main__.py` invokes it.
+- Before spending a call, ask `--capabilities nav.callers` (CLI) or
+  `nav action=help`: it reports the tier (instant/indexed) and whether the index
+  precondition is met right now.
 
 ## Anti-patterns
 

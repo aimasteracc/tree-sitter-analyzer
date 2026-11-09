@@ -394,6 +394,28 @@ def _dunder_main_evidence(project_root: str, file_path: str | None) -> str | Non
     return None
 
 
+def _script_evidence(project_root: str, file_path: str | None) -> str | None:
+    """带 shebang 的可执行脚本：其模块级函数由脚本入口调用，而非被 import 调用。
+
+    RFC-0044 的 ``script`` 规则。只认 shebang 这一条硬证据（读过首行且以 ``#!``
+    开头）；读不到或没有 shebang 一律不升级——脚本目录下有 shebang 的文件也可能
+    只是库文件，宁可少说。
+    """
+    if not file_path:
+        return None
+    normalized = file_path.replace("\\", "/")
+    absolute = os.path.join(project_root, normalized)
+    try:
+        with open(absolute, "rb") as handle:
+            first_line = handle.readline(120)
+    except OSError:
+        return None
+    if not first_line.startswith(b"#!"):
+        return None
+    interpreter = first_line[2:].decode("utf-8", "replace").strip().split(" ")[0]
+    return f"{normalized} starts with #!{interpreter}"
+
+
 def absence_certificate(
     result: dict[str, Any],
     *,
@@ -457,6 +479,17 @@ def absence_certificate(
             "next_step": (
                 "This is an entry point, not dead code: the package __main__ "
                 "module exposes it to `python -m`."
+            ),
+        }
+    script = _script_evidence(project_root, file_path) if project_root else None
+    if script is not None:
+        return {
+            "kind": "script",
+            "confidence": "proven",
+            "evidence": [base_evidence, {"kind": "shebang", "detail": script}],
+            "next_step": (
+                "This is a runnable script, not dead code: it is executed "
+                "directly, so no import-style call edge reaches it."
             ),
         }
     return {

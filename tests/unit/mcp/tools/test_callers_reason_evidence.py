@@ -934,3 +934,47 @@ def test_sql_native_callers_annotates_activation(monkeypatch) -> None:
     )
 
     assert callers[0]["activation"] == {"mod_count_30d": 0, "last_modified_at": None}
+
+
+def test_script_with_a_shebang_is_certified_as_a_script(tmp_path) -> None:
+    """RFC-0044 `script`：带 shebang 的可执行文件里的零调用方函数。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import absence_certificate
+
+    (tmp_path / "run.py").write_text(
+        "#!/usr/bin/env python\n\ndef main_body():\n    return 1\n", encoding="utf-8"
+    )
+    result = {"caller_count": 0, "completeness": "complete"}
+
+    certificate = absence_certificate(
+        result,
+        project_root=str(tmp_path),
+        function_name="main_body",
+        file_path="run.py",
+    )
+
+    assert (certificate["kind"], certificate["evidence"][1]["kind"]) == (
+        "script",
+        "shebang",
+    )
+    assert certificate["evidence"][1]["detail"] == "run.py starts with #!/usr/bin/env"
+
+
+def test_a_file_without_a_shebang_stays_unreferenced(tmp_path) -> None:
+    """没有 shebang 的普通模块不升级为 script（宁可少说）。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import absence_certificate
+
+    (tmp_path / "lib.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
+    result = {"caller_count": 0, "completeness": "complete"}
+
+    certificate = absence_certificate(
+        result, project_root=str(tmp_path), function_name="helper", file_path="lib.py"
+    )
+
+    assert certificate["kind"] == "unreferenced"
+
+
+def test_a_missing_script_file_never_proves_anything(tmp_path) -> None:
+    from tree_sitter_analyzer.mcp.tools.callers_tool import _script_evidence
+
+    assert _script_evidence(str(tmp_path), "missing.py") is None
+    assert _script_evidence(str(tmp_path), None) is None

@@ -442,8 +442,9 @@ CLI `--capabilities` 与 MCP 暴露留到下一轮（新 flag 需要同步 codem
 返回 `absence: {kind: "entry_point"|"unreferenced"|"untested", evidence: [...]}`，
 让 agent 敢于据此决策，而不是保守地再 grep 一遍。
 
-**已实现（第 18–19 轮）**：`unreferenced`（第 18 轮）+ `entry_point`（第 19 轮，读 `[project.scripts]` /
-`[tool.poetry.scripts]` 与包 `__main__.py`，两者都是 `proven` 并附证据）。仍未实现：`script`、`untested`。
+**已实现**：`unreferenced`（第 18 轮）、`entry_point`（第 19 轮，读 `[project.scripts]` /
+`[tool.poetry.scripts]` 与包 `__main__.py`）、`script`（第 22 轮，shebang 硬证据）。三者都是
+`proven` 并附证据；仍未实现：`untested`。
 
 **设计已提交（第 17 轮）**：`rfcs/0044-absence-certificates.md` —— `absence: {kind, confidence, evidence}`
 只在底层问题 `complete` 时出现；`entry_point / script / unreferenced / untested` 四个保守规则，
