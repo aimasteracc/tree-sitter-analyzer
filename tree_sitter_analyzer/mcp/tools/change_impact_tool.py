@@ -345,13 +345,11 @@ class ChangeImpactTool(BaseMCPTool):
             scope_mode=scope_mode,
         )
         result = apply_scope_validation(result, scope_paths_invalid)
-        missing_text_refs = self._text_reference_tests(result, changed_files)
         if agent_summary_only:
             result = build_agent_summary_only_response(result)
         else:
             # #1617：完整响应默认摘要明细列表，include_details=true 恢复全量。
             result = project_impact_details(result, include_details=include_details)
-        self._attach_text_reference_tests(result, missing_text_refs)
         result["output_format"] = output_format
         # RFC-0022 P0.5: echo the adapter-owned wire owner version.
         result["action_version"] = EDIT_IMPACT_ACTION_VERSION
@@ -365,41 +363,6 @@ class ChangeImpactTool(BaseMCPTool):
         # MCP-routed callers.
         result = mirror_summary_line(result)
         return apply_output_format_to_response(result, output_format)
-
-    def _text_reference_tests(
-        self, result: dict[str, Any], changed_files: list[str]
-    ) -> list[dict[str, Any]]:
-        """「文本引用了改动模块、但依赖图没选中」的测试文件（P1-4）。"""
-        if not changed_files:
-            return []
-        from .utils.change_impact_text_refs import text_reference_tests
-
-        raw_tests = result.get("tests_to_run") or []
-        selected = {
-            str(entry.get("file") or "")
-            for entry in raw_tests
-            if isinstance(entry, dict)
-        } | {str(entry) for entry in raw_tests if isinstance(entry, str)}
-        return text_reference_tests(
-            str(self.project_root or ""),
-            changed_paths=changed_files,
-            selected=selected,
-        )
-
-    @staticmethod
-    def _attach_text_reference_tests(
-        result: dict[str, Any], missing: list[dict[str, Any]]
-    ) -> None:
-        if not missing:
-            return
-        result["text_reference_tests"] = missing
-        result["text_reference_count"] = len(missing)
-        promoted = sum(1 for item in missing if item.get("confidence") == "import")
-        result["text_reference_note"] = (
-            f"{len(missing)} test file(s) reference a changed module by text but are "
-            f"not in the dependency graph's selection ({promoted} of them import it "
-            "directly: confidence=import). Run those first; the rest are mentions."
-        )
 
     async def _execute_read_existing(
         self,

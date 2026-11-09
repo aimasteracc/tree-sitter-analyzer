@@ -23,8 +23,9 @@ dogfood 记录过一条 P1-4：「change-impact 的测试选择漏掉 4 个直�
 
 ### Required guardrail
 
-`tests/unit/mcp/tools/test_change_impact_text_refs.py` 固定补充通道的形状（仍作为安全网保留）；
-选择性对比必须用 `--change-impact-include-details`（`tests_to_run_omitted_count` 随响应返回）。
+选择性对比必须用 `--change-impact-include-details`：`tests/unit/mcp` 下的 change-impact 测试在
+默认响应上断言行为，`tests_to_run_omitted_count` 随响应返回，`docs/CODEMAPS/cli.md` 的任务表
+说明 `--change-impact-include-details` 才恢复完整列表。
 ## 2026-11 — 自愈契约不能被「输入没变」的捷径绕过
 
 ### Context
