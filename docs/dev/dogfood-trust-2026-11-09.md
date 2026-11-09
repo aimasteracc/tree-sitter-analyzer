@@ -65,7 +65,22 @@
 | `mcp/tools/callees_tool.py` | 同上 | 13.13 % |
 
 7/7 可用样本全部真实执行到被改动模块（误报率 0）；此前那 2 个「不可运行」样本被过滤器消除。
-样本量仍不足 20，升级条件保持不变。
+
+**第 46 轮再扩 6 个模块**（累计 **12 个可用样本，误报率仍为 0**）：
+
+| 模块 | 首个 import 级候选 | 覆盖率 |
+|---|---|---|
+| `uql/engine.py` | `tests/unit/uql/test_uql_engine.py` | **94.95 %** |
+| `mcp/tools/text_search_tool.py` | `tests/unit/mcp/tools/test_text_search_tool.py` | **67.20 %** |
+| `ast_cache.py` | `tests/unit/test_aliased_import_callers_1670.py` | **66.08 %** |
+| `mcp/tools/nav_facade.py` | `tests/contracts/test_agent_native_surface_contract.py` | 19.06 % |
+| `cli_main.py` | `tests/contracts/test_agent_docs_contract.py` | 15.64 % |
+| `mcp/tools/change_impact_tool.py` | `tests/benchmarks/claims/test_safety_layers_smoke.py` | 不可单独运行 |
+
+最后一行又是一类真实缺陷：`tests/benchmarks/` 下的基准脚本可被 pytest 收集，但单独运行需要数据集
+（实测 `FileNotFoundError`）。已把 `tests/benchmarks/` 排除出补充列表，并加测试固定。
+
+**累计 12/12 可用样本为真阳性**；离 20 的升级门槛还差 8 个，条件不变。
 
 ## 0. 环境与方法
 

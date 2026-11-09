@@ -74,11 +74,27 @@ def _is_collectable_test(path: Path) -> bool:
     return name.startswith("test_") or name.endswith("_test.py")
 
 
+#: 这些目录下是基准/端到端脚本，单独运行需要数据集或服务，不是「跑一下就知道」的测试。
+_NON_STANDALONE_DIRS = ("benchmarks",)
+
+
+def _learns_standalone(rel_path: str) -> bool:
+    parts = Path(rel_path).parts
+    if len(parts) >= 3 and parts[0] == "tests" and parts[1] in _NON_STANDALONE_DIRS:
+        return False
+    return True
+
+
 def _iter_test_files(project_root: str) -> Iterable[Path]:
     tests_root = Path(project_root) / "tests"
     if not tests_root.is_dir():
         return ()
-    return (path for path in tests_root.rglob("*.py") if _is_collectable_test(path))
+    return (
+        path
+        for path in tests_root.rglob("*.py")
+        if _is_collectable_test(path)
+        and _learns_standalone(str(path.relative_to(project_root)))
+    )
 
 
 def text_reference_tests(

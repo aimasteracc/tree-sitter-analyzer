@@ -167,3 +167,25 @@ def test_helpers_and_conftest_are_not_listed(tmp_path) -> None:
     )
 
     assert [item["file"] for item in found] == ["tests/test_real.py"]
+
+
+def test_benchmark_harnesses_are_not_listed(tmp_path) -> None:
+    """tests/benchmarks 下的基准脚本单独跑需要数据集：不作为可执行补充项。"""
+    bench = tmp_path / "tests" / "benchmarks"
+    bench.mkdir(parents=True)
+    (bench / "test_smoke.py").write_text(
+        "import tree_sitter_analyzer.cache.search\n", encoding="utf-8"
+    )
+    unit = tmp_path / "tests" / "unit"
+    unit.mkdir()
+    (unit / "test_real.py").write_text(
+        "import tree_sitter_analyzer.cache.search\n", encoding="utf-8"
+    )
+
+    found = text_reference_tests(
+        str(tmp_path),
+        changed_paths=["tree_sitter_analyzer/cache/search.py"],
+        selected=[],
+    )
+
+    assert [item["file"] for item in found] == ["tests/unit/test_real.py"]
