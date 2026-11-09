@@ -33,6 +33,9 @@ Six installed console-script entry points; the main analyzer and its aliases dis
 `call_site_line` 是**调用发生的那一行**（grep 语义）。要跳到调用现场用后者；模块级调用点
 （`<module>`）的 `line` 本来就是调用行，因此没有 `call_site_line`。
 
+响应还带 `answer_etag`（`sha256:…`）：同一索引上重复提问得到同一 etag，作用域源码变化会改变它。
+agent 可以按 etag 判断「上一轮的答案还能不能用」，避免重复读取同样的 15 KB。
+
 ## Entry Points
 
 | Command | Handler | Purpose |

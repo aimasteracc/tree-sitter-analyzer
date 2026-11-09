@@ -461,3 +461,75 @@ def test_named_caller_without_a_call_line_omits_the_field() -> None:
         False,
         0,
     )
+
+
+@pytest.mark.asyncio
+async def test_identical_questions_share_an_answer_etag(tmp_path) -> None:
+    """dogfood §12.1：同索引上重复提问得到同一 etag（agent 缓存判断的依据）。"""
+    root = await _index_files(
+        tmp_path,
+        {
+            "lib.py": "def target():\n    return 1\n",
+            "c.py": "from lib import target\n\n\ndef wrapper():\n    return target()\n",
+        },
+    )
+
+    first = await _callers(root, "target")
+    second = await _callers(root, "target")
+
+    assert first["answer_etag"] == second["answer_etag"]
+    assert first["answer_etag"].startswith("sha256:")
+    assert len(first["answer_etag"]) == len("sha256:") + 64
+
+
+@pytest.mark.asyncio
+async def test_a_stale_scope_changes_the_answer_etag(tmp_path) -> None:
+    """作用域源码变化后 etag 必须变化——ETag 是承诺，不是猜测。"""
+    root = await _index_files(
+        tmp_path,
+        {
+            "lib.py": "def target():\n    return 1\n",
+            "c.py": "from lib import target\n\n\ndef wrapper():\n    return target()\n",
+        },
+    )
+    before = await _callers(root, "target")
+
+    (tmp_path / "c.py").write_text(
+        "from lib import target\n\n\ndef wrapper():\n    return target()\n\n# edited\n",
+        encoding="utf-8",
+    )
+    after = await _callers(root, "target")
+
+    assert (before.get("stale", False), after.get("stale")) == (False, True)
+    assert before["answer_etag"] != after["answer_etag"]
+
+
+def test_answer_etag_ignores_volatile_fields() -> None:
+    """etag 不包含耗时/路径前缀等易变字段：只对内容与证据状态敏感。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import answer_etag
+
+    base = {
+        "function": "target",
+        "caller_count": 1,
+        "completeness": "complete",
+        "callers": [{"name": "wrapper", "file": "c.py", "line": 4}],
+    }
+    noisy = {**base, "elapsed_ms": 123, "cache_age_s": 4.2}
+
+    assert answer_etag(base) == answer_etag(noisy)
+
+
+def test_caller_body_inlining_failure_is_silent(monkeypatch) -> None:
+    """体内联是尽力而为：失败时保留坐标列表并返回 None，不抛给调用方。"""
+    import tree_sitter_analyzer.mcp.tools.symbol_body_inline as sbi
+    from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+
+    def _explode(*args, **kwargs):
+        raise RuntimeError("inlining failed")
+
+    monkeypatch.setattr(sbi, "inline_neighbor_bodies", _explode)
+    tool = CodeGraphCallersTool(".")
+    callers = [{"name": "wrapper", "file": "c.py", "line": 4}]
+
+    assert tool._inline_caller_bodies(None, callers) is None
+    assert callers == [{"name": "wrapper", "file": "c.py", "line": 4}]

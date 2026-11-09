@@ -336,6 +336,34 @@ def _describe_sites(sites: list[dict[str, Any]] | None) -> str:
     return "; ".join(parts)
 
 
+def answer_etag(result: dict[str, Any]) -> str:
+    """答案内容的稳定指纹（agent 跨轮次判断「要不要重读」的原语，dogfood §12.1）。
+
+    只覆盖「问题 + 答案内容 + 证据状态」，不含耗时、绝对路径等易变字段：
+    同一索引上重复提问得到同一 etag；作用域源码过期时 ``freshness``/``stale``
+    变化会改变它。纯函数、不读写索引，调用方可以安全地用它做 If-None-Match。
+    """
+    import hashlib
+    import json
+
+    payload = {
+        "function": result.get("function"),
+        "file_path": result.get("file_path"),
+        "callers": [
+            {key: entry.get(key) for key in ("name", "file", "line", "call_site_line")}
+            for entry in (result.get("callers") or [])
+            if isinstance(entry, dict)
+        ],
+        "caller_count": result.get("caller_count"),
+        "completeness": result.get("completeness"),
+        "completeness_reasons": result.get("completeness_reasons") or [],
+        "freshness": (result.get("source_evidence") or {}).get("freshness"),
+        "stale": bool(result.get("stale", False)),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
 class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
     """MCP Tool for finding callers of a function (CodeGraph parity)."""
 
@@ -1208,6 +1236,8 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             "next_step": as_next_step,
         }
         apply_source_evidence(result, evidence, stale_files)
+        # dogfood §12.1：内容相同的答案 → 相同 etag。agent 用它做跨轮次缓存判断。
+        result["answer_etag"] = answer_etag(result)
 
         # RFC-0027 L6.2: this route's cold/warm cliff (24.8 s -> 16 ms in the
         # L5 baseline) is the largest in the product, so a caller choosing
