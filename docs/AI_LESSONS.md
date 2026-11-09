@@ -1,5 +1,37 @@
 # AI Lessons
 
+## 2026-11 — 自愈契约不能被「输入没变」的捷径绕过
+
+### Context
+
+dogfood 2026-11-09 想把 no-op 索引从 7.3 s 降到 2.6 s：当 `changed == 0` 且
+`ast_resolve_state` 指纹等于当前索引状态时跳过回填。实测确实降到了 2.6–3.2 s，
+但两个既有契约测试立刻变红：`test_fully_cached_missing_marker_reruns_every_backfill`
+和 `test_fully_cached_failed_retry_keeps_marker_clear`（PR #1253）。根因是本仓库
+`call_graph_built()` 恒为 `False`（缺 optional grammar），「缓存命中仍重跑回填」正是
+恢复 marker 的自愈路径。同一轮里我还把一个新读加进了答案路径并用 `except Exception`
+吞掉 `ReadInterrupted`，于是「被中断的读」也能给出 `complete`——被 #1873 的集成测试
+抓出。
+
+### Lessons learned
+
+1. 性能捷径要先问「它绕过的规则是谁的防线」；被两个契约测试否决时，先读它们的注释，
+   不要修改测试来迁就优化。
+2. 在答案路径上新增读时，必须让 `ReadInterrupted` 传播（或走已构建的图），否则
+   「没读到」会被当成「没有行」，重新引入 #1873 的假 `complete`。
+3. 跨 OS 的 staleness 判定不能依赖 mtime 相等：Windows 的粒度会让「仅 mtime 不同」
+   走到摘要比对，夹具里的假 `content_hash` 就会把答案误判成相反档位。
+4. 定量声明（CLI flag 数）有扫描器看守；加 flag 必须同提交内改 codemap、四份 README、
+   claim scanner 与 claim 测试，否则 CI 在四个平台一起红。
+
+### Required guardrail
+
+`tests/integration/test_callers_read_interrupt_1873.py` 覆盖「任一语句被中断都不得
+`complete`」；`tests/unit/test_call_graph_built_signal.py` 用真实 `file_content_hash`
+固定跨平台 staleness；`tests/unit/test_claim_registry.py` 与
+`benchmarks/codegraph_compare/readme_claim_scanner.py` 把 CLI 计数钉在运行时真值上；
+`scripts/check_patch_coverage.py` 强制新增行有覆盖。
+
 ## 2026-09 — A green suite can still retain request-owned resources
 
 ### Context
