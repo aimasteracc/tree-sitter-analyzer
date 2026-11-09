@@ -95,10 +95,26 @@
 | `mcp/tools/symbol_search_tool.py` | `tests/unit/languages/test_typescript_extraction_fixes.py` | 10.90 % |
 | `mcp/tools/utils/change_impact_text_refs.py` | 自己的测试 | 93.14 % |
 
-**20/20 真阳性**，升级门槛达成。但升级本身需要改「构建 `focused_test_command` 的阶段」——
-它在我追加补充字段之前就已经算好，因此把候选并入 `tests_to_run` 必须动
-`_build_change_impact_result` 的输入，而不是响应尾部。**这类「改 CI 跑什么」的默认，
-我要单独一轮带完整回归再做**，不在本轮顺手改。
+**20/20 真阳性**，升级门槛达成。
+
+**第 48 轮尝试升级时发现更重要的东西（因此没有升级）**：在 builder 层把 import 级候选并入
+选择时，候选数为 **0**——因为用 `_build_test_plan(changed_files=[…search.py])` 这条路径，
+依赖图**已经选中**了此前「漏掉」的 4 个文件：
+
+```
+tests/unit/test_index_snapshot.py            -> True
+tests/unit/test_ast_cache_symbols.py         -> True
+tests/unit/test_ast_cache_tool.py            -> True
+tests/unit/test_ast_cache_cascade_search.py  -> True
+```
+
+也就是说：第 42 轮用 `--change-impact-mode diff`（git diff）测到的「漏 4 个」，
+在「显式 scope/changed_files」路径上并不成立。**真正的缺陷可能是 diff 模式与 scope 模式的
+选择范围不一致，而不是文本召回不足**。
+
+因此本轮**回滚了 builder 层的并入改动**（它在此路径下不会触发，只会变成不可覆盖的死代码），
+保留 advisory 通道作为安全网，并把下一步改成：**对比 diff 模式与 scope 模式的 `tests_to_run`，
+定位差异来源**。这比给一个不成立的前提加默认行为更接近「可靠」。
 
 ## 0. 环境与方法
 
