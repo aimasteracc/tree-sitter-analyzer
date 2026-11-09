@@ -38,6 +38,19 @@
 诚实边界：`import` 证明的是**导入**，不是「一定会执行到」，因此仍不进 `tests_to_run`；
 把它升级为「可进 focused command 的召回」需要先量化误报率，仍是下一阶段的设计题。
 
+**误报率实测（第 44 轮，4 个 import 级候选逐个单独运行并统计对 `cache/search.py` 的覆盖）**：
+
+| 候选测试文件 | 单独运行时对 `cache/search.py` 的覆盖率 |
+|---|---|
+| `tests/unit/test_index_snapshot.py` | **80.98 %** |
+| `tests/unit/test_ast_cache_cascade_search.py` | **96.74 %** |
+| `tests/unit/test_ast_cache_symbols.py` | 11.96 % |
+| `tests/unit/test_ast_cache_tool.py` | 11.96 % |
+
+**4/4 都真实执行到被改动模块**，即这一层的「误报率」在当前样本上是 0——它们是依赖图真漏掉的覆盖，不是文本巧合。
+因此升级门槛应为「够大的样本 + 明确上限」：我建议至少 20 个真实改动的抽样全为真阳性后，再把 import 级候选并入 `focused_test_command`（并对数量设上限），
+在那之前保持 advisory —— 采样 4 个不足以支撑一个会改变 CI 选择面的默认行为。
+
 ## 0. 环境与方法
 
 | 项 | 值 |
