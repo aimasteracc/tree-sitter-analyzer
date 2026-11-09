@@ -16,9 +16,14 @@ def test_manifest_covers_every_registered_action() -> None:
     for tool in manifest["tools"].values():
         for action, entry in tool["actions"].items():
             assert entry["tier"] in {"instant", "indexed"}
-            assert entry["preconditions"] == (
-                [] if entry["tier"] == "instant" else ["index"]
+            # 建索引的动作（build/full/...）是 bootstrap，不要求已有索引。
+            expected = (
+                ["index"]
+                if entry["tier"] == "indexed"
+                and action not in {"build", "full", "update", "cache", "rebuild"}
+                else []
             )
+            assert entry["preconditions"] == expected
             # example 是该 facade 的最小调用（不要求与遍历到的 action 同名）
             assert entry["example"]["action"] in tool["actions"]
             assert entry["self_describing"] is (action == "help")
@@ -29,6 +34,7 @@ def test_known_actions_land_in_the_expected_tier() -> None:
 
     assert manifest["tools"]["search"]["actions"]["text"]["tier"] == "instant"
     assert manifest["tools"]["nav"]["actions"]["callers"]["tier"] == "indexed"
+    assert manifest["tools"]["index"]["actions"]["build"]["preconditions"] == []
     assert manifest["tools"]["index"]["actions"]["help"]["self_describing"] is True
 
 

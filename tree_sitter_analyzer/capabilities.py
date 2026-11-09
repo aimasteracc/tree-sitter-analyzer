@@ -29,6 +29,11 @@ _INSTANT_ACTIONS: frozenset[str] = frozenset(
     }
 )
 
+#: 会创建/修复索引的动作：它们的前置条件不是「已有索引」，否则 bootstrap 循环。
+_NO_PREREQUISITE_ACTIONS: frozenset[str] = frozenset(
+    {"build", "full", "update", "cache", "rebuild"}
+)
+
 #: 每个 facade 的最小可用调用示例（占位符用 ``<...>``）。
 _EXAMPLES: dict[str, dict[str, Any]] = {
     "nav": {"action": "callers", "function_name": "<symbol>"},
@@ -65,9 +70,10 @@ def build_capability_manifest(project_root: str) -> dict[str, Any]:
         entries: dict[str, Any] = {}
         for action in actions:
             tier = "instant" if action in _INSTANT_ACTIONS else "indexed"
+            needs_index = tier == "indexed" and action not in _NO_PREREQUISITE_ACTIONS
             entries[action] = {
                 "tier": tier,
-                "preconditions": [] if tier == "instant" else ["index"],
+                "preconditions": ["index"] if needs_index else [],
                 "cost_class": tier,
                 "example": _EXAMPLES.get(name, {"action": action}),
                 "self_describing": action == "help",

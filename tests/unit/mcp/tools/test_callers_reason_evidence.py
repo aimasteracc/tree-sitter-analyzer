@@ -417,12 +417,19 @@ def test_call_site_line_enrichment_leaves_unmatched_entries_alone() -> None:
 
 
 def test_call_site_line_enrichment_fills_a_graph_entry() -> None:
-    """调用图条目按 (file, caller) 从边映射到调用点行。"""
+    """调用图条目按 (file, caller, 定义行) 从边映射到调用点行。"""
     from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
 
     class _Edges:
         def query_callers(self, *args, **kwargs):
-            return [{"caller_name": "wrapper", "caller_file": "c.py", "callee_line": 7}]
+            return [
+                {
+                    "caller_name": "wrapper",
+                    "caller_file": "c.py",
+                    "caller_line": 4,
+                    "callee_line": 7,
+                }
+            ]
 
     entries = [{"name": "wrapper", "file": "c.py", "line": 4}]
     CodeGraphCallersTool._attach_call_site_lines(_Edges(), entries, "target", None)
@@ -714,19 +721,27 @@ def test_console_script_entry_point_is_recognised(tmp_path) -> None:
         encoding="utf-8",
     )
 
-    assert _console_script_evidence(str(tmp_path), "main") == (
-        '[project.scripts] x = "pkg.cli:main"'
+    # 缺少目标文件时绝不升级（Codex P2：不能把同名函数都当入口点）。
+    assert _console_script_evidence(str(tmp_path), "main") is None
+    assert (
+        _console_script_evidence(str(tmp_path), "main", file_path="pkg/cli.py")
+        == '[project.scripts] x = "pkg.cli:main"'
     )
-    assert _console_script_evidence(str(tmp_path), "run_sub") == (
-        '[tool.poetry.scripts] y = "pkg.cli:run_sub"'
+    assert (
+        _console_script_evidence(str(tmp_path), "run_sub", file_path="pkg/cli.py")
+        == '[tool.poetry.scripts] y = "pkg.cli:run_sub"'
     )
+    # 同名但不是脚本模块里的那个函数 → 不签发。
+    assert _console_script_evidence(str(tmp_path), "main", file_path="lib.py") is None
     assert _console_script_evidence(str(tmp_path), "not_an_entry") is None
 
 
 def test_a_missing_manifest_never_proves_an_entry_point(tmp_path) -> None:
     from tree_sitter_analyzer.mcp.tools.callers_tool import _console_script_evidence
 
-    assert _console_script_evidence(str(tmp_path), "main") is None
+    assert (
+        _console_script_evidence(str(tmp_path), "main", file_path="pkg/cli.py") is None
+    )
 
 
 @pytest.mark.asyncio
@@ -773,7 +788,10 @@ def test_console_script_absence_outranks_plain_unreferenced(tmp_path) -> None:
     result = {"caller_count": 0, "completeness": "complete"}
 
     certificate = absence_certificate(
-        result, project_root=str(tmp_path), function_name="main"
+        result,
+        project_root=str(tmp_path),
+        function_name="main",
+        file_path="pkg/cli.py",
     )
 
     assert (certificate["kind"], certificate["evidence"][1]["kind"]) == (

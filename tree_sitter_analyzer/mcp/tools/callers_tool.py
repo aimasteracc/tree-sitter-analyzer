@@ -343,7 +343,9 @@ _SCRIPTS_ENTRY_LINE = re.compile(
 _SCRIPT_SECTIONS = frozenset({"project.scripts", "tool.poetry.scripts"})
 
 
-def _console_script_evidence(project_root: str, function_name: str) -> str | None:
+def _console_script_evidence(
+    project_root: str, function_name: str, *, file_path: str | None = None
+) -> str | None:
     """``pyproject.toml`` 的 ``[project.scripts]`` / ``[tool.poetry.scripts]`` 是否指向它。
 
     逐行扫描而非 ``tomllib``（本项目地板是 3.10，``tomllib`` 只有 3.11+）；两个
@@ -367,7 +369,16 @@ def _console_script_evidence(project_root: str, function_name: str) -> str | Non
         if match is None:
             continue
         script, module, attr = match.group(1), match.group(2), match.group(3)
-        if attr.split(".")[-1] == function_name:
+        if attr.split(".")[-1] != function_name:
+            continue
+        # Codex P2：`app = "cli:main"` 不能让 lib.py 里另一个 main 也变成入口点，
+        # 脚本模块必须与目标文件对得上；文件未知时不升级（保守）。
+        if not file_path:
+            return None
+        module_path = module.replace(".", "/")
+        normalized = file_path.replace("\\", "/")
+        stem = os.path.splitext(normalized)[0]
+        if stem.endswith(module_path) and ":" in f"{module}:{attr}":
             return f'[{section}] {script} = "{module}:{attr}"'
     return None
 
@@ -421,7 +432,9 @@ def absence_certificate(
         ),
     }
     script = (
-        _console_script_evidence(project_root, function_name) if project_root else None
+        _console_script_evidence(project_root, function_name, file_path=file_path)
+        if project_root
+        else None
     )
     if script is not None:
         return {
@@ -502,14 +515,30 @@ def answer_etag(result: dict[str, Any]) -> str:
     import hashlib
     import json
 
+    def _body_sha(entry: dict[str, Any]) -> str | None:
+        body = entry.get("body")
+        if not isinstance(body, str):
+            return None
+        return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
     payload = {
         "function": result.get("function"),
         "file_path": result.get("file_path"),
         "callers": [
-            {key: entry.get(key) for key in ("name", "file", "line", "call_site_line")}
+            {
+                **{
+                    key: entry.get(key)
+                    for key in ("name", "file", "line", "call_site_line")
+                },
+                # Codex P2：内联体（默认开启）也是答案内容，必须进入指纹，
+                # 否则函数体变化后 etag 不变会误导客户端复用旧体。
+                "body_sha": _body_sha(entry),
+            }
             for entry in (result.get("callers") or [])
             if isinstance(entry, dict)
         ],
+        "truncated": bool(result.get("truncated", False)),
+        "listed": result.get("caller_count"),
         "caller_count": result.get("caller_count"),
         "completeness": result.get("completeness"),
         "completeness_reasons": result.get("completeness_reasons") or [],
@@ -1471,6 +1500,11 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 "answer_etag": result["answer_etag"],
                 "function": func_name,
                 "caller_count": result.get("caller_count"),
+                # Codex P2：增量描述的是「这份答案」的子集，完整性/截断证据必须
+                # 一并带出，否则客户端会把被截断或未证明的集合当成全部。
+                "completeness": result.get("completeness"),
+                "completeness_reasons": result.get("completeness_reasons") or [],
+                "truncated": bool(result.get("truncated", False)),
                 "delta": delta,
                 "agent_summary": {
                     "summary_line": (
@@ -1550,12 +1584,17 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             "call_site_line" in entry for entry in callers if isinstance(entry, dict)
         ):
             return callers
-        sites: dict[tuple[str, str], int] = {}
+        sites: dict[tuple[str, str, int], int] = {}
         edges = graph.call_edges() if graph is not None else ()
         for caller, callee, line in edges:
             if callee.name != func_name:
                 continue
-            sites.setdefault((str(caller.file_path), str(caller.name)), int(line))
+            # Codex P2：同文件同名方法（A.run / B.run）是不同调用方，
+            # 定义行必须进入键，否则两者会共享同一个 call_site_line。
+            sites.setdefault(
+                (str(caller.file_path), str(caller.name), int(caller.start_line)),
+                int(line),
+            )
         if not sites and graph is None and cache is not None:
             from ...index_snapshot_query import ReadInterrupted
 
@@ -1569,14 +1608,25 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 name = str(row.get("caller_name") or "")
                 line = int(row.get("callee_line") or 0)
                 if name and line > 0:
-                    sites.setdefault((str(row.get("caller_file") or ""), name), line)
+                    sites.setdefault(
+                        (
+                            str(row.get("caller_file") or ""),
+                            name,
+                            int(row.get("caller_line") or 0),
+                        ),
+                        line,
+                    )
         for entry in callers:
             if not isinstance(entry, dict) or "call_site_line" in entry:
                 continue
             if is_module_caller(str(entry.get("name") or "")):
                 # 模块级调用点的 ``line`` 本来就是调用行，不再重复标注。
                 continue
-            key = (str(entry.get("file") or ""), str(entry.get("name") or ""))
+            key = (
+                str(entry.get("file") or ""),
+                str(entry.get("name") or ""),
+                int(entry.get("line") or 0),
+            )
             site = sites.get(key)
             if site:
                 entry["call_site_line"] = site

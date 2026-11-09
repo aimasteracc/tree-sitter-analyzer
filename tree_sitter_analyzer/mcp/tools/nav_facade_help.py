@@ -21,7 +21,13 @@ POINT_RELATION_KEYS = (
     "output_format",
 )
 # #1854：callers 另转发 ``order``（callees 没有置信层级）。
-CALLERS_POINT_KEYS = (*POINT_RELATION_KEYS, "order")
+# §12.1/§12.2：callers 另外转发增量参数（ETag 协商与无状态 delta）。
+CALLERS_POINT_KEYS = (
+    *POINT_RELATION_KEYS,
+    "order",
+    "if_none_match",
+    "previous_entries",
+)
 # callers/callees scope=graph 路由转发给 call_graph inner 的参数。
 GRAPH_RELATION_KEYS = ("function_name", "file_path", "depth", "output_format")
 # context 路由转发给 CodeGraphContextTool 的参数。
