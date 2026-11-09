@@ -1,5 +1,39 @@
 # AI Lessons
 
+## 2026-11 — 门禁看不见自己要看的输入
+
+### Context
+
+为了防住「文档承诺了不存在的 CLI 旗标」（第 67 轮手工发现 `--since`、`--cost`），我写了
+`tests/contracts/test_documented_cli_flags_exist.py`：抽取面向 agent 文档里反引号片段中的
+`--flag`，与真实 argparse 的旗标集合比对。写完立刻通过。
+
+然后我按仓库惯例**故意注入一个幽灵旗标**（`` `tsa --definitely-not-a-flag` ``）验证它会红——
+结果**仍然是 2 passed**。原因：我用了全文 `re.findall(r"`([^`]+)`", text)` 配对反引号，
+当文件里反引号总数为奇数时，整体配对错位，**文件末尾的片段被整个漏掉**。
+
+改成逐行配对后，契约立刻爆出 5 个**真实存在**的幽灵/误标旗标：
+`--output-file`（cli.md 把 MCP 参数写成了 CLI 旗标）、`--check`（其实是 `git diff --check`）、
+`--diff-snapshot-id`（文档本身在说它**不存在**）、`--index` / `--project`
+（属于另一个脚本 `callers_scip_manifest` 的参数）。修完文档、并把检查范围限定为
+「主 CLI 的调用片段」（`tsa …` / `python -m tree_sitter_analyzer …`，且不含其他工具名）后，
+注入探针才如期变红。
+
+### Lessons learned
+
+1. **新写的门禁必须先证明它会红**：注入一个必然违规的样例，看它是否真的失败。只看到绿色
+   说明不了任何事——它可能根本没读到输入。
+2. 全文正则配对标点（反引号、括号、引号）在奇数个时整体错位；**逐行或逐块**处理更稳。
+3. 契约的**范围要和它声称的一致**：一条「文档旗标必须存在」的检查，必须排除其他工具的旗标
+   （git/pytest/ruff/uv/npx）和非主 CLI 脚本的参数，否则只能靠巨大白名单维持绿色，那就没意义。
+
+### Required guardrail
+
+`tests/contracts/test_documented_cli_flags_exist.py`：
+`_documented_flags()` 逐行配对反引号，`_is_main_cli_claim()` 只接受主 CLI 调用片段，
+`DOCUMENTED_NON_FLAGS` 仅登记「文档明确说明不存在」的反例（另有
+`test_the_non_flag_allowlist_stays_honest` 防止白名单变成藏污纳垢处）。
+验证方式固定为一条命令：注入 `` `tsa --definitely-not-a-flag` `` 该测试必须变红。
 ## 2026-11 — 生成的文档不在快速门里，漂移就只能等 CI
 
 ### Context

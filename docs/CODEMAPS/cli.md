@@ -192,7 +192,7 @@ for table rendering. There is no global `--format yaml` mode.
 ## File Output
 
 Large payloads use `mcp/utils/file_output_factory.py`:
-- `--output-file PATH` — write directly
+- MCP tools accept `output_file` as an **argument** (not a CLI flag; the main CLI has none)
 - `TREE_SITTER_OUTPUT_PATH` env var — auto-spill threshold
 
 ## Verification Commands
