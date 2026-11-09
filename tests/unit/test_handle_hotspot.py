@@ -114,7 +114,6 @@ _HEATMAP_MAP = "tree_sitter_analyzer.hotspot_analyzer.build_heatmap_map"
 _COMPUTE = "tree_sitter_analyzer.hotspot_analyzer.compute_scores"
 _GET_SUBGRAPH = "tree_sitter_analyzer.subgraph_traverser.get_subgraph"
 _ENSURE_CFG = "tree_sitter_analyzer.cli.capability_commands._ensure_tsa_config"
-_WRITE_META = "tree_sitter_analyzer.cli.capability_commands._write_index_meta"
 
 
 # ── Argument validation ───────────────────────────────────────────────────────
@@ -173,7 +172,6 @@ def test_depth_over_5_capped_with_warning(capsys):
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[]),
         patch(_CA_RAW, return_value={"a.py": 5}),
         patch(_ALIAS_CA, return_value={"a.py": 5}),
@@ -279,7 +277,6 @@ def test_success_empty_heatmap():
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[]),
         patch(_CA_RAW, return_value={"a.py": 1}),
         patch(_ALIAS_CA, return_value={"a.py": 1}),
@@ -311,7 +308,6 @@ def test_success_with_critical_file():
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[FakeHeatmap("src/big.py", max_complexity=20)]),
         patch(_CA_RAW, return_value={"src/big.py": 25}),
         patch(_ALIAS_CA, return_value={"src/big.py": 25}),
@@ -365,7 +361,6 @@ def test_trace_from_isolated_file():
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[isolated_hm]),
         patch(_CA_RAW, return_value={"isolated.py": 0}),
         patch(_ALIAS_CA, return_value={"isolated.py": 0}),
@@ -395,7 +390,6 @@ def test_show_alias_diff_populates_gap_summary():
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[hm]),
         patch(_CA_RAW, return_value={"a.py": 3}),
         patch(_ALIAS_CA, return_value={"a.py": 10}),
@@ -445,26 +439,6 @@ def test_ensure_tsa_config_creates_if_missing(tmp_path):
     assert config["default_top_n"] == 20
 
 
-# ── _write_index_meta ─────────────────────────────────────────────────────────
-
-
-def test_write_index_meta_creates_file(tmp_path):
-    """_write_index_meta writes .tsa/index-meta.json with correct fields."""
-    from tree_sitter_analyzer.cli.capability_commands import _write_index_meta
-
-    _write_index_meta(
-        str(tmp_path), files_indexed=42, languages=["python", "typescript"]
-    )
-
-    meta_path = tmp_path / ".tsa" / "index-meta.json"
-    assert meta_path.exists()
-    meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    assert meta["files_indexed"] == 42
-    assert meta["languages"] == ["python", "typescript"]
-    assert "built_at" in meta
-    assert "tsa_version" in meta
-
-
 # ── top_n capping at 200 ──────────────────────────────────────────────────────
 
 
@@ -476,7 +450,6 @@ def test_top_n_capped_at_200():
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[]),
         patch(_CA_RAW, return_value={"a.py": 1}),
         patch(_ALIAS_CA, return_value={"a.py": 1}),
@@ -504,7 +477,6 @@ def test_ca_fallback_when_import_edges_empty(tmp_path):
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[]),
         patch(_CA_RAW, return_value={}),
         patch(
@@ -547,7 +519,6 @@ def test_page_beyond_total_returns_empty_results_success():
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[FakeHeatmap("src/mod.py", max_complexity=30)]),
         patch(_CA_RAW, return_value={"src/mod.py": 5}),
         patch(_ALIAS_CA, return_value={"src/mod.py": 5}),
@@ -562,31 +533,6 @@ def test_page_beyond_total_returns_empty_results_success():
     r = captured["result"]
     assert r["success"] is True
     assert r["results"] == []
-
-
-# ── _write_index_meta: PackageNotFoundError fallback ─────────────────────────
-
-
-def test_write_index_meta_package_not_found_uses_dev_version(tmp_path):
-    """PackageNotFoundError when querying package version → tsa_version='0.0.0+dev' (lines 61-62)."""
-    import importlib.metadata
-    import json
-    from unittest.mock import patch
-
-    from tree_sitter_analyzer.cli.capability_commands import _write_index_meta
-
-    with patch.object(
-        importlib.metadata,
-        "version",
-        side_effect=importlib.metadata.PackageNotFoundError("tree-sitter-analyzer"),
-    ):
-        _write_index_meta(str(tmp_path), files_indexed=10, languages=["python"])
-
-    meta = json.loads(
-        (tmp_path / ".tsa" / "index-meta.json").read_text(encoding="utf-8")
-    )
-    assert meta["tsa_version"] == "0.0.0+dev"
-    assert meta["files_indexed"] == 10
 
 
 # ── Ca fallback: one-sided branches (ca_map vs import_edges) ─────────────────
@@ -611,7 +557,6 @@ def test_ca_fallback_only_import_edges_empty(tmp_path):
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[]),
         patch(_HEATMAP_MAP, return_value={}),
         patch(_ALIAS_CA, return_value={"src/foo.py": 3}),
@@ -652,7 +597,6 @@ def test_trace_from_with_real_subgraph():
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[hm_a, hm_b]),
         patch(_CA_RAW, return_value={"a.py": 3, "b.py": 1}),
         patch(_ALIAS_CA, return_value={"a.py": 3, "b.py": 1}),
@@ -691,7 +635,6 @@ def test_handle_capability_actions_dispatches_hotspot():
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[]),
         patch(_CA_RAW, return_value={"a.py": 1}),
         patch(_ALIAS_CA, return_value={"a.py": 1}),
@@ -733,7 +676,6 @@ def test_ca_fallback_only_ca_map_empty(tmp_path):
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[]),
         patch(_HEATMAP_MAP, return_value={}),
         patch(_ALIAS_CA, return_value={"src/foo.py": 2}),
@@ -778,7 +720,6 @@ def test_hotspot_verdict_is_always_a_canonical_verdict(severity, expected_verdic
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[FakeHeatmap("src/big.py", max_complexity=20)]),
         patch(_CA_RAW, return_value={"src/big.py": 25}),
         patch(_ALIAS_CA, return_value={"src/big.py": 25}),
