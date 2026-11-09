@@ -1091,3 +1091,66 @@ def test_undefined_symbol_never_gets_an_identification_certificate(tmp_path):
         )
         is None
     )
+
+
+def test_package_dunder_main_certifies_identification_when_incomplete(tmp_path):
+    """证据不全时 `__main__.py` 里的函数同样算识别性入口。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import absence_certificate
+
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "__main__.py").write_text(
+        "def entry():\n    return 1\n", encoding="utf-8"
+    )
+    result = {
+        "verdict": "WARN",
+        "caller_count": 0,
+        "completeness": "unknown",
+        "completeness_reasons": ["NON_CALL_REFERENCES"],
+    }
+
+    certificate = absence_certificate(
+        result,
+        project_root=str(tmp_path),
+        function_name="entry",
+        file_path="pkg/__main__.py",
+    )
+
+    assert certificate is not None
+    assert (certificate["kind"], certificate["identification_only"]) == (
+        "entry_point",
+        True,
+    )
+    assert [item["kind"] for item in certificate["evidence"]] == [
+        "dunder_main",
+        "symbol_defined",
+    ]
+
+
+def test_shebang_script_certifies_identification_when_incomplete(tmp_path):
+    """证据不全时，带 shebang 的脚本同样算识别性入口。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import absence_certificate
+
+    (tmp_path / "run.py").write_text(
+        "#!/usr/bin/env python\ndef body():\n    return 1\n", encoding="utf-8"
+    )
+    result = {
+        "verdict": "WARN",
+        "caller_count": 0,
+        "completeness": "unknown",
+        "completeness_reasons": ["NON_CALL_REFERENCES"],
+    }
+
+    certificate = absence_certificate(
+        result,
+        project_root=str(tmp_path),
+        function_name="body",
+        file_path="run.py",
+    )
+
+    assert certificate is not None
+    assert (certificate["kind"], certificate["identification_only"]) == ("script", True)
+    assert [item["kind"] for item in certificate["evidence"]] == [
+        "shebang",
+        "symbol_defined",
+    ]
