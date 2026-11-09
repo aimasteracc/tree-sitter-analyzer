@@ -702,3 +702,81 @@ def test_absence_certificate_requires_zero_open_sites() -> None:
     }
 
     assert absence_certificate(result) is None
+
+
+def test_console_script_entry_point_is_recognised(tmp_path) -> None:
+    """RFC-0044：`[project.scripts]` 指向的函数是入口点，不是死代码。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import _console_script_evidence
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "x"\n\n[project.scripts]\nx = "pkg.cli:main"\n'
+        '\n[tool.poetry.scripts]\ny = "pkg.cli:run_sub"\n',
+        encoding="utf-8",
+    )
+
+    assert _console_script_evidence(str(tmp_path), "main") == (
+        '[project.scripts] x = "pkg.cli:main"'
+    )
+    assert _console_script_evidence(str(tmp_path), "run_sub") == (
+        '[tool.poetry.scripts] y = "pkg.cli:run_sub"'
+    )
+    assert _console_script_evidence(str(tmp_path), "not_an_entry") is None
+
+
+def test_a_missing_manifest_never_proves_an_entry_point(tmp_path) -> None:
+    from tree_sitter_analyzer.mcp.tools.callers_tool import _console_script_evidence
+
+    assert _console_script_evidence(str(tmp_path), "main") is None
+
+
+@pytest.mark.asyncio
+async def test_a_dunder_main_function_is_certified_as_an_entry_point(tmp_path) -> None:
+    """``pkg/__main__.py`` 里未被调用的函数 → entry_point + dunder_main 证据。"""
+    root = await _index_files(
+        tmp_path,
+        {
+            "pkg/__main__.py": (
+                "def helper():\n    return 1\n\n\ndef unused_main():\n    return helper()\n"
+            ),
+        },
+    )
+
+    result = await _callers(root, "unused_main", "pkg/__main__.py")
+
+    absence = result["absence"]
+    assert (absence["kind"], absence["confidence"]) == ("entry_point", "proven")
+    assert [entry["kind"] for entry in absence["evidence"]] == [
+        "complete_call_graph",
+        "dunder_main",
+    ]
+
+
+def test_dunder_main_evidence_requires_the_file_to_exist(tmp_path) -> None:
+    from tree_sitter_analyzer.mcp.tools.callers_tool import _dunder_main_evidence
+
+    assert _dunder_main_evidence(str(tmp_path), "pkg/missing/__main__.py") is None
+    assert _dunder_main_evidence(str(tmp_path), "pkg/cli.py") is None
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "__main__.py").write_text("x = 1\n", encoding="utf-8")
+    assert _dunder_main_evidence(str(tmp_path), "pkg/__main__.py") == (
+        "pkg/__main__.py is the package entry module"
+    )
+
+
+def test_console_script_absence_outranks_plain_unreferenced(tmp_path) -> None:
+    """有 console-script 证据时 kind=entry_point，而不是笼统的 unreferenced。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import absence_certificate
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project.scripts]\nx = "pkg.cli:main"\n', encoding="utf-8"
+    )
+    result = {"caller_count": 0, "completeness": "complete"}
+
+    certificate = absence_certificate(
+        result, project_root=str(tmp_path), function_name="main"
+    )
+
+    assert (certificate["kind"], certificate["evidence"][1]["kind"]) == (
+        "entry_point",
+        "console_script",
+    )

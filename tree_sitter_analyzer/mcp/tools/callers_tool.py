@@ -10,6 +10,7 @@ Simpler and more discoverable than the monolithic codegraph_call_graph tool.
 
 import contextvars
 import os
+import re
 import sqlite3
 from collections.abc import Callable
 from typing import Any
@@ -336,17 +337,70 @@ def _describe_sites(sites: list[dict[str, Any]] | None) -> str:
     return "; ".join(parts)
 
 
-def absence_certificate(result: dict[str, Any]) -> dict[str, Any] | None:
-    """RFC-0044 最小切片：只在能证明「确实没有」时签发缺席证书。
+_SCRIPTS_ENTRY_LINE = re.compile(
+    r"^\s*([\w.-]+)\s*=\s*[\"']([\w.]+):([\w.]+)", re.MULTILINE
+)
+_SCRIPT_SECTIONS = frozenset({"project.scripts", "tool.poetry.scripts"})
 
-    条件（全部满足才签发）：
+
+def _console_script_evidence(project_root: str, function_name: str) -> str | None:
+    """``pyproject.toml`` 的 ``[project.scripts]`` / ``[tool.poetry.scripts]`` 是否指向它。
+
+    逐行扫描而非 ``tomllib``（本项目地板是 3.10，``tomllib`` 只有 3.11+）；两个
+    section 都要看。读不到/解析不了就是 None：证明不了就不签发，绝不猜。
+    """
+    manifest = os.path.join(project_root, "pyproject.toml")
+    try:
+        with open(manifest, encoding="utf-8", errors="replace") as handle:
+            lines = handle.read().splitlines()
+    except OSError:
+        return None
+    section = ""
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            section = stripped.strip("[]").strip()
+            continue
+        if section not in _SCRIPT_SECTIONS:
+            continue
+        match = _SCRIPTS_ENTRY_LINE.match(line)
+        if match is None:
+            continue
+        script, module, attr = match.group(1), match.group(2), match.group(3)
+        if attr.split(".")[-1] == function_name:
+            return f'[{section}] {script} = "{module}:{attr}"'
+    return None
+
+
+def _dunder_main_evidence(project_root: str, file_path: str | None) -> str | None:
+    """``__main__.py`` 本身就是入口：被它定义的模块级函数天然没有调用方。"""
+    if not file_path:
+        return None
+    if os.path.basename(file_path.replace("\\", "/")) != "__main__.py":
+        return None
+    if os.path.isfile(os.path.join(project_root, file_path)):
+        return f"{file_path} is the package entry module"
+    return None
+
+
+def absence_certificate(
+    result: dict[str, Any],
+    *,
+    project_root: str = "",
+    function_name: str = "",
+    file_path: str | None = None,
+) -> dict[str, Any] | None:
+    """RFC-0044：只在能证明「确实没有、且能解释为什么」时签发缺席证书。
+
+    签发前必须满足：
 
     - 调用方列表为空；
     - ``completeness == "complete"``（RFC-0040 的 13 道检查全部跑过）；
     - 没有 unresolved / name-only / 声明文件守卫的开放站点。
 
-    否则返回 ``None`` —— 不完整或未知的答案没有资格证明缺席。``entry_point`` /
-    ``script`` / ``untested`` 等更强的规则由 RFC-0044 后续实现。
+    然后按证据给出 ``kind``：命中 ``[project.scripts]`` 或 ``__main__.py`` 时是
+    ``entry_point``（并附来源），否则才是 ``unreferenced``。读不到证据时绝不升级
+    结论——不完整的答案没有资格证明缺席。
     """
     if result.get("caller_count") != 0:
         return None
@@ -359,18 +413,43 @@ def absence_certificate(result: dict[str, Any]) -> dict[str, Any] | None:
     )
     if any(open_sites):
         return None
+    base_evidence = {
+        "kind": "complete_call_graph",
+        "detail": (
+            "every required caller check ran; 0 resolved, 0 unresolved, "
+            "0 name-only inbound sites"
+        ),
+    }
+    script = (
+        _console_script_evidence(project_root, function_name) if project_root else None
+    )
+    if script is not None:
+        return {
+            "kind": "entry_point",
+            "confidence": "proven",
+            "evidence": [base_evidence, {"kind": "console_script", "detail": script}],
+            "next_step": (
+                "This is an entry point, not dead code: it is invoked by the "
+                "console script, not by a call edge."
+            ),
+        }
+    main_module = (
+        _dunder_main_evidence(project_root, file_path) if project_root else None
+    )
+    if main_module is not None:
+        return {
+            "kind": "entry_point",
+            "confidence": "proven",
+            "evidence": [base_evidence, {"kind": "dunder_main", "detail": main_module}],
+            "next_step": (
+                "This is an entry point, not dead code: the package __main__ "
+                "module exposes it to `python -m`."
+            ),
+        }
     return {
         "kind": "unreferenced",
         "confidence": "proven",
-        "evidence": [
-            {
-                "kind": "complete_call_graph",
-                "detail": (
-                    "every required caller check ran; 0 resolved, 0 unresolved, "
-                    "0 name-only inbound sites"
-                ),
-            }
-        ],
+        "evidence": [base_evidence],
         "next_step": (
             "Treat the absence as a fact: no call edge in the project reaches "
             "this target."
@@ -1330,7 +1409,12 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             "verdict": verdict,
             "next_step": as_next_step,
         }
-        certificate = absence_certificate(result)
+        certificate = absence_certificate(
+            result,
+            project_root=self.project_root or "",
+            function_name=func_name,
+            file_path=file_path,
+        )
         if certificate is not None:
             result["absence"] = certificate
         apply_source_evidence(result, evidence, stale_files)
