@@ -191,8 +191,14 @@ CLI `--capabilities` 与 MCP 暴露留到下一轮（新 flag 需要同步 codem
 
 ### 12.6 答案作用域与过期条件（`expires_when`）
 
-agent 常把答案缓存到下一轮。返回 `expires_when: {files: [...], index_generation: "..."}`，
-agent 只要看到这几条文件没动、index 没重建，就可以安全复用——不需要重新提问。
+agent 常把答案缓存到下一轮。`callers` 现在返回
+`expires_when: {files: [...], index_generation: "…"}`：`files` 是**声明文件 + 每个调用方文件**
+（这个答案的全部输入），`index_generation` 是读到的活动世代（读不到时为 `null`，此时只能靠 files 判断）。
+
+agent 只要这几条文件没动、世代没变，就可以**不重问**继续复用上一轮答案。
+
+> 修订（2026-11-10，第 66 轮）：本节此前描述的字段**并不存在**——文档先于实现。
+> 现在它存在且有测试；这也是「撤回声明要写回原处」的一个实例。
 
 ### 12.8 让 agent 在它真正会读的地方发现这些能力
 

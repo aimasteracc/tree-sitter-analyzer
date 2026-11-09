@@ -507,6 +507,39 @@ def _identification_absence(
     }
 
 
+def expires_when(result: dict[str, Any], *, project_root: str = "") -> dict[str, Any]:
+    """答案的**作用域**：哪些文件或索引世代一变，这个答案就失效（§12.6）。
+
+    与 ``answer_etag`` 互补：etag 让 agent 在**下一轮重问**时便宜地确认「没变」；
+    ``expires_when`` 让它在**不重问**的情况下自我失效——只要列出的文件没动、索引世代
+    没变，就可以继续复用上一轮答案。
+
+    ``files`` 取声明文件与每个调用方所在文件（它们是这个答案的全部输入）；
+    ``index_generation`` 读不到时给 ``None``，此时 agent 只能依赖 files 判断。
+    """
+    files: set[str] = set()
+    declaring = result.get("file_path") or result.get("file")
+    if isinstance(declaring, str) and declaring:
+        files.add(declaring.replace("\\", "/"))
+    for caller in result.get("callers") or []:
+        if isinstance(caller, dict):
+            path = caller.get("file") or caller.get("file_path")
+            if isinstance(path, str) and path:
+                files.add(path.replace("\\", "/"))
+    generation = ""
+    if project_root:
+        # 读不到世代时 resolve_index_location 自身返回空 selector（它不抛），
+        # 这里不需要再包一层 try：多余的分支只会变成不可覆盖的死代码。
+        from ...cache.generation_routing import resolve_index_location
+
+        selector = resolve_index_location(str(project_root)).selector
+        generation = str(getattr(selector, "generation_id", "") or "")
+    return {
+        "files": sorted(files),
+        "index_generation": generation or None,
+    }
+
+
 def absence_certificate(
     result: dict[str, Any],
     *,
@@ -1600,6 +1633,10 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         if certificate is not None:
             result["absence"] = certificate
         apply_source_evidence(result, evidence, stale_files)
+        result["expires_when"] = expires_when(
+            result, project_root=str(self.project_root or "")
+        )
+        result["answer_etag"] = answer_etag(result)
         # dogfood §12.1：内容相同的答案 → 相同 etag。agent 用它做跨轮次缓存判断。
         result["answer_etag"] = answer_etag(result)
         # §12.1 后半：If-None-Match。只有在「内容指纹相同且作用域未过期」时才敢说

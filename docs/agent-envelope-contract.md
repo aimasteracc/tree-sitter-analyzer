@@ -145,6 +145,12 @@ relying on:
 | answer cache (RFC-0027) | "was this answer reused without recomputation?" | `provenance.served_from` is exactly `"cache"` or `"computed"` |
 | `answer_etag` / `if_none_match` (§12.1) | "is this the same answer I already have?" | a matching etag returns `{unchanged: true}` instead of the payload |
 
+A third, weaker field exists for reuse **without asking again**: `callers` returns
+`expires_when: {files, index_generation}` — the declaring file plus every caller file, and the
+active index generation. While those files are untouched and the generation is unchanged, the
+answer may be reused; when the generation is unreadable it is `null`, and only the files can be
+trusted.
+
 They answer different questions — cached means *the server did not recompute*,
 unchanged means *you already hold this content*. A cached answer can still differ
 from what you hold (another turn may have changed the scope), and an unchanged

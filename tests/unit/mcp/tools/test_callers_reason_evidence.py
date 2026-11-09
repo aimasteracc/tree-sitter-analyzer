@@ -1154,3 +1154,58 @@ def test_shebang_script_certifies_identification_when_incomplete(tmp_path):
         "shebang",
         "symbol_defined",
     ]
+
+
+def test_expires_when_names_the_declaring_file_and_generation(tmp_path):
+    """§12.6：作用域 = 声明文件 + 每个调用方文件 + 索引世代。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import expires_when
+
+    result = {
+        "file_path": "pkg/mod.py",
+        "callers": [
+            {"name": "a", "file": "tests/test_a.py"},
+            {"name": "b", "file": "pkg/other.py"},
+            {"name": "dup", "file": "tests/test_a.py"},
+        ],
+    }
+
+    scope = expires_when(result, project_root=str(tmp_path))
+
+    assert scope["files"] == ["pkg/mod.py", "pkg/other.py", "tests/test_a.py"]
+    assert scope["index_generation"] is None
+
+
+def test_expires_when_without_files_is_an_empty_scope() -> None:
+    """没有调用方时作用域只剩声明文件；两者都没有就是空清单（不假装有范围）。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import expires_when
+
+    assert expires_when({"callers": []})["files"] == []
+    assert expires_when({"file_path": "pkg/mod.py", "callers": []})["files"] == [
+        "pkg/mod.py"
+    ]
+
+
+def test_expires_when_ignores_non_dict_callers_and_missing_paths() -> None:
+    """容错：非 dict 条目、缺 file 的调用方都不应污染作用域。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import expires_when
+
+    scope = expires_when(
+        {
+            "file_path": None,
+            "callers": ["not-a-dict", {"name": "no-path"}, {"file": None, "name": "x"}],
+        }
+    )
+
+    assert scope["files"] == []
+
+
+def test_expires_when_generation_is_null_when_the_index_cannot_be_read() -> None:
+    """读不到索引世代时给 null，而不是编一个：agent 只能靠 files 判断。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import expires_when
+
+    scope = expires_when(
+        {"file_path": "pkg/mod.py", "callers": []},
+        project_root="/nonexistent/project/root",
+    )
+
+    assert scope["index_generation"] is None

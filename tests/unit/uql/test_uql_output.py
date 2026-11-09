@@ -336,15 +336,24 @@ def test_answer_etag_is_stable_across_volatile_fields() -> None:
     ) == (True, True)
 
 
-def test_uql_if_none_match_returns_a_minimal_unchanged_answer() -> None:
-    """命中同一指纹时只回最小载荷；过期指纹回完整答案。"""
+def test_uql_if_none_match_returns_a_minimal_unchanged_answer(tmp_path) -> None:
+    """命中同一指纹时只回最小载荷；过期指纹回完整答案（临时项目，世代稳定）。"""
     import asyncio
 
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
     from tree_sitter_analyzer.mcp.tools.uql_tool import UqlTool
 
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "mod.py").write_text(
+        "def a():\n    return 1\n\n\ndef b():\n    return a()\n", encoding="utf-8"
+    )
+    asyncio.run(
+        CodeGraphFullIndexTool(str(tmp_path)).execute({"mode": "full", "max_files": 20})
+    )
+
     async def run():
-        tool = UqlTool(".")
-        query = "symbol('build_facade').callers()"
+        tool = UqlTool(str(tmp_path))
+        query = "symbol('a').callers()"
         first = await tool.execute({"query": query, "output_format": "json"})
         hit = await tool.execute(
             {
