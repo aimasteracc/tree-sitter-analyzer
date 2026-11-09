@@ -329,6 +329,8 @@ help 里限定 "For --change-impact"，但 flag 出现在全局 help，agent 会
 
 | P2-3 `--hotspot` 的 `CRITICAL`/`OK` 不在八值字母表 | 顶层 verdict 映射为 CRITICAL→`WARN`、REVIEW→`REVIEW`、无→`INFO`；严重度保留在 `results[].severity` 与 summary_line | `--hotspot --format json` → `WARN`（canonical），首条仍为 `severity: CRITICAL`；`test_handle_hotspot.py` 增加「verdict 必须在 `CANONICAL_VERDICTS` 内」的参数化断言 |
 
-仍待处理（按优先级）：P1-3 `--callers` 的调用行号落在定义行；P1-4 change-impact 测试选择召回缺口；P1-6 `.tsa/index-meta.json` 仍由 `--hotspot` 写成与真实索引不符的 `files_indexed`（本仓库实测 176 vs 2917），且只读分析会在仓库里创建 `.tsa/` 目录——测试文件已到 800 行阈值，需要先拆测试再改；P2-5 `--agent-summary-only` 空操作；P2-6 MCP codemap 漏 11 个 action；以及 no-op 索引仍重跑调用点回填（~7.4 s）。
+| P1-6 `.tsa/index-meta.json` 是矛盾的第二个真相源 | 删除该写入与私有 helper（仓库内无消费者、无文档，且只读分析会在工作区留下貌似权威的索引健康文件）；`.tsa/config.json`（severity 阈值配置）按原设计保留 | 本仓库 `--hotspot` 后只剩 `.tsa/config.json`；`test_handle_hotspot.py` 删除对应 3 处断言 |
+
+仍待处理（按优先级）：P1-3 `--callers` 的调用行号落在定义行；P1-4 change-impact 测试选择召回缺口；P2-5 `--agent-summary-only` 空操作；P2-6 MCP codemap 漏 11 个 action；以及 no-op 索引仍重跑调用点回填（~7.4 s）。
 
 **本轮附带发现（未修复）**：修复后 `--ast-cache --ast-cache-mode index` 的 no-op 仍需 ~7.4 s，profile 显示耗时在 `post_index_backfill`（`run_synapse_backfill` 6.5 s、`backfill_cross_file_edges` 3.5 s）——即每次索引都重跑调用点回填，即使源码没有任何变化。这是下一个效率目标。
