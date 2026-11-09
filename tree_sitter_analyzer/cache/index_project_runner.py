@@ -42,6 +42,11 @@ def _issue_stable_failure_record(
     )
     if issued and stats.get("errors"):
         stats["stable_failures_recorded"] = int(stats.get("errors", 0) or 0)
+    from .zero_change_hint import zero_change_fast_path_hint
+
+    hint = zero_change_fast_path_hint(stats)
+    if hint is not None:
+        stats["zero_change_hint"] = hint
 
 
 def run_index_project(

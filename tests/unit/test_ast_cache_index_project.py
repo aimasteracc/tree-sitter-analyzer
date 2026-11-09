@@ -539,3 +539,80 @@ def test_without_any_convergence_evidence_the_backfills_run(engine, monkeypatch)
 
     assert "backfill_skipped" not in stats
     assert "backfill_errors" in stats
+
+
+def test_zero_change_fast_path_hint_points_at_one_force_run():
+    """缺记录的零变化运行 → 提示一次 force 即可进入快路径。"""
+    from tree_sitter_analyzer.cache.zero_change_hint import (
+        zero_change_fast_path_hint,
+    )
+
+    hint = zero_change_fast_path_hint({"indexed": 0, "errors": 3})
+
+    assert hint is not None
+    assert "--ast-cache-force" in hint
+    assert "9.08 s" in hint and "0.72-0.86 s" in hint
+
+
+def test_zero_change_fast_path_hint_stays_silent_when_it_does_not_apply():
+    from tree_sitter_analyzer.cache.zero_change_hint import (
+        zero_change_fast_path_hint,
+    )
+
+    assert (
+        zero_change_fast_path_hint(
+            {"indexed": 0, "errors": 3, "backfill_skipped": "CERTIFIED_CONVERGED"}
+        ),
+        zero_change_fast_path_hint({"indexed": 5, "errors": 3}),
+        zero_change_fast_path_hint({"indexed": 0, "errors": 0}),
+        zero_change_fast_path_hint(
+            {"indexed": 0, "errors": 3, "stable_failures_recorded": 3}
+        ),
+    ) == (None, None, None, None)
+
+
+def test_a_ladybug_invalidation_failure_does_not_block_a_full_rebuild(
+    engine, monkeypatch
+):
+    """镜像失效失败只记日志：强制重建照常完成。"""
+
+    def _explode(*args, **kwargs):
+        raise RuntimeError("mirror unavailable")
+
+    # 该名字在 runner 内部以局部 import 使用，patch 到 indexer 才是真正生效的位置。
+    import tree_sitter_analyzer.cache.indexer as indexer_module
+
+    monkeypatch.setattr(indexer_module, "_invalidate_ladybug", _explode)
+
+    result = engine.index_project(force=True, workers=0)
+
+    assert (result["indexed"], result["errors"]) == (2, 0)
+
+
+def test_an_unreadable_convergence_record_means_the_backfills_run(engine, monkeypatch):
+    """读收敛记录抛异常时按「判断不了」处理：照旧回填，不让异常冒到索引。"""
+    import tree_sitter_analyzer.cache.stable_failures as stable_failures
+    from tree_sitter_analyzer.cache.indexer import _noop_skip_reason
+
+    def _explode(*args, **kwargs):
+        raise RuntimeError("record unreadable")
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.cache.indexer._resolution_is_certified",
+        lambda cache, conn: False,
+    )
+    monkeypatch.setattr(stable_failures, "converged_except_stable_failures", _explode)
+
+    assert _noop_skip_reason(engine, engine._get_conn()) is None
+
+
+def test_an_unreadable_call_graph_marker_means_not_certified(engine, monkeypatch):
+    """读取调用图标记抛异常 → 视为未认证（照旧回填），不冒泡。"""
+    from tree_sitter_analyzer.cache import indexer as indexer_module
+
+    def _explode(*args, **kwargs):
+        raise RuntimeError("marker unreadable")
+
+    monkeypatch.setattr(engine, "call_graph_built", _explode)
+
+    assert indexer_module._resolution_is_certified(engine, engine._get_conn()) is False
