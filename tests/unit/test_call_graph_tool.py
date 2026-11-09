@@ -492,3 +492,91 @@ async def test_large_unindexed_project_refuses_the_on_the_fly_parse(tmp_path):
     )
     assert result["source_file_count"] == 201
     assert "index action=cache mode=index" in result["next_step"]
+
+
+def test_cache_detection_without_a_project_root() -> None:
+    """没有根目录时没有索引可读：走现场解析分支（并由调用方报错）。"""
+    assert CodeGraphCallTool(None)._try_get_cache() is None
+
+
+def test_cache_detection_finds_an_index_with_call_edges(tmp_path) -> None:
+    """有调用边的索引被识别为可用缓存。"""
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    root = tmp_path / "proj"
+    root.mkdir()
+    (root / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    (root / "b.py").write_text(
+        "from a import f\n\n\ndef g():\n    return f()\n", encoding="utf-8"
+    )
+    cache = ASTCache(str(root))
+    try:
+        cache.index_project(workers=0)
+    finally:
+        cache.close()
+
+    detected = CodeGraphCallTool(str(root))._try_get_cache()
+    try:
+        assert detected.has_call_edges() is True
+        assert detected.get_stats()["total_files"] == 2
+    finally:
+        detected.close()
+
+
+def test_cache_detection_accepts_a_symbol_only_index(tmp_path) -> None:
+    """没有调用边但有已索引文件的仓库同样不走整仓现场解析。"""
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    root = tmp_path / "proj"
+    root.mkdir()
+    (root / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    cache = ASTCache(str(root))
+    try:
+        cache.index_project(workers=0)
+    finally:
+        cache.close()
+
+    detected = CodeGraphCallTool(str(root))._try_get_cache()
+    try:
+        assert detected.has_call_edges() is False
+        assert detected.get_stats()["total_files"] == 1
+    finally:
+        detected.close()
+
+
+def test_cache_detection_treats_an_unreadable_cache_as_missing(
+    tmp_path, monkeypatch
+) -> None:
+    """读不到索引（异常）时按「没有索引」处理，而不是把异常抛给调用方。"""
+    from tree_sitter_analyzer import ast_cache as ast_cache_module
+
+    def _explode(*args, **kwargs):
+        raise RuntimeError("cache unavailable")
+
+    monkeypatch.setattr(ast_cache_module, "ASTCache", _explode)
+
+    assert CodeGraphCallTool(str(tmp_path))._try_get_cache() is None
+
+
+@pytest.mark.asyncio
+async def test_execute_proceeds_normally_when_an_index_exists(tmp_path) -> None:
+    """有索引时不触发 INDEX_MISSING，维持原有的解析路径与答案结构。"""
+    from tree_sitter_analyzer.ast_cache import ASTCache
+
+    root = tmp_path / "proj"
+    root.mkdir()
+    (root / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    (root / "b.py").write_text(
+        "from a import f\n\n\ndef g():\n    return f()\n", encoding="utf-8"
+    )
+    cache = ASTCache(str(root))
+    try:
+        cache.index_project(workers=0)
+    finally:
+        cache.close()
+
+    result = await CodeGraphCallTool(str(root)).execute({"mode": "summary"})
+
+    assert result["success"] is True
+    assert "index_missing" not in result
+    assert result["mode"] == "summary"
