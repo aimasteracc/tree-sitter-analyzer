@@ -61,11 +61,24 @@ def _import_probes(changed_rel: str) -> tuple[str, ...]:
     return tuple(probe for probe in probes if len(probe) >= 8)
 
 
+def _is_collectable_test(path: Path) -> bool:
+    """pytest 会收集的文件：test_*.py / *_test.py，且不是 conftest.py。
+
+    只列可收集的测试文件——``tests/`` 下的辅助模块（``_ast_cache_helpers.py``、
+    ``known_answer/_runner.py``）实现了测试用到的代码但本身不跑，列进去只会让
+    agent 去执行一个 0 测试的文件（实测 pytest 直接 rc=5）。
+    """
+    name = path.name
+    if name == "conftest.py":
+        return False
+    return name.startswith("test_") or name.endswith("_test.py")
+
+
 def _iter_test_files(project_root: str) -> Iterable[Path]:
     tests_root = Path(project_root) / "tests"
     if not tests_root.is_dir():
         return ()
-    return tests_root.rglob("*.py")
+    return (path for path in tests_root.rglob("*.py") if _is_collectable_test(path))
 
 
 def text_reference_tests(

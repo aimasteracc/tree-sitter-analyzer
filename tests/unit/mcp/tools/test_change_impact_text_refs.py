@@ -144,3 +144,26 @@ def test_confidence_distinguishes_imports_from_mentions(tmp_path) -> None:
         ("tests/test_package_attr.py", "import"),
         ("tests/test_mentions.py", "mention"),
     ]
+
+
+def test_helpers_and_conftest_are_not_listed(tmp_path) -> None:
+    """tests/ 下的辅助模块与 conftest 不是可收集测试：不能出现在补充列表里。"""
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "_helpers.py").write_text(
+        "import tree_sitter_analyzer.cache.search\n", encoding="utf-8"
+    )
+    (tests / "conftest.py").write_text(
+        "import tree_sitter_analyzer.cache.search\n", encoding="utf-8"
+    )
+    (tests / "test_real.py").write_text(
+        "import tree_sitter_analyzer.cache.search\n", encoding="utf-8"
+    )
+
+    found = text_reference_tests(
+        str(tmp_path),
+        changed_paths=["tree_sitter_analyzer/cache/search.py"],
+        selected=[],
+    )
+
+    assert [item["file"] for item in found] == ["tests/test_real.py"]

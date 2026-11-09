@@ -51,6 +51,22 @@
 因此升级门槛应为「够大的样本 + 明确上限」：我建议至少 20 个真实改动的抽样全为真阳性后，再把 import 级候选并入 `focused_test_command`（并对数量设上限），
 在那之前保持 advisory —— 采样 4 个不足以支撑一个会改变 CI 选择面的默认行为。
 
+**第 45 轮扩样（5 个不同模块）发现一个真实缺陷并已修**：通道把 `tests/` 下的**辅助模块**
+（`_ast_cache_helpers.py`、`known_answer/_runner.py`）也算成了「测试文件」——pytest 对它们
+直接 `rc=5`（0 收集）。现在只列 pytest 可收集的文件（`test_*.py` / `*_test.py`，排除
+`conftest.py`）。过滤后抽样：
+
+| 模块 | 首个 import 级候选 | 单独运行时对该模块覆盖率 |
+|---|---|---|
+| `cache/indexer.py` | `tests/unit/test_ast_cache_cache_directory.py` | **48.42 %** |
+| `mcp/tools/callers_tool.py` | `tests/unit/test_aliased_import_callers_1670.py` | **53.24 %** |
+| `uql/output.py` | `tests/contracts/test_agent_native_surface_contract.py` | 19.25 % |
+| `capabilities.py` | 同上 | 40.32 % |
+| `mcp/tools/callees_tool.py` | 同上 | 13.13 % |
+
+7/7 可用样本全部真实执行到被改动模块（误报率 0）；此前那 2 个「不可运行」样本被过滤器消除。
+样本量仍不足 20，升级条件保持不变。
+
 ## 0. 环境与方法
 
 | 项 | 值 |
