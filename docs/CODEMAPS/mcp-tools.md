@@ -57,7 +57,7 @@ legacy MCP name is now reached via its facade (`old_name` →
 | `refactoring_suggestions` | `--refactor` | Concrete refactor recipes for `code_patterns` findings |
 | `safe_to_edit` | `--safe-to-edit` | Verdict + downstream caller risk |
 | `modification_guard` | `--modification-guard --modification-guard-symbol SYM` | Pre-modification safety check (run BEFORE editing public symbol) |
-| `smart_context` | `--smart-context --query "X"` | Targeted context for a symbol/file |
+| `smart_context` | `--smart-context <FILE>` | One-call file profile (health, exports, structure, deps, edit risk); there is no `--query` flag |
 | `symbol_lineage` | `--symbol-lineage SYM` | Where a symbol was defined / renamed / moved |
 | `code_patterns` | `--code-patterns` | Code smells (long_method, deep_nesting, god_class, sql_injection, …) |
 | `detect_routes` | `--detect-routes` | Flask/Django/FastAPI/Express/Spring Boot routes |

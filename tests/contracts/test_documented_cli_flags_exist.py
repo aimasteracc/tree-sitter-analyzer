@@ -106,3 +106,40 @@ def test_the_non_flag_allowlist_stays_honest() -> None:
     real = _parser_flags()
 
     assert sorted(DOCUMENTED_NON_FLAGS - real) == sorted(DOCUMENTED_NON_FLAGS)
+
+
+def test_the_capability_table_flags_all_exist() -> None:
+    """`docs/CODEMAPS/mcp-tools.md` 的「CLI flag」列写的旗标必须真实存在。
+
+    这一列的片段是裸旗标（`--check-scale`），没有 `tsa ` 前缀，所以主 CLI 片段规则
+    覆盖不到它们——而这一列正是「能力 → 命令」的承诺表，写错就等于教 agent 用错命令。
+    """
+    from tree_sitter_analyzer.cli_main import create_argument_parser
+
+    real = {
+        option
+        for action in create_argument_parser()._actions
+        for option in action.option_strings
+        if option.startswith("--")
+    }
+    rows = [
+        line
+        for line in (REPO_ROOT / "docs/CODEMAPS/mcp-tools.md")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.startswith("| `")
+    ]
+    phantom: dict[str, str] = {}
+    for line in rows:
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if len(cells) < 2:
+            continue
+        for span in re.findall(r"`([^`]+)`", cells[1]):
+            for flag in _FLAG.findall(span):
+                if flag not in real and flag not in DOCUMENTED_NON_FLAGS:
+                    phantom.setdefault(flag, cells[0])
+
+    assert phantom == {}, (
+        "these flags appear in the capability table but do not exist: "
+        + ", ".join(f"{flag} ({row})" for flag, row in sorted(phantom.items()))
+    )
