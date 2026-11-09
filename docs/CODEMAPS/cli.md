@@ -16,6 +16,9 @@ Six installed console-script entry points; the main analyzer and its aliases dis
 | 类层级（子类/父类/树） | `--class-hierarchy --class-hierarchy-mode subclasses --class-hierarchy-class <Class>` |
 | 多跳问题（callers + tests 一次问完） | `--uql "symbol('<symbol>').callers().tests()"` |
 | 建索引（图查询的前置） | `--ast-cache --ast-cache-mode index` |
+| 只问「有没有变」（≈400 B 的 304） | `--callers "<symbol>" --if-none-match "<answer_etag>"` |
+| 只问「变在哪」（增量） | `--callers "<symbol>" --previous-entries-json '<上一轮 callers[]>'` |
+| 花一次调用前先问价/问前置 | `--capabilities` · `--capabilities nav.callers` |
 | 文件 / 项目健康度 | `--file-health <file>` · `--project-health` |
 | 编辑前风险评估 | `--safe-to-edit <file>` |
 | 首次接入（暖索引 + 写 agent 配置） | `--setup` |
@@ -35,6 +38,20 @@ Six installed console-script entry points; the main analyzer and its aliases dis
 
 响应还带 `answer_etag`（`sha256:…`）：同一索引上重复提问得到同一 etag，作用域源码变化会改变它。
 agent 可以按 etag 判断「上一轮的答案还能不能用」，避免重复读取同样的 15 KB。
+
+**增量重问（agent 的主循环）**：同一会话里反复问同一个符号时，不要每次重读 15 KB。
+
+```text
+第 1 次   --callers X                              → 保存 answer_etag 与 callers[]
+第 N 次   --callers X --previous-entries-json …    → {delta:{added,removed,unchanged_count}} + 完整性证据
+只查变化  --callers X --if-none-match <etag>       → {unchanged:true}（命中且未过期才给）
+```
+
+任何 stale / 不完整状态都会让这两个捷径失效并回完整答案——ETag 是承诺，不是猜测。
+
+**空答案是带证明的**：`callers` / `test_map` 的空结果会带 `absence`
+（`unreferenced` / `entry_point` / `script` / `untested` 为 `proven`；证据不全时是
+`unknown` + `possible` 并点名开放站点）。`NOT_FOUND` 不携带 `absence`。
 
 ## Entry Points
 

@@ -505,6 +505,13 @@ CLI `--capabilities` 与 MCP 暴露留到下一轮（新 flag 需要同步 codem
 agent 常把答案缓存到下一轮。返回 `expires_when: {files: [...], index_generation: "..."}`，
 agent 只要看到这几条文件没动、index 没重建，就可以安全复用——不需要重新提问。
 
+### 12.8 让 agent 在它真正会读的地方发现这些能力
+
+能力写进 RFC 与技能包还不够：agent 的第一站是 `docs/CODEMAPS/`。第 30 轮把主循环写进了
+两处发现路径——`docs/CODEMAPS/cli.md` 的任务表新增三行（304 式重问 / 增量重问 / 预检），
+并在下方给出「第 1 次问、第 N 次问」的具体命令对照；`docs/CODEMAPS/mcp-tools.md` 的
+`nav` 与 `nav_test_map` 行注明 `answer_etag`、`absence` 与 `if_none_match` / `previous_entries`。
+
 ### 实施顺序
 
 1. **12.1 + 12.2**（一个 PR）：都依赖同一份「答案身份 + 源码状态」派生，先做 ETag 再做 delta。
