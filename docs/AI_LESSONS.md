@@ -1,5 +1,40 @@
 # AI Lessons
 
+## 2026-11 — 为便利字段收费的是热路径预算
+
+### Context
+
+第 66 轮给 `callers` 加 `expires_when: {files, index_generation}`——一个纯便利字段（让 agent
+不必重问就能判断能否复用）。实现时为了填 `index_generation`，每次回答都调用
+`resolve_index_location()` 去解析索引位置。
+
+我自己写了 4 条测试，全绿。CI 上三条**已有的**契约同时红了：
+
+| 契约 | 实际 | 含义 |
+|---|---|---|
+| `test_warm_requests_probe_nothing` | `(0, 0, 8)` 而非 `(0, 0, 0)` | 热路径多 8 次文件系统探测 |
+| `test_requests_racing_a_republish_never_mix_snapshots` | 非空 | 探测在重发布进行中读了索引状态 |
+| `test_callers_after_noop_refresh_reuse_the_graph_and_answer_identically` | 两答案不同 | no-op 刷新后世代仍变，答案不再可重用 |
+
+修法：从答案里**已经存在**的 `source_evidence.source_generation` 取值，不碰文件系统；
+读不到就 `null`（诚实：agent 仍可依赖 `files`）。
+
+### Lessons learned
+
+1. **行为测试证明功能存在，不变量测试证明它没在别处收税。** 只写前者，就会像这次一样：
+   字段正确、测试全绿、热路径悄悄多付 8 次 syscall。
+2. 加一个「便利字段」前先问：它的数据从哪来？如果答案是「再查一次」，那它就不是便利，
+   而是把成本转移到了每一次调用。
+3. `null` 往往比「查一次填上」更尊重调用方：作用域里已经有 `files` 可依赖时，
+   为了漂亮去补 `index_generation` 是负债。
+
+### Required guardrail
+
+`tree_sitter_analyzer/mcp/tools/callers_tool.py` 的 `expires_when()` 只读响应内已有字段（`source_evidence` 的 `source_generation`），
+由 `tests/unit/mcp/tools/test_callers_reason_evidence.py` 固定失败路径（证据里没有世代 → `null`），
+并由既有的 `tests/integration/test_resident_handle.py::test_warm_requests_probe_nothing`
+与 `tests/integration/test_resident_snapshot_memo.py::test_requests_racing_a_republish_never_mix_snapshots`
+守住「热路径零探测」这条预算。
 ## 2026-11 — 门禁看不见自己要看的输入
 
 ### Context
