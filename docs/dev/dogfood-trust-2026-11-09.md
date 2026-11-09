@@ -17,6 +17,7 @@
 | **P1-4 change-impact 测试选择召回** | **撤回：测量比较的是「被截断的可见列表」，选择本身包含那些文件**（`tests_to_run_omitted_count: 13`） | §4 / 第 49 轮 |
 | P2 系列（hotspot 档位 / index-meta / agent-summary-only / codemap parity） | 已修 | §3 |
 | §11 no-op 索引成本 | 已修：9.08 s → **0.66–0.86 s**（记录生命周期，不动 #1253） | §11 第 26–29 轮 |
+| └ **复测（2026-11-10，第 64 轮）** | 改动累积后首次 6.66 s、紧随的 no-op **0.72 s**；记录仍在（`tsa.converged_refresh`，extractor_version 55） | 本轮实测 |
 | §12 agent 原生原语（etag/304/delta/capabilities/absence/UQL hint） | 全部落地，CLI+MCP 双面 | §12 |
 | RFC-0044 缺席证书 | 五种全部实现，status = implemented | `rfcs/0044-…` |
 
