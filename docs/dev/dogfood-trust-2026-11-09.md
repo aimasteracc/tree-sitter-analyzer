@@ -430,6 +430,11 @@ agent 每个回合都会重问「X 的调用者是谁吗」，而绝大多数时
 `cost_class`、**可直接复制的最小调用示例**、以及 `repair`（失败时该做什么的结构化动作，而不是英文句子）。
 它比 90 KB 的 help 更接近「机器可规划的 API 描述」。
 
+**已落地（第 14 轮，模块层）**：`tree_sitter_analyzer/capabilities.py` 的 `build_capability_manifest()`
+从注册表派生这份清单——8 个 facade、94 个 action，每个 action 带 `tier`（instant/indexed）、
+`preconditions`、`cost_class`、最小调用示例、`self_describing`。实测 14 个 instant / 70 个 indexed。
+CLI `--capabilities` 与 MCP 暴露留到下一轮（新 flag 需要同步 codemap 与 README 的 flag 计数，单独一步做）。
+
 ### 12.5 缺席证书（negative-space answers）
 
 `complete` 现在证明的是「列全了」；agent 更需要「**证明不存在**」：例如「这是入口点，所以没有调用者」
