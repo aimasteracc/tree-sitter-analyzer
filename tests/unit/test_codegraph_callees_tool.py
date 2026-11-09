@@ -571,3 +571,18 @@ class TestHierarchyCalleesNoBareNameFanout:
             {"symbol": "apply_budget", "mode": "hierarchy", "output_format": "json"}
         )
         assert result["hierarchy"]["callees"] == []
+
+
+@pytest.mark.asyncio
+async def test_callees_if_none_match_returns_a_minimal_unchanged_answer(
+    long_lived_nav,
+) -> None:
+    """§12.1 的 callees 半边：同一指纹重问只回最小载荷，不回整份 callee 列表。"""
+    nav, _root = long_lived_nav
+    query = {"action": "callees", "symbol": "Service.target", "include_bodies": False}
+    first = await nav.execute(dict(query))
+
+    second = await nav.execute({**query, "if_none_match": first["answer_etag"]})
+
+    assert (second["unchanged"], "callees" in second) == (True, False)
+    assert second["answer_etag"] == first["answer_etag"]
