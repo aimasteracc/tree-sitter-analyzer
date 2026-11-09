@@ -585,8 +585,11 @@ def test_symbol_projection_rejects_malformed_symbol_scalar() -> None:
     assert symbol_projection_is_exact(conn) is False
 
 
-def test_missing_fts_row_forces_full_projection_reindex(tmp_path):
+def test_missing_fts_row_is_rebuilt_without_full_projection_reindex(tmp_path):
     # PR #1253 thread 3759606810: removed FTS evidence cannot retain an exact stamp.
+    # dogfood 2026-11-09：缺失的 FTS 条目由参考行重建即可（并按完整校验重新签发
+    # marker），不再触发整仓重写——修复前这里把 2917 个文件全部重新提取，
+    # 一次 1 文件刷新实测 57 s。
     from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
 
     source = tmp_path / "app.py"
@@ -610,7 +613,9 @@ def test_missing_fts_row_forces_full_projection_reindex(tmp_path):
     after = symbol_projection_is_exact(conn, require_fts=True)
     cache.close()
 
-    assert (before, stats["indexed"], stats["cached"], after) == (False, 1, 0, True)
+    # before=False 仍然固定「移除 FTS 证据后不得保留旧 exact 戳」这一 #1253 语义；
+    # 变化的是恢复方式：有界重建并重新认证，而不是全量重索引。
+    assert (before, stats["indexed"], stats["cached"], after) == (False, 0, 1, True)
 
 
 def test_extra_fts_rowid_rejects_exact_projection(tmp_path):
@@ -666,8 +671,10 @@ def test_projection_preflights_lengths_before_payload_fetch(tmp_path, monkeypatc
     assert (result, wrapped.payload_fetched) == (False, False)
 
 
-def test_stale_external_fts_terms_force_rebuild(tmp_path):
+def test_stale_external_fts_terms_are_rebuilt_from_rows(tmp_path):
     # PR #1253 thread 3760178960: external payload columns are not indexed terms.
+    # dogfood 2026-11-09：过期词条用参考行原地重建 FTS 即可（并按完整校验重签
+    # marker），不必把文件重新提取一遍；修复前这里每次索引都全量重写。
     from tree_sitter_analyzer.index_symbol_projection import (
         symbol_projection_is_exact,
         upsert_symbol_projection_state,
@@ -703,12 +710,14 @@ def test_stale_external_fts_terms_force_rebuild(tmp_path):
     )
     cache.close()
 
+    # before=False / stale_matches=(1,0) 仍固定 #1253 的语义：旧戳不可信、过期词条
+    # 还在；修复方式变为按参考行重建（索引 0 个文件），重建后 alpha 消失、beta 出现。
     assert (before, stale_matches, stats["indexed"], after, repaired_matches) == (
         False,
         (1, 0),
-        1,
+        0,
         True,
-        (1, 0),
+        (0, 1),
     )
 
 

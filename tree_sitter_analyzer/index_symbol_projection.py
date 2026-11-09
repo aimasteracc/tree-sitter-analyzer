@@ -177,6 +177,58 @@ def upsert_symbol_projection_state(conn: sqlite3.Connection, rel_path: str) -> N
     )
 
 
+def converge_symbol_projection(
+    conn: sqlite3.Connection,
+    *,
+    require_fts: bool = False,
+) -> bool:
+    """收敛投影的三类内部残余，返回是否做了改动（幂等，可重复调用）。
+
+    只修复 *内部* 不一致，不重写任何参考行——行内容与源码的一致性由增量遍历
+    负责：
+
+    1. ``ast_symbol_rows`` 里已不在 ``ast_index`` 的文件（陈旧行）；
+    2. ``ast_index`` 里缺少投影状态的文件（解析失败或空文件）；
+    3. 外部内容 FTS 的孤儿 docsize 行（参考行被重写时遗留）。
+
+    dogfood 2026-11-09：旧版缓存迁移后这三类残余会让
+    :func:`symbol_projection_is_exact` 永远为假，于是每次 ``index`` 都把每个
+    文件重写一遍（本仓库 2917 文件实测：增量 0.6 s 退化成全量 57 s）。收敛后
+    既有认证器可以补发 marker，下一次索引恢复增量。
+    """
+    tables = {
+        str(row[0])
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    if not {"ast_index", "ast_symbol_rows", "ast_symbol_projection_state"} <= tables:
+        return False
+    changed = False
+    deleted = conn.execute(
+        "DELETE FROM ast_symbol_rows WHERE file_path NOT IN "
+        "(SELECT file_path FROM ast_index)"
+    ).rowcount
+    changed = changed or deleted > 0
+    missing = conn.execute(
+        "SELECT source.file_path FROM ast_index AS source "
+        "LEFT JOIN ast_symbol_projection_state AS state "
+        "ON state.file_path = source.file_path WHERE state.file_path IS NULL"
+    ).fetchall()
+    for row in missing:
+        upsert_symbol_projection_state(conn, str(row[0]))
+        changed = True
+    orphan_states = conn.execute(
+        "DELETE FROM ast_symbol_projection_state WHERE file_path NOT IN "
+        "(SELECT file_path FROM ast_index)"
+    ).rowcount
+    changed = changed or orphan_states > 0
+    if require_fts and not _fts_terms_are_exact(conn):
+        # 行数一致也不代表词条一致：原地 UPDATE 参考行会留下过期的 FTS 词条。
+        # FTS5 官方的 integrity-check(rank=1) 是唯一权威判据，重建后即精确。
+        conn.execute("INSERT INTO ast_symbols_fts(ast_symbols_fts) VALUES('rebuild')")
+        changed = True
+    return changed
+
+
 def symbol_projection_is_exact(
     conn: sqlite3.Connection,
     max_symbols: int = 2_000_000,

@@ -30,7 +30,10 @@ from ..index_source_snapshot import (
     parse_source_scope_descriptor,
     validate_full_index_source_scope,
 )
-from ..index_symbol_projection import symbol_projection_is_exact
+from ..index_symbol_projection import (
+    converge_symbol_projection,
+    symbol_projection_is_exact,
+)
 from ..indexing_limits import normalize_index_max_files
 from ..indexing_snapshot import (
     IndexCandidateSnapshot,
