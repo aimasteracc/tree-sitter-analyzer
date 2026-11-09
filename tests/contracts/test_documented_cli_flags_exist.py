@@ -143,3 +143,39 @@ def test_the_capability_table_flags_all_exist() -> None:
         "these flags appear in the capability table but do not exist: "
         + ", ".join(f"{flag} ({row})" for flag, row in sorted(phantom.items()))
     )
+
+
+def test_the_generated_facade_table_cli_twins_all_exist() -> None:
+    """`docs/api/facade-actions.md` 的「CLI twin」列必须指向真实旗标。
+
+    这张表是生成物（`scripts/generate_facade_actions_doc.py`），参数列已由 drift 测试
+    保证与 schema 一致；但**CLI twin 来自 facade map 的映射**，映射写错（指向已删旗标）
+    时 drift 测试不会红——只有这条能发现。
+    """
+    from tree_sitter_analyzer.cli_main import create_argument_parser
+
+    real = {
+        option
+        for action in create_argument_parser()._actions
+        for option in action.option_strings
+        if option.startswith("--")
+    }
+    rows = [
+        line
+        for line in (REPO_ROOT / "docs/api/facade-actions.md")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.startswith("| `")
+    ]
+    phantom: dict[str, str] = {}
+    for line in rows:
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if len(cells) < 4:
+            continue
+        for flag in _FLAG.findall(cells[3]):
+            if flag not in real:
+                phantom.setdefault(flag, cells[0])
+
+    assert phantom == {}, "these CLI twins do not exist in the parser: " + ", ".join(
+        f"{flag} ({row})" for flag, row in sorted(phantom.items())
+    )
