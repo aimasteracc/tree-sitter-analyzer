@@ -122,7 +122,19 @@ codegraph_context_tool.py:738  receiver=_Surface                confidence_tier=
 ```
 
 调用真实发生在函数体内（如 39 行那是 `def`，调用在 46 行）。`confidence_tier=proven` 让这个偏差
-看起来被证明过。**判定：bug（坐标归属）。**
+看起来被证明过。**判定：输出契约的坐标语义与 agent 预期不一致（不是采集错误）。**
+
+2026-11-09 复核（第 8 轮）：边数据本身是对的——`edges` 行里 `line=46` 是调用点、`caller_line=39`
+是调用方定义行；`cache.query_callers()` 把调用点放在 `callee_line`、定义行放在 `caller_line`，
+而 `_sql_native_callers` 用 `caller_line` 填 `line`。也就是说：**有调用点坐标，只是没有输出**。
+同一份数据里模块级调用点（`<module>` 行）已经把 `line` 当作调用点，命名调用方却给定义行——这才是
+「跳到行号看到 def」的原因。
+
+**建议的修复（additive，不破坏现有契约）**：在调用方条目里加 `call_site_line`（取自
+`edge["callee_line"]`），`line`/`end_line` 保持「调用方函数定义范围」的现有语义，并在
+`docs/CODEMAPS/cli.md` 的任务表旁注明两者区别。这样 `--callers X | jq` 能直接拿到 grep 语义的
+调用位置，而依赖 `line`=定义行的既有消费者不受影响；同时给 `test_callers_*` 加一条「命名调用方的
+`call_site_line` 等于 edges 的调用点」的断言。
 
 ### P1-4 `--change-impact` 的测试选择漏掉 4/8 直接引用该模块的测试
 
