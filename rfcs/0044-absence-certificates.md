@@ -85,6 +85,20 @@ answer drops to `kind: "unknown"`, `confidence: "possible"`, with the reason in
 
 Rules are synchronous reads over already-open connections; no new locking.
 
+## Identification vs absence (added 2026-11-10, during implementation)
+
+A smoke test found the rules firing less often than specified: `entry_point` / `script` were gated
+on `completeness == "complete"`, but a real entry point resolves to `NOT_FOUND` with
+`NON_CALL_REFERENCES` (the declaring file holds non-call references), so the certificate never
+appeared for exactly the objects it was written for.
+
+The distinction: `entry_point` / `script` are **identification facts** — the object is invoked from
+outside the analysed graph — so they hold without a complete caller list. They now ship with
+`identification_only: true` and `symbol_defined` evidence in that case. `unreferenced` / `untested`
+are **negative claims** and keep requiring `complete`. `SYMBOL_NOT_DEFINED` still yields no
+certificate at all: not being indexed is not being an entry.
+
+
 ## Three-Surface impact (CLI ↔ MCP parity)
 
 - CLI: no new flag. `--callers` / `--test-map` responses carry `absence`.

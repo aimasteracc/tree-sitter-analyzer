@@ -443,6 +443,70 @@ def _unproven_absence(
     }
 
 
+def _identification_absence(
+    result: dict[str, Any],
+    project_root: str,
+    function_name: str,
+    file_path: str | None,
+) -> dict[str, Any] | None:
+    """证据不全时的**识别性**证书：入口点 / 脚本（RFC-0044，2026-11-10 补充）。
+
+    与 ``unreferenced`` 的区别：这类结论证明的是「它由外部调用方进入」，而不是
+    「没有任何调用方」，因此不依赖 RFC-0040 的完整性证明。前提是符号确实在索引里
+    ——``SYMBOL_NOT_DEFINED`` 时一律不签发，避免把「没索引到」说成「是入口点」。
+    """
+    reasons = set(result.get("completeness_reasons") or [])
+    if "SYMBOL_NOT_DEFINED" in reasons or not project_root:
+        return None
+    console = _console_script_evidence(project_root, function_name, file_path=file_path)
+    main_module = _dunder_main_evidence(project_root, file_path)
+    shebang = _script_evidence(project_root, file_path)
+    if console is not None:
+        kind, evidence_kind, evidence_detail, next_step = (
+            "entry_point",
+            "console_script",
+            console,
+            "This is an entry point, not dead code: the console script invokes it.",
+        )
+    elif main_module is not None:
+        kind, evidence_kind, evidence_detail, next_step = (
+            "entry_point",
+            "dunder_main",
+            main_module,
+            "This is an entry point: the package __main__ module exposes it.",
+        )
+    elif shebang is not None:
+        kind, evidence_kind, evidence_detail, next_step = (
+            "script",
+            "shebang",
+            shebang,
+            "This is a runnable script, executed directly rather than imported.",
+        )
+    else:
+        return None
+    return {
+        "kind": kind,
+        "confidence": "proven",
+        # 识别性事实：断言「从图外进入」，不是「零调用方」。
+        "identification_only": True,
+        "evidence": [
+            {"kind": evidence_kind, "detail": evidence_detail},
+            {
+                "kind": "symbol_defined",
+                "detail": (
+                    "the symbol is defined in this file; the certificate claims an "
+                    "external entry, not a proven absence of callers"
+                ),
+            },
+        ],
+        "next_step": next_step,
+        "detail": (
+            "Caller completeness is not proven here, so this is an identification "
+            "(the code is reachable from outside the graph), not an absence claim."
+        ),
+    }
+
+
 def absence_certificate(
     result: dict[str, Any],
     *,
@@ -470,7 +534,14 @@ def absence_certificate(
         result.get("unresolved_in_declaring_files") or 0,
     )
     if result.get("completeness") != "complete" or any(open_sites):
-        # 证据不全时只降级、不冒充：not-found 连「可能没有」都不给（它可能
+        # 证据不全时，**识别性事实**仍然可以签发：entry_point / script 断言的是
+        # 「它被图外调用」，不是「零调用方」，因此不需要调用图的完整性证明。
+        identification = _identification_absence(
+            result, project_root, function_name, file_path
+        )
+        if identification is not None:
+            return identification
+        # 其余情况只降级、不冒充：not-found 连「可能没有」都不给（它可能
         # 根本不在索引里），其余情况给 unknown/possible 并点名开放站点。
         if result.get("verdict") == "NOT_FOUND":
             return None

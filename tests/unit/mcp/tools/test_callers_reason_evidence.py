@@ -1019,3 +1019,75 @@ def test_a_not_found_answer_is_never_an_absence() -> None:
         )
         is None
     )
+
+
+def test_console_script_entry_certifies_identification_without_completeness(tmp_path):
+    """RFC-0044（2026-11-10 补充）：证据不全时，入口点仍签发**识别性**证书。
+
+    真实入口常常是 NOT_FOUND + NON_CALL_REFERENCES（声明文件里有非调用引用），
+    此时「零调用方」无法证明，但「它由 console script 进入」是可证的识别性事实。
+    """
+    from tree_sitter_analyzer.mcp.tools.callers_tool import absence_certificate
+
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "cli.py").write_text(
+        "def unused_main():\n    return 1\n", encoding="utf-8"
+    )
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "x"\n\n[project.scripts]\nx = "pkg.cli:unused_main"\n',
+        encoding="utf-8",
+    )
+    result = {
+        "verdict": "NOT_FOUND",
+        "caller_count": 0,
+        "completeness": "unknown",
+        "completeness_reasons": ["NON_CALL_REFERENCES"],
+    }
+
+    certificate = absence_certificate(
+        result,
+        project_root=str(tmp_path),
+        function_name="unused_main",
+        file_path="pkg/cli.py",
+    )
+
+    assert certificate is not None
+    assert (
+        certificate["kind"],
+        certificate["confidence"],
+        certificate["identification_only"],
+    ) == ("entry_point", "proven", True)
+    assert [item["kind"] for item in certificate["evidence"]] == [
+        "console_script",
+        "symbol_defined",
+    ]
+
+
+def test_undefined_symbol_never_gets_an_identification_certificate(tmp_path):
+    """符号不在索引里时连「是入口点」都不能说——那是没索引到，不是入口。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import absence_certificate
+
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "cli.py").write_text(
+        "def helper():\n    return 1\n", encoding="utf-8"
+    )
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "x"\n\n[project.scripts]\nx = "pkg.cli:ghost"\n',
+        encoding="utf-8",
+    )
+    result = {
+        "verdict": "NOT_FOUND",
+        "caller_count": 0,
+        "completeness": "unknown",
+        "completeness_reasons": ["SYMBOL_NOT_DEFINED"],
+    }
+
+    assert (
+        absence_certificate(
+            result,
+            project_root=str(tmp_path),
+            function_name="ghost",
+            file_path="pkg/cli.py",
+        )
+        is None
+    )

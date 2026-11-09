@@ -106,14 +106,12 @@ Rules:
   `incomplete_call_graph` evidence names the open sites so the agent knows what to close.
 - A `NOT_FOUND` answer never carries `absence` at all: "not in the index" is not
   "nobody calls it". Consumers must treat unknown `kind` values as informational.
-- Known limitation (2026-11-10, found by smoke test): the certificate is gated on the caller
-  answer being `complete`. Real entry points often resolve to `NOT_FOUND` with incomplete
-  evidence (e.g. non-call references in the declaring file), so `entry_point` / `script` fire
-  less often than their rules suggest. The distinction that would fix it: `entry_point` and
-  `script` are *identification* facts (the object is invoked from outside the graph), not
-  negative claims — they could keep `proven` while caller completeness is unknown, whereas
-  `unreferenced` / `untested` must keep requiring proof. That is a contract change, left to
-  review rather than slipped into this branch.
+- **Identification vs absence** (2026-11-10): `entry_point` and `script` assert "reachable
+  from outside the call graph", which is provable without RFC-0040 completeness; they therefore
+  carry `identification_only: true` plus `symbol_defined` evidence even when the answer is
+  `NOT_FOUND` with `NON_CALL_REFERENCES` (a real entry point often looks like that). The negative
+  claims — `unreferenced`, `untested` — still require `completeness: "complete"`.
+  `SYMBOL_NOT_DEFINED` never gets a certificate of any kind: not being indexed is not being an entry.
 - The certificate is part of the answer content, so it participates in `answer_etag`.
 
 ## `next_step` conventions
