@@ -198,6 +198,7 @@ def main() -> None:
     args = parser.parse_args(_normalize_agent_command_aliases(sys.argv[1:]))
     _apply_format_alias(args)
     _validate_mode_flag_wiring(args, parser)
+    _reject_missing_project_root(args)
     _configure_logging(args)
 
     special_result = handle_special_commands(args)
@@ -329,6 +330,54 @@ def _validate_mode_flag_wiring(
             continue
         trigger_flag = "--" + trigger_dest.replace("_", "-")
         parser.error(f"{mode_flag} requires {trigger_flag}")
+
+
+def _reject_missing_project_root(args: argparse.Namespace) -> None:
+    """``--project-root`` 必须指向已存在的目录，否则立即失败（dogfood 2026-11-09）。
+
+    P0-1：不存在的工作区曾被当成空项目——``--callers main`` 返回
+    ``success=true``、``verdict=NOT_FOUND``、``caller_count=0``，next_step 还
+    让人去建索引。路径打错和「确实没有调用方」在输出上完全一样，脚本会把前者
+    当结论。这里在分派任何工具之前拒绝，stdout 仍是合法 JSON 信封。
+    """
+    root = getattr(args, "project_root", None)
+    if not isinstance(root, (str, os.PathLike)) or os.path.isdir(root):
+        return
+    from tree_sitter_analyzer.cli.output_format import wants_json_output
+    from tree_sitter_analyzer.output_manager import (
+        output_error,
+        output_info,
+        output_json,
+    )
+
+    message = f"project root is not a directory: {root}"
+    hint = (
+        "Pass an existing directory with --project-root, or omit it to use the "
+        "current working directory."
+    )
+    if wants_json_output(args):
+        summary_line = f"project_root: invalid — {message}"
+        output_json(
+            {
+                "success": False,
+                "verdict": "ERROR",
+                "error_code": "INVALID_PROJECT_ROOT",
+                "error_type": "validation",
+                "error": message,
+                "hint": hint,
+                "project_root": root,
+                "summary_line": summary_line,
+                "agent_summary": {
+                    "summary_line": summary_line,
+                    "verdict": "ERROR",
+                    "next_step": hint,
+                },
+            }
+        )
+    else:
+        output_error(f"ERROR: {message}")
+        output_info(hint)
+    sys.exit(1)
 
 
 def _configure_logging(args: argparse.Namespace) -> None:

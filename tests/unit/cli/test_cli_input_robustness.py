@@ -98,3 +98,49 @@ class TestDispatchFailureStreamDiscipline:
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
+
+
+class TestProjectRootValidation:
+    """P0-1（dogfood 2026-11-09）：坏 --project-root 不能被当成「没有人调用」。
+
+    修复前：不存在的工作区仍返回 ``success: true`` + ``NOT_FOUND`` +
+    ``caller_count: 0``，next_step 还让人去建索引——路径打错会和「确实没有
+    调用方」看起来一模一样。
+    """
+
+    def test_unknown_project_root_is_rejected_before_analysis(self) -> None:
+        proc = _run_cli(
+            "--project-root",
+            "/no/such/dir/zzz",
+            "--callers",
+            "main",
+            "--format",
+            "json",
+        )
+        _assert_no_traceback(proc)
+        assert proc.returncode == 1
+        payload = json.loads(proc.stdout)
+        assert (
+            payload["success"],
+            payload["verdict"],
+            payload["error_code"],
+        ) == (False, "ERROR", "INVALID_PROJECT_ROOT")
+        assert "caller_count" not in payload
+        assert (
+            "index" not in payload["hint"].lower()
+            or "directory" in payload["hint"].lower()
+        )
+
+    def test_invalid_project_root_text_mode_stays_off_stdout(self) -> None:
+        proc = _run_cli(
+            "--output-format",
+            "text",
+            "--project-root",
+            "/no/such/dir/zzz",
+            "--callers",
+            "main",
+        )
+        _assert_no_traceback(proc)
+        assert proc.returncode == 1
+        assert proc.stdout == ""
+        assert "not a directory" in proc.stderr
