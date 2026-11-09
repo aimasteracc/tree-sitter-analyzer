@@ -1,5 +1,31 @@
 # AI Lessons
 
+## 2026-11 — 生成的文档不在快速门里，漂移就只能等 CI
+
+### Context
+
+给 UQL schema 加 `if_none_match` 后，`docs/api/facade-actions.md` 少了一格。
+本地 `uv run pytest -q` 报 **2280 passed**，CI 上四个测试矩阵 job 同时红在
+`test_facade_actions_doc_matches_generator`——因为 `pytest.ini` 的 quick-gate
+`testpaths` 是显式清单，**没有包含 `tests/unit/docs`**（26 个测试，1.05 秒），
+于是"生成物是否与生成器一致"这件 1 秒能查的事，要等 6 分钟后的 CI 才发现。
+
+修复：`pytest.ini` 与 `tests/contracts/test_pytest_runtime_contract.py` 同时加入
+`tests/unit/docs`；quick gate 从 2280 变 2306 passed，总时长 36.5 秒（仍远低于 5 分钟上限）。
+
+### Lessons learned
+
+1. `testpaths` 是**选择性**清单：新目录不会自动进快速门，只有被显式加入才跑。
+   判断"本地跑过就等于没事"之前，先确认那条测试真的在收集范围里。
+2. 生成物一致性测试属于最便宜的一类门禁（1 秒），必须放在最快的循环里，
+   否则它总是在最贵的地方（CI 矩阵）被发现。
+3. 手改 schema 之后要问：有没有派生产物？（表格、skill 副本、README 计数）
+
+### Required guardrail
+
+`pytest.ini` 的 `testpaths` 现在包含 `tests/unit/docs`，
+`DEFAULT_QUICK_TESTPATHS` 同步钉死该目录（`tests/contracts/test_pytest_runtime_contract.py`），
+生成物漂移在本地 40 秒内即被 `test_facade_actions_doc_matches_generator` 抓到。
 ## 2026-11 — 局部重跑会打碎带 attempt 的 artifact 交接
 
 ### Context

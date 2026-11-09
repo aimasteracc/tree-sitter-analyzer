@@ -27,6 +27,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_QUICK_TESTPATHS = (
     "tests/contracts",
     "tests/governance",
+    "tests/unit/docs",
     "tests/unit/test_ast_cache.py",
     "tests/unit/test_ast_cache_cache_directory.py",
     "tests/unit/test_ast_cache_call_graph.py",
