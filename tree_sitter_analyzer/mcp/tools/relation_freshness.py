@@ -359,7 +359,11 @@ def apply_source_evidence(
     result["source_evidence"] = evidence
     if evidence.get("freshness") != "stale":
         return
-    if result.get("verdict") not in (None, "ERROR"):
+    # NOT_FOUND 已经是「没有答案」：它自带 source_evidence 与
+    # "not evidence of absence" 的 next_step，再降级只会让平台差异把
+    # 同一个答案判成不同档位（Windows 的 mtime 粒度实测）。WARN 留给那些
+    # 看起来是确定结论的答案。
+    if result.get("verdict") not in (None, "ERROR", "NOT_FOUND"):
         result["verdict"] = "WARN"
     # 完整性由认证层负责：源码不一致时它已经给出 incomplete/unknown 并带
     # SOURCE_INDEX_MISMATCH，这里只把该原因提到首位并把 verdict 降为 WARN。
