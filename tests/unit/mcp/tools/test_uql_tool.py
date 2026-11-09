@@ -193,9 +193,11 @@ async def test_new_unindexed_source_makes_absence_unknown(project: str) -> None:
     # RFC-0041 §3：未入索引的同语言新文件可能含有定义，0 行不是不存在的证据。
     (Path(project) / "pkg" / "late.py").write_text("def ghost():\n    pass\n")
     out = await _uql(project, "symbol('ghost')")
+    # dogfood 2026-11-09 P1-2：索引里 0 个定义同时意味着 SYMBOL_NOT_DEFINED
+    # （索引可能过期/不完整，「没有」不等于「不存在」）；两个原因都要出现。
     assert (out["completeness"], out["completeness_reasons"]) == (
         "unknown",
-        ["symbol:UNINDEXED_SOURCE_FILES"],
+        ["symbol:UNINDEXED_SOURCE_FILES", "symbol:SYMBOL_NOT_DEFINED"],
     )
 
 

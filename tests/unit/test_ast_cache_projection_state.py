@@ -5,6 +5,8 @@ import sqlite3
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 import tests.unit._ast_cache_helpers as _fixtures
 import tree_sitter_analyzer.ast_cache as ast_cache_module
 from tests.unit._ast_cache_helpers import _BACKFILL_ROUTES
@@ -500,3 +502,59 @@ def test_converge_symbol_projection_repairs_internal_residue():
     assert _fts_docsize(conn) == 1
     # 幂等：第二次没有可收敛的残余
     assert converge_symbol_projection(conn, require_fts=True) is False
+
+
+def test_convergence_requires_the_projection_tables():
+    """没有投影表的连接不参与收敛（预投影/最小 fixture 保持原样）。"""
+    from tree_sitter_analyzer.index_symbol_projection import (
+        converge_symbol_projection,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index(file_path TEXT)")
+
+    assert converge_symbol_projection(conn, require_fts=True) is False
+
+
+@pytest.mark.parametrize("first_outcome", ["raise", "returns_false"])
+def test_failed_convergence_certification_falls_back_to_a_full_repair(
+    engine, monkeypatch, first_outcome
+):
+    """收敛后认证失败（抛错或不认账）都必须退回全量修复。"""
+    engine.index_project(workers=0)
+    conn = engine.get_conn()
+    conn.execute(
+        "DELETE FROM ast_symbol_projection_state WHERE file_path = "
+        "(SELECT file_path FROM ast_index ORDER BY file_path LIMIT 1)"
+    )
+    conn.commit()
+
+    calls = {"n": 0}
+
+    def _fail_first(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            if first_outcome == "raise":
+                raise RuntimeError("certification failed")
+            return False
+        return False
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.index_snapshot_symbols.ensure_symbol_rows_backfilled",
+        _fail_first,
+    )
+
+    stats = engine.index_project(workers=0)
+
+    # 退回全量投影修复：每个文件都重新走写方路径。
+    assert stats["indexed"] == 2
+    assert stats["cached"] == 0
+
+
+def test_force_rebuild_skips_convergence_and_rewrites_every_file(engine):
+    """force 语义是「忽略缓存重建」：不先收敛，直接走全量重写。"""
+    engine.index_project(workers=0)
+
+    stats = engine.index_project(force=True, workers=0)
+
+    assert (stats["mode_used"], stats["indexed"], stats["cached"]) == ("full", 2, 0)

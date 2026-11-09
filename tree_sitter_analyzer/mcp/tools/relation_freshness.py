@@ -349,13 +349,30 @@ def relation_files(cache: Any, func_name: str, entries: list[dict]) -> list[str]
 def apply_source_evidence(
     result: dict[str, Any], evidence: dict[str, Any], changed: list[str]
 ) -> None:
-    """把证据写入响应；过期时把刷新步骤置于 next_step 与 agent_summary 之首。"""
+    """把证据写入响应；过期时把刷新步骤置于 next_step 与 agent_summary 之首。
+
+    过期索引下的答案不是普通答案：信封契约把 stale cache 归为 ``WARN``，且
+    源码已变的文件让 ``complete`` 的证明不再成立（dogfood 2026-11-09 P1-1：
+    此前改一行代码后 ``--callers`` 仍是 ``INFO`` + 旧计数，只有嵌套的
+    ``source_evidence.freshness`` 和散文 next_step 透露过期）。
+    """
     result["source_evidence"] = evidence
     if evidence.get("freshness") != "stale":
         return
+    if result.get("verdict") not in (None, "ERROR"):
+        result["verdict"] = "WARN"
+    # 完整性由认证层负责：源码不一致时它已经给出 incomplete/unknown 并带
+    # SOURCE_INDEX_MISMATCH，这里只把该原因提到首位并把 verdict 降为 WARN。
+    reasons = list(result.get("completeness_reasons") or [])
+    if STALE_REASON not in reasons:
+        reasons.insert(0, STALE_REASON)
+    result["completeness_reasons"] = reasons
+    result["completeness_reason"] = reasons[0]
+    result["stale"] = True
     step = stale_next_step(changed)
     previous = result.get("next_step")
     result["next_step"] = f"{step} {previous}" if previous else step
     summary = result["agent_summary"]
     summary["next_step"] = result["next_step"]
+    summary["verdict"] = result["verdict"]
     summary["summary_line"] = f"{summary['summary_line']} (index stale)"

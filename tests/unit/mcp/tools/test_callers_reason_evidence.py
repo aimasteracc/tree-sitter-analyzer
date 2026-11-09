@@ -287,3 +287,23 @@ def test_stamped_read_returns_the_stat_evidence_of_the_bytes(tmp_path) -> None:
     assert stamp is not None
     assert (stamp[0], stamp[1]) == (info.st_size, info.st_mtime_ns)
     assert EvidenceFileCache().read_stamped(str(tmp_path / "gone.py")) is None
+
+
+@pytest.mark.asyncio
+async def test_stale_source_downgrades_the_answer_to_warn(tmp_path) -> None:
+    """dogfood 2026-11-09 P1-1：过期索引下的答案不能仍是 INFO。
+
+    信封契约把 stale cache 归为 WARN，而 ``complete`` 的证明以下标
+    「源码与索引一致」；此前只有嵌套的 ``source_evidence.freshness`` 和散文
+    next_step 透露过期，脚本读 ``verdict`` 完全看不见。
+    """
+    root = await _index_files(tmp_path, {"lib.py": _LIB, "other.py": _UNRELATED})
+    (tmp_path / "other.py").write_text(_UNRELATED + _PROBE, encoding="utf-8")
+
+    result = await _callers(root, "target")
+
+    assert (result["verdict"], result["stale"]) == ("WARN", True)
+    assert result["completeness_reasons"][0] == "SOURCE_INDEX_MISMATCH"
+    assert result["completeness_reason"] == "SOURCE_INDEX_MISMATCH"
+    assert result["agent_summary"]["verdict"] == "WARN"
+    assert result["agent_summary"]["summary_line"].endswith("(index stale)")

@@ -475,3 +475,13 @@ def test_a_name_with_no_indexed_definition_is_not_a_complete_census() -> None:
     # 出处带着具体原因码，后续阶段只继承通用的 UPSTREAM_UNKNOWN 标记。
     assert ex.stages[0].own.reasons == (C.SYMBOL_NOT_DEFINED,)
     assert ex.stages[0].note == "no indexed definition for: missing_name"
+
+
+def test_missing_definition_note_is_bounded_and_counts_the_rest() -> None:
+    """缺失名字的说明有界：最多点名 5 个，其余只给数量。"""
+    fb = _backends()
+    names = ",".join(f"'m{i}'" for i in range(7))
+    ex = _run(f"symbol([{names}]).callers()", fb)
+    assert ex.stages[0].note == (
+        "no indexed definition for: m0, m1, m2, m3, m4 (+2 more)"
+    )
