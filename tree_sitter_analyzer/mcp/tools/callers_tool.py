@@ -762,6 +762,10 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # PR-3：守卫比对的是全部已列出的调用方，不只是截断后展示的那些。
         all_listed = list(callers)
         truncated = total_callers > listed_cap
+        # dogfood 2026-11-09 P1-3：调用图路径只给出「调用方函数」（定义行），
+        # 调用点坐标在边上。补齐 ``call_site_line``，让 agent 跳到的是调用行
+        # 而不是 ``def``；``line`` 语义保持不变。
+        callers = self._attach_call_site_lines(cache, callers, func_name, file_path)
         # #1854：每个调用方带置信层级；order=confidence 在截断前把 proven 排在前面。
         # 只改呈现：总数、各项检查与完整性判定都在别处由同一份证据得出。
         callers = with_confidence(callers)
@@ -1026,16 +1030,18 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 name_only_exact=name_only_lines_exact(
                     possible_callers, name_only_lines
                 ),
-                review=lambda: absence
-                if edges.completeness == "complete"
-                else assess_completeness(
-                    cache,
-                    self.project_root,
-                    func_name,
-                    file_path,
-                    "complete",
-                    0,
-                    evidence,
+                review=lambda: (
+                    absence
+                    if edges.completeness == "complete"
+                    else assess_completeness(
+                        cache,
+                        self.project_root,
+                        func_name,
+                        file_path,
+                        "complete",
+                        0,
+                        evidence,
+                    )
                 ),
             )
             result.update(bound_fields)
@@ -1245,6 +1251,40 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             logger.debug(f"Caller body inlining failed: {exc}")
             return None
 
+    @staticmethod
+    def _attach_call_site_lines(
+        cache: Any,
+        callers: list[dict[str, Any]],
+        func_name: str,
+        file_path: str | None,
+    ) -> list[dict[str, Any]]:
+        """给缺少 ``call_site_line`` 的调用方条目补上调用点行号。
+
+        调用图路径的条目来自 ``FunctionRef``（只有调用方的定义行）；调用点坐标
+        在 ``edges.callee_line`` 上，一次索引查询即可映射回 (file, caller)。
+        读不到边时原样返回——补不上不冒充坐标。
+        """
+        if cache is None or not callers:
+            return callers
+        try:
+            rows = cache.query_callers(func_name, callee_file=file_path)
+        except Exception:  # noqa: BLE001 — 补注失败不影响答案主体
+            return callers
+        sites: dict[tuple[str, str], int] = {}
+        for row in rows:
+            name = str(row.get("caller_name") or "")
+            line = int(row.get("callee_line") or 0)
+            if name and line > 0:
+                sites.setdefault((str(row.get("caller_file") or ""), name), line)
+        for entry in callers:
+            if not isinstance(entry, dict) or "call_site_line" in entry:
+                continue
+            key = (str(entry.get("file") or ""), str(entry.get("name") or ""))
+            site = sites.get(key)
+            if site:
+                entry["call_site_line"] = site
+        return callers
+
     def _sql_native_callers(
         self,
         cache: Any,
@@ -1274,15 +1314,23 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             activation_map = self._fetch_activation_map(cache)
         for edge in raw:
             # #1622：模块作用域调用点列为 ``<module>`` 伪调用方；缺坐标的才计数。
-            base = (
-                {
+            base: dict[str, Any] | None
+            if edge.get("caller_name"):
+                base = {
                     "name": edge["caller_name"],
                     "file": edge["caller_file"],
+                    # ``line``/``end_line`` 描述调用方函数的定义范围（既有契约）。
                     "line": edge["caller_line"],
                 }
-                if edge.get("caller_name")
-                else module_caller_entry(edge)
-            )
+                # dogfood 2026-11-09 P1-3：调用点坐标本来就在边上
+                # （``callee_line``；``module_caller_entry`` 也用它当 ``line``），
+                # 但命名调用方此前只输出定义行，agent 跳过去看到的是 ``def``。
+                # 追加而不改变 ``line`` 语义，既有消费者零破坏。
+                call_site_line = int(edge.get("callee_line") or 0)
+                if call_site_line > 0:
+                    base["call_site_line"] = call_site_line
+            else:
+                base = module_caller_entry(edge)
             if base is None:
                 unattributed += 1
                 continue

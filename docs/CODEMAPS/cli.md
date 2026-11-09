@@ -29,6 +29,10 @@ Six installed console-script entry points; the main analyzer and its aliases dis
 
 同义入口只保留一个名字；`--symbol-search` 是 BM25 符号检索（**不是**字面量检索），`--text-search` 才是。
 
+`--callers` 的条目同时给两个行号：`line` 是**调用方函数的定义行**（配合 `end_line` 表示函数范围），
+`call_site_line` 是**调用发生的那一行**（grep 语义）。要跳到调用现场用后者；模块级调用点
+（`<module>`）的 `line` 本来就是调用行，因此没有 `call_site_line`。
+
 ## Entry Points
 
 | Command | Handler | Purpose |

@@ -336,3 +336,128 @@ def test_stale_evidence_never_rewrites_an_error_verdict() -> None:
         result["agent_summary"]["verdict"],
     ) == ("ERROR", True, "ERROR")
     assert result["completeness_reasons"] == ["SOURCE_INDEX_MISMATCH", "RELATION_ERROR"]
+
+
+@pytest.mark.asyncio
+async def test_named_caller_exposes_the_call_site_line(tmp_path) -> None:
+    """dogfood 2026-11-09 P1-3：``line`` 是调用方定义行，``call_site_line`` 是调用行。"""
+    root = await _index_files(
+        tmp_path,
+        {
+            "lib.py": "def target():\n    return 1\n",
+            "c.py": "from lib import target\n\n\ndef wrapper():\n    return target()\n",
+        },
+    )
+
+    result = await _callers(root, "target")
+
+    entry = result["callers"][0]
+    assert (entry["name"], entry["line"], entry["call_site_line"]) == (
+        "wrapper",
+        4,
+        5,
+    )
+
+
+@pytest.mark.asyncio
+async def test_module_caller_keeps_its_call_line_without_call_site_line(
+    tmp_path,
+) -> None:
+    """模块级调用点的 ``line`` 本来就是调用行；不重复出 ``call_site_line``。"""
+    root = await _index_files(
+        tmp_path,
+        {
+            "lib.py": "def target():\n    return 1\n",
+            "c.py": "from lib import target\n\ntarget()\n",
+        },
+    )
+
+    result = await _callers(root, "target")
+
+    entry = result["callers"][0]
+    assert (entry["name"], entry["line"], "call_site_line" in entry) == (
+        "<module>",
+        3,
+        False,
+    )
+
+
+def test_call_site_line_enrichment_tolerates_an_unreadable_index() -> None:
+    """读不到调用边时原样返回条目，不冒充调用点坐标。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+
+    class _UnreadableCache:
+        def query_callers(self, *args, **kwargs):
+            raise RuntimeError("index unreadable")
+
+    entries = [{"name": "wrapper", "file": "c.py", "line": 4}]
+    assert (
+        CodeGraphCallersTool._attach_call_site_lines(
+            _UnreadableCache(), entries, "target", None
+        )
+        == entries
+    )
+    assert "call_site_line" not in entries[0]
+
+
+def test_call_site_line_enrichment_leaves_unmatched_entries_alone() -> None:
+    """边里没有对应调用点时，不写 call_site_line（不猜测坐标）。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+
+    class _OtherEdges:
+        def query_callers(self, *args, **kwargs):
+            return [
+                {"caller_name": "someone_else", "caller_file": "x.py", "callee_line": 9}
+            ]
+
+    entries = [{"name": "wrapper", "file": "c.py", "line": 4}]
+    CodeGraphCallersTool._attach_call_site_lines(_OtherEdges(), entries, "target", None)
+
+    assert ("call_site_line" in entries[0], entries[0]["line"]) == (False, 4)
+
+
+def test_call_site_line_enrichment_fills_a_graph_entry() -> None:
+    """调用图条目按 (file, caller) 从边映射到调用点行。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+
+    class _Edges:
+        def query_callers(self, *args, **kwargs):
+            return [{"caller_name": "wrapper", "caller_file": "c.py", "callee_line": 7}]
+
+    entries = [{"name": "wrapper", "file": "c.py", "line": 4}]
+    CodeGraphCallersTool._attach_call_site_lines(_Edges(), entries, "target", None)
+
+    assert (entries[0]["line"], entries[0]["call_site_line"]) == (4, 7)
+
+
+def test_named_caller_without_a_call_line_omits_the_field() -> None:
+    """边上没有调用行时不写 ``call_site_line``（不用 0 冒充坐标）。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+
+    class _Cache:
+        project_root = "."
+
+        def query_callers(self, *args, **kwargs):
+            return [
+                {
+                    "caller_name": "wrapper",
+                    "caller_file": "c.py",
+                    "caller_line": 4,
+                    "callee_line": 0,
+                    "callee_resolved_file": "",
+                    "receiver_binding": None,
+                }
+            ]
+
+        def lookup(self, path):
+            return None
+
+    callers, unattributed = CodeGraphCallersTool(".")._sql_native_callers(
+        _Cache(), "target", None
+    )
+
+    assert (len(callers), "call_site_line" in callers[0], unattributed) == (
+        1,
+        False,
+        0,
+    )

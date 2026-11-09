@@ -130,11 +130,11 @@ codegraph_context_tool.py:738  receiver=_Surface                confidence_tier=
 同一份数据里模块级调用点（`<module>` 行）已经把 `line` 当作调用点，命名调用方却给定义行——这才是
 「跳到行号看到 def」的原因。
 
-**建议的修复（additive，不破坏现有契约）**：在调用方条目里加 `call_site_line`（取自
-`edge["callee_line"]`），`line`/`end_line` 保持「调用方函数定义范围」的现有语义，并在
-`docs/CODEMAPS/cli.md` 的任务表旁注明两者区别。这样 `--callers X | jq` 能直接拿到 grep 语义的
-调用位置，而依赖 `line`=定义行的既有消费者不受影响；同时给 `test_callers_*` 加一条「命名调用方的
-`call_site_line` 等于 edges 的调用点」的断言。
+**已实现（2026-11-09 第 9 轮）**：调用方条目新增 `call_site_line`，`line`/`end_line` 保持
+「调用方函数定义范围」的现有语义。两条路径都补齐——SQL 路径直接取边的 `callee_line`；调用图路径
+（本仓库因 optional grammar 不可认证时走这条）用一次 `query_callers` 把 (file, caller) 映射回调用点。
+实测 `--callers search_symbols_cascade`：条目 `line=41`（定义行）同时给出 `call_site_line=48`（调用行）。
+`docs/CODEMAPS/cli.md` 已注明两者区别；新增两条测试覆盖命名调用方与 `<module>` 调用点。
 
 ### P1-4 `--change-impact` 的测试选择漏掉 4/8 直接引用该模块的测试
 
