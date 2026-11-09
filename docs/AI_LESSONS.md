@@ -1,5 +1,35 @@
 # AI Lessons
 
+## 2026-11 — 局部重跑会打碎带 attempt 的 artifact 交接
+
+### Context
+
+PR #1939 的 CI 里 `Native macos Python 3.10` 报
+`Unable to download artifact(s): Artifact not found for name: native-build-<run_id>-2-<sha>`，
+而同一次 run 的 artifact 列表里 `native-macos-<run_id>-2-<sha>` 明明存在且未过期，
+`Build candidate wheel once` / `Native linux` / `Native windows` 全部成功。
+
+根因：`.github/workflows/native-install-qualification.yml` 的 artifact 名带
+`${{ github.run_attempt }}`。我先用 `gh run rerun --failed` 只重跑了失败 job，于是
+**上游 build 仍是 attempt 1 的产物，下游消费者却按 attempt 2 去取**——名字必然对不上。
+之后改成全量 `gh run rerun`（所有 job 在同一 attempt 内重启），同一 commit 立刻
+`conclusion: success`，只剩一个按设计 skip 的 job。
+
+### Lessons learned
+
+1. artifact 名里带 `run_attempt` 时，**只重跑失败 job 是不安全操作**：上游不重跑就没有新
+   attempt 的产物。要么全量重跑，要么把 attempt 从名字里去掉。
+2. 看到 `Artifact not found` 先对照同 run 的 artifact 列表：名字差一个数字（attempt）和
+   真的没有产物是两种完全不同的故障。
+3. 修 CI 之前先确认「我的操作是否制造了这个状态」——这次红灯一半是我 rerun 造成的。
+
+### Required guardrail
+
+`.github/workflows/native-install-qualification.yml` 与
+`.github/workflows/reusable-native-qualification-attestation.yml` 目前都用
+`native-build-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}` 命名；
+改法是把 `run_attempt` 从名字里去掉并在 upload 时 `overwrite: true`，或让消费者解析最新 attempt。
+在改之前，操作规范是**全量重跑**：`gh run rerun <run-id>`（不带 `--failed`）。
 ## 2026-11 — 可见列表不是选择结果
 
 ### Context
