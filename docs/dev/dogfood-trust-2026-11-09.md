@@ -14,7 +14,7 @@
 | P1-1 陈旧索引 | 已修（`WARN` + `SOURCE_INDEX_MISMATCH`） | §3 |
 | P1-2 uql 假 `complete` | 已修（`SYMBOL_NOT_DEFINED` gap） | §3 |
 | P1-3 `--callers` 行号 | 已修（`call_site_line`） | §3 / 第 9 轮 |
-| **P1-4 change-impact 测试选择召回** | **未修（需设计：依赖图 + 文本引用通道）** | §4 |
+| **P1-4 change-impact 测试选择召回** | **撤回：测量比较的是「被截断的可见列表」，选择本身包含那些文件**（`tests_to_run_omitted_count: 13`） | §4 / 第 49 轮 |
 | P2 系列（hotspot 档位 / index-meta / agent-summary-only / codemap parity） | 已修 | §3 |
 | §11 no-op 索引成本 | 已修：9.08 s → **0.66–0.86 s**（记录生命周期，不动 #1253） | §11 第 26–29 轮 |
 | §12 agent 原生原语（etag/304/delta/capabilities/absence/UQL hint） | 全部落地，CLI+MCP 双面 | §12 |
@@ -113,8 +113,15 @@ tests/unit/test_ast_cache_cascade_search.py  -> True
 选择范围不一致，而不是文本召回不足**。
 
 因此本轮**回滚了 builder 层的并入改动**（它在此路径下不会触发，只会变成不可覆盖的死代码），
-保留 advisory 通道作为安全网，并把下一步改成：**对比 diff 模式与 scope 模式的 `tests_to_run`，
-定位差异来源**。这比给一个不成立的前提加默认行为更接近「可靠」。
+保留 advisory 通道作为安全网。
+
+**第 49 轮定论：P1-4 撤回。** 把 diff 模式与 scope 模式都加上 `--change-impact-include-details`
+后对比，两者完全一致（43 选中 / 30 可见 / 13 省略），而那 3 个「漏掉」的文件**在选中集合里**，
+只是被显示上限（`TESTS_TO_RUN_DISPLAY_LIMIT = 30`）挡在可见列表之外——响应本身已经用
+`tests_to_run_omitted_count: 13` 诚实标注了这一点。
+
+我的原始测量拿「可见列表」当「选择结果」，所以把截断误判成召回缺失。**P1-4 不存在召回 bug，
+是测量方法错误**；文本通道因此降级为「价值未被证实的保险」，是否保留交由评审决定。
 
 ## 0. 环境与方法
 

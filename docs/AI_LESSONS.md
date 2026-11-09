@@ -1,5 +1,30 @@
 # AI Lessons
 
+## 2026-11 — 可见列表不是选择结果
+
+### Context
+
+dogfood 记录过一条 P1-4：「change-impact 的测试选择漏掉 4 个直接引用改动模块的测试文件」。
+依据是 `--change-impact` 响应里的 `tests_to_run` 列表与 `grep` 结果比对。后续三轮都在这个前提下
+做补救（文本引用通道、证据分级、20 个样本的精度抽样）。
+
+第 49 轮把 diff 与 scope 两种模式都加上 `--change-impact-include-details` 再对比，发现两者
+选择完全一致：43 个选中、30 个可见、**13 个被显示上限截断**，而那 3 个「漏掉」的文件就在
+选中集合里；响应早已用 `tests_to_run_omitted_count: 13` 标注了截断。原始测量把「可见列表」
+当成了「选择结果」，于是把显示截断误判成召回缺陷。
+
+### Lessons learned
+
+1. 断言「X 漏了 Y」之前，先确认自己读到的是完整集合还是展示投影；响应里带 `*_omitted_count`
+   时，它就是「还有更多」的强提示。
+2. 一个前提如果连续几轮都在「补救」而不是「验证」，说明它本身该被重新测量，而不是继续加码。
+3. 撤回一个错误结论要写在它最初被发布的地方（这里是 dogfood 报告的测试选择小节），
+   否则后来者只会看到补救代码、看不到被推翻的前提。
+
+### Required guardrail
+
+`tests/unit/mcp/tools/test_change_impact_text_refs.py` 固定补充通道的形状（仍作为安全网保留）；
+选择性对比必须用 `--change-impact-include-details`（`tests_to_run_omitted_count` 随响应返回）。
 ## 2026-11 — 自愈契约不能被「输入没变」的捷径绕过
 
 ### Context
