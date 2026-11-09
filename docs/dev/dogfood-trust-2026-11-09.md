@@ -324,7 +324,9 @@ help 里限定 "For --change-impact"，但 flag 出现在全局 help，agent 会
 | P1-2 uql 对不存在符号报 `complete` | 来源阶段 0 定义 → `unknown` + `SYMBOL_NOT_DEFINED`；`next_step` 给出拼写/限定名/刷新索引三条修复动作 | `--uql "symbol('zzz').callers()"` → `NOT_FOUND/unknown/symbol:SYMBOL_NOT_DEFINED`；`tests/unit/uql/` 139 项通过 |
 | 索引残余导致「每次索引都全量重写」 | 新增 `converge_symbol_projection()`（陈旧行 / 缺投影状态 / 过期 FTS 词条），修复路径先收敛再认证；认证器仍然全量复核后才发 marker | 本仓库实测：修复前每次 `index` 重提取 2917 文件约 57 s；修复后 no-op 提取 0 文件，改 6 个文件只提取 6 个；`tests/unit/test_index_symbol_projection.py` + `test_ast_cache_projection_state.py` |
 | P1-1 过期索引 verdict 仍 `INFO` | `apply_source_evidence()` 在 `freshness=stale` 时置 `verdict=WARN`、顶层 `stale=true`、把 `SOURCE_INDEX_MISMATCH` 放到原因首位并镜像到 `agent_summary.verdict` | 本仓库实测：改一行后 `--callers main` 从 `INFO/342` 变为 `WARN/342/stale=true/reasons[0]=SOURCE_INDEX_MISMATCH`；`test_callers_reason_evidence.py` |
+| P0-1 坏 `--project-root` 谎报 `NOT_FOUND` | `main()` 在分派前校验根目录；不存在时 fail closed：JSON `ERROR` + `INVALID_PROJECT_ROOT` + hint，且不输出任何答案字段；text 模式 stderr 输出、stdout 保持为空 | `--project-root /no/such/dir --callers main --format json` → exit 1、`INVALID_PROJECT_ROOT`、无 `caller_count`；`tests/unit/cli/test_cli_input_robustness.py` |
+| P0-2 `--call-graph` 无索引静默全量解析 | `CodeGraphCallTool` 接入同一现场解析预算：无 AST 缓存且源文件 >200 时返回共享的 `WARN` + `INDEX_MISSING` 信封（真实文件数 + 建索引命令）；有缓存时行为不变 | 本仓库移走 `.ast-cache` 后实测：15.4 s / `INFO` / 401 callers → 0.53 s / `WARN` / `INDEX_MISSING` / `source_file_count: 2920`；`tests/unit/test_call_graph_tool.py` |
 
-仍待处理（按优先级）：P0-1 坏 `--project-root` 谎报 `NOT_FOUND`；P0-2 `--call-graph` / `--hotspot` 无索引时静默全量解析；P1-3 `--callers` 的调用行号落在定义行；P1-4 change-impact 测试选择召回缺口；P2-3 `--hotspot` 的 `CRITICAL` 不在八值字母表；P2-5 `--agent-summary-only` 空操作；P2-6 MCP codemap 漏 11 个 action。
+仍待处理（按优先级）：P1-3 `--callers` 的调用行号落在定义行；P1-4 change-impact 测试选择召回缺口；P2-3 `--hotspot` 的 `CRITICAL` 不在八值字母表；P2-5 `--agent-summary-only` 空操作；P2-6 MCP codemap 漏 11 个 action；以及 no-op 索引仍重跑调用点回填（~7.4 s）。
 
 **本轮附带发现（未修复）**：修复后 `--ast-cache --ast-cache-mode index` 的 no-op 仍需 ~7.4 s，profile 显示耗时在 `post_index_backfill`（`run_synapse_backfill` 6.5 s、`backfill_cross_file_edges` 3.5 s）——即每次索引都重跑调用点回填，即使源码没有任何变化。这是下一个效率目标。
