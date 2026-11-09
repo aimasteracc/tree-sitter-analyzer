@@ -533,3 +533,67 @@ def test_caller_body_inlining_failure_is_silent(monkeypatch) -> None:
 
     assert tool._inline_caller_bodies(None, callers) is None
     assert callers == [{"name": "wrapper", "file": "c.py", "line": 4}]
+
+
+async def _callers_with(root: str, name: str, **extra) -> dict:
+    from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+
+    return await CodeGraphCallersTool(root).execute(
+        {"function_name": name, "include_bodies": False, **extra}
+    )
+
+
+@pytest.mark.asyncio
+async def test_matching_etag_returns_the_minimal_unchanged_payload(tmp_path) -> None:
+    """dogfood §12.1：If-None-Match 命中时只回 tiny payload，不回 15 KB 列表。"""
+    root = await _index_files(
+        tmp_path,
+        {
+            "lib.py": "def target():\n    return 1\n",
+            "c.py": "from lib import target\n\n\ndef wrapper():\n    return target()\n",
+        },
+    )
+    first = await _callers(root, "target")
+
+    second = await _callers_with(root, "target", if_none_match=first["answer_etag"])
+
+    assert second["unchanged"] is True
+    assert "callers" not in second
+    assert second["answer_etag"] == first["answer_etag"]
+
+
+@pytest.mark.asyncio
+async def test_a_different_etag_still_returns_the_full_answer(tmp_path) -> None:
+    """不匹配时必须回完整答案，不能猜而复用。"""
+    root = await _index_files(
+        tmp_path,
+        {
+            "lib.py": "def target():\n    return 1\n",
+            "c.py": "from lib import target\n\n\ndef wrapper():\n    return target()\n",
+        },
+    )
+
+    result = await _callers_with(root, "target", if_none_match="sha256:" + "0" * 64)
+
+    assert ("callers" in result, result["caller_count"]) == (True, 1)
+
+
+@pytest.mark.asyncio
+async def test_a_stale_scope_never_claims_unchanged(tmp_path) -> None:
+    """作用域源码变了就回完整答案（WARN/stale），即使 etag 文本相同。"""
+    root = await _index_files(
+        tmp_path,
+        {
+            "lib.py": "def target():\n    return 1\n",
+            "c.py": "from lib import target\n\n\ndef wrapper():\n    return target()\n",
+        },
+    )
+    before = await _callers(root, "target")
+    (tmp_path / "c.py").write_text(
+        "from lib import target\n\n\ndef wrapper():\n    return target()\n\n# edited\n",
+        encoding="utf-8",
+    )
+
+    result = await _callers_with(root, "target", if_none_match=before["answer_etag"])
+
+    assert (result.get("stale"), "unchanged" in result) == (True, False)

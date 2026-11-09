@@ -400,6 +400,14 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                     "type": "string",
                     "description": "Target function name to find callers for",
                 },
+                "if_none_match": {
+                    "type": "string",
+                    "description": (
+                        "Prior answer_etag. When it still matches, respond with "
+                        "a minimal {unchanged: true} payload instead of the full "
+                        "caller list (agent cross-turn dedupe)."
+                    ),
+                },
                 "file_path": {
                     "type": "string",
                     "description": "Optional file path to disambiguate overloaded functions",
@@ -1238,6 +1246,33 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         apply_source_evidence(result, evidence, stale_files)
         # dogfood §12.1：内容相同的答案 → 相同 etag。agent 用它做跨轮次缓存判断。
         result["answer_etag"] = answer_etag(result)
+        # §12.1 后半：If-None-Match。只有在「内容指纹相同且作用域未过期」时才敢说
+        # unchanged —— 任何 stale/不确定状态一律回完整答案，ETag 是承诺不是猜测。
+        requested_etag = str(arguments.get("if_none_match") or "").strip()
+        if (
+            requested_etag
+            and requested_etag == result["answer_etag"]
+            and not result.get("stale")
+        ):
+            minimal = {
+                "success": True,
+                "verdict": "INFO",
+                "unchanged": True,
+                "answer_etag": requested_etag,
+                "function": func_name,
+                "caller_count": result.get("caller_count"),
+                "agent_summary": {
+                    "summary_line": f"callers: {func_name!r} unchanged (etag match)",
+                    "verdict": "INFO",
+                    "next_step": (
+                        "Reuse the previous answer: no caller, completeness or "
+                        "source-freshness change since that etag."
+                    ),
+                },
+            }
+            from ..utils.format_helper import apply_output_format_to_response
+
+            return apply_output_format_to_response(minimal, output_format)
 
         # RFC-0027 L6.2: this route's cold/warm cliff (24.8 s -> 16 ms in the
         # L5 baseline) is the largest in the product, so a caller choosing
