@@ -28,7 +28,7 @@ Runtime discovery: call a facade with `action=help` for its business action list
 | `tql_execute` | `selector`*, `max_results` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--tql` |
 | `tql_schema` | (none) | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--tql-schema` |
 | `unsubscribe` | `output_format`, `selector`, `sub_id` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | — |
-| `uql` | `query`*, `cursor`, `detail`, `limit`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--uql` |
+| `uql` | `query`*, `cursor`, `detail`, `if_none_match`, `limit`, `output_format` | `success`*, `verdict`*, `agent_summary`, `error` + action payload | `--uql` |
 
 ## `nav` — 16 actions
 
