@@ -200,6 +200,7 @@ def main() -> None:
     _validate_mode_flag_wiring(args, parser)
     _reject_misplaced_agent_summary_only(args, parser)
     _reject_missing_project_root(args)
+    _emit_capability_manifest_if_requested(args)
     _configure_logging(args)
 
     special_result = handle_special_commands(args)
@@ -331,6 +332,22 @@ def _validate_mode_flag_wiring(
             continue
         trigger_flag = "--" + trigger_dest.replace("_", "-")
         parser.error(f"{mode_flag} requires {trigger_flag}")
+
+
+def _emit_capability_manifest_if_requested(args: argparse.Namespace) -> None:
+    """``--capabilities``：输出 agent 的规划清单后直接退出（dogfood §12.4）。
+
+    清单从注册表派生（8 facade / 94 action），不读索引、不扫源码，因此任何仓库
+    任何时刻都能便宜地调用。
+    """
+    if not getattr(args, "capabilities", False):
+        return
+    from tree_sitter_analyzer.capabilities import build_capability_manifest
+    from tree_sitter_analyzer.output_manager import output_json
+
+    project_root = getattr(args, "project_root", None) or os.getcwd()
+    output_json(build_capability_manifest(str(project_root)))
+    sys.exit(0)
 
 
 def _reject_misplaced_agent_summary_only(

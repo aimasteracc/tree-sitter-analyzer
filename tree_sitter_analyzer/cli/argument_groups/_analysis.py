@@ -11,6 +11,15 @@ from ._analysis_graph_nav import _add_mcp_graph_nav_options
 
 
 def _add_analysis_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--capabilities",
+        action="store_true",
+        help=(
+            "Machine-readable planning manifest: every facade action with its "
+            "tier (instant/indexed), preconditions, cost class and a minimal "
+            "example (JSON; see tree_sitter_analyzer/capabilities.py)."
+        ),
+    )
     """Add source-analysis options."""
     parser.add_argument(
         "--advanced", action="store_true", help="Use advanced analysis features"

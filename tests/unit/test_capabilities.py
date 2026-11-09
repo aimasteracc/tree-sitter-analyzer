@@ -43,3 +43,32 @@ def test_manifest_is_serialisable_for_planning(monkeypatch) -> None:
         "action": "callers"
     }
     assert json.loads(json.dumps(manifest))["tiers"]["instant"]
+
+
+def test_cli_capabilities_flag_emits_the_manifest() -> None:
+    """dogfood §12.4：`--capabilities --format json` 是 agent 的规划入口。"""
+    import json
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    project_root = Path(__file__).resolve().parents[2]
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tree_sitter_analyzer",
+            "--capabilities",
+            "--format",
+            "json",
+        ],
+        cwd=str(project_root),
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+
+    payload = json.loads(proc.stdout)
+    assert (proc.returncode, len(payload["tools"])) == (0, 8)
+    assert sum(len(tool["actions"]) for tool in payload["tools"].values()) == 94
+    assert payload["tiers"]["instant"]
