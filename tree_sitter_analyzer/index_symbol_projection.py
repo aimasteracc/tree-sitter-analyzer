@@ -146,6 +146,53 @@ def symbol_rows_digest(rows: Iterable[Iterable[Any]], check: Any | None = None) 
     return "sha256:" + digest.hexdigest()
 
 
+def _payload_symbol_count(symbols_json: Any) -> int | None:
+    """``symbols_json`` 里声明的符号数；读不懂时返回 None（不猜）。
+
+    Codex review P2（2026-11-09）：缺少投影状态时不能「拿现有行盖章」——
+    行可能是解析中途留下的部分集合。只有行数与 payload 声明一致时，
+    制造出来的证书才代表 payload 本身。
+    """
+    if not isinstance(symbols_json, str):
+        return None
+    try:
+        import json
+
+        payload = json.loads(symbols_json or "{}")
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    symbols = payload.get("symbols")
+    if not isinstance(symbols, list):
+        return None
+    return len(symbols)
+
+
+def _projection_matches_payload(conn: sqlite3.Connection, rel_path: str) -> bool:
+    """文件缺少投影状态时，现有行是否就是 payload 声明的完整集合。
+
+    无 payload 列或 payload 形状未知（更老的 schema / 空 ``{}``）时返回 True：
+    没有声明可以反驳，保持原有的迁移快速路径；只有 payload 明确声明了符号集合、
+    而现有行数是它的真子集/超集时才拒绝盖章。
+    """
+    try:
+        source = conn.execute(
+            "SELECT symbols_json FROM ast_index WHERE file_path = ?", (rel_path,)
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return True
+    if source is None:
+        return False
+    expected = _payload_symbol_count(source[0])
+    if expected is None:
+        return True
+    actual = conn.execute(
+        "SELECT COUNT(*) FROM ast_symbol_rows WHERE file_path = ?", (rel_path,)
+    ).fetchone()
+    return int(actual[0] if actual else -1) == expected
+
+
 def upsert_symbol_projection_state(conn: sqlite3.Connection, rel_path: str) -> None:
     """Bind ordinary rows and their full payload to the ast_index generation."""
     table = conn.execute(
@@ -214,7 +261,12 @@ def converge_symbol_projection(
         "ON state.file_path = source.file_path WHERE state.file_path IS NULL"
     ).fetchall()
     for row in missing:
-        upsert_symbol_projection_state(conn, str(row[0]))
+        rel_path = str(row[0])
+        if not _projection_matches_payload(conn, rel_path):
+            # 行集合与 payload 不符（解析中断/部分回填）：不盖章，留给
+            # 全量修复路径；盖章会让「部分行」冒充完整投影。
+            continue
+        upsert_symbol_projection_state(conn, rel_path)
         changed = True
     orphan_states = conn.execute(
         "DELETE FROM ast_symbol_projection_state WHERE file_path NOT IN "

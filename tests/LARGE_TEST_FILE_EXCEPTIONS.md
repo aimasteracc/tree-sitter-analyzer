@@ -51,6 +51,7 @@ match reality or CI fails). The threshold is 800 lines.
 | 866 | `tests/unit/languages/test_css_plugin.py` | |
 | 848 | `tests/unit/test_edge_store.py` | |
 | 847 | `tests/unit/test_ast_diff_scenarios.py` | |
+| 843 | `tests/unit/test_index_symbol_projection.py` | 
 | 833 | `tests/unit/test_codegraph_impact_tool.py` | |
 | 823 | `tests/unit/mcp/tools/test_pulse_tool.py` | tracked: #1414 — two warm-index admission regressions stay with the existing Pulse suite (T-1); temporary growth from 791 lines. Follow-up must split by behavior under the controlled migration contract, preserving all cases and mutation evidence. |
 | 830 | `tests/unit/test_symbol_search_tool.py` | tracked: #1561 - the certification-bound degrade regression stays with the existing search-symbol suite (T-1); temporary growth from 798 lines. Follow-up must split by behavior under the controlled migration contract. |

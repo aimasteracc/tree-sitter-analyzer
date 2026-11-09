@@ -798,3 +798,94 @@ def test_console_script_absence_outranks_plain_unreferenced(tmp_path) -> None:
         "entry_point",
         "console_script",
     )
+
+
+def test_answer_etag_covers_the_inlined_body() -> None:
+    """Codex P2：内联函数体是答案内容，改 body 必须改 etag。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import answer_etag
+
+    base = {
+        "function": "target",
+        "caller_count": 1,
+        "completeness": "complete",
+        "callers": [
+            {"name": "w", "file": "c.py", "line": 4, "body": "return target() + 1"}
+        ],
+    }
+    edited = {
+        **base,
+        "callers": [
+            {"name": "w", "file": "c.py", "line": 4, "body": "return target() + 2"}
+        ],
+    }
+    without_body = {
+        **base,
+        "callers": [{"name": "w", "file": "c.py", "line": 4}],
+    }
+
+    assert (
+        answer_etag(edited) != answer_etag(base),
+        answer_etag(without_body) != answer_etag(base),
+    ) == (True, True)
+
+
+def test_sql_fallback_propagates_an_interrupted_read() -> None:
+    """#1873：退回 SQL 读时被中断，必须继续传播而不是当作「没有调用行」。"""
+    from tree_sitter_analyzer.graph.read_interrupt import ReadInterrupted
+    from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+
+    class _Interrupted:
+        def query_callers(self, *args, **kwargs):
+            raise ReadInterrupted("interrupted")
+
+    with pytest.raises(ReadInterrupted):
+        CodeGraphCallersTool._attach_call_site_lines(
+            _Interrupted(), [{"name": "w", "file": "c.py", "line": 4}], "target", None
+        )
+
+
+def test_sql_fallback_skips_rows_without_a_call_line() -> None:
+    """没有调用行/调用方名字的边不参与补注。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+
+    class _Rows:
+        def query_callers(self, *args, **kwargs):
+            return [
+                {
+                    "caller_name": "",
+                    "caller_file": "c.py",
+                    "caller_line": 4,
+                    "callee_line": 7,
+                },
+                {
+                    "caller_name": "w",
+                    "caller_file": "c.py",
+                    "caller_line": 4,
+                    "callee_line": 0,
+                },
+            ]
+
+    entries = [{"name": "w", "file": "c.py", "line": 4}]
+    CodeGraphCallersTool._attach_call_site_lines(_Rows(), entries, "target", None)
+
+    assert "call_site_line" not in entries[0]
+
+
+def test_enrichment_skips_entries_that_are_not_caller_dicts() -> None:
+    from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+
+    class _Rows:
+        def query_callers(self, *args, **kwargs):
+            return [
+                {
+                    "caller_name": "w",
+                    "caller_file": "c.py",
+                    "caller_line": 4,
+                    "callee_line": 9,
+                }
+            ]
+
+    entries = ["not-a-caller", {"name": "w", "file": "c.py", "line": 4}]
+    CodeGraphCallersTool._attach_call_site_lines(_Rows(), entries, "target", None)
+
+    assert (entries[0], entries[1]["call_site_line"]) == ("not-a-caller", 9)
