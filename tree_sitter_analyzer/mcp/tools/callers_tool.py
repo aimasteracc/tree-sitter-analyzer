@@ -336,6 +336,41 @@ def _describe_sites(sites: list[dict[str, Any]] | None) -> str:
     return "; ".join(parts)
 
 
+def _caller_identity(entry: dict[str, Any]) -> tuple[Any, ...]:
+    """调用方条目的身份：(file, line, call_site_line, name)。"""
+    return (
+        entry.get("file"),
+        entry.get("line"),
+        entry.get("call_site_line"),
+        entry.get("name"),
+    )
+
+
+def _callers_delta(
+    previous: list[Any], current: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """两份调用方列表的增量：added / removed / unchanged_count（§12.2）。"""
+    previous_keys = [
+        _caller_identity(entry) for entry in previous if isinstance(entry, dict)
+    ]
+    current_keys = [_caller_identity(entry) for entry in current]
+    previous_set, current_set = set(previous_keys), set(current_keys)
+    return {
+        "added": [
+            {key: entry.get(key) for key in ("name", "file", "line", "call_site_line")}
+            for entry in current
+            if _caller_identity(entry) in current_set - previous_set
+        ],
+        "removed": [
+            entry
+            for entry in previous
+            if isinstance(entry, dict)
+            and _caller_identity(entry) in previous_set - current_set
+        ],
+        "unchanged_count": len(previous_set & current_set),
+    }
+
+
 def answer_etag(result: dict[str, Any]) -> str:
     """答案内容的稳定指纹（agent 跨轮次判断「要不要重读」的原语，dogfood §12.1）。
 
@@ -399,6 +434,15 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 "function_name": {
                     "type": "string",
                     "description": "Target function name to find callers for",
+                },
+                "previous_entries": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": (
+                        "The caller entries from a previous answer. When given, "
+                        "respond with {delta: {added, removed, unchanged_count}} "
+                        "instead of the full list (agent incremental re-ask)."
+                    ),
                 },
                 "if_none_match": {
                     "type": "string",
@@ -1272,6 +1316,38 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             }
             from ..utils.format_helper import apply_output_format_to_response
 
+            return apply_output_format_to_response(minimal, output_format)
+        # §12.2：无状态增量答案。请求带上一次答案的条目（agent 本来就在上下文里），
+        # 只在未过期时给 added/removed/unchanged_count；过期一律回完整答案。
+        previous_entries = arguments.get("previous_entries")
+        if (
+            isinstance(previous_entries, list)
+            and previous_entries
+            and not result.get("stale")
+        ):
+            from ..utils.format_helper import apply_output_format_to_response
+
+            delta = _callers_delta(previous_entries, result.get("callers") or [])
+            minimal = {
+                "success": True,
+                "verdict": "INFO",
+                "answer_etag": result["answer_etag"],
+                "function": func_name,
+                "caller_count": result.get("caller_count"),
+                "delta": delta,
+                "agent_summary": {
+                    "summary_line": (
+                        f"callers: {func_name!r} delta +{len(delta['added'])} "
+                        f"-{len(delta['removed'])} "
+                        f"={delta['unchanged_count']} unchanged"
+                    ),
+                    "verdict": "INFO",
+                    "next_step": (
+                        "Apply the added/removed callers; unchanged entries do not "
+                        "need to be re-read."
+                    ),
+                },
+            }
             return apply_output_format_to_response(minimal, output_format)
 
         # RFC-0027 L6.2: this route's cold/warm cliff (24.8 s -> 16 ms in the

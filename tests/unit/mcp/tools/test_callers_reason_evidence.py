@@ -597,3 +597,47 @@ async def test_a_stale_scope_never_claims_unchanged(tmp_path) -> None:
     result = await _callers_with(root, "target", if_none_match=before["answer_etag"])
 
     assert (result.get("stale"), "unchanged" in result) == (True, False)
+
+
+def test_callers_delta_reports_added_removed_and_unchanged() -> None:
+    """dogfood §12.2：增量答案按 (file,line,call_site_line,name) 对齐。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import _callers_delta
+
+    previous = [
+        {"name": "a", "file": "c.py", "line": 4},
+        {"name": "gone", "file": "g.py", "line": 2},
+    ]
+    current = [
+        {"name": "a", "file": "c.py", "line": 4},
+        {"name": "b", "file": "d.py", "line": 8},
+    ]
+
+    delta = _callers_delta(previous, current)
+
+    assert (
+        [entry["name"] for entry in delta["added"]],
+        [entry["name"] for entry in delta["removed"]],
+        delta["unchanged_count"],
+    ) == (["b"], ["gone"], 1)
+
+
+@pytest.mark.asyncio
+async def test_previous_entries_produce_a_delta_not_a_full_list(tmp_path) -> None:
+    """带上一次答案的条目时只回增量，不回 15 KB 列表。"""
+    root = await _index_files(
+        tmp_path,
+        {
+            "lib.py": "def target():\n    return 1\n",
+            "c.py": "from lib import target\n\n\ndef wrapper():\n    return target()\n",
+        },
+    )
+    first = await _callers(root, "target")
+
+    delta = await _callers_with(root, "target", previous_entries=first["callers"])
+
+    assert (
+        delta["delta"]["added"],
+        delta["delta"]["removed"],
+        delta["delta"]["unchanged_count"],
+        "callers" in delta,
+    ) == ([], [], 1, False)

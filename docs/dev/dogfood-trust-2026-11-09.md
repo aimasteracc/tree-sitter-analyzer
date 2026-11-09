@@ -408,9 +408,14 @@ agent 每个回合都会重问「X 的调用者是谁吗」，而绝大多数时
 
 ### 12.2 增量答案（`--since <answer_etag>`）
 
-比 304 更进一步：不是「没变」，而是「**变在哪**」。`--since` 时只返回新增/消失的调用方条目
-（`added[] / removed[] / changed[]`），像 `git diff` 之于 `cat`。对 agent 的长会话尤其关键：
+比 304 更进一步：不是「没变」，而是「**变在哪**」。只返回新增/消失的调用方条目
+（`added[] / removed[] / unchanged_count`），像 `git diff` 之于 `cat`。对 agent 的长会话尤其关键：
 它已经在上下文里持有上一版答案，只想要 delta。
+
+**已落地（第 12 轮，`nav action=callers` 的无状态增量）**：请求带 `previous_entries`（上一次答案的
+条目，agent 本来就在上下文里），服务端按 `(file, line, call_site_line, name)` 对齐后回
+`{delta: {added, removed, unchanged_count}}`；作用域过期时一律回完整答案。实测新增一个调用方并重建
+索引后：`added=1, unchanged=1`，响应里没有 `callers` 列表。
 
 ### 12.3 成本预检（`--cost`）
 
