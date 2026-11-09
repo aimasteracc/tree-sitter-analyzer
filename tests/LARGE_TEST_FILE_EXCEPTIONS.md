@@ -47,6 +47,7 @@ match reality or CI fails). The threshold is 800 lines.
 | 932 | `tests/unit/mcp/tools/test_nav_facade_test_map.py` | |
 | 901 | `tests/unit/languages/test_html_plugin_advanced.py` | |
 | 893 | `tests/unit/test_health_scorer.py` | |
+| 891 | `tests/unit/mcp/tools/test_callers_reason_evidence.py` | tracked: #1939 (etag/delta/absence coverage) |
 | 873 | `tests/unit/mcp/test_query_symbol_search_scenarios.py` | |
 | 866 | `tests/unit/languages/test_css_plugin.py` | |
 | 848 | `tests/unit/test_edge_store.py` | |
