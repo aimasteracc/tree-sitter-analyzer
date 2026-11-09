@@ -886,3 +886,15 @@ def test_upsert_is_a_noop_without_a_state_table_or_source_row() -> None:
         == 0
     )
     conn.close()
+
+
+def test_payload_symbol_count_rejects_a_non_text_payload() -> None:
+    from tree_sitter_analyzer.index_symbol_projection import _payload_symbol_count
+
+    assert (
+        _payload_symbol_count(None),
+        _payload_symbol_count(b"{}"),
+        _payload_symbol_count("[1, 2]"),
+        _payload_symbol_count('{"symbols": "not a list"}'),
+        _payload_symbol_count("not json"),
+    ) == (None, None, None, None, None)

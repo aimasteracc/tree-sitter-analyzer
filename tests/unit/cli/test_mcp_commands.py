@@ -1024,6 +1024,9 @@ def test_callers_cli_delegates_to_callers_tool(monkeypatch) -> None:
             "file_path": "src/parser.py",
             "limit": 50,
             "include_bodies": True,
+            # §12.1/§12.2：没有传增量参数时两个键都存在且为 None。
+            "if_none_match": None,
+            "previous_entries": None,
             "output_format": "json",
         },
     }

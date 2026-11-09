@@ -35,8 +35,8 @@ _SAFE_SPANS = (
     # RFC-0041 新增 --uql/--uql-limit/--uql-cursor/--uql-detail 后为 371 个；
     # 2026-11-09 新增 --capabilities 后当前运行时为 372 个。
     # 只放行经运行时与文档契约验证的精确数量，不允许任意数字。
-    re.compile(r"\b372 CLI flags\b", re.IGNORECASE),
-    re.compile(r"372 の CLI フラグ|372 个 CLI flag", re.IGNORECASE),
+    re.compile(r"\b374 CLI flags\b", re.IGNORECASE),
+    re.compile(r"374 の CLI フラグ|374 个 CLI flag", re.IGNORECASE),
     re.compile(r"\b(?:FTS5|BM25)\b"),
     re.compile(r"\bE[0-4]\b"),
     re.compile(r"\bE2E\b", re.IGNORECASE),

@@ -828,6 +828,19 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         include_activation = bool(arguments.get("include_activation", False))
         include_bodies = bool(arguments.get("include_bodies", True))
         listed_cap = int(arguments.get("limit", 50))
+        if isinstance(arguments.get("previous_entries"), str):
+            from ..utils.format_helper import apply_output_format_to_response
+
+            return apply_output_format_to_response(
+                {
+                    "success": False,
+                    "verdict": "ERROR",
+                    "error_code": "INVALID_ARGUMENT",
+                    "error": "previous_entries must be a JSON array of caller entries",
+                    "next_step": "Pass the callers[] array from a previous answer.",
+                },
+                output_format,
+            )
 
         if is_index_rebuilding(self.project_root):
             rebuild_next_step = rebuild_in_progress_next_step()

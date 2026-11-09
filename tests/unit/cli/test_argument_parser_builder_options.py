@@ -475,3 +475,44 @@ def test_full_index_rejects_legacy_modes(mode: str) -> None:
     _add_mcp_equivalent_options(parser)
     with pytest.raises(SystemExit):
         parser.parse_args(["--full-index", "--full-index-mode", mode])
+
+
+def test_callers_incremental_flags_are_forwarded_to_the_tool():
+    """§12.1/§12.2 的 CLI 半边：两个 flag 与 MCP 参数一一对应。"""
+    from tree_sitter_analyzer.cli.commands.mcp_commands import _specs_core
+    from tree_sitter_analyzer.cli_main import create_argument_parser
+
+    spec = next(s for s in _specs_core._CORE_SPECS if s.flag_name == "callers")
+    args = create_argument_parser().parse_args(
+        [
+            "--callers",
+            "target",
+            "--if-none-match",
+            "sha256:abc",
+            "--previous-entries-json",
+            '[{"name": "w", "file": "c.py", "line": 4}]',
+        ]
+    )
+
+    built = spec.build_tool_args(args, "json")
+
+    assert (
+        built["if_none_match"],
+        built["previous_entries"],
+        built["function_name"],
+    ) == ("sha256:abc", [{"name": "w", "file": "c.py", "line": 4}], "target")
+
+
+def test_callers_incremental_flags_reject_a_non_array_payload():
+    """非法 JSON / 非数组一律 fail-closed，不静默降级成完整答案。"""
+    from tree_sitter_analyzer.cli.commands.mcp_commands import _specs_core
+    from tree_sitter_analyzer.cli_main import create_argument_parser
+
+    spec = next(s for s in _specs_core._CORE_SPECS if s.flag_name == "callers")
+    invalid = create_argument_parser().parse_args(
+        ["--callers", "target", "--previous-entries-json", '{"not": "an array"}']
+    )
+
+    built = spec.build_tool_args(invalid, "json")
+
+    assert built["previous_entries"] == "__INVALID_PREVIOUS_ENTRIES__"

@@ -889,3 +889,48 @@ def test_enrichment_skips_entries_that_are_not_caller_dicts() -> None:
     CodeGraphCallersTool._attach_call_site_lines(_Rows(), entries, "target", None)
 
     assert (entries[0], entries[1]["call_site_line"]) == ("not-a-caller", 9)
+
+
+@pytest.mark.asyncio
+async def test_an_invalid_previous_entries_payload_is_refused(tmp_path) -> None:
+    """非法 previous_entries（字符串哨兵）→ INVALID_ARGUMENT，而不是静默回完整答案。"""
+    root = await _index_files(tmp_path, {"a.py": "def target():\n    return 1\n"})
+
+    result = await _callers_with(
+        root, "target", previous_entries="__INVALID_PREVIOUS_ENTRIES__"
+    )
+
+    assert (result["success"], result["error_code"]) == (False, "INVALID_ARGUMENT")
+    assert "callers" not in result
+
+
+def test_sql_native_callers_annotates_activation(monkeypatch) -> None:
+    """include_activation=True 时读取激活图（缺失时给零值兜底）。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
+
+    class _Cache:
+        project_root = "."
+
+        def query_callers(self, *args, **kwargs):
+            return [
+                {
+                    "caller_name": "wrapper",
+                    "caller_file": "c.py",
+                    "caller_line": 4,
+                    "callee_line": 7,
+                    "callee_resolved_file": "",
+                    "receiver_binding": None,
+                }
+            ]
+
+        def lookup(self, path):
+            return None
+
+    tool = CodeGraphCallersTool(".")
+    monkeypatch.setattr(tool, "_fetch_activation_map", lambda cache: {})
+
+    callers, _ = tool._sql_native_callers(
+        _Cache(), "target", None, include_activation=True
+    )
+
+    assert callers[0]["activation"] == {"mod_count_30d": 0, "last_modified_at": None}
