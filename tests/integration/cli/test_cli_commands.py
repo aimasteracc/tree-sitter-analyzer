@@ -555,3 +555,27 @@ class TestTableCommandCoverage:
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+class TestAgentSummaryOnlyScope:
+    """dogfood 2026-11-09 P2-5：这个 flag 只对 --change-impact 生效。"""
+
+    def test_agent_summary_only_without_change_impact_is_rejected(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(
+            sys, "argv", ["cli", "--callers", "main", "--agent-summary-only"]
+        )
+        mock_stdout = StringIO()
+        mock_stderr = StringIO()
+        monkeypatch.setattr("sys.stdout", mock_stdout)
+        monkeypatch.setattr("sys.stderr", mock_stderr)
+
+        with pytest.raises(SystemExit) as excinfo:
+            main()
+
+        assert excinfo.value.code == 2
+        assert "--agent-summary-only requires --change-impact" in (
+            mock_stderr.getvalue()
+        )
+        assert mock_stdout.getvalue() == ""

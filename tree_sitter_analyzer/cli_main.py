@@ -198,6 +198,7 @@ def main() -> None:
     args = parser.parse_args(_normalize_agent_command_aliases(sys.argv[1:]))
     _apply_format_alias(args)
     _validate_mode_flag_wiring(args, parser)
+    _reject_misplaced_agent_summary_only(args, parser)
     _reject_missing_project_root(args)
     _configure_logging(args)
 
@@ -330,6 +331,22 @@ def _validate_mode_flag_wiring(
             continue
         trigger_flag = "--" + trigger_dest.replace("_", "-")
         parser.error(f"{mode_flag} requires {trigger_flag}")
+
+
+def _reject_misplaced_agent_summary_only(
+    args: argparse.Namespace, parser: argparse.ArgumentParser
+) -> None:
+    """``--agent-summary-only`` 只对 ``--change-impact`` 生效（dogfood 2026-11-09 P2-5）。
+
+    它默认就是 True，且只有 change-impact 消费它；其它命令上显式传入是静默空操作，
+    agent 会以为省了上下文。按 #1000 的 wiring 规则 fail fast（exit 2、点名触发
+    flag），但不把它塞进 ``_MODE_FLAG_WIRING``——那张表固定描述 ``--X-mode`` 选择器。
+    """
+    if "--agent-summary-only" not in sys.argv:
+        return
+    if getattr(args, "change_impact", False):
+        return
+    parser.error("--agent-summary-only requires --change-impact")
 
 
 def _reject_missing_project_root(args: argparse.Namespace) -> None:
