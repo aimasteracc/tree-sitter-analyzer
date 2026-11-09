@@ -171,7 +171,7 @@ def test_tool_schema_is_strict_and_requires_query() -> None:
     ) == (
         ["query"],
         False,
-        ["cursor", "detail", "limit", "output_format", "query"],
+        ["cursor", "detail", "if_none_match", "limit", "output_format", "query"],
     )
 
 

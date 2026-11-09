@@ -316,3 +316,63 @@ def test_a_trailing_non_relation_stage_gets_no_absence_hint() -> None:
     payload = _answer({"query": "symbol('t').callers().take(3)"}, fb)
 
     assert "absence_hint" not in payload
+
+
+def test_answer_etag_is_stable_across_volatile_fields() -> None:
+    """§12.1 的 UQL 半边：指纹只认内容与世代，不认耗时等易变字段。"""
+    from tree_sitter_analyzer.uql.output import answer_etag
+
+    base = {
+        "query": "symbol('a').callers()",
+        "groups": [{"stage": "callers", "rows": [{"name": "b"}], "count": 1}],
+        "gaps": [],
+        "page": {"total": 1},
+    }
+    noisy = {**base, "elapsed_ms": 12}
+
+    assert (
+        answer_etag(base, "gen-1") == answer_etag(noisy, "gen-1"),
+        answer_etag(base, "gen-1") != answer_etag(base, "gen-2"),
+    ) == (True, True)
+
+
+def test_uql_if_none_match_returns_a_minimal_unchanged_answer() -> None:
+    """命中同一指纹时只回最小载荷；过期指纹回完整答案。"""
+    import asyncio
+
+    from tree_sitter_analyzer.mcp.tools.uql_tool import UqlTool
+
+    async def run():
+        tool = UqlTool(".")
+        query = "symbol('build_facade').callers()"
+        first = await tool.execute({"query": query, "output_format": "json"})
+        hit = await tool.execute(
+            {
+                "query": query,
+                "output_format": "json",
+                "if_none_match": first["answer_etag"],
+            }
+        )
+        stale = await tool.execute(
+            {
+                "query": query,
+                "output_format": "json",
+                "if_none_match": "sha256:deadbeef",
+            }
+        )
+        return first, hit, stale
+
+    first, hit, stale = asyncio.run(run())
+
+    assert (first["answer_etag"].startswith("sha256:"), hit["unchanged"]) == (
+        True,
+        True,
+    )
+    assert set(hit) == {
+        "success",
+        "unchanged",
+        "answer_etag",
+        "query",
+        "index_generation",
+    }
+    assert "unchanged" not in stale

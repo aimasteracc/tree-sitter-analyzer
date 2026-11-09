@@ -151,6 +151,40 @@ def _reasons(execution: Execution) -> list[str]:
     return reasons
 
 
+def answer_etag(result: dict[str, Any], generation: str | None) -> str:
+    """UQL 答案的内容指纹（RFC-0041 × §12.1 的重问原语）。
+
+    指纹覆盖「同一查询 + 同一索引世代」下的答案内容：分组行、每阶段的计数与完整性、
+    gaps 和分页总量。``generation`` 参与计算，因此索引重建后指纹必然改变——不会出现
+    跨世代误判「没变」。
+    """
+    import hashlib
+    import json
+
+    payload = {
+        "query": result.get("query"),
+        "detail": result.get("detail"),
+        "generation": generation,
+        "page_total": (result.get("page") or {}).get("total"),
+        "groups": [
+            {
+                "stage": group.get("stage"),
+                "rows": group.get("rows"),
+                "count": (
+                    group.get("count")
+                    if isinstance(group.get("count"), int)
+                    else len(group.get("rows") or [])
+                ),
+            }
+            for group in (result.get("groups") or [])
+            if isinstance(group, dict)
+        ],
+        "gaps": result.get("gaps") or [],
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return "sha256:" + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
 def project(
     execution: Execution,
     *,

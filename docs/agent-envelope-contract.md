@@ -114,6 +114,16 @@ Rules:
   `SYMBOL_NOT_DEFINED` never gets a certificate of any kind: not being indexed is not being an entry.
 - The certificate is part of the answer content, so it participates in `answer_etag`.
 
+## Re-asking an answer (ETag / `If-None-Match`)
+
+Four answers support the incremental loop: `callers`, `callees`, `test_map` and `search action=uql`.
+
+- `answer_etag` covers the answer **content** plus its scope: source freshness for the relation
+  answers, the index generation for `test_map` and UQL.
+- A matching `if_none_match` returns a minimal `{unchanged: true}` payload; a stale answer is
+  re-sent in full rather than reported as unchanged. A stale scope never yields a 304.
+- UQL's `index_generation` is part of the fingerprint, so re-indexing always changes it.
+
 ## `next_step` conventions
 
 - One concrete, imperative action — a command or a tool call, not prose
