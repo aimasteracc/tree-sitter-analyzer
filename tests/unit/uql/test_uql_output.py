@@ -307,3 +307,12 @@ def test_an_incomplete_callers_stage_gets_no_absence_hint() -> None:
     payload = _answer({"query": Q}, fb)
 
     assert "absence_hint" not in payload
+
+
+def test_a_trailing_non_relation_stage_gets_no_absence_hint() -> None:
+    """末尾是 take/sort 时不提示：缺席问的是关系 stage 本身。"""
+    fb = FakeBackends({"t": [sym("t")]}, {"t": callers_payload()})
+
+    payload = _answer({"query": "symbol('t').callers().take(3)"}, fb)
+
+    assert "absence_hint" not in payload

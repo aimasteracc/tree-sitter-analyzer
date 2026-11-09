@@ -340,6 +340,37 @@ _NAV_DESCRIPTION = (
 )
 
 
+def _index_generation_id(project_root: str | None) -> str:
+    """活动索引世代 id；读不到返回空串（此时不提供 304 语义）。"""
+    if not project_root:
+        return ""
+    try:
+        from ...cache.generation_routing import resolve_index_location
+
+        selector = resolve_index_location(str(project_root)).selector
+        return str(getattr(selector, "generation_id", "") or "")
+    except Exception:  # noqa: BLE001 — 读不到就不承诺 unchanged
+        return ""
+
+
+def _test_map_etag(result: dict[str, Any], generation: str) -> str:
+    """test_map 答案的指纹（含索引世代：同一世代 + 同一内容才敢说没变）。"""
+    import hashlib
+    import json
+
+    payload = {
+        "symbol": result.get("symbol"),
+        "generation": generation,
+        "test_files": result.get("test_files") or [],
+        "test_functions": result.get("test_functions") or [],
+        "edge_count": result.get("edge_count"),
+        "unique_function_count": result.get("unique_function_count"),
+        "truncated": bool(result.get("truncated", False)),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
 def build_nav_facade(project_root: str | None = None) -> FacadeTool:
     """Construct the ``nav`` facade wired to live inner tool instances.
 
@@ -479,6 +510,7 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         """
         symbol: str | None = args.get("symbol") or args.get("function_name")
         file_path: str | None = args.get("file_path")
+        requested_etag = str(args.get("if_none_match") or "").strip()
 
         if not symbol:
             return {
@@ -644,6 +676,27 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
 
         from ..utils.format_helper import apply_output_format_to_response
 
+        generation = _index_generation_id(project_root)
+        result["answer_etag"] = _test_map_etag(result, generation)
+        if requested_etag and generation and requested_etag == result["answer_etag"]:
+            # 同一索引世代 + 同一内容指纹：答案不可能变，回最小载荷。
+            return apply_output_format_to_response(
+                {
+                    "success": True,
+                    "verdict": "INFO",
+                    "unchanged": True,
+                    "answer_etag": requested_etag,
+                    "symbol": symbol,
+                    "agent_summary": {
+                        "summary_line": f"test_map: {symbol!r} unchanged (etag match)",
+                        "next_step": (
+                            "Reuse the previous answer; the index generation and "
+                            "the tests are unchanged."
+                        ),
+                    },
+                },
+                output_format,
+            )
         return apply_output_format_to_response(result, output_format)
 
     async def _co_change_route(args: dict[str, Any]) -> Any:

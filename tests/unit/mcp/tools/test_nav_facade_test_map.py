@@ -1019,3 +1019,60 @@ async def test_test_map_with_a_test_caller_has_no_absence() -> None:
     result = await facade.execute({"action": "test_map", "symbol": "covered_fn"})
 
     assert ("absence" in result, result["unique_function_count"]) == (False, 1)
+
+
+@pytest.mark.asyncio
+async def test_test_map_answers_carry_an_etag(monkeypatch) -> None:
+    """同一世代 + 同一内容 → 同一 etag；304 命中时回最小载荷。"""
+    import tree_sitter_analyzer.mcp.tools.nav_facade as nav_module
+
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+    target_fn = _make_func("isolated_fn", "src/core.py")
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.return_value = []
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+    monkeypatch.setattr(nav_module, "_index_generation_id", lambda root: "gen-1")
+
+    first = await facade.execute({"action": "test_map", "symbol": "isolated_fn"})
+    second = await facade.execute(
+        {
+            "action": "test_map",
+            "symbol": "isolated_fn",
+            "if_none_match": first["answer_etag"],
+        }
+    )
+
+    assert (first["answer_etag"] == second["answer_etag"], second["unchanged"]) == (
+        True,
+        True,
+    )
+    assert "test_files" not in second
+
+
+@pytest.mark.asyncio
+async def test_test_map_without_a_generation_never_claims_unchanged(
+    monkeypatch,
+) -> None:
+    """读不到索引世代时不提供 304：没有世代就没有「没变」的承诺。"""
+    import tree_sitter_analyzer.mcp.tools.nav_facade as nav_module
+
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [_make_func("x_fn", "src/core.py")]
+    mock_graph.caller_refs_of.return_value = []
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+    monkeypatch.setattr(nav_module, "_index_generation_id", lambda root: "")
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "x_fn", "if_none_match": "sha256:deadbeef"}
+    )
+
+    assert ("unchanged" in result, result["answer_etag"].startswith("sha256:")) == (
+        False,
+        True,
+    )
