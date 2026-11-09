@@ -416,6 +416,33 @@ def _script_evidence(project_root: str, file_path: str | None) -> str | None:
     return f"{normalized} starts with #!{interpreter}"
 
 
+def _unproven_absence(
+    result: dict[str, Any], open_sites: tuple[int, int, int]
+) -> dict[str, Any]:
+    """RFC-0044 的诚实降级：空列表但证据不全时给 ``unknown``/``possible``。
+
+    不给 ``proven``（那会假装缺席已被证明），但也不沉默——agent 需要知道
+    「空是因为没查到，还是因为查不全」，以及下一步该跑什么。
+    """
+    unresolved, name_only, declaring = (int(value) for value in open_sites)
+    reasons = list(result.get("completeness_reasons") or [])
+    detail = (
+        f"completeness={result.get('completeness')!r}; "
+        f"unresolved={unresolved}, name_only={name_only}, declaring_file_sites={declaring}"
+    )
+    if reasons:
+        detail += f"; reasons={', '.join(str(reason) for reason in reasons[:3])}"
+    return {
+        "kind": "unknown",
+        "confidence": "possible",
+        "evidence": [{"kind": "incomplete_call_graph", "detail": detail}],
+        "next_step": (
+            "The empty caller list is not proven: close the open sites above "
+            "(resolve or rule out these inbound sites), then ask again."
+        ),
+    }
+
+
 def absence_certificate(
     result: dict[str, Any],
     *,
@@ -437,15 +464,17 @@ def absence_certificate(
     """
     if result.get("caller_count") != 0:
         return None
-    if result.get("completeness") != "complete":
-        return None
     open_sites = (
         result.get("unresolved_inbound") or 0,
         result.get("name_only_inbound") or 0,
         result.get("unresolved_in_declaring_files") or 0,
     )
-    if any(open_sites):
-        return None
+    if result.get("completeness") != "complete" or any(open_sites):
+        # 证据不全时只降级、不冒充：not-found 连「可能没有」都不给（它可能
+        # 根本不在索引里），其余情况给 unknown/possible 并点名开放站点。
+        if result.get("verdict") == "NOT_FOUND":
+            return None
+        return _unproven_absence(result, open_sites)
     base_evidence = {
         "kind": "complete_call_graph",
         "detail": (

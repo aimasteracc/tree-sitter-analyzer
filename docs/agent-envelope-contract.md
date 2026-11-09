@@ -100,8 +100,12 @@ Rules:
 - `confidence: "proven"` is the only value emitted today; RFC-0044 defines the future
   `possible` value for rules that cannot run (e.g. an unreadable manifest).
 - Implemented kinds: `unreferenced`, `entry_point` (console script / package `__main__.py`),
-  `script` (file starts with `#!`). `untested` is still specified only; consumers must treat
-  unknown `kind` values as informational.
+  `script` (file starts with `#!`), and the honest downgrade `unknown` with
+  `confidence: "possible"` when the list is empty but evidence is incomplete — its
+  `incomplete_call_graph` evidence names the open sites so the agent knows what to close.
+- A `NOT_FOUND` answer never carries `absence` at all: "not in the index" is not
+  "nobody calls it". `untested` is still specified only; consumers must treat unknown
+  `kind` values as informational.
 - The certificate is part of the answer content, so it participates in `answer_etag`.
 
 ## `next_step` conventions

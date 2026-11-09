@@ -699,16 +699,22 @@ async def test_an_unproven_answer_never_claims_absence(tmp_path) -> None:
 
 
 def test_absence_certificate_requires_zero_open_sites() -> None:
-    """即使 completeness 声称 complete，有开放站点也不签发缺席证书。"""
+    """即使 completeness 声称 complete，有开放站点也只给 possible。"""
     from tree_sitter_analyzer.mcp.tools.callers_tool import absence_certificate
 
     result = {
         "caller_count": 0,
         "completeness": "complete",
+        "verdict": "WARN",
         "unresolved_inbound": 2,
     }
 
-    assert absence_certificate(result) is None
+    certificate = absence_certificate(result)
+
+    assert (certificate["kind"], certificate["confidence"]) == (
+        "unknown",
+        "possible",
+    )
 
 
 def test_console_script_entry_point_is_recognised(tmp_path) -> None:
@@ -978,3 +984,38 @@ def test_a_missing_script_file_never_proves_anything(tmp_path) -> None:
 
     assert _script_evidence(str(tmp_path), "missing.py") is None
     assert _script_evidence(str(tmp_path), None) is None
+
+
+def test_an_incomplete_empty_answer_is_a_possible_absence() -> None:
+    """RFC-0044 降级：空但没有证据时给 unknown/possible，并点名开放站点。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import absence_certificate
+
+    certificate = absence_certificate(
+        {
+            "caller_count": 0,
+            "completeness": "unknown",
+            "verdict": "WARN",
+            "unresolved_inbound": 2,
+            "completeness_reasons": ["UNRESOLVED_INBOUND"],
+        }
+    )
+
+    assert (
+        certificate["kind"],
+        certificate["confidence"],
+        certificate["evidence"][0]["kind"],
+    ) == ("unknown", "possible", "incomplete_call_graph")
+    assert "unresolved=2" in certificate["evidence"][0]["detail"]
+    assert "UNRESOLVED_INBOUND" in certificate["evidence"][0]["detail"]
+
+
+def test_a_not_found_answer_is_never_an_absence() -> None:
+    """not-found 不是「没人调用」：没有证书，连 possible 都不给。"""
+    from tree_sitter_analyzer.mcp.tools.callers_tool import absence_certificate
+
+    assert (
+        absence_certificate(
+            {"caller_count": 0, "completeness": "unknown", "verdict": "NOT_FOUND"}
+        )
+        is None
+    )
