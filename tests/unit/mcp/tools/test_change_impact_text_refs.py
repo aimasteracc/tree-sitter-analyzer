@@ -106,7 +106,7 @@ def test_the_tool_attaches_the_advisory_field(tmp_path) -> None:
         1,
         "tests/test_dotted.py",
     )
-    assert "decide whether to run them" in result["text_reference_note"]
+    assert "confidence=import" in result["text_reference_note"]
 
 
 def test_no_changed_files_means_no_probe() -> None:
@@ -117,3 +117,30 @@ def test_no_changed_files_means_no_probe() -> None:
     tool = ChangeImpactTool(".")
 
     assert tool._text_reference_tests({}, []) == []
+
+
+def test_confidence_distinguishes_imports_from_mentions(tmp_path) -> None:
+    """真 import → confidence=import；只在文本里出现 → mention，且 import 排前面。"""
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "test_mentions.py").write_text(
+        "# see tree_sitter_analyzer.cache.search for details\n", encoding="utf-8"
+    )
+    (tests / "test_package_attr.py").write_text(
+        "from tree_sitter_analyzer.cache import search\n", encoding="utf-8"
+    )
+    (tests / "test_direct.py").write_text(
+        "import tree_sitter_analyzer.cache.search\n", encoding="utf-8"
+    )
+
+    found = text_reference_tests(
+        str(tmp_path),
+        changed_paths=["tree_sitter_analyzer/cache/search.py"],
+        selected=[],
+    )
+
+    assert [(item["file"], item["confidence"]) for item in found] == [
+        ("tests/test_direct.py", "import"),
+        ("tests/test_package_attr.py", "import"),
+        ("tests/test_mentions.py", "mention"),
+    ]

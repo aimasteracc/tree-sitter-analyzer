@@ -20,6 +20,29 @@ from typing import Any
 TEXT_REFERENCE_LIMIT = 20
 
 
+def _dotted_module(changed_rel: str) -> str:
+    normalized = changed_rel.replace("\\", "/")
+    return normalized[: -len(".py")].replace("/", ".")
+
+
+def _is_real_import(text: str, dotted: str) -> bool:
+    """该模块是否被**导入**（而不是只在注释/字符串里被提到）。"""
+    import re
+
+    parent, _, leaf = dotted.rpartition(".")
+    alternatives = [
+        rf"from\s+{re.escape(dotted)}\s+import\b",
+        rf"import\s+{re.escape(dotted)}\b",
+    ]
+    if parent:
+        # `from pkg.cache import search` 也是真导入（包属性式引用）。
+        alternatives.append(
+            rf"from\s+{re.escape(parent)}\s+import\s+[^\n]*\b{re.escape(leaf)}\b"
+        )
+    pattern = re.compile(r"^\s*(?:" + "|".join(alternatives) + ")", re.MULTILINE)
+    return pattern.search(text) is not None
+
+
 def _import_probes(changed_rel: str) -> tuple[str, ...]:
     """被改动模块的几种常见引用写法（保守：只取足够长的片段）。"""
     normalized = changed_rel.replace("\\", "/")
@@ -70,9 +93,26 @@ def text_reference_tests(
         except OSError:
             continue
         for probe, changed in probes.items():
-            if probe in text:
-                found.append({"file": rel, "matched": probe, "changed": changed})
-                break
+            if probe not in text:
+                continue
+            confidence = (
+                "import"
+                if _is_real_import(text, _dotted_module(changed))
+                else "mention"
+            )
+            found.append(
+                {
+                    "file": rel,
+                    "matched": probe,
+                    "changed": changed,
+                    # 两级证据：真的 import 了（高可信）vs 只在文本里出现（提示）。
+                    "confidence": confidence,
+                }
+            )
+            break
         if len(found) >= limit:
             break
-    return sorted(found, key=lambda item: item["file"])
+    # import 级证据排在前面：它们最可能是被漏掉的真实覆盖。
+    return sorted(
+        found, key=lambda item: (item["confidence"] != "import", item["file"])
+    )

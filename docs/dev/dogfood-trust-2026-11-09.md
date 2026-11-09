@@ -25,8 +25,18 @@
 `text_reference_count`）。实测对 `tree_sitter_analyzer/cache/search.py`：依赖图选中 58 个测试，
 文本通道另外指出 **11** 个文件，其中包括此前漏掉的 4 个直接引用者。
 
-它**不**并入 `tests_to_run`——文本匹配不能当确定依赖，所以只作为 advisory 供 agent 取舍；
-真正的召回修复（把文本通道升级为带置信度的选择规则）仍是下一阶段的设计题。
+它**不**并入 `tests_to_run`——文本匹配不能当确定依赖，所以只作为 advisory 供 agent 取舍。
+
+第 43 轮给这条通道加了**两级证据**（`confidence`）：
+
+| 级别 | 含义 | 实测（`cache/search.py` 一行改动） |
+|---|---|---|
+| `import` | 文件里确实有 `import …cache.search` 或 `from …cache import search` | 13 个 |
+| `mention` | 只在注释/字符串/其他文本里出现 | 3 个 |
+
+排序上 import 级在前，`text_reference_note` 直接点出「13 of them import it directly: confidence=import」。
+诚实边界：`import` 证明的是**导入**，不是「一定会执行到」，因此仍不进 `tests_to_run`；
+把它升级为「可进 focused command 的召回」需要先量化误报率，仍是下一阶段的设计题。
 
 ## 0. 环境与方法
 

@@ -394,9 +394,11 @@ class ChangeImpactTool(BaseMCPTool):
             return
         result["text_reference_tests"] = missing
         result["text_reference_count"] = len(missing)
+        promoted = sum(1 for item in missing if item.get("confidence") == "import")
         result["text_reference_note"] = (
-            "These test files reference a changed module by text but are not in "
-            "the dependency graph's selection; decide whether to run them."
+            f"{len(missing)} test file(s) reference a changed module by text but are "
+            f"not in the dependency graph's selection ({promoted} of them import it "
+            "directly: confidence=import). Run those first; the rest are mentions."
         )
 
     async def _execute_read_existing(
