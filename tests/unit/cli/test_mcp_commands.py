@@ -1060,6 +1060,8 @@ def test_callees_cli_delegates_to_callees_tool(monkeypatch) -> None:
             "file_path": None,
             "limit": 50,
             "include_bodies": False,
+            # §12.1：callees 也支持 304 式重问，未传时为 None。
+            "if_none_match": None,
             "output_format": "json",
         },
     }

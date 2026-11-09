@@ -19,6 +19,8 @@ POINT_RELATION_KEYS = (
     "limit",
     "include_bodies",
     "output_format",
+    # §12.1：callees 也支持 304 式重问。
+    "if_none_match",
 )
 # #1854：callers 另转发 ``order``（callees 没有置信层级）。
 # §12.1/§12.2：callers 另外转发增量参数（ETag 协商与无状态 delta）。

@@ -258,6 +258,7 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
             "file_path": getattr(args, "callees_file", None),
             "limit": getattr(args, "call_limit", 50),
             "include_bodies": not bool(getattr(args, "call_no_bodies", False)),
+            "if_none_match": getattr(args, "if_none_match", None),
             "output_format": output_format,
         },
     ),
