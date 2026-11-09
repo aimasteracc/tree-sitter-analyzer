@@ -44,9 +44,32 @@ def _issue_stable_failure_record(
         stats["stable_failures_recorded"] = int(stats.get("errors", 0) or 0)
     from .zero_change_hint import zero_change_fast_path_hint
 
+    if not issued and _is_zero_change_run(stats):
+        from .backfill_scope import published_parent
+        from .stable_failures import inherit_record
+
+        inherited = inherit_record(
+            conn,
+            published_parent(cache),
+            project_root=cache.project_root,
+            scope=scope_json,
+            extractor_version=current_extractor_version(),
+        )
+        if inherited is not None:
+            stats["stable_failures_inherited"] = len(inherited)
     hint = zero_change_fast_path_hint(stats)
     if hint is not None:
         stats["zero_change_hint"] = hint
+
+
+def _is_zero_change_run(stats: dict[str, Any]) -> bool:
+    """零变化：没有写入、没有删除、运行中无变化、回填零错误。"""
+    return (
+        int(stats.get("indexed", 0) or 0) == 0
+        and int(stats.get("removed", 0) or 0) == 0
+        and not stats.get("changed_during_run")
+        and int(stats.get("backfill_errors", 0) or 0) == 0
+    )
 
 
 def run_index_project(

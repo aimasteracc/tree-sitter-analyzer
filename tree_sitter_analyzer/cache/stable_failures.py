@@ -359,3 +359,44 @@ def issue_after_run(
         conn.rollback()
         logger.warning("stable-failure record could not be issued", exc_info=True)
         return False
+
+
+def read_record_at(database: Path) -> StableFailureRecord | None:
+    """只读打开另一个库并读取记录（父版本 / 遗留缓存检查用）。"""
+    return _read_record_at(database)
+
+
+def inherit_record(
+    conn: sqlite3.Connection,
+    parent: Path | None,
+    *,
+    project_root: str,
+    scope: str,
+    extractor_version: int,
+) -> tuple[StableFailure, ...] | None:
+    """零变化世代继承父版本的记录；成功时返回被继承的失败项。
+
+    零变化意味着本世代没有写入任何索引行，父版本记录绑定的
+    ``(文件, 内容摘要, 原因)`` 因此仍然描述当前内容——这正是 #1671 记录要表达的
+    「本版本是一次完整刷新直接结果」的延续。父版本没有记录/版本不符/本库已有
+    记录时返回 ``None``：继承只在证据确实可延续时发生。
+    """
+    if parent is None or read_record(conn) is not None:
+        return None
+    inherited = read_record_at(parent)
+    if not _converged(inherited) or inherited is None:
+        return None
+    record_root = os.path.realpath(os.path.abspath(project_root))
+    if inherited.root != record_root or inherited.scope != scope:
+        return None
+    if inherited.extractor_version != extractor_version:
+        return None
+    if not issue_record(
+        conn,
+        project_root=project_root,
+        scope=scope,
+        extractor_version=extractor_version,
+        failures=inherited.failures,
+    ):
+        return None
+    return inherited.failures

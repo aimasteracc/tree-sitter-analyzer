@@ -616,3 +616,75 @@ def test_an_unreadable_call_graph_marker_means_not_certified(engine, monkeypatch
     monkeypatch.setattr(engine, "call_graph_built", _explode)
 
     assert indexer_module._resolution_is_certified(engine, engine._get_conn()) is False
+
+
+def _record_db(path):
+    import sqlite3
+
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE ast_cache_metadata (key TEXT PRIMARY KEY, value TEXT)")
+    return conn
+
+
+def test_a_zero_change_generation_inherits_the_parent_record(tmp_path):
+    """零变化世代继承父版本记录：内容没变，记录的 (文件,摘要,原因) 仍成立。"""
+    from tree_sitter_analyzer.cache import stable_failures
+
+    root = str(tmp_path)
+    parent_conn = _record_db(tmp_path / "parent.db")
+    assert stable_failures.issue_record(
+        parent_conn,
+        project_root=root,
+        scope="full",
+        extractor_version=stable_failures.current_extractor_version(),
+        failures=(
+            stable_failures.StableFailure(
+                "a.lua", "a" * 64, "LUA grammar not installed"
+            ),
+        ),
+    )
+    child_conn = _record_db(tmp_path / "child.db")
+
+    inherited = stable_failures.inherit_record(
+        child_conn,
+        tmp_path / "parent.db",
+        project_root=root,
+        scope="full",
+        extractor_version=stable_failures.current_extractor_version(),
+    )
+
+    record = stable_failures.read_record(child_conn)
+    assert (len(inherited or ()), record is not None) == (1, True)
+    assert [failure.file for failure in record.failures] == ["a.lua"]
+
+
+def test_inheritance_needs_a_converged_parent_record(tmp_path):
+    """父版本没有记录 / 版本不符时绝不继承。"""
+    from tree_sitter_analyzer.cache import stable_failures
+
+    root = str(tmp_path)
+    empty_parent = _record_db(tmp_path / "empty.db")
+    child = _record_db(tmp_path / "child.db")
+
+    inherited = stable_failures.inherit_record(
+        child,
+        tmp_path / "empty.db",
+        project_root=root,
+        scope="full",
+        extractor_version=stable_failures.current_extractor_version(),
+    )
+
+    assert (inherited, stable_failures.read_record(child)) == (None, None)
+    assert stable_failures.read_record(empty_parent) is None
+
+
+def test_only_a_zero_change_run_may_inherit_the_record():
+    from tree_sitter_analyzer.cache.index_project_runner import _is_zero_change_run
+
+    assert (
+        _is_zero_change_run({"indexed": 0, "removed": 0, "backfill_errors": 0}),
+        _is_zero_change_run({"indexed": 1}),
+        _is_zero_change_run({"indexed": 0, "removed": 2}),
+        _is_zero_change_run({"indexed": 0, "changed_during_run": 1}),
+        _is_zero_change_run({"indexed": 0, "backfill_errors": 1}),
+    ) == (True, False, False, False, False)
