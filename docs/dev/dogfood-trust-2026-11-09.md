@@ -82,6 +82,24 @@
 
 **累计 12/12 可用样本为真阳性**；离 20 的升级门槛还差 8 个，条件不变。
 
+**第 47 轮补齐到 20 个样本（全部真阳性，误报率 0）**：
+
+| 模块 | 候选 | 覆盖率 |
+|---|---|---|
+| `uql/coverage.py` | `tests/unit/uql/test_uql_coverage.py` | 84.11 % |
+| `graph/read_interrupt.py` | `tests/integration/test_snapshot_tables_p3_lite.py` | 80.00 % |
+| `cache/stable_failures.py` | `tests/unit/test_ast_cache_index_project.py` | 79.80 % |
+| `mcp/tools/utils/change_impact_response.py` | `tests/unit/mcp/test_change_impact_tool_git_and_verification.py` | 45.63 % |
+| `capabilities.py` | `tests/contracts/test_agent_native_surface_contract.py` | 40.32 % |
+| `cache/query.py` | `tests/unit/test_fts_porter_stemming.py` | 29.12 % |
+| `mcp/tools/symbol_search_tool.py` | `tests/unit/languages/test_typescript_extraction_fixes.py` | 10.90 % |
+| `mcp/tools/utils/change_impact_text_refs.py` | 自己的测试 | 93.14 % |
+
+**20/20 真阳性**，升级门槛达成。但升级本身需要改「构建 `focused_test_command` 的阶段」——
+它在我追加补充字段之前就已经算好，因此把候选并入 `tests_to_run` 必须动
+`_build_change_impact_result` 的输入，而不是响应尾部。**这类「改 CI 跑什么」的默认，
+我要单独一轮带完整回归再做**，不在本轮顺手改。
+
 ## 0. 环境与方法
 
 | 项 | 值 |
