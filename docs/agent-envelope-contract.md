@@ -105,8 +105,15 @@ Rules:
   `confidence: "possible"` when the list is empty but evidence is incomplete — its
   `incomplete_call_graph` evidence names the open sites so the agent knows what to close.
 - A `NOT_FOUND` answer never carries `absence` at all: "not in the index" is not
-  "nobody calls it". `untested` is still specified only; consumers must treat unknown
-  `kind` values as informational.
+  "nobody calls it". Consumers must treat unknown `kind` values as informational.
+- Known limitation (2026-11-10, found by smoke test): the certificate is gated on the caller
+  answer being `complete`. Real entry points often resolve to `NOT_FOUND` with incomplete
+  evidence (e.g. non-call references in the declaring file), so `entry_point` / `script` fire
+  less often than their rules suggest. The distinction that would fix it: `entry_point` and
+  `script` are *identification* facts (the object is invoked from outside the graph), not
+  negative claims — they could keep `proven` while caller completeness is unknown, whereas
+  `unreferenced` / `untested` must keep requiring proof. That is a contract change, left to
+  review rather than slipped into this branch.
 - The certificate is part of the answer content, so it participates in `answer_etag`.
 
 ## `next_step` conventions
