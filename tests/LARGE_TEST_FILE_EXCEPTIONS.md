@@ -58,6 +58,7 @@ match reality or CI fails). The threshold is 800 lines.
 | 830 | `tests/unit/test_symbol_search_tool.py` | tracked: #1561 - the certification-bound degrade regression stays with the existing search-symbol suite (T-1); temporary growth from 798 lines. Follow-up must split by behavior under the controlled migration contract. |
 | 822 | `tests/unit/cli/test_install_skills.py` | |
 | 821 | `tests/unit/test_wire_owner_contract.py` | |
+| 819 | `tests/unit/test_ast_cache_index_project.py` | tracked: #1939 (record lifecycle + inheritance coverage) |
 | 814 | `tests/unit/languages/test_java_formatter.py` | |
 | 814 | `tests/unit/languages/test_csharp_plugin_elements.py` | |
 
