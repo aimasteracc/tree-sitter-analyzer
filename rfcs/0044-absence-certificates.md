@@ -1,6 +1,6 @@
 # RFC-0044: Absence certificates — answer "it is not there" with proof
 
-- **Status**: draft
+- **Status**: implemented (2026-11-10, PR #1939)
 - **Author(s)**: agent dogfood round 2026-11-09
 - **Created**: 2026-11-09
 - **Last updated**: 2026-11-09
@@ -135,11 +135,18 @@ Rules are synchronous reads over already-open connections; no new locking.
 
 ## Acceptance criteria
 
-- [ ] `absence` emitted only on `complete` answers, with evidence
-- [ ] `unknown`/`possible` covers every non-runnable rule; no silent absence
-- [ ] CLI↔MCP parity tests green; no flag-count change
-- [ ] `docs/agent-envelope-contract.md` documents the field and its proof rule
-- [ ] Docs/CODEMAPS updated (mcp-tools row text)
+- [x] `absence` emitted only on `complete` answers, with evidence
+  (`absence_certificate`; proven kinds `unreferenced` / `entry_point` / `script` / `untested`)
+- [x] `unknown`/`possible` covers every non-runnable rule; no silent absence
+  (`_unproven_absence` names the open sites; `NOT_FOUND` carries no certificate)
+- [x] CLI↔MCP parity tests green; no flag-count change
+  (no new flag/action; parity + codemap contracts unchanged and green)
+- [x] `docs/agent-envelope-contract.md` documents the field and its proof rule
+- [x] Docs/CODEMAPS updated (mcp-tools row text)
+
+Implemented by PR #1939 (`da7f94105`…`a30f5b916`); the UQL counterpart ships as a
+weaker `absence_hint` (`possible`) because UQL has stage coverage, not the 13
+RFC-0040 caller checks, and points at `nav action=callers` for the certificate.
 
 ## What this RFC does NOT do (deferred)
 
