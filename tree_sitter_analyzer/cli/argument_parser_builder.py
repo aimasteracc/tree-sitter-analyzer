@@ -16,7 +16,15 @@ This module is the assembler: it imports all ``_add_*`` helpers from the
 from __future__ import annotations
 
 import argparse
+import sys
+from collections.abc import Sequence
+from typing import NoReturn
 
+from .agent_help import (
+    AgentHelpAction,
+    FullHelpAction,
+    format_parser_error,
+)
 from .argument_groups import (
     _add_agent_skills_options,
     _add_agent_workflow_options,
@@ -153,12 +161,55 @@ def _add_mcp_equivalent_options(parser: argparse.ArgumentParser) -> None:
     _add_mutation_probe_options(parser)
 
 
+class AgentFirstArgumentParser(argparse.ArgumentParser):
+    """ArgumentParser whose front door is sized for an agent's first call.
+
+    - ``-h`` / ``--help`` print the short task -> command help
+      (:func:`agent_help.format_agent_help`); ``--help-all`` and
+      :meth:`print_help` / :meth:`format_help` keep the full reference.
+    - :meth:`error` prints one short block (error, suggestion, next step)
+      instead of ~280 lines of usage. Exit code stays 2.
+    """
+
+    def register(self, registry_name: str, value: object, object: object) -> None:  # noqa: A002
+        # argparse synthesises -h/--help through the "help" action; swapping
+        # the class keeps the flag itself implicit and unchanged.
+        if registry_name == "action" and value == "help":
+            object = AgentHelpAction
+        super().register(registry_name, value, object)
+
+    def parse_known_args(  # type: ignore[override]
+        self,
+        args: Sequence[str] | None = None,
+        namespace: argparse.Namespace | None = None,
+    ) -> tuple[argparse.Namespace, list[str]]:
+        self._agent_argv = list(sys.argv[1:] if args is None else args)
+        return super().parse_known_args(args, namespace)
+
+    def error(self, message: str) -> NoReturn:
+        option_strings = (s for a in self._actions for s in a.option_strings)
+        self.exit(
+            2,
+            format_parser_error(
+                self.prog,
+                message,
+                option_strings,
+                getattr(self, "_agent_argv", []),
+            ),
+        )
+
+
 def create_argument_parser() -> argparse.ArgumentParser:
     """Create and configure the CLI argument parser."""
-    parser = argparse.ArgumentParser(
+    parser = AgentFirstArgumentParser(
         description="Analyze code using Tree-sitter and extract structured information.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=CLI_EPILOG,
+    )
+    parser.add_argument(
+        "--help-all",
+        action=FullHelpAction,
+        help="Show every flag (full reference). -h/--help shows the top agent tasks.",
     )
     _add_core_options(parser)
     _add_query_options(parser)

@@ -12,9 +12,7 @@ from ...text_search import (
     search_text_bounded,
 )
 from .base_tool import BaseMCPTool
-
-DEFAULT_TEXT_SEARCH_LIMIT = 100
-MAX_TEXT_SEARCH_LIMIT = 1000
+from .search_defaults import DEFAULT_TEXT_SEARCH_LIMIT, MAX_TEXT_SEARCH_LIMIT
 
 
 class TextSearchTool(BaseMCPTool):
