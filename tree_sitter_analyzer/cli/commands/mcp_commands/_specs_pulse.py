@@ -72,6 +72,8 @@ _PULSE_SPECS: tuple[McpCommandSpec, ...] = (
                 "limit": getattr(args, "uql_limit", 50),
                 "cursor": getattr(args, "uql_cursor", None),
                 "detail": getattr(args, "uql_detail", "compact"),
+                # §12.1：`--if-none-match` 对 uql 同样生效（世代参与指纹）。
+                "if_none_match": getattr(args, "if_none_match", None),
             }.items()
             if value is not None
         },

@@ -325,3 +325,27 @@ def test_entry_without_backing_edge_is_unknown_not_guessed() -> None:
             "callee_resolved_file": "",
         }
     ]
+
+
+def test_callees_answer_etag_ignores_volatile_fields() -> None:
+    """callees etag 只对内容与证据状态敏感（§12.1 同 callers 规则）。"""
+    from tree_sitter_analyzer.mcp.tools.callees_tool import (
+        answer_etag as callees_answer_etag,
+    )
+
+    base = {
+        "function": "f",
+        "callee_count": 1,
+        "completeness": "complete",
+        "callees": [{"name": "g", "file": "b.py", "line": 4, "body": "return 2"}],
+    }
+    noisy = {**base, "elapsed_ms": 12}
+    edited = {
+        **base,
+        "callees": [{"name": "g", "file": "b.py", "line": 4, "body": "return 3"}],
+    }
+
+    assert (
+        callees_answer_etag(base) == callees_answer_etag(noisy),
+        callees_answer_etag(base) != callees_answer_etag(edited),
+    ) == (True, True)

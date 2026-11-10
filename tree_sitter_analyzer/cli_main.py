@@ -8,6 +8,7 @@ import os
 import sys
 from typing import Any
 
+from .cli.agent_help import format_agent_help
 from .cli.argument_validator import CLIArgumentValidator
 
 # 命令类（cli.commands / cli.info_commands）在选中命令时才导入：
@@ -198,6 +199,9 @@ def main() -> None:
     args = parser.parse_args(_normalize_agent_command_aliases(sys.argv[1:]))
     _apply_format_alias(args)
     _validate_mode_flag_wiring(args, parser)
+    _reject_misplaced_agent_summary_only(args, parser)
+    _reject_missing_project_root(args)
+    _emit_capability_manifest_if_requested(args)
     _configure_logging(args)
 
     special_result = handle_special_commands(args)
@@ -223,8 +227,12 @@ def _exit_if_bare_version_request(argv: list[str]) -> None:
     if argv != ["--version"]:
         return
     from . import __version__
+    from .cli.agent_help import program_name
 
+    # Same program name as the full parser (``tree-sitter-analyzer`` under
+    # ``python -m``), so both --version paths print identical text.
     parser = argparse.ArgumentParser(
+        prog=program_name(sys.argv[0]),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -331,6 +339,95 @@ def _validate_mode_flag_wiring(
         parser.error(f"{mode_flag} requires {trigger_flag}")
 
 
+def _emit_capability_manifest_if_requested(args: argparse.Namespace) -> None:
+    """``--capabilities``：输出 agent 的规划清单后直接退出（dogfood §12.4）。
+
+    清单从注册表派生（8 facade / 94 action），不读索引、不扫源码，因此任何仓库
+    任何时刻都能便宜地调用。
+    """
+    requested = getattr(args, "capabilities", None)
+    # 只接受字符串（未使用为 None）；测试替身里的 Mock 不能被当成一次请求。
+    if not isinstance(requested, str):
+        return
+    from tree_sitter_analyzer.capabilities import (
+        build_capability_manifest,
+        preflight_action,
+    )
+    from tree_sitter_analyzer.output_manager import output_json
+
+    project_root = str(getattr(args, "project_root", None) or os.getcwd())
+    if requested:
+        preflight = preflight_action(requested, project_root)
+        output_json(preflight)
+        sys.exit(0 if preflight.get("success") else 1)
+    output_json(build_capability_manifest(project_root))
+    sys.exit(0)
+
+
+def _reject_misplaced_agent_summary_only(
+    args: argparse.Namespace, parser: argparse.ArgumentParser
+) -> None:
+    """``--agent-summary-only`` 只对 ``--change-impact`` 生效（dogfood 2026-11-09 P2-5）。
+
+    它默认就是 True，且只有 change-impact 消费它；其它命令上显式传入是静默空操作，
+    agent 会以为省了上下文。按 #1000 的 wiring 规则 fail fast（exit 2、点名触发
+    flag），但不把它塞进 ``_MODE_FLAG_WIRING``——那张表固定描述 ``--X-mode`` 选择器。
+    """
+    if "--agent-summary-only" not in sys.argv:
+        return
+    if getattr(args, "change_impact", False):
+        return
+    parser.error("--agent-summary-only requires --change-impact")
+
+
+def _reject_missing_project_root(args: argparse.Namespace) -> None:
+    """``--project-root`` 必须指向已存在的目录，否则立即失败（dogfood 2026-11-09）。
+
+    P0-1：不存在的工作区曾被当成空项目——``--callers main`` 返回
+    ``success=true``、``verdict=NOT_FOUND``、``caller_count=0``，next_step 还
+    让人去建索引。路径打错和「确实没有调用方」在输出上完全一样，脚本会把前者
+    当结论。这里在分派任何工具之前拒绝，stdout 仍是合法 JSON 信封。
+    """
+    root = getattr(args, "project_root", None)
+    if not isinstance(root, (str, os.PathLike)) or os.path.isdir(root):
+        return
+    from tree_sitter_analyzer.cli.output_format import wants_json_output
+    from tree_sitter_analyzer.output_manager import (
+        output_error,
+        output_info,
+        output_json,
+    )
+
+    message = f"project root is not a directory: {root}"
+    hint = (
+        "Pass an existing directory with --project-root, or omit it to use the "
+        "current working directory."
+    )
+    if wants_json_output(args):
+        summary_line = f"project_root: invalid — {message}"
+        output_json(
+            {
+                "success": False,
+                "verdict": "ERROR",
+                "error_code": "INVALID_PROJECT_ROOT",
+                "error_type": "validation",
+                "error": message,
+                "hint": hint,
+                "project_root": root,
+                "summary_line": summary_line,
+                "agent_summary": {
+                    "summary_line": summary_line,
+                    "verdict": "ERROR",
+                    "next_step": hint,
+                },
+            }
+        )
+    else:
+        output_error(f"ERROR: {message}")
+        output_info(hint)
+    sys.exit(1)
+
+
 def _configure_logging(args: argparse.Namespace) -> None:
     """Configure noisy loggers before command execution."""
     for logger_name in (
@@ -361,7 +458,11 @@ def _execute_selected_command(
             output_error("File path not specified.")
         else:
             output_error("No executable command specified.")
-        parser.print_help()
+        # 诊断信息走 stderr（CLAUDE.md §3）：这里是分派失败，不是 --help 请求，
+        # 把 usage 打到 stdout 会让 `--format json | jq` 解析失败。
+        # 打印简短的 agent-first help（约 2k 字符），而不是 ~83k 字符的完整参考；
+        # 完整参考见 --help-all。
+        sys.stderr.write(format_agent_help())
         sys.exit(1)
 
 

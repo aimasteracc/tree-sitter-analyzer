@@ -16,16 +16,15 @@ This module is the assembler: it imports all ``_add_*`` helpers from the
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from collections.abc import Sequence
 from typing import Any, NoReturn
 
 from .agent_help import (
-    PROG_NAME,
     AgentHelpAction,
     FullHelpAction,
     format_parser_error,
+    program_name,
 )
 from .argument_groups import (
     _add_agent_skills_options,
@@ -174,11 +173,9 @@ class AgentFirstArgumentParser(argparse.ArgumentParser):
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        # ``python -m tree_sitter_analyzer`` makes argparse call itself
-        # ``__main__.py``; agents copy the name from errors and usage lines.
-        # Installed console scripts (and their aliases) keep their own name.
-        if "prog" not in kwargs and os.path.basename(sys.argv[0]) == "__main__.py":
-            kwargs["prog"] = PROG_NAME
+        prog = program_name(sys.argv[0])
+        if "prog" not in kwargs and prog is not None:
+            kwargs["prog"] = prog
         super().__init__(*args, **kwargs)
 
     def register(self, registry_name: str, value: object, object: object) -> None:  # noqa: A002

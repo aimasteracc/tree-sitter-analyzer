@@ -1024,6 +1024,9 @@ def test_callers_cli_delegates_to_callers_tool(monkeypatch) -> None:
             "file_path": "src/parser.py",
             "limit": 50,
             "include_bodies": True,
+            # §12.1/§12.2：没有传增量参数时两个键都存在且为 None。
+            "if_none_match": None,
+            "previous_entries": None,
             "output_format": "json",
         },
     }
@@ -1057,6 +1060,8 @@ def test_callees_cli_delegates_to_callees_tool(monkeypatch) -> None:
             "file_path": None,
             "limit": 50,
             "include_bodies": False,
+            # §12.1：callees 也支持 304 式重问，未传时为 None。
+            "if_none_match": None,
             "output_format": "json",
         },
     }

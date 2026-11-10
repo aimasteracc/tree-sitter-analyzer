@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import os
 import sys
 from collections.abc import Iterable, Sequence
 from typing import Any
@@ -48,6 +49,16 @@ PROG_NAME = "tree-sitter-analyzer"
 _QUESTION_WIDTH = 38
 
 
+def program_name(argv0: str) -> str | None:
+    """``tree-sitter-analyzer`` under ``python -m``; ``None`` keeps argparse's name.
+
+    ``python -m tree_sitter_analyzer`` makes argparse call itself ``__main__.py``,
+    and agents copy the name from errors and usage lines. Installed console
+    scripts and their aliases (code-analyzer, java-analyzer) keep their own name.
+    """
+    return PROG_NAME if os.path.basename(argv0) == "__main__.py" else None
+
+
 def _task_lines() -> list[str]:
     return [
         f"  {question:<{_QUESTION_WIDTH}} {PROG_NAME} {command}"
@@ -77,6 +88,7 @@ def format_agent_help() -> str:
         "",
         "More:",
         f"  {PROG_NAME} {HELP_ALL_FLAG}        every flag (full reference, ~1,400 lines)",
+        f"  {PROG_NAME} --capabilities    every MCP facade/action: preconditions, cost",
         f"  {PROG_NAME} --agent-workflow  phase-by-phase workflow pack",
         f"  {PROG_NAME} --list-queries    query keys for FILE --query-key KEY",
         f"  {PROG_NAME} --version",

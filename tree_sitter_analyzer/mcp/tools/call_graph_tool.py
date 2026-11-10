@@ -19,6 +19,7 @@ from ...call_graph import CallGraph
 from ...project_graph import DependencyGraph
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool, _canonicalize_verdict, mirror_summary_line
+from .parse_fallback_budget import index_missing_response
 
 logger = setup_logger(__name__)
 
@@ -265,6 +266,28 @@ class CodeGraphCallTool(BaseMCPTool):
         self._call_graph_built_at = None
         self._cache_invalidated_reason = None
 
+    def _try_get_cache(self) -> Any:
+        """有可用 AST 索引时返回它；没有索引返回 ``None``（现场解析路径）。
+
+        #1562 / dogfood 2026-11-09 P0-2：只有 ``None`` 才会整仓现场解析，
+        因此这个判断决定是否要先做预算检查。
+        """
+        try:
+            from ...ast_cache import ASTCache
+
+            if self.project_root is None:
+                return None
+            cache = ASTCache(self.project_root)
+            if cache.has_call_edges():
+                return cache
+            stats = cache.get_stats()
+            if stats.get("total_files", 0) > 0:
+                return cache
+            cache.close()
+        except Exception:  # nosec B110 — 读不到索引就按「没有索引」处理
+            pass
+        return None
+
     def _get_call_graph(self) -> CallGraph:
         if not self.project_root:
             raise ValueError("Project root not set. Call set_project_path first.")
@@ -419,6 +442,14 @@ class CodeGraphCallTool(BaseMCPTool):
         started = time.perf_counter()
         mode = arguments.get("mode", "summary")
         output_format = arguments.get("output_format", "json")
+        # #1562 的预算也覆盖本工具：没有索引且仓库超出 200 文件时，整仓现场解析
+        # 会无提示阻塞数十秒到数分钟（本仓库实测 2917 文件 15.4 s）。此时立即
+        # 返回 INDEX_MISSING，与 --callers / nav action=callers 保持同一语义。
+        cache = self._try_get_cache()
+        if cache is None:
+            refusal = index_missing_response(self.project_root, "call_graph", mode=mode)
+            if refusal is not None:
+                return refusal
         # Cache hit fast-path: first call builds graph (2-5s on medium
         # repos); subsequent calls finish in ~tens of ms.
         graph = self._get_call_graph()

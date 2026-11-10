@@ -456,3 +456,32 @@ def test_callees_stage_respects_the_node_budget(monkeypatch) -> None:
         [c for c in fb.calls if c[0] == "callees"],
         C.RELATION_NODE_BUDGET in ex.stages[1].own.reasons,
     ) == ([("callees", "t", "src/a.py")], True)
+
+
+def test_a_name_with_no_indexed_definition_is_not_a_complete_census() -> None:
+    """dogfood 2026-11-09（P1-2）：索引里 0 个定义 ≠ 证明该符号不存在。
+
+    ``--uql "symbol('zzz').callers()"`` 曾返回 ``NOT_FOUND`` 且
+    ``completeness: complete`` / ``reasons: []``，而 ``nav action=callers``
+    对同一事实返回 ``SYMBOL_NOT_DEFINED``。索引可能过期或不完整，因此这里
+    必须降为 ``unknown`` 并带上同一个原因码。
+    """
+    fb = _backends()
+    ex = _run("symbol('missing_name').callers()", fb)
+    assert (_stages(ex), ex.total.status) == (
+        [("symbol", 0, "unknown"), ("callers", 0, "unknown")],
+        C.UNKNOWN,
+    )
+    # 出处带着具体原因码，后续阶段只继承通用的 UPSTREAM_UNKNOWN 标记。
+    assert ex.stages[0].own.reasons == (C.SYMBOL_NOT_DEFINED,)
+    assert ex.stages[0].note == "no indexed definition for: missing_name"
+
+
+def test_missing_definition_note_is_bounded_and_counts_the_rest() -> None:
+    """缺失名字的说明有界：最多点名 5 个，其余只给数量。"""
+    fb = _backends()
+    names = ",".join(f"'m{i}'" for i in range(7))
+    ex = _run(f"symbol([{names}]).callers()", fb)
+    assert ex.stages[0].note == (
+        "no indexed definition for: m0, m1, m2, m3, m4 (+2 more)"
+    )

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from typing import Any
+
 from tree_sitter_analyzer.cli.commands.mcp_command_helpers import McpCommandSpec
 
 from ....mcp.tools._call_tree import DEFAULT_MAX_NODES as _DEFAULT_TREE_MAX_NODES
@@ -23,6 +26,18 @@ from ._builders import (
     _dependency_mode_requires_file,
 )
 from ._read_existing_bridge import _forward_read_existing_controls
+
+
+def _parse_previous_entries(raw: str | None) -> Any:
+    """``--previous-entries-json`` → list；解析失败返回哨兵串（工具侧 fail-closed）。"""
+    if raw is None:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        return "__INVALID_PREVIOUS_ENTRIES__"
+    return parsed if isinstance(parsed, list) else "__INVALID_PREVIOUS_ENTRIES__"
+
 
 _CORE_SPECS: tuple[McpCommandSpec, ...] = (
     McpCommandSpec(
@@ -226,6 +241,11 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
             "file_path": getattr(args, "callers_file", None),
             "limit": getattr(args, "call_limit", 50),
             "include_bodies": not bool(getattr(args, "call_no_bodies", False)),
+            # §12.1/§12.2：增量参数与 MCP 面一一对应（CLI↔MCP parity）。
+            "if_none_match": getattr(args, "if_none_match", None),
+            "previous_entries": _parse_previous_entries(
+                getattr(args, "previous_entries_json", None)
+            ),
             "output_format": output_format,
         },
     ),
@@ -238,6 +258,7 @@ _CORE_SPECS: tuple[McpCommandSpec, ...] = (
             "file_path": getattr(args, "callees_file", None),
             "limit": getattr(args, "call_limit", 50),
             "include_bodies": not bool(getattr(args, "call_no_bodies", False)),
+            "if_none_match": getattr(args, "if_none_match", None),
             "output_format": output_format,
         },
     ),

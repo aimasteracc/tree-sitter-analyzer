@@ -585,8 +585,11 @@ def test_symbol_projection_rejects_malformed_symbol_scalar() -> None:
     assert symbol_projection_is_exact(conn) is False
 
 
-def test_missing_fts_row_forces_full_projection_reindex(tmp_path):
+def test_missing_fts_row_is_rebuilt_without_full_projection_reindex(tmp_path):
     # PR #1253 thread 3759606810: removed FTS evidence cannot retain an exact stamp.
+    # dogfood 2026-11-09：缺失的 FTS 条目由参考行重建即可（并按完整校验重新签发
+    # marker），不再触发整仓重写——修复前这里把 2917 个文件全部重新提取，
+    # 一次 1 文件刷新实测 57 s。
     from tree_sitter_analyzer.index_symbol_projection import symbol_projection_is_exact
 
     source = tmp_path / "app.py"
@@ -610,7 +613,9 @@ def test_missing_fts_row_forces_full_projection_reindex(tmp_path):
     after = symbol_projection_is_exact(conn, require_fts=True)
     cache.close()
 
-    assert (before, stats["indexed"], stats["cached"], after) == (False, 1, 0, True)
+    # before=False 仍然固定「移除 FTS 证据后不得保留旧 exact 戳」这一 #1253 语义；
+    # 变化的是恢复方式：有界重建并重新认证，而不是全量重索引。
+    assert (before, stats["indexed"], stats["cached"], after) == (False, 0, 1, True)
 
 
 def test_extra_fts_rowid_rejects_exact_projection(tmp_path):
@@ -666,8 +671,10 @@ def test_projection_preflights_lengths_before_payload_fetch(tmp_path, monkeypatc
     assert (result, wrapped.payload_fetched) == (False, False)
 
 
-def test_stale_external_fts_terms_force_rebuild(tmp_path):
+def test_stale_external_fts_terms_are_rebuilt_from_rows(tmp_path):
     # PR #1253 thread 3760178960: external payload columns are not indexed terms.
+    # dogfood 2026-11-09：过期词条用参考行原地重建 FTS 即可（并按完整校验重签
+    # marker），不必把文件重新提取一遍；修复前这里每次索引都全量重写。
     from tree_sitter_analyzer.index_symbol_projection import (
         symbol_projection_is_exact,
         upsert_symbol_projection_state,
@@ -703,12 +710,14 @@ def test_stale_external_fts_terms_force_rebuild(tmp_path):
     )
     cache.close()
 
+    # before=False / stale_matches=(1,0) 仍固定 #1253 的语义：旧戳不可信、过期词条
+    # 还在；修复方式变为按参考行重建（索引 0 个文件），重建后 alpha 消失、beta 出现。
     assert (before, stale_matches, stats["indexed"], after, repaired_matches) == (
         False,
         (1, 0),
-        1,
+        0,
         True,
-        (1, 0),
+        (0, 1),
     )
 
 
@@ -769,3 +778,123 @@ def test_projection_rejects_state_generation_mismatch(tmp_path) -> None:
     cache.close()
 
     assert result is False
+
+
+def _projection_db(symbols_json: str, rows: int) -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE ast_index (file_path TEXT, content_hash TEXT, "
+        "language TEXT, symbols_json TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE ast_symbol_rows (id INTEGER PRIMARY KEY, name TEXT, kind TEXT, "
+        "file_path TEXT, language TEXT, line INTEGER, end_line INTEGER)"
+    )
+    conn.execute(
+        "CREATE TABLE ast_symbol_projection_state (file_path TEXT PRIMARY KEY, "
+        "content_hash TEXT, symbol_count INTEGER, projection_digest TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO ast_index VALUES ('a.py', 'h', 'python', ?)", (symbols_json,)
+    )
+    for index in range(rows):
+        conn.execute(
+            "INSERT INTO ast_symbol_rows (name, kind, file_path, language, line, end_line) "
+            "VALUES (?, 'function', 'a.py', 'python', ?, ?)",
+            (f"f{index}", index + 1, index + 2),
+        )
+    return conn
+
+
+def test_convergence_does_not_stamp_a_partial_projection() -> None:
+    """Codex P2：payload 声明 2 个符号、行只有 1 个 → 不得制造投影证书。"""
+    from tree_sitter_analyzer.index_symbol_projection import (
+        converge_symbol_projection,
+        symbol_projection_is_exact,
+    )
+
+    conn = _projection_db('{"symbols": [{"name": "f0"}, {"name": "f1"}]}', rows=1)
+
+    converge_symbol_projection(conn)
+
+    stamped = conn.execute(
+        "SELECT COUNT(*) FROM ast_symbol_projection_state"
+    ).fetchone()[0]
+    assert (stamped, symbol_projection_is_exact(conn)) == (0, False)
+    conn.close()
+
+
+def test_convergence_stamps_a_projection_that_matches_the_payload() -> None:
+    """行集合与 payload 一致时才盖章（旧缓存迁移的快速路径仍然可用）。"""
+    from tree_sitter_analyzer.index_symbol_projection import (
+        converge_symbol_projection,
+    )
+
+    conn = _projection_db('{"symbols": [{"name": "f0"}]}', rows=1)
+
+    converge_symbol_projection(conn)
+
+    state = conn.execute(
+        "SELECT symbol_count FROM ast_symbol_projection_state"
+    ).fetchall()
+    # 盖章内容来自 payload：1 个符号；exactness 还需要认证器补 marker，
+    # 那是另一道契约（本用例只验证「盖章这一步」）。
+    assert [tuple(row) for row in state] == [(1,)]
+    conn.close()
+
+
+def test_projection_payload_check_rejects_a_file_outside_the_index() -> None:
+    """防御分支：文件不在 ast_index 时不得声称「行与 payload 一致」。"""
+    from tree_sitter_analyzer.index_symbol_projection import (
+        _projection_matches_payload,
+    )
+
+    conn = _projection_db('{"symbols": []}', rows=0)
+
+    assert _projection_matches_payload(conn, "missing.py") is False
+    conn.close()
+
+
+def test_projection_payload_check_leaves_unverifiable_payloads_stampable() -> None:
+    """payload 形状未知（空 ``{}`` / 非 JSON）时没有声明可反驳，保持可盖章。"""
+    from tree_sitter_analyzer.index_symbol_projection import (
+        _projection_matches_payload,
+    )
+
+    assert _projection_matches_payload(_projection_db("{}", rows=0), "a.py") is True
+    assert (
+        _projection_matches_payload(_projection_db("not json", rows=0), "a.py") is True
+    )
+
+
+def test_upsert_is_a_noop_without_a_state_table_or_source_row() -> None:
+    """两条防御分支：没有状态表、或文件不在 ast_index 时都不写错行。"""
+    from tree_sitter_analyzer.index_symbol_projection import (
+        upsert_symbol_projection_state,
+    )
+
+    bare = sqlite3.connect(":memory:")
+    bare.execute("CREATE TABLE ast_index(file_path TEXT)")
+    upsert_symbol_projection_state(bare, "a.py")
+    assert bare.execute("SELECT COUNT(*) FROM ast_index").fetchone() == (0,)
+    bare.close()
+
+    conn = _projection_db('{"symbols": []}', rows=0)
+    upsert_symbol_projection_state(conn, "missing.py")
+    assert (
+        conn.execute("SELECT COUNT(*) FROM ast_symbol_projection_state").fetchone()[0]
+        == 0
+    )
+    conn.close()
+
+
+def test_payload_symbol_count_rejects_a_non_text_payload() -> None:
+    from tree_sitter_analyzer.index_symbol_projection import _payload_symbol_count
+
+    assert (
+        _payload_symbol_count(None),
+        _payload_symbol_count(b"{}"),
+        _payload_symbol_count("[1, 2]"),
+        _payload_symbol_count('{"symbols": "not a list"}'),
+        _payload_symbol_count("not json"),
+    ) == (None, None, None, None, None)

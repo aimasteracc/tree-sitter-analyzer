@@ -24,6 +24,15 @@ from . import certification_timeouts
 from ._response_builder import build_response
 from .base_tool import BaseMCPTool
 from .callers_absence import assess_completeness
+from .callers_agent_fields import (  # noqa: F401 -- re-exported for callers/tests
+    _callers_delta,
+    _console_script_evidence,
+    absence_certificate,
+    answer_etag,
+    callers_delta_response,
+    callers_unchanged_response,
+    expires_when,
+)
 from .callers_annotated import (
     alias_provenance,
     annotated_provenance,
@@ -374,6 +383,23 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                     "type": "string",
                     "description": "Target function name to find callers for",
                 },
+                "previous_entries": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": (
+                        "The caller entries from a previous answer. When given, "
+                        "respond with {delta: {added, removed, unchanged_count}} "
+                        "instead of the full list (agent incremental re-ask)."
+                    ),
+                },
+                "if_none_match": {
+                    "type": "string",
+                    "description": (
+                        "Prior answer_etag. When it still matches, respond with "
+                        "a minimal {unchanged: true} payload instead of the full "
+                        "caller list (agent cross-turn dedupe)."
+                    ),
+                },
                 "file_path": {
                     "type": "string",
                     "description": "Optional file path to disambiguate overloaded functions",
@@ -602,6 +628,19 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         include_activation = bool(arguments.get("include_activation", False))
         include_bodies = bool(arguments.get("include_bodies", True))
         listed_cap = int(arguments.get("limit", 50))
+        if isinstance(arguments.get("previous_entries"), str):
+            from ..utils.format_helper import apply_output_format_to_response
+
+            return apply_output_format_to_response(
+                {
+                    "success": False,
+                    "verdict": "ERROR",
+                    "error_code": "INVALID_ARGUMENT",
+                    "error": "previous_entries must be a JSON array of caller entries",
+                    "next_step": "Pass the callers[] array from a previous answer.",
+                },
+                output_format,
+            )
 
         if is_index_rebuilding(self.project_root):
             rebuild_next_step = rebuild_in_progress_next_step()
@@ -767,6 +806,17 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         # PR-3：守卫比对的是全部已列出的调用方，不只是截断后展示的那些。
         all_listed = list(callers)
         truncated = total_callers > listed_cap
+        # dogfood 2026-11-09 P1-3：调用图路径只给出「调用方函数」（定义行），
+        # 调用点坐标在边上。补齐 ``call_site_line``，让 agent 跳到的是调用行
+        # 而不是 ``def``；``line`` 语义保持不变。
+        # 优先用已构建调用图的边（零额外读，#1873：中断的读不能被吞掉）。
+        callers = self._attach_call_site_lines(
+            cache,
+            callers,
+            func_name,
+            file_path,
+            graph=locals().get("graph"),
+        )
         # #1854：每个调用方带置信层级；order=confidence 在截断前把 proven 排在前面。
         # 只改呈现：总数、各项检查与完整性判定都在别处由同一份证据得出。
         callers = with_confidence(callers)
@@ -1046,16 +1096,18 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
                 name_only_exact=name_only_lines_exact(
                     possible_callers, name_only_lines
                 ),
-                review=lambda: absence
-                if edges.completeness == "complete"
-                else assess_completeness(
-                    cache,
-                    self.project_root,
-                    func_name,
-                    file_path,
-                    "complete",
-                    0,
-                    evidence,
+                review=lambda: (
+                    absence
+                    if edges.completeness == "complete"
+                    else assess_completeness(
+                        cache,
+                        self.project_root,
+                        func_name,
+                        file_path,
+                        "complete",
+                        0,
+                        evidence,
+                    )
                 ),
             )
             result.update(bound_fields)
@@ -1222,6 +1274,30 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             "next_step": as_next_step,
         }
         apply_source_evidence(result, evidence, stale_files)
+        # RFC-0044: certify only after freshness is known — a stale answer
+        # never carries a proven certificate.
+        certificate = absence_certificate(
+            result,
+            project_root=self.project_root or "",
+            function_name=func_name,
+            file_path=file_path,
+        )
+        if certificate is not None:
+            result["absence"] = certificate
+        result["expires_when"] = expires_when(result)
+        # dogfood §12.1: same content -> same etag (cross-turn cache key).
+        result["answer_etag"] = answer_etag(result)
+        # §12.1 If-None-Match / §12.2 delta: a minimal payload only when it is
+        # sound (fresh; for deltas also untruncated), else the full answer.
+        shortcut = callers_unchanged_response(
+            result, str(arguments.get("if_none_match") or "").strip(), func_name
+        ) or callers_delta_response(
+            result, arguments.get("previous_entries"), func_name
+        )
+        if shortcut is not None:
+            from ..utils.format_helper import apply_output_format_to_response
+
+            return apply_output_format_to_response(shortcut, output_format)
 
         # RFC-0027 L6.2: this route's cold/warm cliff (24.8 s -> 16 ms in the
         # L5 baseline) is the largest in the product, so a caller choosing
@@ -1265,6 +1341,75 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             logger.debug(f"Caller body inlining failed: {exc}")
             return None
 
+    @staticmethod
+    def _attach_call_site_lines(
+        cache: Any,
+        callers: list[dict[str, Any]],
+        func_name: str,
+        file_path: str | None,
+        graph: Any = None,
+    ) -> list[dict[str, Any]]:
+        """给缺少 ``call_site_line`` 的调用方条目补上调用点行号。
+
+        调用图路径的条目来自 ``FunctionRef``（只有调用方的定义行）；调用点是
+        ``CallGraph.call_edges()`` 的第三元。优先用已构建的图（零额外读）。
+        没有图时才退回一次索引查询；``ReadInterrupted`` 必须继续传播——被中断
+        的读不是「没有行」（#1873）。
+        """
+        if not callers:
+            return callers
+        if all(
+            "call_site_line" in entry for entry in callers if isinstance(entry, dict)
+        ):
+            return callers
+        sites: dict[tuple[str, str, int], int] = {}
+        edges = graph.call_edges() if graph is not None else ()
+        for caller, callee, line in edges:
+            if callee.name != func_name:
+                continue
+            # Codex P2：同文件同名方法（A.run / B.run）是不同调用方，
+            # 定义行必须进入键，否则两者会共享同一个 call_site_line。
+            sites.setdefault(
+                (str(caller.file_path), str(caller.name), int(caller.start_line)),
+                int(line),
+            )
+        if not sites and graph is None and cache is not None:
+            from ...index_snapshot_query import ReadInterrupted
+
+            try:
+                rows = cache.query_callers(func_name, callee_file=file_path)
+            except ReadInterrupted:
+                raise
+            except Exception:  # noqa: BLE001 — 补注失败不影响答案主体
+                return callers
+            for row in rows:
+                name = str(row.get("caller_name") or "")
+                line = int(row.get("callee_line") or 0)
+                if name and line > 0:
+                    sites.setdefault(
+                        (
+                            str(row.get("caller_file") or ""),
+                            name,
+                            int(row.get("caller_line") or 0),
+                        ),
+                        line,
+                    )
+        for entry in callers:
+            if not isinstance(entry, dict) or "call_site_line" in entry:
+                continue
+            if is_module_caller(str(entry.get("name") or "")):
+                # 模块级调用点的 ``line`` 本来就是调用行，不再重复标注。
+                continue
+            key = (
+                str(entry.get("file") or ""),
+                str(entry.get("name") or ""),
+                int(entry.get("line") or 0),
+            )
+            site = sites.get(key)
+            if site:
+                entry["call_site_line"] = site
+        return callers
+
     def _sql_native_callers(
         self,
         cache: Any,
@@ -1294,15 +1439,23 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             activation_map = self._fetch_activation_map(cache)
         for edge in raw:
             # #1622：模块作用域调用点列为 ``<module>`` 伪调用方；缺坐标的才计数。
-            base = (
-                {
+            base: dict[str, Any] | None
+            if edge.get("caller_name"):
+                base = {
                     "name": edge["caller_name"],
                     "file": edge["caller_file"],
+                    # ``line``/``end_line`` 描述调用方函数的定义范围（既有契约）。
                     "line": edge["caller_line"],
                 }
-                if edge.get("caller_name")
-                else module_caller_entry(edge)
-            )
+                # dogfood 2026-11-09 P1-3：调用点坐标本来就在边上
+                # （``callee_line``；``module_caller_entry`` 也用它当 ``line``），
+                # 但命名调用方此前只输出定义行，agent 跳过去看到的是 ``def``。
+                # 追加而不改变 ``line`` 语义，既有消费者零破坏。
+                call_site_line = int(edge.get("callee_line") or 0)
+                if call_site_line > 0:
+                    base["call_site_line"] = call_site_line
+            else:
+                base = module_caller_entry(edge)
             if base is None:
                 unattributed += 1
                 continue

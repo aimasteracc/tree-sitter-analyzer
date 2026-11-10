@@ -3,6 +3,59 @@
 
 Six installed console-script entry points; the main analyzer and its aliases dispatch through `cli_main.py`.
 
+## Task → Command（先看这张表）
+
+| 任务 | 命令（`--format json` 可加在任意一条上） |
+|---|---|
+| 找字面量（grep 的替代；零索引） | `--text-search "<literal>"` |
+| 找符号定义（含类/方法） | `--symbol-resolve "<symbol>"` |
+| 谁调用了它 | `--callers "<symbol>"` |
+| 哪些测试覆盖它 | `--test-map "<symbol>"` |
+| 改动的测试选择与影响面 | `--change-impact` |
+| 文件结构大纲 | `--outline <file>` |
+| 类层级（子类/父类/树） | `--class-hierarchy --class-hierarchy-mode subclasses --class-hierarchy-class <Class>` |
+| 多跳问题（callers + tests 一次问完） | `--uql "symbol('<symbol>').callers().tests()"` |
+| 建索引（图查询的前置） | `--ast-cache --ast-cache-mode index` |
+| 只问「有没有变」（≈400 B 的 304） | `--callers "<symbol>" --if-none-match "<answer_etag>"` |
+| 只问「变在哪」（增量） | `--callers "<symbol>" --previous-entries-json '<上一轮 callers[]>'` |
+| 花一次调用前先问价/问前置 | `--capabilities` · `--capabilities nav.callers` |
+| 文件 / 项目健康度 | `--file-health <file>` · `--project-health` |
+| 编辑前风险评估 | `--safe-to-edit <file>` |
+| 首次接入（暖索引 + 写 agent 配置） | `--setup` |
+
+两类答案的前置条件不同，选命令前先看这一行：
+
+- **instant tier**（`--text-search` / `--outline` / `--structure`）：零索引，冷仓库也能立刻作答。
+- **indexed tier**（`--callers` / `--test-map` / `--class-hierarchy` / `--uql` / `--change-impact` 的图部分）：
+  需要先建索引。没有索引时它们会返回 `WARN` + `INDEX_MISSING` + 建索引命令，而不是假装「没有答案」——
+  `--callers`/`--call-graph` 在源文件超过 200 时直接拒答，不会静默现场解析整个仓库。
+
+同义入口只保留一个名字；`--symbol-search` 是 BM25 符号检索（**不是**字面量检索），`--text-search` 才是。
+
+`--callers` 的条目同时给两个行号：`line` 是**调用方函数的定义行**（配合 `end_line` 表示函数范围），
+`call_site_line` 是**调用发生的那一行**（grep 语义）。要跳到调用现场用后者；模块级调用点
+（`<module>`）的 `line` 本来就是调用行，因此没有 `call_site_line`。
+
+响应还带 `answer_etag`（`sha256:…`）：同一索引上重复提问得到同一 etag，作用域源码变化会改变它。
+agent 可以按 etag 判断「上一轮的答案还能不能用」，避免重复读取同样的 15 KB。
+
+**增量重问（agent 的主循环）**：同一会话里反复问同一个符号时，不要每次重读 15 KB。
+
+```text
+第 1 次   --callers X                              → 保存 answer_etag 与 callers[]
+第 N 次   --callers X --previous-entries-json …    → {delta:{added,removed,unchanged_count}} + 完整性证据
+只查变化  --callers X --if-none-match <etag>       → {unchanged:true}（命中且未过期才给）
+```
+
+任何 stale / 不完整状态都会让这两个捷径失效并回完整答案——ETag 是承诺，不是猜测。
+
+**空答案是带证明的**：`callers` / `test_map` 的空结果会带 `absence`
+（`unreferenced` / `entry_point`（仅 console script 精确指向该模块文件）为 `proven`；
+`untested` 只是 `possible`（只看直接测试调用方）；证据不全或 stale 时是
+`unknown` + `possible` 并点名开放站点）。shebang / `__main__.py` 不构成任何证明。
+`NOT_FOUND` 不携带 `absence`。`expires_when.reusable_without_reask` 为 `false`
+（世代未知）时不得免问复用，用 `--if-none-match` 重问。
+
 ## Entry Points
 
 | Command | Handler | Purpose |
@@ -142,7 +195,7 @@ for table rendering. There is no global `--format yaml` mode.
 ## File Output
 
 Large payloads use `mcp/utils/file_output_factory.py`:
-- `--output-file PATH` — write directly
+- MCP tools accept `output_file` as an **argument** (not a CLI flag; the main CLI has none)
 - `TREE_SITTER_OUTPUT_PATH` env var — auto-spill threshold
 
 ## Verification Commands
@@ -170,7 +223,7 @@ boundary.
 
 ## See Also
 
-- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (372 unique flags total — this codemap is intentionally categorical, not exhaustive)
+- [`docs/cli-reference.md`](../cli-reference.md) — Full CLI reference (375 unique flags total — this codemap is intentionally categorical, not exhaustive)
 - [`docs/CODEMAPS/mcp-tools.md`](./mcp-tools.md) — MCP-side counterpart
 - [`tests/unit/cli/test_mcp_commands.py`](../../tests/unit/cli/test_mcp_commands.py) — Parity contract tests
 - [`scripts/codemap-sync-check.sh`](../../scripts/codemap-sync-check.sh) — pre-commit gate that blocks a change to the CLI **flag surface** (any `cli/**/*.py`, compared as a set) without a `cli.md` update

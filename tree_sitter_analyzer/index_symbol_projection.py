@@ -146,6 +146,53 @@ def symbol_rows_digest(rows: Iterable[Iterable[Any]], check: Any | None = None) 
     return "sha256:" + digest.hexdigest()
 
 
+def _payload_symbol_count(symbols_json: Any) -> int | None:
+    """``symbols_json`` 里声明的符号数；读不懂时返回 None（不猜）。
+
+    Codex review P2（2026-11-09）：缺少投影状态时不能「拿现有行盖章」——
+    行可能是解析中途留下的部分集合。只有行数与 payload 声明一致时，
+    制造出来的证书才代表 payload 本身。
+    """
+    if not isinstance(symbols_json, str):
+        return None
+    try:
+        import json
+
+        payload = json.loads(symbols_json or "{}")
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    symbols = payload.get("symbols")
+    if not isinstance(symbols, list):
+        return None
+    return len(symbols)
+
+
+def _projection_matches_payload(conn: sqlite3.Connection, rel_path: str) -> bool:
+    """文件缺少投影状态时，现有行是否就是 payload 声明的完整集合。
+
+    无 payload 列或 payload 形状未知（更老的 schema / 空 ``{}``）时返回 True：
+    没有声明可以反驳，保持原有的迁移快速路径；只有 payload 明确声明了符号集合、
+    而现有行数是它的真子集/超集时才拒绝盖章。
+    """
+    try:
+        source = conn.execute(
+            "SELECT symbols_json FROM ast_index WHERE file_path = ?", (rel_path,)
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return True
+    if source is None:
+        return False
+    expected = _payload_symbol_count(source[0])
+    if expected is None:
+        return True
+    actual = conn.execute(
+        "SELECT COUNT(*) FROM ast_symbol_rows WHERE file_path = ?", (rel_path,)
+    ).fetchone()
+    return int(actual[0] if actual else -1) == expected
+
+
 def upsert_symbol_projection_state(conn: sqlite3.Connection, rel_path: str) -> None:
     """Bind ordinary rows and their full payload to the ast_index generation."""
     table = conn.execute(
@@ -175,6 +222,63 @@ def upsert_symbol_projection_state(conn: sqlite3.Connection, rel_path: str) -> N
         "symbol_count=excluded.symbol_count, projection_digest=excluded.projection_digest",
         (rel_path, source[0], len(rows), digest),
     )
+
+
+def converge_symbol_projection(
+    conn: sqlite3.Connection,
+    *,
+    require_fts: bool = False,
+) -> bool:
+    """收敛投影的三类内部残余，返回是否做了改动（幂等，可重复调用）。
+
+    只修复 *内部* 不一致，不重写任何参考行——行内容与源码的一致性由增量遍历
+    负责：
+
+    1. ``ast_symbol_rows`` 里已不在 ``ast_index`` 的文件（陈旧行）；
+    2. ``ast_index`` 里缺少投影状态的文件（解析失败或空文件）；
+    3. 外部内容 FTS 的孤儿 docsize 行（参考行被重写时遗留）。
+
+    dogfood 2026-11-09：旧版缓存迁移后这三类残余会让
+    :func:`symbol_projection_is_exact` 永远为假，于是每次 ``index`` 都把每个
+    文件重写一遍（本仓库 2917 文件实测：增量 0.6 s 退化成全量 57 s）。收敛后
+    既有认证器可以补发 marker，下一次索引恢复增量。
+    """
+    tables = {
+        str(row[0])
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    if not {"ast_index", "ast_symbol_rows", "ast_symbol_projection_state"} <= tables:
+        return False
+    changed = False
+    deleted = conn.execute(
+        "DELETE FROM ast_symbol_rows WHERE file_path NOT IN "
+        "(SELECT file_path FROM ast_index)"
+    ).rowcount
+    changed = changed or deleted > 0
+    missing = conn.execute(
+        "SELECT source.file_path FROM ast_index AS source "
+        "LEFT JOIN ast_symbol_projection_state AS state "
+        "ON state.file_path = source.file_path WHERE state.file_path IS NULL"
+    ).fetchall()
+    for row in missing:
+        rel_path = str(row[0])
+        if not _projection_matches_payload(conn, rel_path):
+            # 行集合与 payload 不符（解析中断/部分回填）：不盖章，留给
+            # 全量修复路径；盖章会让「部分行」冒充完整投影。
+            continue
+        upsert_symbol_projection_state(conn, rel_path)
+        changed = True
+    orphan_states = conn.execute(
+        "DELETE FROM ast_symbol_projection_state WHERE file_path NOT IN "
+        "(SELECT file_path FROM ast_index)"
+    ).rowcount
+    changed = changed or orphan_states > 0
+    if require_fts and not _fts_terms_are_exact(conn):
+        # 行数一致也不代表词条一致：原地 UPDATE 参考行会留下过期的 FTS 词条。
+        # FTS5 官方的 integrity-check(rank=1) 是唯一权威判据，重建后即精确。
+        conn.execute("INSERT INTO ast_symbols_fts(ast_symbols_fts) VALUES('rebuild')")
+        changed = True
+    return changed
 
 
 def symbol_projection_is_exact(

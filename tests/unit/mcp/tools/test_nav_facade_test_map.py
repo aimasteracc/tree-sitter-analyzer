@@ -217,6 +217,44 @@ async def test_test_map_no_test_callers() -> None:
     assert result["test_files"] == []
     assert result["test_functions"] == []
     assert result["truncated"] is False
+    # RFC-0044 `untested`: zero direct test-call edges do NOT prove "no test
+    # exercises it" — prod_caller may itself be tested (indirect coverage), and
+    # test_map follows only direct callers plus one helper hop. Only `possible`.
+    assert (
+        result["absence"]["kind"],
+        result["absence"]["confidence"],
+        result["absence"]["evidence"][0]["kind"],
+    ) == ("untested", "possible", "no_direct_test_caller")
+    assert "indirect" in result["absence"]["next_step"]
+
+
+@pytest.mark.asyncio
+async def test_test_map_truncated_answer_never_returns_a_delta() -> None:
+    """A capped list cannot tell "removed" from "beyond the cap": full answer."""
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_fn = _make_func("hub_fn", "src/hub.py")
+    test_callers = [
+        _make_func(f"test_{i}", f"tests/test_file_{i % 5}.py", i) for i in range(51)
+    ]
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.return_value = test_callers
+    mock_graph.possible_caller_refs_of.return_value = []
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+
+    previous = [f"tests/test_file_{i % 5}.py::test_{i}" for i in range(51)]
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "hub_fn", "previous_entries": previous}
+    )
+
+    assert (result["truncated"], "delta" in result, "test_functions" in result) == (
+        True,
+        False,
+        True,
+    )
 
 
 @pytest.mark.asyncio
@@ -992,3 +1030,140 @@ async def test_test_map_marks_name_only_test_caller(tmp_path) -> None:
     assert result["name_only_test_functions"] == [
         "tests/test_gen_store.py::test_publish_any"
     ]
+
+
+@pytest.mark.asyncio
+async def test_test_map_with_a_test_caller_has_no_absence() -> None:
+    """有测试调用边时不出缺席证书。"""
+    from tree_sitter_analyzer.mcp.tools.nav_facade import build_nav_facade
+
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+    target_fn = _make_func("covered_fn", "src/core.py")
+    test_caller = _make_func("test_covered", "tests/test_core.py", 5)
+
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.return_value = [test_caller]
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute({"action": "test_map", "symbol": "covered_fn"})
+
+    assert ("absence" in result, result["unique_function_count"]) == (False, 1)
+
+
+@pytest.mark.asyncio
+async def test_test_map_answers_carry_an_etag(monkeypatch) -> None:
+    """同一世代 + 同一内容 → 同一 etag；304 命中时回最小载荷。"""
+    import tree_sitter_analyzer.mcp.tools.nav_facade as nav_module
+
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+    target_fn = _make_func("isolated_fn", "src/core.py")
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.return_value = []
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+    monkeypatch.setattr(nav_module, "_index_generation_id", lambda root: "gen-1")
+
+    first = await facade.execute({"action": "test_map", "symbol": "isolated_fn"})
+    second = await facade.execute(
+        {
+            "action": "test_map",
+            "symbol": "isolated_fn",
+            "if_none_match": first["answer_etag"],
+        }
+    )
+
+    assert (first["answer_etag"] == second["answer_etag"], second["unchanged"]) == (
+        True,
+        True,
+    )
+    assert "test_files" not in second
+
+
+@pytest.mark.asyncio
+async def test_test_map_without_a_generation_never_claims_unchanged(
+    monkeypatch,
+) -> None:
+    """读不到索引世代时不提供 304：没有世代就没有「没变」的承诺。"""
+    import tree_sitter_analyzer.mcp.tools.nav_facade as nav_module
+
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [_make_func("x_fn", "src/core.py")]
+    mock_graph.caller_refs_of.return_value = []
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+    monkeypatch.setattr(nav_module, "_index_generation_id", lambda root: "")
+
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "x_fn", "if_none_match": "sha256:deadbeef"}
+    )
+
+    assert ("unchanged" in result, result["answer_etag"].startswith("sha256:")) == (
+        False,
+        True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_previous_entries_turn_test_map_into_a_delta(monkeypatch) -> None:
+    """§12.2 扩展到 test_map：只回 added/removed/unchanged 与截断状态。"""
+    from tree_sitter_analyzer.mcp.tools.nav_facade import build_nav_facade
+
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+    target_fn = _make_func("covered_fn", "src/core.py")
+    test_caller = _make_func("test_covered", "tests/test_core.py", 5)
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.return_value = [test_caller]
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+
+    result = await facade.execute(
+        {
+            "action": "test_map",
+            "symbol": "covered_fn",
+            "previous_entries": ["tests/old.py::test_gone"],
+        }
+    )
+
+    assert (
+        result["delta"]["added"],
+        result["delta"]["removed"],
+        result["delta"]["unchanged_count"],
+    ) == (["tests/test_core.py::test_covered"], ["tests/old.py::test_gone"], 0)
+    assert ("test_functions" in result, result["truncated"]) == (False, False)
+
+
+@pytest.mark.asyncio
+async def test_an_invalid_previous_entries_payload_is_refused_by_test_map() -> None:
+    facade = build_nav_facade(project_root=None)
+
+    result = await facade.execute(
+        {
+            "action": "test_map",
+            "symbol": "x_fn",
+            "previous_entries": "__INVALID__",
+        }
+    )
+
+    assert (result["success"], result["error_code"]) == (False, "INVALID_ARGUMENT")
+
+
+def test_generation_lookup_failure_means_no_generation(monkeypatch) -> None:
+    """世代读取抛异常时返回空串：没有「没变」的承诺。"""
+    import tree_sitter_analyzer.cache.generation_routing as routing
+    import tree_sitter_analyzer.mcp.tools.nav_facade as nav_module
+
+    def _explode(*args, **kwargs):
+        raise RuntimeError("no index")
+
+    monkeypatch.setattr(routing, "resolve_index_location", _explode, raising=False)
+
+    assert nav_module._index_generation_id("/tmp/some-repo") == ""

@@ -497,15 +497,16 @@ def test_cli_json_is_byte_deterministic_for_blocked_registry(capsys):
 
 
 @pytest.mark.parametrize("label", ("CLI flags", "の CLI フラグ", "个 CLI flag"))
-@pytest.mark.parametrize("count", (371, 372, 373))
+@pytest.mark.parametrize("count", (374, 375, 376))
 def test_readme_cli_count_claim_matches_exact_runtime_inventory(label, count, blocked_verdict, readme_fixture):
     """只接受实际 CLI 数量，旧值和虚增值必须继续被拒绝。"""
     from tree_sitter_analyzer.cli_main import create_argument_parser
     parser = create_argument_parser()
     actual = len({option for action in parser._actions for option in action.option_strings if option.startswith("--")})
     # #1582 新增 --ast-cache-include-details；#1617 新增 --change-impact-include-details；
-    # RFC-0041 新增 4 个 --uql* 参数；#1856 新增 4 个 --setup* 参数。
-    assert actual == 372
+    # RFC-0041 新增 4 个 --uql* 参数；#1856 新增 4 个 --setup* 参数；
+    # 2026-11-09 新增 --capabilities。
+    assert actual == 375
     prose = f"{count} {label}"
     expected = () if count == actual else ("README_UNREGISTERED_QUANTITATIVE_CLAIM:3",)
     assert readme_claim_violations(readme_fixture(prose), blocked_verdict) == expected

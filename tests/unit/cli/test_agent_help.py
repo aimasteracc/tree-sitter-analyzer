@@ -177,3 +177,27 @@ def test_python_dash_m_uses_the_installed_program_name(monkeypatch) -> None:
 def test_console_script_aliases_keep_their_own_name(monkeypatch) -> None:
     monkeypatch.setattr(sys, "argv", ["/usr/bin/code-analyzer"])
     assert create_argument_parser().prog == "code-analyzer"
+
+
+def test_no_arguments_prints_the_short_help_on_stderr(monkeypatch, capsys) -> None:
+    from tree_sitter_analyzer.cli_main import main
+
+    monkeypatch.setattr(sys, "argv", ["cli"])
+    with pytest.raises(SystemExit) as exc:
+        main()
+    out, err = capsys.readouterr()
+    assert exc.value.code == 1
+    assert out == ""
+    assert err.startswith("ERROR: File path not specified.\n")
+    assert err.endswith(format_agent_help())
+    assert len(err) < 3000
+
+
+def test_bare_version_fast_path_uses_the_same_program_name(monkeypatch, capsys) -> None:
+    from tree_sitter_analyzer import __version__
+    from tree_sitter_analyzer.cli_main import _exit_if_bare_version_request
+
+    monkeypatch.setattr(sys, "argv", ["C:/x/tree_sitter_analyzer/__main__.py"])
+    with pytest.raises(SystemExit):
+        _exit_if_bare_version_request(["--version"])
+    assert capsys.readouterr().out == f"tree-sitter-analyzer {__version__}\n"
