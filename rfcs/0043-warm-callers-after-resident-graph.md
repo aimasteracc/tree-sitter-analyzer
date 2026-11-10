@@ -1,7 +1,8 @@
 # RFC-0043: Warm `nav callers` after the resident graph — measured cost and next steps
 
 - **Status**: draft (Phase A #1927; Phase B and the §4 byte budget shipped with the parse memo on
-  by default — see "Phase B and the byte budget: what shipped")
+  by default — see "Phase B and the byte budget: what shipped"; Phase C: the Python supertype
+  gate's facts and the per-snapshot byte budget — see "Phase C: what shipped")
 - **Author(s)**: @aimasteracc
 - **Created**: 2026-11-06
 - **Last updated**: 2026-11-06
@@ -13,6 +14,9 @@
   - `tree_sitter_analyzer/mcp/tools/callers_decorators.py` (prototype: opt-in per-text decorator table memo)
   - `tests/unit/mcp/tools/test_callers_decorators_parse_memo.py`
   - `benchmarks/resident/corpus_replay.py`, `benchmarks/resident/copy_gate_index.py` (identity and latency harness)
+  - Phase C: `callers_py_members.py`, `callers_py_shapes.py`, `callers_py_supertypes.py`,
+    `callers_py_class_index.py`, `callers_decorators.py`, `resident/parse_facts.py`,
+    `resident/snapshot_memo.py`
   - follow-ups (planned, not in this PR): `callers_supertypes.py`, `callers_declaration_header.py`,
     `callers_absence.py` (`_is_accessor`), `call_graph_memo.py` (byte budget)
 
@@ -415,6 +419,103 @@ noise is ±20–30 % (rich and fastapi show it in both directions).
 - **What remains** is mostly the stat-based freshness floor (§3) and the Python supertype walk
   over AST trees (`_owner_class`, `_scope_bindings`), which this phase did not change.
 
+## Phase C: what shipped (2026-11-06)
+
+### Profile first (pydantic, memo on, in-process wall-clock timers)
+
+Phase B left the Python supertype gate (#1883 base walk + #1896 subclass step) as the largest
+gate on pydantic and fastapi. Inclusive timers around its stages, per query over all 648 pydantic
+rows (`develop` `849254a2`, round 1 / round 2):
+
+| Stage | ms per query | Kind of cost |
+|---|---|---|
+| Python supertype gate, total | 63 / 48 | |
+| `_owner_class` (both steps call it) | 14.7 / 14.4 | an `ast.walk` of the whole declaring module, twice per target |
+| subclass step: `files_with` | 23 (of which the regex: 84 %) | the header / rename regex over every file containing a wanted word, every request |
+| subclass step: `project_index` | 11–15 | `stat` of every indexed Python file (freshness; not memoizable) |
+| decorator gate: definition-table build | 13.7 / 0 | first touch only: `ast.get_source_segment` re-splits the whole file per decorator |
+| base walk itself, parses | 1–4 | already stamp-cached (`_PARSED`) |
+
+(cProfile was not used for the numbers: under asyncio and worker threads it misattributes time.)
+
+### What changed
+
+- **Member table** (`callers_py_members.py`). Per content digest, every node `_owner_class` can
+  pick (a `def`, an assignment to a plain name) in `ast.walk` order: name, line span, `def` line,
+  and the path of the parent class from the module root when the parent is a class. The owner is
+  chosen with the same comparison over the same nodes in the same order; the path is followed in
+  the request's own tree. Values are strings, integers and tuples: no syntax tree is kept. The
+  reader's `_Module` now carries the digest of the bytes it was parsed from, and
+  `parse_facts.facts_for_digest` uses it as the key (the same key `facts` builds for those bytes).
+- **Shape words** (`callers_py_shapes.py`). For each file and shape (`header` / `rename`), the
+  set of words the subclass search's expression can match there, kept per content digest. A
+  match of an alternation is a match of one of its branches, so "the expression matches
+  `names`" is exactly "one of `names` is in the set". The expression itself is kept as the
+  reference and is what runs with the memo off. Checked on crafted texts (CRLF, `\r`, Unicode,
+  colon-less headers, `a as b as c`) and on every `.py` file of pydantic, fastapi and rich: 1,848
+  files, 164,968 (word, shape) pairs, 0 differences.
+- **Source segments** (`callers_decorators.SourceSegments`). The definition-table build splits
+  the text into lines once (the same split as `ast._splitlines_no_ff`) and hands
+  `ast.get_source_segment` only the node's own lines. Tested against the standard function on
+  every node of the fixtures.
+- **Per-snapshot byte budget** (`snapshot_memo.MAX_BYTES`, 128 MB estimated across snapshots).
+  A per-name entry is measured deeply (`parse_facts.estimate_bytes`); a whole-snapshot table is
+  estimated as rows × the mean size of its first 64 rows plus 48 bytes per row. A per-name entry
+  that would push its snapshot past the budget is computed, not stored (like `MAX_ENTRIES`); past
+  the budget, least recently used snapshots are dropped, never the one just used (the same rule
+  as the graph memo, for the same reason). `stats()` reports `bytes`. No environment switch.
+- Unchanged: the stamp-keyed `_PARSED` parses of the base walk (it still needs syntax trees to
+  evaluate bases), the class index (`project_index` stats every Python file per request: that is
+  freshness, §3), and the accessor check.
+
+### Identity (all 2,457 stored callers-gate answers)
+
+Final code (`ae6266a8`), one repo copy at a time (`copy_gate_index.py`, deleted before the next),
+one fresh process per slot, `TSA_EVIDENCE_STORE=off`, `PYTHONHASHSEED=0`:
+
+- B: this branch, default (memo on), two rounds (first touch, then repeat), on all 7 repos;
+- C: this branch, `TSA_RESIDENT_PARSE_MEMO=0`, one round, on all 7 repos;
+- A: `develop` `849254a2` (Phase B, memo on), one round, on pydantic, fastapi and zod.
+
+**0 differing rows in every slot.** With the memo off and on, 2,457 rows each, plus both rounds
+of every B slot. Records: `rfcs/evidence/0043-phase-c/`. After a fix that only moved an import
+(`e9c04af9`; later commits change only tests and docs), the replay ran again on all 7 repos,
+once with the memo on and once with it off: again 0 differing rows of 2,457 each.
+
+### Warm latency, round 1 (first touch of every row), mean / p90 per slot
+
+A is `develop` (Phase B), B is this branch, both on defaults. The host was more loaded than in the
+Phase B run: for example, zod's A slots read 300–607 ms here against 93–101 ms then. Compare
+slots within a row, not against the Phase B table.
+
+| Repo (rows) | A (develop) | B (Phase C) | B | A |
+|---|---|---|---|---|
+| pydantic (648) | 206.2 / 406 ms | 160.4 / 420 ms | 148.8 / 396 ms | 235.6 / 508 ms |
+| fastapi (558) | 514.5 / 723 ms | 377.4 / 517 ms | 379.9 / 524 ms | 513.5 / 712 ms |
+| zod (178) | 607.0 / 855 ms | 313.8 / 497 ms | 299.7 / 478 ms | 299.9 / 485 ms |
+
+- **Review-gated medians, A → B:** pydantic 122–146 → 77–84 ms; fastapi 461–466 → 307–321 ms.
+  On zod, 187 (the second A) → 189–201 ms.
+- **zod is unchanged, as expected.** It is TypeScript, and Phase C touches only the Python gates
+  and the snapshot memo. Its first A slot (607 ms) is noise: the second A slot equals both B
+  slots. The pydantic p90 does not move (396–420 against 406–508 ms); the gain is in the median.
+- **Memo off on this branch (C), mean / p90:**
+  - pydantic 784 / 1,338 ms
+  - fastapi 461 / 751 ms
+  - zod 2,247 / 8,423 ms
+  - rich 205 / 454 ms (B 142 / 280 ms)
+  - gson 205 / 305 ms (B 189 / 240 ms)
+  - axios 121 / 208 ms (B 89 / 165 ms)
+  - hono 213 / 387 ms (B 169 / 212 ms)
+
+  These are the costs the memos remove: with the memo off, every fact is computed per call, as
+  before Phase A.
+- **What remains on the Python repos:**
+  - the class index's per-request `stat` of every Python file (`project_index`, freshness, §3);
+  - its rebuild when the snapshot is renewed;
+  - the stamp-keyed parses of the base walk;
+  - the stat floor.
+
 ## Three-Surface impact (CLI ↔ MCP parity)
 
 - No CLI flag, MCP action, parameter or payload change.
@@ -483,7 +584,9 @@ noise is ±20–30 % (rich and fastapi show it in both directions).
       Not done: the accessor check (< 8 ms) and the AST walks of the Python supertype reader
 - [x] §4 byte budget for `call_graph_memo` (`TSA_RESIDENT_GRAPH_MB`, default 256; the root just
       stored is always kept)
-- [ ] §4 byte accounting for the per-snapshot tables
+- [x] Phase C: the Python supertype gate's owner lookup and subclass-search shape test per
+      content digest, one-pass decorator source segments (Phase C PR)
+- [x] §4 byte accounting for the per-snapshot tables (`snapshot_memo.MAX_BYTES`, Phase C PR)
 - [ ] RFC-0042 Phase 5 (watcher-synced freshness) qualified, for single-digit review-gated answers
 
 ## What this RFC does NOT do (deferred)

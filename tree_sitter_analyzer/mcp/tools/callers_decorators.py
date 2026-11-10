@@ -245,10 +245,11 @@ def _build_python_definitions(text: str) -> tuple[PyDefinition, ...] | None:
         return None
     tree, bindings = parsed
     table: list[PyDefinition] = []
+    segments = SourceSegments(text)
     for first, header, node in _python_definitions(text, tree):
         decorators = []
         for item in node.decorator_list:
-            segment = ast.get_source_segment(text, item) or ast.unparse(item)
+            segment = segments.get(item) or ast.unparse(item)
             decorators.append(
                 Decorator(
                     "@" + _WHITESPACE.sub(" ", segment).strip(),
@@ -257,6 +258,41 @@ def _build_python_definitions(text: str) -> tuple[PyDefinition, ...] | None:
             )
         table.append((str(node.name), int(first), int(header), tuple(decorators)))
     return tuple(table)
+
+
+#: ``ast._splitlines_no_ff``: lines end at ``\r\n``, ``\r`` or ``\n`` only (endings kept).
+_SOURCE_LINE = re.compile(r"[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+\Z")
+
+
+@dataclass(frozen=True)
+class _Span:
+    lineno: int
+    end_lineno: int
+    col_offset: int
+    end_col_offset: int | None
+
+
+class SourceSegments:
+    """``ast.get_source_segment`` for many nodes of one text.
+
+    RFC-0043 Phase C: the standard function splits the whole text into lines
+    on every call, which made building the definition table of a large file
+    quadratic in its decorators (pydantic: about half of the build). The lines
+    are split once, the same way, and each call hands the standard function
+    only the node's own lines, with the node's line numbers shifted to match.
+    """
+
+    def __init__(self, text: str) -> None:
+        self._lines: list[str] = _SOURCE_LINE.findall(text)
+
+    def get(self, node: Any) -> str | None:
+        end = getattr(node, "end_lineno", None)
+        if end is None:
+            return None
+        lineno = int(node.lineno)
+        chunk = "".join(self._lines[lineno - 1 : end])
+        span = _Span(1, end - lineno + 1, node.col_offset, node.end_col_offset)
+        return ast.get_source_segment(chunk, span)  # type: ignore[arg-type]
 
 
 #: 一个定义：(装饰器起始行与定义行中的最小者, 定义行, 定义节点)。
