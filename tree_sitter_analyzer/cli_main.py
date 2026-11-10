@@ -195,7 +195,6 @@ def main() -> None:
     """Main entry point for the CLI."""
     _set_cli_log_environment()
     _exit_if_bare_version_request(sys.argv[1:])
-    _exit_if_no_arguments(sys.argv[1:])
     parser = create_argument_parser()
     args = parser.parse_args(_normalize_agent_command_aliases(sys.argv[1:]))
     _apply_format_alias(args)
@@ -240,19 +239,6 @@ def _exit_if_bare_version_request(argv: list[str]) -> None:
         "--version", action="version", version=f"%(prog)s {__version__}"
     )
     parser.parse_args(argv)
-
-
-def _exit_if_no_arguments(argv: list[str]) -> None:
-    """No arguments: same error and short help as the dispatch failure, but fast.
-
-    Without arguments nothing can be dispatched, so building the full parser
-    and probing the special commands (~4 s on Windows) only delays the answer.
-    """
-    if argv:
-        return
-    output_error("File path not specified.")
-    sys.stderr.write(format_agent_help())
-    sys.exit(1)
 
 
 def _set_cli_log_environment() -> None:
