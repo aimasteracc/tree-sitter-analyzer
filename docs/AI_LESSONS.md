@@ -1,5 +1,37 @@
 # AI Lessons
 
+## 2026-11 — 先读机制，再谈缺失
+
+### Context
+
+第 82 轮我用 `--change-impact --change-impact-mode branch` 分析 PR #1939，量到「focused 命令 11,308 字符」，
+立刻按「功能缺失」的框架提出：把它改成结构化批次 `focused_test_commands[]`，并试着在默认载荷里加两个
+整数提示。为此被两条既有契约拒绝（默认键集固定、默认回复字节数钉死），当时我把它记成「契约挡了我」。
+
+第 83 轮复测发现：11 KB 是**内部变量** `focused_command`（`join_verification_steps` 拼接后），
+发射出的 `focused_test_command` 只有 **580 字符**（一条 `--verify-plan <token>`），批次本来就在
+`verification_steps`（列表，15 条各约 1 KB）。
+
+第 84 轮去读机制，发现更强的性质早已存在且有测试：
+`verification_plan.attach_commands` 会把任一超长命令替换成 verify-plan token；编码失败时响应转为
+`ERROR`、清空命令字段、**保留结构化步骤**——即客户端永远不会收到跑不动的命令。
+
+### Lessons learned
+
+1. **看到可疑数字，先查机制在哪，再谈缺什么。** 顺序是：实现代码 → 已有测试 → 文档；
+   跳过这一步就会把一个「已经正确且有守卫」的东西当成缺口，并为它造冗余字段。
+2. 被契约拒绝时，先假设**契约是对的**：它往往在描述一条我还没读到的设计（本例：默认载荷的字节预算）。
+   拒绝是信息，不是障碍。
+3. 「发射面」是唯一有意义的测量对象。内部中间变量、日志里的拼串、可见列表都可能不代表客户端收到的东西
+   （本文件里已出现三次同类：可见列表、缓存语义、内部变量）。
+
+### Required guardrail
+
+先读后写的具体落点：`tree_sitter_analyzer/verification_plan.py` 的 `attach_commands`
+（超长命令 → verify-plan token；失败 → `ERROR` 且保留步骤）与
+`tests/unit/test_verification_plan.py` 的三条相关用例；
+默认载荷的字节预算由 `tests/unit/mcp/test_impact_command_dedup.py`
+（`test_realistic_diff_default_reply_size_is_pinned`）钉死，改载荷前必须先读它。
 ## 2026-11 — 为便利字段收费的是热路径预算
 
 ### Context
