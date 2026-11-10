@@ -145,18 +145,10 @@ async def test_ruby_namespaced_reopened_class_is_not_complete(tmp_path) -> None:
     files = {
         **_RUBY,
         "helper.rb": (
-            "class Mini::Spec\n"
-            "  def capture(target)\n"
-            "    target\n"
-            "  end\n"
-            "end\n"
+            "class Mini::Spec\n  def capture(target)\n    target\n  end\nend\n"
         ),
         "spec_a.rb": (
-            "class ATest < Mini::Spec\n"
-            "  it 'warns' do\n"
-            "    capture(1)\n"
-            "  end\n"
-            "end\n"
+            "class ATest < Mini::Spec\n  it 'warns' do\n    capture(1)\n  end\nend\n"
         ),
     }
 
