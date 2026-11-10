@@ -164,3 +164,80 @@ def test_incomplete_answer_is_not_certified() -> None:
     )
     assert verdict.certified is False
     assert verdict.reasons == ("NAME_ONLY_INBOUND",)
+
+
+def test_method_of_another_language_is_never_certified() -> None:
+    method = FunctionRef("A.java", "run", 3, "java", receiver="Task")
+
+    verdict = certify_mod._override_gate("/nowhere", method, lambda: None)
+
+    assert verdict is not None and verdict.certified is False
+    assert verdict.reasons == ("OVERRIDE_UNCHECKED",)
+    assert (
+        certify_mod._override_gate(
+            "/nowhere", FunctionRef("a.py", "f", 1, "python"), lambda: None
+        )
+        is None
+    )
+
+
+def test_external_override_walks_project_bases(tmp_path: Path) -> None:
+    from tree_sitter_analyzer.mcp.tools.dead_code_overrides import external_override
+
+    (tmp_path / "m.py").write_text(
+        "import abc\n\n\n"
+        "class Base(abc.ABC):\n    def hook(self):\n        return 1\n\n\n"
+        "class Child(Base):\n    def hook(self):\n        return 2\n\n\n"
+        "class Stream(dict):\n    def keys(self):\n        return []\n\n\n"
+        "def free():\n    return 3\n",
+        encoding="utf-8",
+    )
+    tops = lambda: frozenset({"m"})  # noqa: E731
+
+    assert external_override(str(tmp_path), "m.py", 10, "hook", tops) is None
+    found = external_override(str(tmp_path), "m.py", 15, "keys", tops)
+    assert found is not None and "external base `dict`" in found
+    assert external_override(str(tmp_path), "m.py", 19, "free", tops) is None
+    assert external_override(str(tmp_path), "notes.txt", 1, "x", tops) is None
+    unreadable = external_override(str(tmp_path), "gone.py", 1, "x", tops)
+    assert unreadable is not None and "could not be read" in unreadable
+
+
+def test_mismatched_batch_answers_certify_nothing() -> None:
+    funcs = [
+        FunctionRef("m.py", "a", 1, "python"),
+        FunctionRef("m.py", "b", 5, "python"),
+    ]
+
+    assert certify_mod._answers_for(funcs, [{}]) == [None, None]
+    assert certify_mod._verdict(None).reasons == (certify_mod.NO_ANSWER_REASON,)
+
+
+def test_listed_caller_that_is_not_dead_keeps_the_callee_alive() -> None:
+    a = FunctionRef("m.py", "a", 1, "python")
+    b = FunctionRef("m.py", "b", 5, "python")
+    cert = certify_mod.Certification(
+        verdicts={
+            a: certify_mod.Verdict(
+                False, ("NAME_ONLY_INBOUND",), open_sites=("x.py:3",)
+            ),
+            b: certify_mod.Verdict(True, callers=(("m.py", 1),)),
+        }
+    )
+
+    dead = certify_mod.resolve_dead([a, b], cert)
+
+    assert dead == set()
+    assert certify_mod.uncertified_entry(b, cert, dead)["reasons"] == ["LIVE_CALLER"]
+    entry = certify_mod.uncertified_entry(a, cert, dead)
+    assert entry["open_sites"] == ["x.py:3"]
+
+
+@pytest.mark.asyncio
+async def test_budget_leaves_candidates_unchecked(tmp_path: Path) -> None:
+    funcs = [FunctionRef("m.py", f"f{i}", i + 1, "python") for i in range(3)]
+
+    cert = await certify_mod.certify(str(tmp_path), funcs, budget_seconds=0.0)
+
+    assert cert.unchecked == funcs
+    assert cert.verdicts == {}
