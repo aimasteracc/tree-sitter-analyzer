@@ -1207,3 +1207,31 @@ def test_expires_when_generation_is_null_when_the_evidence_has_none() -> None:
     scope = expires_when({"file_path": "pkg/mod.py", "callers": []})
 
     assert scope["index_generation"] is None
+
+
+def test_mcp_facade_schema_declares_the_incremental_parameters() -> None:
+    """§12.1/§12.2 的可发现性：MCP 客户端按工具模式发现能力。
+
+    此前只写在门面 ``action=help`` 文本与路由白名单里，``tools/list`` 看不到，
+    等于对按模式工作的客户端不可见（第 90 轮实测发现）。
+    """
+    from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
+
+    tools = dict(create_tool_registry(".")[0])
+
+    for name in ("nav", "search"):
+        properties = tools[name].get_tool_schema()["properties"]
+        assert {"if_none_match", "previous_entries"} <= set(properties)
+
+
+def test_facades_that_cannot_route_the_incremental_parameters_do_not_claim_them() -> (
+    None
+):
+    """不路由的门面不声明：在 ``tools/list`` 里多报一个参数就是多报能力。"""
+    from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
+
+    tools = dict(create_tool_registry(".")[0])
+
+    for name in ("index", "viz", "structure", "health", "project"):
+        properties = tools[name].get_tool_schema()["properties"]
+        assert not ({"if_none_match", "previous_entries"} & set(properties))
