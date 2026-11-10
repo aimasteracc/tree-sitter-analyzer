@@ -20,6 +20,13 @@
   help and errors drop from 2.9 s to 1.7 s on Windows, where the bare
   interpreter start is 1.35 s. `--autoindex` status now carries an
   `agent_summary`; with no index its `next_step` names the warm command.
+  Callers, callees and codegraph context answers computed without an index
+  (`source_evidence.reason: MISSING_INDEX`, not `complete`) now start
+  `next_step` with the index-build command (#1943); verdict and
+  completeness are unchanged. A bare call (no arguments) prints the error
+  and the short help on stderr without building the parser (82.8k -> 2.4k
+  chars). Under `python -m`, usage, errors and both `--version` paths say
+  `tree-sitter-analyzer` instead of `__main__.py`.
   The CLI flag count claims move from 374 to 375 (`--help-all`).
 
 - **Callers gate: kotlinpoet is the 8th repo, with a Kotlin grep-oracle classifier** (#1933).
