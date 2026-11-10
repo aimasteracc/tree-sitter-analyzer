@@ -50,8 +50,11 @@ agent 可以按 etag 判断「上一轮的答案还能不能用」，避免重�
 任何 stale / 不完整状态都会让这两个捷径失效并回完整答案——ETag 是承诺，不是猜测。
 
 **空答案是带证明的**：`callers` / `test_map` 的空结果会带 `absence`
-（`unreferenced` / `entry_point` / `script` / `untested` 为 `proven`；证据不全时是
-`unknown` + `possible` 并点名开放站点）。`NOT_FOUND` 不携带 `absence`。
+（`unreferenced` / `entry_point`（仅 console script 精确指向该模块文件）为 `proven`；
+`untested` 只是 `possible`（只看直接测试调用方）；证据不全或 stale 时是
+`unknown` + `possible` 并点名开放站点）。shebang / `__main__.py` 不构成任何证明。
+`NOT_FOUND` 不携带 `absence`。`expires_when.reusable_without_reask` 为 `false`
+（世代未知）时不得免问复用，用 `--if-none-match` 重问。
 
 ## Entry Points
 

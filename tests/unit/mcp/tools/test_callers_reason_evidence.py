@@ -726,6 +726,10 @@ def test_console_script_entry_point_is_recognised(tmp_path) -> None:
         '\n[tool.poetry.scripts]\ny = "pkg.cli:run_sub"\n',
         encoding="utf-8",
     )
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "cli.py").write_text(
+        "def main():\n    pass\n\n\ndef run_sub():\n    pass\n", encoding="utf-8"
+    )
 
     # 缺少目标文件时绝不升级（Codex P2：不能把同名函数都当入口点）。
     assert _console_script_evidence(str(tmp_path), "main") is None
@@ -751,8 +755,10 @@ def test_a_missing_manifest_never_proves_an_entry_point(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_dunder_main_function_is_certified_as_an_entry_point(tmp_path) -> None:
-    """``pkg/__main__.py`` 里未被调用的函数 → entry_point + dunder_main 证据。"""
+async def test_an_uncalled_dunder_main_function_is_unreferenced(tmp_path) -> None:
+    """PR #1939 review: being in ``pkg/__main__.py`` does not make a function an
+    entry point — one ``python -m`` really runs is called from module level and
+    has a ``<module>`` caller. An uncalled one is plain ``unreferenced``."""
     root = await _index_files(
         tmp_path,
         {
@@ -765,23 +771,8 @@ async def test_a_dunder_main_function_is_certified_as_an_entry_point(tmp_path) -
     result = await _callers(root, "unused_main", "pkg/__main__.py")
 
     absence = result["absence"]
-    assert (absence["kind"], absence["confidence"]) == ("entry_point", "proven")
-    assert [entry["kind"] for entry in absence["evidence"]] == [
-        "complete_call_graph",
-        "dunder_main",
-    ]
-
-
-def test_dunder_main_evidence_requires_the_file_to_exist(tmp_path) -> None:
-    from tree_sitter_analyzer.mcp.tools.callers_tool import _dunder_main_evidence
-
-    assert _dunder_main_evidence(str(tmp_path), "pkg/missing/__main__.py") is None
-    assert _dunder_main_evidence(str(tmp_path), "pkg/cli.py") is None
-    (tmp_path / "pkg").mkdir()
-    (tmp_path / "pkg" / "__main__.py").write_text("x = 1\n", encoding="utf-8")
-    assert _dunder_main_evidence(str(tmp_path), "pkg/__main__.py") == (
-        "pkg/__main__.py is the package entry module"
-    )
+    assert (absence["kind"], absence["confidence"]) == ("unreferenced", "proven")
+    assert [entry["kind"] for entry in absence["evidence"]] == ["complete_call_graph"]
 
 
 def test_console_script_absence_outranks_plain_unreferenced(tmp_path) -> None:
@@ -790,6 +781,10 @@ def test_console_script_absence_outranks_plain_unreferenced(tmp_path) -> None:
 
     (tmp_path / "pyproject.toml").write_text(
         '[project.scripts]\nx = "pkg.cli:main"\n', encoding="utf-8"
+    )
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "cli.py").write_text(
+        "def main():\n    pass\n", encoding="utf-8"
     )
     result = {"caller_count": 0, "completeness": "complete"}
 
@@ -942,29 +937,6 @@ def test_sql_native_callers_annotates_activation(monkeypatch) -> None:
     assert callers[0]["activation"] == {"mod_count_30d": 0, "last_modified_at": None}
 
 
-def test_script_with_a_shebang_is_certified_as_a_script(tmp_path) -> None:
-    """RFC-0044 `script`：带 shebang 的可执行文件里的零调用方函数。"""
-    from tree_sitter_analyzer.mcp.tools.callers_tool import absence_certificate
-
-    (tmp_path / "run.py").write_text(
-        "#!/usr/bin/env python\n\ndef main_body():\n    return 1\n", encoding="utf-8"
-    )
-    result = {"caller_count": 0, "completeness": "complete"}
-
-    certificate = absence_certificate(
-        result,
-        project_root=str(tmp_path),
-        function_name="main_body",
-        file_path="run.py",
-    )
-
-    assert (certificate["kind"], certificate["evidence"][1]["kind"]) == (
-        "script",
-        "shebang",
-    )
-    assert certificate["evidence"][1]["detail"] == "run.py starts with #!/usr/bin/env"
-
-
 def test_a_file_without_a_shebang_stays_unreferenced(tmp_path) -> None:
     """没有 shebang 的普通模块不升级为 script（宁可少说）。"""
     from tree_sitter_analyzer.mcp.tools.callers_tool import absence_certificate
@@ -977,13 +949,6 @@ def test_a_file_without_a_shebang_stays_unreferenced(tmp_path) -> None:
     )
 
     assert certificate["kind"] == "unreferenced"
-
-
-def test_a_missing_script_file_never_proves_anything(tmp_path) -> None:
-    from tree_sitter_analyzer.mcp.tools.callers_tool import _script_evidence
-
-    assert _script_evidence(str(tmp_path), "missing.py") is None
-    assert _script_evidence(str(tmp_path), None) is None
 
 
 def test_an_incomplete_empty_answer_is_a_possible_absence() -> None:
@@ -1091,69 +1056,6 @@ def test_undefined_symbol_never_gets_an_identification_certificate(tmp_path):
         )
         is None
     )
-
-
-def test_package_dunder_main_certifies_identification_when_incomplete(tmp_path):
-    """证据不全时 `__main__.py` 里的函数同样算识别性入口。"""
-    from tree_sitter_analyzer.mcp.tools.callers_tool import absence_certificate
-
-    package = tmp_path / "pkg"
-    package.mkdir()
-    (package / "__main__.py").write_text(
-        "def entry():\n    return 1\n", encoding="utf-8"
-    )
-    result = {
-        "verdict": "WARN",
-        "caller_count": 0,
-        "completeness": "unknown",
-        "completeness_reasons": ["NON_CALL_REFERENCES"],
-    }
-
-    certificate = absence_certificate(
-        result,
-        project_root=str(tmp_path),
-        function_name="entry",
-        file_path="pkg/__main__.py",
-    )
-
-    assert certificate is not None
-    assert (certificate["kind"], certificate["identification_only"]) == (
-        "entry_point",
-        True,
-    )
-    assert [item["kind"] for item in certificate["evidence"]] == [
-        "dunder_main",
-        "symbol_defined",
-    ]
-
-
-def test_shebang_script_certifies_identification_when_incomplete(tmp_path):
-    """证据不全时，带 shebang 的脚本同样算识别性入口。"""
-    from tree_sitter_analyzer.mcp.tools.callers_tool import absence_certificate
-
-    (tmp_path / "run.py").write_text(
-        "#!/usr/bin/env python\ndef body():\n    return 1\n", encoding="utf-8"
-    )
-    result = {
-        "verdict": "WARN",
-        "caller_count": 0,
-        "completeness": "unknown",
-        "completeness_reasons": ["NON_CALL_REFERENCES"],
-    }
-
-    certificate = absence_certificate(
-        result,
-        project_root=str(tmp_path),
-        function_name="body",
-        file_path="run.py",
-    )
-
-    assert certificate is not None
-    assert (certificate["kind"], certificate["identification_only"]) == ("script", True)
-    assert [item["kind"] for item in certificate["evidence"]] == [
-        "shebang",
-        "symbol_defined",
-    ]
 
 
 def test_expires_when_names_the_declaring_file_and_generation():

@@ -59,13 +59,24 @@ def test_callers_answers_carry_an_absence_rule() -> None:
     assert absence_certificate({"caller_count": 0, "verdict": "NOT_FOUND"}) is None
 
 
-def test_test_map_certifies_untested_and_carries_an_etag() -> None:
+def test_test_map_carries_an_etag_over_its_whole_answer() -> None:
     from tree_sitter_analyzer.mcp.tools.nav_facade import _test_map_etag
 
     first = _test_map_etag({"symbol": "f", "test_files": []}, "gen-1")
     second = _test_map_etag({"symbol": "f", "test_files": []}, "gen-2")
+    name_only = _test_map_etag(
+        {"symbol": "f", "test_files": [], "name_only_test_functions": ["t::x"]},
+        "gen-1",
+    )
 
     assert (first.startswith("sha256:"), first != second) == (True, True)
+    assert name_only != first
+
+
+def test_expires_when_never_invites_blind_reuse() -> None:
+    from tree_sitter_analyzer.mcp.tools.callers_tool import expires_when
+
+    assert expires_when({"callers": []})["reusable_without_reask"] is False
 
 
 def test_uql_hints_at_absence_instead_of_claiming_it() -> None:

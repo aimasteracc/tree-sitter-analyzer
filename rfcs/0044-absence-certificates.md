@@ -3,10 +3,11 @@
 - **Status**: implemented (2026-11-10, PR #1939)
 - **Author(s)**: agent dogfood round 2026-11-09
 - **Created**: 2026-11-09
-- **Last updated**: 2026-11-09
+- **Last updated**: 2026-11-10
 - **Tracking issue**: TBD
 - **Affected source paths**:
-  - `tree_sitter_analyzer/mcp/tools/callers_tool.py` (`absence` block)
+  - `tree_sitter_analyzer/mcp/tools/callers_agent_fields.py` (`absence` rules)
+  - `tree_sitter_analyzer/mcp/tools/callers_tool.py` (wiring)
   - `tree_sitter_analyzer/mcp/tools/callers_outcomes.py` / `callers_checks.py`
   - `tree_sitter_analyzer/uql/coverage.py` + `uql/output.py` (passthrough)
   - `docs/agent-envelope-contract.md`
@@ -42,11 +43,11 @@ justifies acting on the absence.
 
 ```json
 "absence": {
-  "kind": "entry_point" | "script" | "unreferenced" | "untested" | "unknown",
+  "kind": "entry_point" | "unreferenced" | "untested" | "unknown",
   "confidence": "proven" | "possible",
   "evidence": [
-    {"kind": "console_script", "detail": "pyproject.toml [project.scripts] -> tree_sitter_analyzer"},
-    {"kind": "dunder_main", "detail": "tree_sitter_analyzer/__main__.py:11"}
+    {"kind": "complete_call_graph", "detail": "every required caller check ran; ..."},
+    {"kind": "console_script", "detail": "[project.scripts] tsa = \"pkg.cli:main\""}
   ],
   "next_step": "..."
 }
@@ -62,10 +63,16 @@ justifies acting on the absence.
 
 | kind | proven when (all must hold) |
 |---|---|
-| `entry_point` | the target is named in `[project.scripts]` / `[tool.poetry.scripts]`, or it is the `__main__` guard target |
-| `script` | the declaring file is under a `scripts/` directory or is executable with a shebang, and the target is module-level |
-| `unreferenced` | caller list empty **and** every inbound check ran with no unresolved/name-only sites (already encoded by `completeness_checks`) |
-| `untested` | `test_map` empty **and** the test-detection scan covered the project (existing completeness reason set) |
+| `entry_point` | a `[project.scripts]` / `[tool.poetry.scripts]` entry names exactly the declaring module file (path-segment boundary; flat or `src/` layout; `pkg:f` → `pkg/__init__.py`) and an undotted attribute that the file defines as a module-level function |
+| ~~`script`~~ | **withdrawn** (PR #1939 review): a shebang / `scripts/` location / `__main__.py` is a property of the file, not evidence about one function in it — see below |
+| `unreferenced` | caller list empty **and** every inbound check ran with no unresolved/name-only/declaring-file/module-level/non-call sites **and** the answer is not stale |
+| `untested` | never `proven` today: `test_map` follows direct test callers plus one helper hop only, so indirect coverage through non-test callers is unchecked; emitted as `confidence: "possible"` with `no_direct_test_caller` evidence |
+
+**Why `script` / `__main__` were withdrawn.** A function that a shebang script or a
+`__main__.py` really runs is called from that file's module-level code, so it already has a
+`<module>` caller and needs no certificate. A function with zero callers in such a file is not
+run by it — certifying it "not dead code" would be a proof weaker than its evidence. Such a
+function now gets plain `unreferenced` (complete answer) or the `unknown`/`possible` downgrade.
 
 Each rule reads at most the manifest file, the declaring file, and the already
 computed completeness checks; no directory walk is added.
@@ -92,11 +99,13 @@ on `completeness == "complete"`, but a real entry point resolves to `NOT_FOUND` 
 `NON_CALL_REFERENCES` (the declaring file holds non-call references), so the certificate never
 appeared for exactly the objects it was written for.
 
-The distinction: `entry_point` / `script` are **identification facts** — the object is invoked from
-outside the analysed graph — so they hold without a complete caller list. They now ship with
-`identification_only: true` and `symbol_defined` evidence in that case. `unreferenced` / `untested`
-are **negative claims** and keep requiring `complete`. `SYMBOL_NOT_DEFINED` still yields no
-certificate at all: not being indexed is not being an entry.
+The distinction: a console-script `entry_point` is an **identification fact** — the object is
+invoked from outside the analysed graph — so it holds without a complete caller list. It ships
+with `identification_only: true` and `symbol_defined` evidence (the declaring file defines the
+function at module level) in that case. `unreferenced` is a **negative claim** and keeps
+requiring `complete`. `SYMBOL_NOT_DEFINED` still yields no certificate at all: not being indexed
+is not being an entry. (The `script` / `__main__` identifications were withdrawn in review; see
+the detection-rules table.)
 
 
 ## Three-Surface impact (CLI ↔ MCP parity)
@@ -150,7 +159,9 @@ certificate at all: not being indexed is not being an entry.
 ## Acceptance criteria
 
 - [x] `absence` emitted only on `complete` answers, with evidence
-  (`absence_certificate`; proven kinds `unreferenced` / `entry_point` / `script` / `untested`)
+  (`absence_certificate` in `callers_agent_fields.py`; proven kinds `unreferenced` /
+  `entry_point`; `untested` is `possible` only; `script` withdrawn in review —
+  pinned by `tests/unit/mcp/tools/test_callers_agent_fields_trust.py`)
 - [x] `unknown`/`possible` covers every non-runnable rule; no silent absence
   (`_unproven_absence` names the open sites; `NOT_FOUND` carries no certificate)
 - [x] CLI↔MCP parity tests green; no flag-count change

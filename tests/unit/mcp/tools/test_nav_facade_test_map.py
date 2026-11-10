@@ -217,12 +217,44 @@ async def test_test_map_no_test_callers() -> None:
     assert result["test_files"] == []
     assert result["test_functions"] == []
     assert result["truncated"] is False
-    # RFC-0044 `untested`：解析成功 + 零测试边 → 可证明的「没测试覆盖」。
+    # RFC-0044 `untested`: zero direct test-call edges do NOT prove "no test
+    # exercises it" — prod_caller may itself be tested (indirect coverage), and
+    # test_map follows only direct callers plus one helper hop. Only `possible`.
     assert (
         result["absence"]["kind"],
         result["absence"]["confidence"],
         result["absence"]["evidence"][0]["kind"],
-    ) == ("untested", "proven", "complete_test_scan")
+    ) == ("untested", "possible", "no_direct_test_caller")
+    assert "indirect" in result["absence"]["next_step"]
+
+
+@pytest.mark.asyncio
+async def test_test_map_truncated_answer_never_returns_a_delta() -> None:
+    """A capped list cannot tell "removed" from "beyond the cap": full answer."""
+    facade = build_nav_facade(project_root=None)
+    impact_inner = _get_impact_inner(facade)
+
+    target_fn = _make_func("hub_fn", "src/hub.py")
+    test_callers = [
+        _make_func(f"test_{i}", f"tests/test_file_{i % 5}.py", i) for i in range(51)
+    ]
+    mock_graph = MagicMock()
+    mock_graph.resolve_targets.return_value = [target_fn]
+    mock_graph.caller_refs_of.return_value = test_callers
+    mock_graph.possible_caller_refs_of.return_value = []
+    mock_graph.build = MagicMock()
+    impact_inner._call_graph = mock_graph
+
+    previous = [f"tests/test_file_{i % 5}.py::test_{i}" for i in range(51)]
+    result = await facade.execute(
+        {"action": "test_map", "symbol": "hub_fn", "previous_entries": previous}
+    )
+
+    assert (result["truncated"], "delta" in result, "test_functions" in result) == (
+        True,
+        False,
+        True,
+    )
 
 
 @pytest.mark.asyncio

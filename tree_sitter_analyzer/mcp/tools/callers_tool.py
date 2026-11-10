@@ -10,7 +10,6 @@ Simpler and more discoverable than the monolithic codegraph_call_graph tool.
 
 import contextvars
 import os
-import re
 import sqlite3
 from collections.abc import Callable
 from typing import Any
@@ -25,6 +24,15 @@ from . import certification_timeouts
 from ._response_builder import build_response
 from .base_tool import BaseMCPTool
 from .callers_absence import assess_completeness
+from .callers_agent_fields import (  # noqa: F401 -- re-exported for callers/tests
+    _callers_delta,
+    _console_script_evidence,
+    absence_certificate,
+    answer_etag,
+    callers_delta_response,
+    callers_unchanged_response,
+    expires_when,
+)
 from .callers_annotated import (
     alias_provenance,
     annotated_provenance,
@@ -337,382 +345,6 @@ def _describe_sites(sites: list[dict[str, Any]] | None) -> str:
     if remaining > 0:
         parts.append(f"and {remaining} more")
     return "; ".join(parts)
-
-
-_SCRIPTS_ENTRY_LINE = re.compile(
-    r"^\s*([\w.-]+)\s*=\s*[\"']([\w.]+):([\w.]+)", re.MULTILINE
-)
-_SCRIPT_SECTIONS = frozenset({"project.scripts", "tool.poetry.scripts"})
-
-
-def _console_script_evidence(
-    project_root: str, function_name: str, *, file_path: str | None = None
-) -> str | None:
-    """``pyproject.toml`` 的 ``[project.scripts]`` / ``[tool.poetry.scripts]`` 是否指向它。
-
-    逐行扫描而非 ``tomllib``（本项目地板是 3.10，``tomllib`` 只有 3.11+）；两个
-    section 都要看。读不到/解析不了就是 None：证明不了就不签发，绝不猜。
-    """
-    manifest = os.path.join(project_root, "pyproject.toml")
-    try:
-        with open(manifest, encoding="utf-8", errors="replace") as handle:
-            lines = handle.read().splitlines()
-    except OSError:
-        return None
-    section = ""
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("[") and stripped.endswith("]"):
-            section = stripped.strip("[]").strip()
-            continue
-        if section not in _SCRIPT_SECTIONS:
-            continue
-        match = _SCRIPTS_ENTRY_LINE.match(line)
-        if match is None:
-            continue
-        script, module, attr = match.group(1), match.group(2), match.group(3)
-        if attr.split(".")[-1] != function_name:
-            continue
-        # Codex P2：`app = "cli:main"` 不能让 lib.py 里另一个 main 也变成入口点，
-        # 脚本模块必须与目标文件对得上；文件未知时不升级（保守）。
-        if not file_path:
-            return None
-        module_path = module.replace(".", "/")
-        normalized = file_path.replace("\\", "/")
-        stem = os.path.splitext(normalized)[0]
-        if stem.endswith(module_path) and ":" in f"{module}:{attr}":
-            return f'[{section}] {script} = "{module}:{attr}"'
-    return None
-
-
-def _dunder_main_evidence(project_root: str, file_path: str | None) -> str | None:
-    """``__main__.py`` 本身就是入口：被它定义的模块级函数天然没有调用方。"""
-    if not file_path:
-        return None
-    if os.path.basename(file_path.replace("\\", "/")) != "__main__.py":
-        return None
-    if os.path.isfile(os.path.join(project_root, file_path)):
-        return f"{file_path} is the package entry module"
-    return None
-
-
-def _script_evidence(project_root: str, file_path: str | None) -> str | None:
-    """带 shebang 的可执行脚本：其模块级函数由脚本入口调用，而非被 import 调用。
-
-    RFC-0044 的 ``script`` 规则。只认 shebang 这一条硬证据（读过首行且以 ``#!``
-    开头）；读不到或没有 shebang 一律不升级——脚本目录下有 shebang 的文件也可能
-    只是库文件，宁可少说。
-    """
-    if not file_path:
-        return None
-    normalized = file_path.replace("\\", "/")
-    absolute = os.path.join(project_root, normalized)
-    try:
-        with open(absolute, "rb") as handle:
-            first_line = handle.readline(120)
-    except OSError:
-        return None
-    if not first_line.startswith(b"#!"):
-        return None
-    interpreter = first_line[2:].decode("utf-8", "replace").strip().split(" ")[0]
-    return f"{normalized} starts with #!{interpreter}"
-
-
-def _unproven_absence(
-    result: dict[str, Any], open_sites: tuple[int, int, int]
-) -> dict[str, Any]:
-    """RFC-0044 的诚实降级：空列表但证据不全时给 ``unknown``/``possible``。
-
-    不给 ``proven``（那会假装缺席已被证明），但也不沉默——agent 需要知道
-    「空是因为没查到，还是因为查不全」，以及下一步该跑什么。
-    """
-    unresolved, name_only, declaring = (int(value) for value in open_sites)
-    reasons = list(result.get("completeness_reasons") or [])
-    detail = (
-        f"completeness={result.get('completeness')!r}; "
-        f"unresolved={unresolved}, name_only={name_only}, declaring_file_sites={declaring}"
-    )
-    if reasons:
-        detail += f"; reasons={', '.join(str(reason) for reason in reasons[:3])}"
-    return {
-        "kind": "unknown",
-        "confidence": "possible",
-        "evidence": [{"kind": "incomplete_call_graph", "detail": detail}],
-        "next_step": (
-            "The empty caller list is not proven: close the open sites above "
-            "(resolve or rule out these inbound sites), then ask again."
-        ),
-    }
-
-
-def _identification_absence(
-    result: dict[str, Any],
-    project_root: str,
-    function_name: str,
-    file_path: str | None,
-) -> dict[str, Any] | None:
-    """证据不全时的**识别性**证书：入口点 / 脚本（RFC-0044，2026-11-10 补充）。
-
-    与 ``unreferenced`` 的区别：这类结论证明的是「它由外部调用方进入」，而不是
-    「没有任何调用方」，因此不依赖 RFC-0040 的完整性证明。前提是符号确实在索引里
-    ——``SYMBOL_NOT_DEFINED`` 时一律不签发，避免把「没索引到」说成「是入口点」。
-    """
-    reasons = set(result.get("completeness_reasons") or [])
-    if "SYMBOL_NOT_DEFINED" in reasons or not project_root:
-        return None
-    console = _console_script_evidence(project_root, function_name, file_path=file_path)
-    main_module = _dunder_main_evidence(project_root, file_path)
-    shebang = _script_evidence(project_root, file_path)
-    if console is not None:
-        kind, evidence_kind, evidence_detail, next_step = (
-            "entry_point",
-            "console_script",
-            console,
-            "This is an entry point, not dead code: the console script invokes it.",
-        )
-    elif main_module is not None:
-        kind, evidence_kind, evidence_detail, next_step = (
-            "entry_point",
-            "dunder_main",
-            main_module,
-            "This is an entry point: the package __main__ module exposes it.",
-        )
-    elif shebang is not None:
-        kind, evidence_kind, evidence_detail, next_step = (
-            "script",
-            "shebang",
-            shebang,
-            "This is a runnable script, executed directly rather than imported.",
-        )
-    else:
-        return None
-    return {
-        "kind": kind,
-        "confidence": "proven",
-        # 识别性事实：断言「从图外进入」，不是「零调用方」。
-        "identification_only": True,
-        "evidence": [
-            {"kind": evidence_kind, "detail": evidence_detail},
-            {
-                "kind": "symbol_defined",
-                "detail": (
-                    "the symbol is defined in this file; the certificate claims an "
-                    "external entry, not a proven absence of callers"
-                ),
-            },
-        ],
-        "next_step": next_step,
-        "detail": (
-            "Caller completeness is not proven here, so this is an identification "
-            "(the code is reachable from outside the graph), not an absence claim."
-        ),
-    }
-
-
-def expires_when(result: dict[str, Any]) -> dict[str, Any]:
-    """答案的**作用域**：哪些文件一变，这个答案就失效（§12.6）。
-
-    与 ``answer_etag`` 互补：etag 让 agent 在**下一轮重问**时便宜地确认「没变」；
-    ``expires_when`` 让它在**不重问**的情况下自我失效——只要列出的文件没动，就可以
-    继续复用上一轮答案。
-
-    ``index_generation`` 直接取答案里**已经存在**的 ``source_evidence.source_generation``：
-    为它单独去 stat 索引库会破坏「warm 请求不探测文件系统」的契约（本函数的第一版就是
-    这样把 `test_warm_requests_probe_nothing` 弄红的），而读不到证据时 ``null`` 才是诚实的。
-    """
-    files: set[str] = set()
-    declaring = result.get("file_path") or result.get("file")
-    if isinstance(declaring, str) and declaring:
-        files.add(declaring.replace("\\", "/"))
-    for caller in result.get("callers") or []:
-        if isinstance(caller, dict):
-            path = caller.get("file") or caller.get("file_path")
-            if isinstance(path, str) and path:
-                files.add(path.replace("\\", "/"))
-    evidence = result.get("source_evidence") or {}
-    generation = (
-        evidence.get("source_generation") if isinstance(evidence, dict) else None
-    )
-    return {
-        "files": sorted(files),
-        "index_generation": str(generation) if generation else None,
-    }
-
-
-def absence_certificate(
-    result: dict[str, Any],
-    *,
-    project_root: str = "",
-    function_name: str = "",
-    file_path: str | None = None,
-) -> dict[str, Any] | None:
-    """RFC-0044：只在能证明「确实没有、且能解释为什么」时签发缺席证书。
-
-    签发前必须满足：
-
-    - 调用方列表为空；
-    - ``completeness == "complete"``（RFC-0040 的 13 道检查全部跑过）；
-    - 没有 unresolved / name-only / 声明文件守卫的开放站点。
-
-    然后按证据给出 ``kind``：命中 ``[project.scripts]`` 或 ``__main__.py`` 时是
-    ``entry_point``（并附来源），否则才是 ``unreferenced``。读不到证据时绝不升级
-    结论——不完整的答案没有资格证明缺席。
-    """
-    if result.get("caller_count") != 0:
-        return None
-    open_sites = (
-        result.get("unresolved_inbound") or 0,
-        result.get("name_only_inbound") or 0,
-        result.get("unresolved_in_declaring_files") or 0,
-    )
-    if result.get("completeness") != "complete" or any(open_sites):
-        # 证据不全时，**识别性事实**仍然可以签发：entry_point / script 断言的是
-        # 「它被图外调用」，不是「零调用方」，因此不需要调用图的完整性证明。
-        identification = _identification_absence(
-            result, project_root, function_name, file_path
-        )
-        if identification is not None:
-            return identification
-        # 其余情况只降级、不冒充：not-found 连「可能没有」都不给（它可能
-        # 根本不在索引里），其余情况给 unknown/possible 并点名开放站点。
-        if result.get("verdict") == "NOT_FOUND":
-            return None
-        return _unproven_absence(result, open_sites)
-    base_evidence = {
-        "kind": "complete_call_graph",
-        "detail": (
-            "every required caller check ran; 0 resolved, 0 unresolved, "
-            "0 name-only inbound sites"
-        ),
-    }
-    script = (
-        _console_script_evidence(project_root, function_name, file_path=file_path)
-        if project_root
-        else None
-    )
-    if script is not None:
-        return {
-            "kind": "entry_point",
-            "confidence": "proven",
-            "evidence": [base_evidence, {"kind": "console_script", "detail": script}],
-            "next_step": (
-                "This is an entry point, not dead code: it is invoked by the "
-                "console script, not by a call edge."
-            ),
-        }
-    main_module = (
-        _dunder_main_evidence(project_root, file_path) if project_root else None
-    )
-    if main_module is not None:
-        return {
-            "kind": "entry_point",
-            "confidence": "proven",
-            "evidence": [base_evidence, {"kind": "dunder_main", "detail": main_module}],
-            "next_step": (
-                "This is an entry point, not dead code: the package __main__ "
-                "module exposes it to `python -m`."
-            ),
-        }
-    script = _script_evidence(project_root, file_path) if project_root else None
-    if script is not None:
-        return {
-            "kind": "script",
-            "confidence": "proven",
-            "evidence": [base_evidence, {"kind": "shebang", "detail": script}],
-            "next_step": (
-                "This is a runnable script, not dead code: it is executed "
-                "directly, so no import-style call edge reaches it."
-            ),
-        }
-    return {
-        "kind": "unreferenced",
-        "confidence": "proven",
-        "evidence": [base_evidence],
-        "next_step": (
-            "Treat the absence as a fact: no call edge in the project reaches "
-            "this target."
-        ),
-    }
-
-
-def _caller_identity(entry: dict[str, Any]) -> tuple[Any, ...]:
-    """调用方条目的身份：(file, line, call_site_line, name)。"""
-    return (
-        entry.get("file"),
-        entry.get("line"),
-        entry.get("call_site_line"),
-        entry.get("name"),
-    )
-
-
-def _callers_delta(
-    previous: list[Any], current: list[dict[str, Any]]
-) -> dict[str, Any]:
-    """两份调用方列表的增量：added / removed / unchanged_count（§12.2）。"""
-    previous_keys = [
-        _caller_identity(entry) for entry in previous if isinstance(entry, dict)
-    ]
-    current_keys = [_caller_identity(entry) for entry in current]
-    previous_set, current_set = set(previous_keys), set(current_keys)
-    return {
-        "added": [
-            {key: entry.get(key) for key in ("name", "file", "line", "call_site_line")}
-            for entry in current
-            if _caller_identity(entry) in current_set - previous_set
-        ],
-        "removed": [
-            entry
-            for entry in previous
-            if isinstance(entry, dict)
-            and _caller_identity(entry) in previous_set - current_set
-        ],
-        "unchanged_count": len(previous_set & current_set),
-    }
-
-
-def answer_etag(result: dict[str, Any]) -> str:
-    """答案内容的稳定指纹（agent 跨轮次判断「要不要重读」的原语，dogfood §12.1）。
-
-    只覆盖「问题 + 答案内容 + 证据状态」，不含耗时、绝对路径等易变字段：
-    同一索引上重复提问得到同一 etag；作用域源码过期时 ``freshness``/``stale``
-    变化会改变它。纯函数、不读写索引，调用方可以安全地用它做 If-None-Match。
-    """
-    import hashlib
-    import json
-
-    def _body_sha(entry: dict[str, Any]) -> str | None:
-        body = entry.get("body")
-        if not isinstance(body, str):
-            return None
-        return hashlib.sha256(body.encode("utf-8")).hexdigest()
-
-    payload = {
-        "function": result.get("function"),
-        "file_path": result.get("file_path"),
-        "callers": [
-            {
-                **{
-                    key: entry.get(key)
-                    for key in ("name", "file", "line", "call_site_line")
-                },
-                # Codex P2：内联体（默认开启）也是答案内容，必须进入指纹，
-                # 否则函数体变化后 etag 不变会误导客户端复用旧体。
-                "body_sha": _body_sha(entry),
-            }
-            for entry in (result.get("callers") or [])
-            if isinstance(entry, dict)
-        ],
-        "truncated": bool(result.get("truncated", False)),
-        "listed": result.get("caller_count"),
-        "caller_count": result.get("caller_count"),
-        "completeness": result.get("completeness"),
-        "completeness_reasons": result.get("completeness_reasons") or [],
-        "freshness": (result.get("source_evidence") or {}).get("freshness"),
-        "stale": bool(result.get("stale", False)),
-        "absence": result.get("absence"),
-    }
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-    return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
 class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
@@ -1641,6 +1273,9 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
             "verdict": verdict,
             "next_step": as_next_step,
         }
+        apply_source_evidence(result, evidence, stale_files)
+        # RFC-0044: certify only after freshness is known — a stale answer
+        # never carries a proven certificate.
         certificate = absence_certificate(
             result,
             project_root=self.project_root or "",
@@ -1649,75 +1284,20 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         )
         if certificate is not None:
             result["absence"] = certificate
-        apply_source_evidence(result, evidence, stale_files)
         result["expires_when"] = expires_when(result)
+        # dogfood §12.1: same content -> same etag (cross-turn cache key).
         result["answer_etag"] = answer_etag(result)
-        # dogfood §12.1：内容相同的答案 → 相同 etag。agent 用它做跨轮次缓存判断。
-        result["answer_etag"] = answer_etag(result)
-        # §12.1 后半：If-None-Match。只有在「内容指纹相同且作用域未过期」时才敢说
-        # unchanged —— 任何 stale/不确定状态一律回完整答案，ETag 是承诺不是猜测。
-        requested_etag = str(arguments.get("if_none_match") or "").strip()
-        if (
-            requested_etag
-            and requested_etag == result["answer_etag"]
-            and not result.get("stale")
-        ):
-            minimal = {
-                "success": True,
-                "verdict": "INFO",
-                "unchanged": True,
-                "answer_etag": requested_etag,
-                "function": func_name,
-                "caller_count": result.get("caller_count"),
-                "agent_summary": {
-                    "summary_line": f"callers: {func_name!r} unchanged (etag match)",
-                    "verdict": "INFO",
-                    "next_step": (
-                        "Reuse the previous answer: no caller, completeness or "
-                        "source-freshness change since that etag."
-                    ),
-                },
-            }
+        # §12.1 If-None-Match / §12.2 delta: a minimal payload only when it is
+        # sound (fresh; for deltas also untruncated), else the full answer.
+        shortcut = callers_unchanged_response(
+            result, str(arguments.get("if_none_match") or "").strip(), func_name
+        ) or callers_delta_response(
+            result, arguments.get("previous_entries"), func_name
+        )
+        if shortcut is not None:
             from ..utils.format_helper import apply_output_format_to_response
 
-            return apply_output_format_to_response(minimal, output_format)
-        # §12.2：无状态增量答案。请求带上一次答案的条目（agent 本来就在上下文里），
-        # 只在未过期时给 added/removed/unchanged_count；过期一律回完整答案。
-        previous_entries = arguments.get("previous_entries")
-        if (
-            isinstance(previous_entries, list)
-            and previous_entries
-            and not result.get("stale")
-        ):
-            from ..utils.format_helper import apply_output_format_to_response
-
-            delta = _callers_delta(previous_entries, result.get("callers") or [])
-            minimal = {
-                "success": True,
-                "verdict": "INFO",
-                "answer_etag": result["answer_etag"],
-                "function": func_name,
-                "caller_count": result.get("caller_count"),
-                # Codex P2：增量描述的是「这份答案」的子集，完整性/截断证据必须
-                # 一并带出，否则客户端会把被截断或未证明的集合当成全部。
-                "completeness": result.get("completeness"),
-                "completeness_reasons": result.get("completeness_reasons") or [],
-                "truncated": bool(result.get("truncated", False)),
-                "delta": delta,
-                "agent_summary": {
-                    "summary_line": (
-                        f"callers: {func_name!r} delta +{len(delta['added'])} "
-                        f"-{len(delta['removed'])} "
-                        f"={delta['unchanged_count']} unchanged"
-                    ),
-                    "verdict": "INFO",
-                    "next_step": (
-                        "Apply the added/removed callers; unchanged entries do not "
-                        "need to be re-read."
-                    ),
-                },
-            }
-            return apply_output_format_to_response(minimal, output_format)
+            return apply_output_format_to_response(shortcut, output_format)
 
         # RFC-0027 L6.2: this route's cold/warm cliff (24.8 s -> 16 ms in the
         # L5 baseline) is the largest in the product, so a caller choosing

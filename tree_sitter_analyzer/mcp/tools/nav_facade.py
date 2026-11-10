@@ -382,8 +382,14 @@ def _test_map_etag(result: dict[str, Any], generation: str) -> str:
         "edge_count": result.get("edge_count"),
         "unique_function_count": result.get("unique_function_count"),
         "truncated": bool(result.get("truncated", False)),
+        # The whole answer is content: a changed name-only list or absence
+        # certificate must not be reported {unchanged: true}.
+        "name_only_test_functions": result.get("name_only_test_functions") or [],
+        "absence": result.get("absence"),
     }
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    encoded = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), default=str
+    ).encode()
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
@@ -675,8 +681,10 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
                 ),
             },
         }
-        # RFC-0044 `untested`：目标解析成功、没有任何测试调用边、也没有只靠同名
-        # 匹配的候选时，「没有被任何测试覆盖」是可证明的事实，而不是沉默。
+        # RFC-0044 `untested`, honestly scoped: zero direct test-call edges (plus
+        # one helper hop) and zero name-only candidates. That does NOT prove "no
+        # test exercises it" — a test can reach it through a non-test caller, or
+        # through a call site the graph left unresolved — so it is only `possible`.
         if (
             not test_files_sorted
             and not result["name_only_test_functions"]
@@ -684,19 +692,22 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         ):
             result["absence"] = {
                 "kind": "untested",
-                "confidence": "proven",
+                "confidence": "possible",
                 "evidence": [
                     {
-                        "kind": "complete_test_scan",
+                        "kind": "no_direct_test_caller",
                         "detail": (
-                            f"{len(targets)} resolved target(s), 0 test call edges, "
-                            "0 name-only candidates"
+                            f"{len(targets)} resolved target(s), 0 direct test call "
+                            "edges (one helper hop followed), 0 name-only "
+                            "candidates; indirect coverage through non-test callers "
+                            "and unresolved call sites were not checked"
                         ),
                     }
                 ],
                 "next_step": (
-                    "No test exercises this symbol: treat that as a fact when "
-                    "judging risk, and add one if the change needs coverage."
+                    "No test calls this symbol directly. It may still be exercised "
+                    "indirectly through its callers: check `nav action=callers` and "
+                    "their tests (or a coverage run) before treating it as untested."
                 ),
             }
 
@@ -708,7 +719,13 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
 
         generation = _index_generation_id(project_root)
         result["answer_etag"] = _test_map_etag(result, generation)
-        delta = _relation_delta(previous_entries, result.get("test_functions") or [])
+        # A capped list cannot tell a removed test from one beyond the cap: no
+        # delta for a truncated answer — send it in full.
+        delta = (
+            None
+            if result["truncated"]
+            else _relation_delta(previous_entries, result.get("test_functions") or [])
+        )
         if delta is not None:
             # 增量只描述差集；截断/去重后的总数必须一并带出，避免把子集当全部。
             return apply_output_format_to_response(

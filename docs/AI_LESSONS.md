@@ -57,13 +57,17 @@
    字段正确、测试全绿、热路径悄悄多付 8 次 syscall。
 2. 加一个「便利字段」前先问：它的数据从哪来？如果答案是「再查一次」，那它就不是便利，
    而是把成本转移到了每一次调用。
-3. `null` 往往比「查一次填上」更尊重调用方：作用域里已经有 `files` 可依赖时，
-   为了漂亮去补 `index_generation` 是负债。
+3. `null` 往往比「查一次填上」更尊重调用方——但 `null` 必须伴随**更弱的承诺**。
+   修订（PR #1939 review）：本条原文说「作用域里已经有 `files` 可依赖」，这是错的：
+   `files` 只是答案的输入，其他任何文件里新增一处调用都会让答案失效。世代为 `null`
+   时答案就**不能**免问复用（`reusable_without_reask: false`）。省掉一次探测可以，
+   但不能把省下的证据当成还在。
 
 ### Required guardrail
 
-`tree_sitter_analyzer/mcp/tools/callers_tool.py` 的 `expires_when()` 只读响应内已有字段（`source_evidence` 的 `source_generation`），
+`tree_sitter_analyzer/mcp/tools/callers_agent_fields.py` 的 `expires_when()` 只读响应内已有字段（`source_evidence` 的 `source_generation`），
 由 `tests/unit/mcp/tools/test_callers_reason_evidence.py` 固定失败路径（证据里没有世代 → `null`），
+`tests/unit/mcp/tools/test_callers_agent_fields_trust.py` 固定「世代为 `null` → `reusable_without_reask: false`」，
 并由既有的 `tests/integration/test_resident_handle.py::test_warm_requests_probe_nothing`
 与 `tests/integration/test_resident_snapshot_memo.py::test_requests_racing_a_republish_never_mix_snapshots`
 守住「热路径零探测」这条预算。

@@ -95,23 +95,28 @@ site, the response carries:
 
 Rules:
 
-- The field appears **only** on a `complete` zero-caller answer. An `incomplete` or
-  `unknown` answer never carries it — no certificate beats a false one.
-- `confidence: "proven"` is the only value emitted today; RFC-0044 defines the future
-  `possible` value for rules that cannot run (e.g. an unreadable manifest).
-- Implemented kinds: `unreferenced`, `entry_point` (console script / package `__main__.py`),
-  `script` (file starts with `#!`), `untested` (`nav action=test_map`: resolved target with
-  zero test call edges and zero name-only candidates), and the honest downgrade `unknown` with
-  `confidence: "possible"` when the list is empty but evidence is incomplete — its
-  `incomplete_call_graph` evidence names the open sites so the agent knows what to close.
+- `confidence: "proven"` appears **only** on a `complete`, non-stale zero-caller answer with no
+  open site of any kind (unresolved, name-only, declaring-file, module-level, non-call
+  reference). Anything less is at most `possible` — no certificate beats a false one.
+- Proven kinds: `unreferenced`, and `entry_point` when a `[project.scripts]` /
+  `[tool.poetry.scripts]` entry names exactly the declaring module file (path-segment boundary;
+  flat or `src/` layout; `pkg:f` → `pkg/__init__.py`) and an undotted attribute that file defines
+  as a module-level function. A shebang or a `__main__.py` file is never evidence about one
+  function in it: a function such a file actually runs is called from module level, so it has a
+  `<module>` caller and needs no certificate; an uncalled one is plain `unreferenced`.
+- `possible` kinds: `untested` (`nav action=test_map`: zero *direct* test call edges, one helper
+  hop followed, zero name-only candidates — indirect coverage through non-test callers is not
+  checked, so it is never `proven`), and the honest downgrade `unknown` when the caller list is
+  empty but evidence is incomplete or stale — its `incomplete_call_graph` evidence names the open
+  sites so the agent knows what to close.
 - A `NOT_FOUND` answer never carries `absence` at all: "not in the index" is not
   "nobody calls it". Consumers must treat unknown `kind` values as informational.
-- **Identification vs absence** (2026-11-10): `entry_point` and `script` assert "reachable
-  from outside the call graph", which is provable without RFC-0040 completeness; they therefore
-  carry `identification_only: true` plus `symbol_defined` evidence even when the answer is
-  `NOT_FOUND` with `NON_CALL_REFERENCES` (a real entry point often looks like that). The negative
-  claims — `unreferenced`, `untested` — still require `completeness: "complete"`.
-  `SYMBOL_NOT_DEFINED` never gets a certificate of any kind: not being indexed is not being an entry.
+- **Identification vs absence** (2026-11-10): `entry_point` asserts "entered from a console
+  script", which is provable without RFC-0040 completeness; it therefore carries
+  `identification_only: true` plus `symbol_defined` evidence even when the answer is `NOT_FOUND`
+  with `NON_CALL_REFERENCES` (a real entry point often looks like that). The negative claim
+  `unreferenced` still requires `completeness: "complete"`. `SYMBOL_NOT_DEFINED` never gets a
+  certificate of any kind: not being indexed is not being an entry.
 - The certificate is part of the answer content, so it participates in `answer_etag`.
 
 ## Re-asking an answer (ETag / `If-None-Match`)
@@ -122,6 +127,9 @@ Four answers support the incremental loop: `callers`, `callees`, `test_map` and 
   answers, the index generation for `test_map` and UQL.
 - A matching `if_none_match` returns a minimal `{unchanged: true}` payload; a stale answer is
   re-sent in full rather than reported as unchanged. A stale scope never yields a 304.
+- `previous_entries` returns `{delta: {added, removed, unchanged_count}}` only for a fresh,
+  **untruncated** answer: a capped list cannot tell a removed entry from one beyond the cap, so a
+  truncated answer is sent in full.
 - UQL's `index_generation` is part of the fingerprint, so re-indexing always changes it.
 
 ## `next_step` conventions
@@ -145,11 +153,17 @@ relying on:
 | answer cache (RFC-0027) | "was this answer reused without recomputation?" | `provenance.served_from` is exactly `"cache"` or `"computed"` |
 | `answer_etag` / `if_none_match` (§12.1) | "is this the same answer I already have?" | a matching etag returns `{unchanged: true}` instead of the payload |
 
-A third, weaker field exists for reuse **without asking again**: `callers` returns
-`expires_when: {files, index_generation}` — the declaring file plus every caller file, and the
-active index generation. While those files are untouched and the generation is unchanged, the
-answer may be reused; when the generation is unreadable it is `null`, and only the files can be
-trusted.
+A third, weaker field governs reuse **without asking again**: `callers` returns
+`expires_when: {files, index_generation, reusable_without_reask, rule}`. `files` (the declaring
+file plus every caller file) are the answer's inputs, **not** its full invalidation scope — a new
+call added in any other file adds a caller, and only the index generation can witness that. So:
+
+- `reusable_without_reask: true` only when `index_generation` is known and the answer is not
+  stale; the answer may then be reused while that generation is unchanged **and** the listed
+  files are unchanged.
+- When `index_generation` is `null` (or the answer is stale), `reusable_without_reask` is
+  `false`: the answer cannot be reused without re-asking. Re-ask with `if_none_match` — a match
+  costs a ~400 B `{unchanged: true}`.
 
 They answer different questions — cached means *the server did not recompute*,
 unchanged means *you already hold this content*. A cached answer can still differ

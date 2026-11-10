@@ -199,6 +199,14 @@ CLI `--capabilities` 与 MCP 暴露留到下一轮（新 flag 需要同步 codem
 `proven` 并附证据；空答案但证据不全时降级为 `unknown` + `possible`（附开放站点计数），
 `NOT_FOUND` 一律不签证书。`untested`（`nav action=test_map`）也已实现（第 24 轮）。
 
+> 修订（2026-11-10，PR #1939 review）：上面「三者都是 `proven`」有两处过度声明，已收回。
+> (1) shebang / `__main__.py` 是**文件**的属性，不是其中某个函数的证据：真正被脚本运行的函数
+> 有 `<module>` 调用方，不需要证书；零调用方的那个恰恰没被运行——`script` 与 `dunder_main`
+> 规则已撤回，这类函数回到 `unreferenced`（complete）或 `unknown`/`possible`。
+> (2) console script 的模块路径原来用 `endswith` 匹配（`cli:main` 会认证 `src/mycli.py`），
+> 现在要求路径段边界（含 `src/` 布局与 `pkg/__init__.py`），且声明文件须在模块级定义该函数。
+> `untested` 只看直接测试调用方（加一跳 helper），间接覆盖未检查，因此降为 `possible`。
+
 **设计已提交（第 17 轮）**：`rfcs/0044-absence-certificates.md` —— `absence: {kind, confidence, evidence}`
 只在底层问题 `complete` 时出现；`entry_point / script / unreferenced / untested` 四个保守规则，
 任一规则读不到就降为 `unknown`/`possible` 并写明原因；不新增 action、不新增 flag（三面 parity 不变）。
@@ -210,6 +218,13 @@ agent 常把答案缓存到下一轮。`callers` 现在返回
 （这个答案的全部输入），`index_generation` 是读到的活动世代（读不到时为 `null`，此时只能靠 files 判断）。
 
 agent 只要这几条文件没动、世代没变，就可以**不重问**继续复用上一轮答案。
+
+> 修订（2026-11-10，PR #1939 review）：上面两句不成立。`files` 只是答案的输入，不是它的失效范围——
+> **任何其他文件**里新增一处调用都会让答案过期，而只有索引世代能见证这一点。所以「世代为 `null`
+> 时只能靠 files 判断」是错的：此时**不能**免问复用。字段现为
+> `{files, index_generation, reusable_without_reask, rule}`：仅当世代已知且答案未 stale 时
+> `reusable_without_reask: true`，且只在「世代未变 **且** 列出的文件未变」时可复用；
+> 否则为 `false`，用 `if_none_match` 便宜地重问。
 
 > 修订（2026-11-10，第 66 轮）：本节此前描述的字段**并不存在**——文档先于实现。
 > 现在它存在且有测试；这也是「撤回声明要写回原处」的一个实例。
