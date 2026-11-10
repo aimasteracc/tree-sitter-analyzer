@@ -289,3 +289,27 @@ agent 只要这几条文件没动、世代没变，就可以**不重问**继续�
 并不说明省不了时间。真正的收益是**载荷**（4006 → 440 B）与 **MCP 常驻进程内避免的重复计算**；
 而第 2 步从 7.04 s 降到 0.93 s，说明**收敛记录（§11）才是问答成本的主项**。
 
+
+## 14. 第 82 轮发现（未修，已量化）：大 PR 的 focused 命令可达 11 KB
+
+用 TSA 自己分析本 PR（`--change-impact --change-impact-mode branch`）：
+
+| 指标 | 值 |
+|---|---|
+| 改动文件 | 75 |
+| 受影响 | 932 |
+| 选中测试 | 236 |
+| **focused 命令** | **11,308 字符 / 12 批** |
+| 风险 | high |
+
+命令本身是**正确的**（每批 ≤6000 字符，覆盖全部 236 个测试），但对 agent 不友好——它要一次性
+吞下 11 KB 才能开始跑。
+
+我尝试在默认（summary-only）响应里加 `focused_test_batch_count` / `focused_test_command_bytes`
+两个整数，被仓库**已有的两条契约**挡下：
+`test_agent_summary_only_response_omits_noisy_details`（默认载荷键集固定）与
+`test_realistic_diff_default_reply_size_is_pinned`（默认回复字节数钉死）。**这两个字段已回滚。**
+
+正确方向不是加字段，而是把 `focused_test_command` 变成**结构化批次**
+（`focused_test_commands: [...]`），让 agent 逐条执行；这需要重写 `join_verification_steps`
+的输出形状并重新钉死尺寸契约，属于独立一轮的工作——不在一个已验证可合并的 PR 结尾硬塞。
