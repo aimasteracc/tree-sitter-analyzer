@@ -44,13 +44,13 @@ TOP_TASKS: tuple[tuple[str, str], ...] = (
     ("Impact of my uncommitted diff", "--change-impact"),
 )
 
-_PROG = "tree-sitter-analyzer"
+PROG_NAME = "tree-sitter-analyzer"
 _QUESTION_WIDTH = 38
 
 
 def _task_lines() -> list[str]:
     return [
-        f"  {question:<{_QUESTION_WIDTH}} {_PROG} {command}"
+        f"  {question:<{_QUESTION_WIDTH}} {PROG_NAME} {command}"
         for question, command in TOP_TASKS
     ]
 
@@ -58,13 +58,13 @@ def _task_lines() -> list[str]:
 def format_agent_help() -> str:
     """The short, task-first help printed by ``-h`` / ``--help``."""
     lines = [
-        f"usage: {_PROG} [FILE] [--flag VALUE ...]   (full reference: {HELP_ALL_FLAG})",
+        f"usage: {PROG_NAME} [FILE] [--flag VALUE ...]   (full reference: {HELP_ALL_FLAG})",
         "",
-        f"{_PROG}: code intelligence for AI agents (CLI twin of the MCP server).",
+        f"{PROG_NAME}: code intelligence for AI agents (CLI twin of the MCP server).",
         "Run from the project root. Output is JSON on stdout.",
         "",
         "First, once per repository (makes graph answers complete and fast):",
-        f"  {_PROG} --autoindex --autoindex-mode warm",
+        f"  {PROG_NAME} --autoindex --autoindex-mode warm",
         "",
         "Top tasks -> exact command (F, S, A, B = function / symbol names):",
         *_task_lines(),
@@ -76,10 +76,10 @@ def format_agent_help() -> str:
         "  agent_summary        summary_line + next_step: do that next",
         "",
         "More:",
-        f"  {_PROG} {HELP_ALL_FLAG}        every flag (full reference, ~1,400 lines)",
-        f"  {_PROG} --agent-workflow  phase-by-phase workflow pack",
-        f"  {_PROG} --list-queries    query keys for FILE --query-key KEY",
-        f"  {_PROG} --version",
+        f"  {PROG_NAME} {HELP_ALL_FLAG}        every flag (full reference, ~1,400 lines)",
+        f"  {PROG_NAME} --agent-workflow  phase-by-phase workflow pack",
+        f"  {PROG_NAME} --list-queries    query keys for FILE --query-key KEY",
+        f"  {PROG_NAME} --version",
     ]
     return "\n".join(lines) + "\n"
 
@@ -181,9 +181,9 @@ def format_parser_error(
     lines = [f"{prog}: error: {message}"]
     suggestion = suggest_fix(message, option_strings, argv)
     if suggestion:
-        lines.append(f"Did you mean: {_PROG} {suggestion}")
+        lines.append(f"Did you mean: {PROG_NAME} {suggestion}")
     lines.append(
-        f"Next: '{_PROG} --help' lists the top tasks with exact commands; "
-        f"'{_PROG} {HELP_ALL_FLAG}' lists every flag."
+        f"Next: '{PROG_NAME} --help' lists the top tasks with exact commands; "
+        f"'{PROG_NAME} {HELP_ALL_FLAG}' lists every flag."
     )
     return "\n".join(lines) + "\n"

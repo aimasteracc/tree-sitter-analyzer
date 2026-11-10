@@ -167,3 +167,13 @@ def test_search_defaults_are_re_exported_unchanged() -> None:
     assert SYMBOL_SEARCH_KINDS is search_defaults.SYMBOL_SEARCH_KINDS
     assert DEFAULT_TEXT_SEARCH_LIMIT == 100
     assert MAX_TEXT_SEARCH_LIMIT == 1000
+
+
+def test_python_dash_m_uses_the_installed_program_name(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["C:/x/tree_sitter_analyzer/__main__.py"])
+    assert create_argument_parser().prog == "tree-sitter-analyzer"
+
+
+def test_console_script_aliases_keep_their_own_name(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["/usr/bin/code-analyzer"])
+    assert create_argument_parser().prog == "code-analyzer"
