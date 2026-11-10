@@ -3,6 +3,8 @@
 
 **8 facade tools** registered in [`mcp/_tool_registry.py`](../../tree_sitter_analyzer/mcp/_tool_registry.py)
 Each facade dispatches an `action` parameter to its inner implementation.
+Every facade also accepts `action=help`, which returns that facade's own action schema — the runtime discovery entry when the codemap and the server disagree.
+
 Remaining legacy names route through the legacy-name shim; retired search
 wrappers are rejected rather than advertised as available
 ([`mcp/legacy_shim.py`](../../tree_sitter_analyzer/mcp/legacy_shim.py)).
@@ -12,14 +14,14 @@ All tools return **JSON output** (locked — see `CLAUDE.md`). Response-envelope
 
 | MCP name | action= | Purpose |
 |---|---|---|
-| `search` | text / symbol / query / chain / select / subscribe / unsubscribe / tql_schema / tql_execute / uql / semantic | Code search: bounded live-source literal text scan, BM25 symbol lookup, tree-sitter .scm DSL, indexed semantic retrieval, graph-chain DSL, Hyphae DSL, reactive push subscriptions (RFC-0001), unified evidence-carrying pipeline queries (RFC-0041) |
-| `nav` | pulse / pulse_batch / navigate / call_path / xref / resolve / lineage / impact / trace / context / callers / callees / callee_tree / caller_tree / test_map / co_change | Call-graph navigation + one-call symbol context; test_map = which tests exercise a function (RFC-0014 Phase B); co_change = git-history temporal coupling (RFC-0014 Phase C) |
-| `structure` | outline / analyze / ast_path / sitemap / class_tree / class_detail / explore / read / signatures | Structural AST analysis + partial file read + signature-only listing |
-| `health` | project / file / scale / patterns / heatmap / imports / matrix / dead / unreachable / routes / middleware / overview / deps / test_gap / self / refactor_queue | Code health, complexity, dependency analysis, untested symbol discovery; `self` = RFC-0025 Layer 5 self-proprioception (per-`(tool, action)` p50/p95 latency by tier + in-process analysis-cache hit rate + on-disk AST-index state, for the current process; CLI twin `--self-health`); `refactor_queue` = RFC-0027 §L8 top-N prioritized refactor queue ranked by `(1 - health/100) * log(1 + churn_30d) * (dead_ratio + 0.1)`, CLI twin `--refactor-queue` |
-| `edit` | safe / guard / impact / refactor / rename / constraints / pr / classify / ast_diff / release_snapshot / plan_rename / mutation_probe / verify | Edit-safety, blast-radius, refactor, PR review; RFC-0022 explicit-opt-in POSIX-only frozen workspace/staged snapshots (`impact` issues ID+lease or fails closed on Windows, `ast_diff`/`classify` consume ID+path, `release_snapshot` idempotently closes the owned lease in the same MCP process); legacy staged impact remains Windows-supported; `plan_rename` = RFC-0027 §L8 minimal rename edit set, PREVIEW ONLY (apply-like arguments are rejected with `PLAN_RENAME_IS_PREVIEW_ONLY`), CLI twin `--plan-rename`; `mutation_probe` = RFC-0029 on-demand "does this test constrain this code?" probe — applies one AST mutation in memory, runs named test in isolation, returns `constrains`/`does_not_constrain`/`unknown`, fail-closed, CLI twin `--mutation-probe`; `verify` 通过 `request` 描述符重新分析并运行完整验证计划，CLI twin `--verify-plan`，用户测试可能写文件及联网 |
-| `project` | overview / smart / parser / metrics / skills / workflow / journal / doc_sync / card | Project-intelligence hub; `card` = RFC-0027 §L7 project card (purpose, top languages, entry points, module descriptions), CLI twin `--project-card` |
-| `index` | status / cache / build / full / auto / sync | CodeGraph index lifecycle |
-| `viz` | uml / graph / similarity | UML / graph diagrams + similarity |
+| `search` | chain / help / query / select / semantic / subscribe / symbol / text / tql_execute / tql_schema / unsubscribe / uql | Code search: bounded live-source literal text scan, BM25 symbol lookup, tree-sitter .scm DSL, indexed semantic retrieval, graph-chain DSL, Hyphae DSL, reactive push subscriptions (RFC-0001), unified evidence-carrying pipeline queries (RFC-0041) |
+| `nav` | call_path / callee_tree / callees / caller_tree / callers / co_change / context / help / impact / lineage / navigate / pulse / pulse_batch / resolve / test_map / trace / xref | Call-graph navigation + one-call symbol context; test_map = which tests exercise a function (RFC-0014 Phase B); co_change = git-history temporal coupling (RFC-0014 Phase C); callers carries `answer_etag` + `absence`, and accepts `if_none_match` / `previous_entries` for the incremental loop (§12.1–12.2); `callees` and `search action=uql` carry `answer_etag` and accept `if_none_match` (content + freshness / index generation) |
+| `structure` | analyze / ast_path / class_detail / class_tree / explore / help / outline / read / signatures / sitemap | Structural AST analysis + partial file read + signature-only listing |
+| `health` | dead / deps / file / heatmap / help / imports / matrix / middleware / overview / patterns / project / refactor_queue / routes / scale / self / test_gap / unreachable | Code health, complexity, dependency analysis, untested symbol discovery; `self` = RFC-0025 Layer 5 self-proprioception (per-`(tool, action)` p50/p95 latency by tier + in-process analysis-cache hit rate + on-disk AST-index state, for the current process; CLI twin `--self-health`); `refactor_queue` = RFC-0027 §L8 top-N prioritized refactor queue ranked by `(1 - health/100) * log(1 + churn_30d) * (dead_ratio + 0.1)`, CLI twin `--refactor-queue` |
+| `edit` | ast_diff / classify / constraints / guard / help / impact / mutation_probe / plan_rename / pr / refactor / release_snapshot / rename / safe / verify | Edit-safety, blast-radius, refactor, PR review; RFC-0022 explicit-opt-in POSIX-only frozen workspace/staged snapshots (`impact` issues ID+lease or fails closed on Windows, `ast_diff`/`classify` consume ID+path, `release_snapshot` idempotently closes the owned lease in the same MCP process); legacy staged impact remains Windows-supported; `plan_rename` = RFC-0027 §L8 minimal rename edit set, PREVIEW ONLY (apply-like arguments are rejected with `PLAN_RENAME_IS_PREVIEW_ONLY`), CLI twin `--plan-rename`; `mutation_probe` = RFC-0029 on-demand "does this test constrain this code?" probe — applies one AST mutation in memory, runs named test in isolation, returns `constrains`/`does_not_constrain`/`unknown`, fail-closed, CLI twin `--mutation-probe`; `verify` 通过 `request` 描述符重新分析并运行完整验证计划，CLI twin `--verify-plan`，用户测试可能写文件及联网 |
+| `project` | card / doc_sync / help / journal / metrics / overview / parser / skills / smart / workflow | Project-intelligence hub; `card` = RFC-0027 §L7 project card (purpose, top languages, entry points, module descriptions), CLI twin `--project-card` |
+| `index` | auto / build / cache / full / help / knowledge / schema / status / sync | CodeGraph index lifecycle |
+| `viz` | graph / help / knowledge / similarity / uml | UML / graph diagrams + similarity |
 
 > `set_project_path` remains a standalone infrastructure entry (not a facade
 > action) because it mutates server-level state. Final client surface = **8
@@ -55,7 +57,7 @@ legacy MCP name is now reached via its facade (`old_name` →
 | `refactoring_suggestions` | `--refactor` | Concrete refactor recipes for `code_patterns` findings |
 | `safe_to_edit` | `--safe-to-edit` | Verdict + downstream caller risk |
 | `modification_guard` | `--modification-guard --modification-guard-symbol SYM` | Pre-modification safety check (run BEFORE editing public symbol) |
-| `smart_context` | `--smart-context --query "X"` | Targeted context for a symbol/file |
+| `smart_context` | `--smart-context <FILE>` | One-call file profile (health, exports, structure, deps, edit risk); there is no `--query` flag |
 | `symbol_lineage` | `--symbol-lineage SYM` | Where a symbol was defined / renamed / moved |
 | `code_patterns` | `--code-patterns` | Code smells (long_method, deep_nesting, god_class, sql_injection, …) |
 | `detect_routes` | `--detect-routes` | Flask/Django/FastAPI/Express/Spring Boot routes |
@@ -78,7 +80,7 @@ legacy MCP name is now reached via its facade (`old_name` →
 | `codegraph_callees` | `--callees` | What this function calls |
 | `codegraph_call_path` | `--call-path` | BFS path between two functions via call edges |
 | `codegraph_impact` | `--codegraph-impact` | Function-level blast radius; risk score from production edges only; always includes `tests` bucket (`test_callers_count`, `test_callees_count`); pass `include_tests=true` for file lists |
-| `nav_test_map` | `--test-map` | Which tests exercise a function? (RFC-0014 Phase B) Returns test_files + test_functions in file::fn format, edge_count (raw edges), unique_function_count (deduped), truncated |
+| `nav_test_map` | `--test-map` | Which tests exercise a function? (RFC-0014 Phase B) Returns test_files + test_functions in file::fn format, edge_count (raw edges), unique_function_count (deduped), truncated; an empty answer carries `absence.kind = "untested"` with `confidence: "possible"` (RFC-0044; direct test callers only, indirect coverage is not checked); the answer also carries `answer_etag` and honours `if_none_match` (generation-scoped 304) |
 | `get_project_summary` | `--project-card` | The project card (RFC-0027 §L7): purpose, top code languages, entry points, key config files, per-module descriptions. Routes to `project action=card`; before that it was a tool name that resolved nowhere. |
 | `edit_plan_rename` | `--plan-rename` | Minimal edit set for a project-wide rename (RFC-0027 §L8). PREVIEW ONLY — never writes; `mode`/`dry_run`/`apply`/`write`/`force` are rejected, not forwarded. |
 | `edit_mutation_probe` | `--mutation-probe` | RFC-0029: does this test constrain this code? Applies one AST mutation in memory, runs named test in isolation, returns `constrains`/`does_not_constrain`/`unknown`. Fail-closed. |

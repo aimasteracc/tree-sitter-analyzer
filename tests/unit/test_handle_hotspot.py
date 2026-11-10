@@ -4,11 +4,14 @@ Tests argument validation, DependencyMatrix build errors, heatmap parse errors,
 trace_from scenarios (not-found / isolated-file / subgraph), and show_alias_diff
 gap summary. Each test asserts a real behavioral contract — no coverage stuffing.
 """
+
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from tree_sitter_analyzer.cli.capability_commands import _handle_hotspot
 from tree_sitter_analyzer.output_schema import HotspotEntry
@@ -20,6 +23,7 @@ TestFocus.__test__ = False  # type: ignore[attr-defined]
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class FakeFunc:
@@ -110,10 +114,10 @@ _HEATMAP_MAP = "tree_sitter_analyzer.hotspot_analyzer.build_heatmap_map"
 _COMPUTE = "tree_sitter_analyzer.hotspot_analyzer.compute_scores"
 _GET_SUBGRAPH = "tree_sitter_analyzer.subgraph_traverser.get_subgraph"
 _ENSURE_CFG = "tree_sitter_analyzer.cli.capability_commands._ensure_tsa_config"
-_WRITE_META = "tree_sitter_analyzer.cli.capability_commands._write_index_meta"
 
 
 # ── Argument validation ───────────────────────────────────────────────────────
+
 
 def test_invalid_top_n_zero():
     """top_n=0 returns exit code 1 with error='invalid_argument', category='configuration'."""
@@ -168,7 +172,6 @@ def test_depth_over_5_capped_with_warning(capsys):
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[]),
         patch(_CA_RAW, return_value={"a.py": 5}),
         patch(_ALIAS_CA, return_value={"a.py": 5}),
@@ -182,6 +185,7 @@ def test_depth_over_5_capped_with_warning(capsys):
 
 
 # ── DependencyMatrix build errors ─────────────────────────────────────────────
+
 
 def test_index_not_built_file_not_found():
     """dm.build() raising FileNotFoundError → error='index_not_built', category='state'."""
@@ -226,6 +230,7 @@ def test_index_not_built_generic_error():
 
 # ── Heatmap errors ────────────────────────────────────────────────────────────
 
+
 def test_parse_timeout():
     """heatmaps_from_project_analysis raising TimeoutError → error='parse_timeout'."""
     ctx, captured = make_context()
@@ -264,6 +269,7 @@ def test_fs_busy():
 
 # ── Success paths ─────────────────────────────────────────────────────────────
 
+
 def test_success_empty_heatmap():
     """When compute_scores returns [], result is success=True, verdict='OK', message set."""
     ctx, captured = make_context()
@@ -271,7 +277,6 @@ def test_success_empty_heatmap():
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[]),
         patch(_CA_RAW, return_value={"a.py": 1}),
         patch(_ALIAS_CA, return_value={"a.py": 1}),
@@ -282,7 +287,8 @@ def test_success_empty_heatmap():
     assert rc == 0
     r = captured["result"]
     assert r["success"] is True
-    assert r["verdict"] == "OK"
+    # dogfood 2026-11-09 P2-3：OK 不是合法 verdict，无严重发现是 INFO。
+    assert r["verdict"] == "INFO"
     assert "message" in r
     assert "No files exceed" in r["message"]
 
@@ -292,29 +298,38 @@ def test_success_with_critical_file():
     ctx, captured = make_context()
     MockDM, _ = make_dm_mock()
     critical_entry = make_hotspot_entry(
-        file="src/big.py", severity="CRITICAL", score=500.0, ca_raw=25, ca_alias=25, max_cc=20
+        file="src/big.py",
+        severity="CRITICAL",
+        score=500.0,
+        ca_raw=25,
+        ca_alias=25,
+        max_cc=20,
     )
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[FakeHeatmap("src/big.py", max_complexity=20)]),
         patch(_CA_RAW, return_value={"src/big.py": 25}),
         patch(_ALIAS_CA, return_value={"src/big.py": 25}),
-        patch(_HEATMAP_MAP, return_value={"src/big.py": FakeHeatmap("src/big.py", max_complexity=20)}),
+        patch(
+            _HEATMAP_MAP,
+            return_value={"src/big.py": FakeHeatmap("src/big.py", max_complexity=20)},
+        ),
         patch(_COMPUTE, return_value=[critical_entry]),
     ):
         rc = _handle_hotspot(make_args(), ctx, "json")
     assert rc == 0
     r = captured["result"]
     assert r["success"] is True
-    assert r["verdict"] == "CRITICAL"
+    # dogfood 2026-11-09 P2-3：顶层 verdict 用 WARN，严重度在 severity 里。
+    assert r["verdict"] == "WARN"
     assert len(r["results"]) == 1
     assert r["results"][0]["severity"] == "CRITICAL"
     assert r["results"][0]["score"] == 500.0
 
 
 # ── trace_from scenarios ──────────────────────────────────────────────────────
+
 
 def test_trace_from_entry_point_not_found():
     """trace_from file not in subgraph and not in heatmap → error='entry_point_not_found'."""
@@ -346,7 +361,6 @@ def test_trace_from_isolated_file():
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[isolated_hm]),
         patch(_CA_RAW, return_value={"isolated.py": 0}),
         patch(_ALIAS_CA, return_value={"isolated.py": 0}),
@@ -366,6 +380,7 @@ def test_trace_from_isolated_file():
 
 # ── show_alias_diff ───────────────────────────────────────────────────────────
 
+
 def test_show_alias_diff_populates_gap_summary():
     """show_alias_diff=True with alias_ca > ca_raw for a file → alias_gap_summary populated."""
     ctx, captured = make_context()
@@ -375,7 +390,6 @@ def test_show_alias_diff_populates_gap_summary():
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[hm]),
         patch(_CA_RAW, return_value={"a.py": 3}),
         patch(_ALIAS_CA, return_value={"a.py": 10}),
@@ -393,6 +407,7 @@ def test_show_alias_diff_populates_gap_summary():
 
 
 # ── _ensure_tsa_config ────────────────────────────────────────────────────────
+
 
 def test_ensure_tsa_config_skips_if_exists(tmp_path):
     """Existing .tsa/config.json is not overwritten by _ensure_tsa_config."""
@@ -424,24 +439,8 @@ def test_ensure_tsa_config_creates_if_missing(tmp_path):
     assert config["default_top_n"] == 20
 
 
-# ── _write_index_meta ─────────────────────────────────────────────────────────
-
-def test_write_index_meta_creates_file(tmp_path):
-    """_write_index_meta writes .tsa/index-meta.json with correct fields."""
-    from tree_sitter_analyzer.cli.capability_commands import _write_index_meta
-
-    _write_index_meta(str(tmp_path), files_indexed=42, languages=["python", "typescript"])
-
-    meta_path = tmp_path / ".tsa" / "index-meta.json"
-    assert meta_path.exists()
-    meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    assert meta["files_indexed"] == 42
-    assert meta["languages"] == ["python", "typescript"]
-    assert "built_at" in meta
-    assert "tsa_version" in meta
-
-
 # ── top_n capping at 200 ──────────────────────────────────────────────────────
+
 
 def test_top_n_capped_at_200():
     """top_n=300 is silently capped to 200; compute_scores receives top_n=200."""
@@ -451,7 +450,6 @@ def test_top_n_capped_at_200():
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[]),
         patch(_CA_RAW, return_value={"a.py": 1}),
         patch(_ALIAS_CA, return_value={"a.py": 1}),
@@ -466,19 +464,19 @@ def test_top_n_capped_at_200():
 
 # ── Ca fallback source scanning ───────────────────────────────────────────────
 
+
 def test_ca_fallback_when_import_edges_empty(tmp_path):
     """When dm._import_edges is empty, fallback source scanning is invoked and succeeds."""
     ctx, captured = make_context()
     MockDM = MagicMock()
     dm = MockDM.return_value
     dm.build.return_value = None
-    dm._import_edges = {}   # triggers import_edges rebuild branch
-    dm._result = None       # build_ca_raw_map returns {} → triggers ca_map branch too
+    dm._import_edges = {}  # triggers import_edges rebuild branch
+    dm._result = None  # build_ca_raw_map returns {} → triggers ca_map branch too
 
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[]),
         patch(_CA_RAW, return_value={}),
         patch(
@@ -505,18 +503,22 @@ def test_ca_fallback_when_import_edges_empty(tmp_path):
 
 # ── Pagination beyond total pages ─────────────────────────────────────────────
 
+
 def test_page_beyond_total_returns_empty_results_success():
     """Requesting page=999 with only one page of data returns success=True, results=[]."""
     ctx, captured = make_context()
     MockDM, _ = make_dm_mock()
     review_entry = make_hotspot_entry(
-        file="src/mod.py", severity="REVIEW", score=150.0,
-        ca_raw=5, ca_alias=5, max_cc=30,
+        file="src/mod.py",
+        severity="REVIEW",
+        score=150.0,
+        ca_raw=5,
+        ca_alias=5,
+        max_cc=30,
     )
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[FakeHeatmap("src/mod.py", max_complexity=30)]),
         patch(_CA_RAW, return_value={"src/mod.py": 5}),
         patch(_ALIAS_CA, return_value={"src/mod.py": 5}),
@@ -533,29 +535,8 @@ def test_page_beyond_total_returns_empty_results_success():
     assert r["results"] == []
 
 
-# ── _write_index_meta: PackageNotFoundError fallback ─────────────────────────
-
-def test_write_index_meta_package_not_found_uses_dev_version(tmp_path):
-    """PackageNotFoundError when querying package version → tsa_version='0.0.0+dev' (lines 61-62)."""
-    import importlib.metadata
-    import json
-    from unittest.mock import patch
-
-    from tree_sitter_analyzer.cli.capability_commands import _write_index_meta
-
-    with patch.object(
-        importlib.metadata,
-        "version",
-        side_effect=importlib.metadata.PackageNotFoundError("tree-sitter-analyzer"),
-    ):
-        _write_index_meta(str(tmp_path), files_indexed=10, languages=["python"])
-
-    meta = json.loads((tmp_path / ".tsa" / "index-meta.json").read_text(encoding="utf-8"))
-    assert meta["tsa_version"] == "0.0.0+dev"
-    assert meta["files_indexed"] == 10
-
-
 # ── Ca fallback: one-sided branches (ca_map vs import_edges) ─────────────────
+
 
 def test_ca_fallback_only_import_edges_empty(tmp_path):
     """ca_map is populated but import_edges is empty → only import_edges is rebuilt (222->225)."""
@@ -576,7 +557,6 @@ def test_ca_fallback_only_import_edges_empty(tmp_path):
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[]),
         patch(_HEATMAP_MAP, return_value={}),
         patch(_ALIAS_CA, return_value={"src/foo.py": 3}),
@@ -611,11 +591,12 @@ def test_trace_from_with_real_subgraph():
     hm_b = FakeHeatmap("b.py", max_complexity=4)
     # get_subgraph returns real subgraph (not None) → skips isolated-file branch
     fake_reachable = {"a.py": 0, "b.py": 1}
-    entry = make_hotspot_entry(file="a.py", severity="REVIEW", score=120.0, ca_raw=3, ca_alias=3, max_cc=8)
+    entry = make_hotspot_entry(
+        file="a.py", severity="REVIEW", score=120.0, ca_raw=3, ca_alias=3, max_cc=8
+    )
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[hm_a, hm_b]),
         patch(_CA_RAW, return_value={"a.py": 3, "b.py": 1}),
         patch(_ALIAS_CA, return_value={"a.py": 3, "b.py": 1}),
@@ -654,7 +635,6 @@ def test_handle_capability_actions_dispatches_hotspot():
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[]),
         patch(_CA_RAW, return_value={"a.py": 1}),
         patch(_ALIAS_CA, return_value={"a.py": 1}),
@@ -686,7 +666,9 @@ def test_ca_fallback_only_ca_map_empty(tmp_path):
     MockDM = MagicMock()
     dm = MockDM.return_value
     dm.build.return_value = None
-    dm._import_edges = {"src/foo.py": {}}  # non-empty → outer block entered only if ca_map empty
+    dm._import_edges = {
+        "src/foo.py": {}
+    }  # non-empty → outer block entered only if ca_map empty
     dm._result = None  # build_ca_raw_map returns {} → ca_map empty → enters outer block
 
     ca_spy = MagicMock(return_value={"src/foo.py": 2})
@@ -694,7 +676,6 @@ def test_ca_fallback_only_ca_map_empty(tmp_path):
     with (
         patch(_DM, MockDM),
         patch(_ENSURE_CFG),
-        patch(_WRITE_META),
         patch(_HEATMAPS, return_value=[]),
         patch(_HEATMAP_MAP, return_value={}),
         patch(_ALIAS_CA, return_value={"src/foo.py": 2}),
@@ -719,3 +700,41 @@ def test_ca_fallback_only_ca_map_empty(tmp_path):
     ca_spy.assert_called_once()
     # build_import_edges should NOT have been called (import_edges was already populated)
     ie_spy.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("severity", "expected_verdict"),
+    [("CRITICAL", "WARN"), ("REVIEW", "REVIEW"), ("OK", "INFO")],
+)
+def test_hotspot_verdict_is_always_a_canonical_verdict(severity, expected_verdict):
+    """dogfood 2026-11-09 P2-3：顶层 verdict 只能落在信封八值字母表内。
+
+    修复前 CRITICAL / OK 都不是合法 verdict（``docs/agent-envelope-contract.md``
+    明确写「字母表外即为 bug」）；严重度属于载荷，不属于 verdict。
+    """
+    from tree_sitter_analyzer.mcp.tools.tool_response import CANONICAL_VERDICTS
+
+    ctx, captured = make_context()
+    MockDM, _ = make_dm_mock()
+    entry = make_hotspot_entry(severity=severity)
+    with (
+        patch(_DM, MockDM),
+        patch(_ENSURE_CFG),
+        patch(_HEATMAPS, return_value=[FakeHeatmap("src/big.py", max_complexity=20)]),
+        patch(_CA_RAW, return_value={"src/big.py": 25}),
+        patch(_ALIAS_CA, return_value={"src/big.py": 25}),
+        patch(
+            _HEATMAP_MAP,
+            return_value={"src/big.py": FakeHeatmap("src/big.py", max_complexity=20)},
+        ),
+        patch(_COMPUTE, return_value=[entry]),
+    ):
+        rc = _handle_hotspot(make_args(), ctx, "json")
+
+    result = captured["result"]
+    assert (
+        rc,
+        result["verdict"],
+        result["agent_summary"]["verdict"],
+    ) == (0, expected_verdict, expected_verdict)
+    assert result["verdict"] in CANONICAL_VERDICTS

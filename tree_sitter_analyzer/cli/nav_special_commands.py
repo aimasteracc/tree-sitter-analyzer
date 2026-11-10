@@ -5,6 +5,10 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Any
 
+from tree_sitter_analyzer.cli.commands.mcp_commands._specs_core import (
+    _parse_previous_entries,
+)
+
 if TYPE_CHECKING:  # avoid a circular import; only needed for annotations
     from tree_sitter_analyzer.cli.special_commands import SpecialCommandContext
 
@@ -24,6 +28,12 @@ def _dispatch_test_map(
     file_path = getattr(args, "test_map_file", None)
     if file_path:
         tool_args["file_path"] = file_path
+    if getattr(args, "if_none_match", None):
+        tool_args["if_none_match"] = args.if_none_match
+    if getattr(args, "previous_entries_json", None):
+        tool_args["previous_entries"] = _parse_previous_entries(
+            args.previous_entries_json
+        )
     return _execute_nav_facade(facade, tool_args, output_format, "--test-map", context)
 
 

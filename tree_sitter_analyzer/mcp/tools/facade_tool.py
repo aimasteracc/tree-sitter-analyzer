@@ -129,6 +129,16 @@ _CORE_FACADE_PARAMS: dict[str, dict[str, Any]] = {
         "type": "string",
         "description": "Business action to describe when action is help.",
     },
+    # §12.1/§12.2：跨回合去重与增量的入口参数。此前只在门面的 action=help 文本与
+    # 路由白名单里，工具模式里没有——MCP 客户端按模式发现能力，等于发现不到。
+    "if_none_match": {
+        "type": "string",
+        "description": "Prior answer_etag; a match returns {unchanged: true}.",
+    },
+    "previous_entries": {
+        "type": "array",
+        "description": "Prior answer entries; returns a delta instead of the list.",
+    },
 }
 
 

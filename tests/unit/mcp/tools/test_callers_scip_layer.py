@@ -85,7 +85,15 @@ async def test_stale_manifest_gives_exactly_todays_answer(root: Path) -> None:
     assert after["completeness_checks"].pop("not_applicable") == {
         "scip_agreement": "stale"
     }
-    for key in ("completeness", "completeness_reasons", "callers", "name_only_sites"):
+    # dogfood 2026-11-09 P1-1：app.ts 在索引后被编辑，答案现在如实带
+    # SOURCE_INDEX_MISMATCH + stale（修复前只有嵌套 evidence 透露）。除此之外
+    # 的答案内容必须与 before 完全一致——stale SCIP manifest 不得改变结论。
+    assert after["stale"] is True
+    assert after["completeness_reasons"] == [
+        "SOURCE_INDEX_MISMATCH",
+        *before["completeness_reasons"],
+    ]
+    for key in ("completeness", "callers", "name_only_sites"):
         assert after[key] == before[key]
 
 

@@ -24,6 +24,7 @@ from tree_sitter_analyzer.cache import callgraph_state
 from tree_sitter_analyzer.cache.fingerprint import (
     _walk_supported_source_paths,
 )
+from tree_sitter_analyzer.incremental_sync_support import file_content_hash
 from tree_sitter_analyzer.mcp.tools.callees_tool import CodeGraphCalleesTool
 from tree_sitter_analyzer.mcp.tools.callers_tool import CodeGraphCallersTool
 from tree_sitter_analyzer.mcp.tools.codegraph_relation_tool import (
@@ -171,7 +172,9 @@ def _seed_partial_ast_cache_without_call_graph(root: Path) -> None:
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             "solo.py",
-            "partial-cache-without-call-graph",
+            # 真实内容摘要：Windows 的 mtime 粒度会让「仅 mtime 不同」走到摘要
+            # 比对，假摘要会被判成「文件已变」→ 误报 stale（CI windows 实测）。
+            file_content_hash(str(source_path)),
             "python",
             source_path.stat().st_mtime_ns,
             len(source.encode("utf-8")),

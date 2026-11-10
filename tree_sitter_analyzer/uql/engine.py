@@ -19,6 +19,7 @@ from .coverage import (
     MEMBERSHIP_UNKNOWN,
     SELECT_CAP_REACHED,
     SELECTOR_PREDICATE_UNPROVEN,
+    SYMBOL_NOT_DEFINED,
     UNKNOWN,
     Coverage,
     combine,
@@ -248,14 +249,26 @@ def selection_coverage(
 
 def _symbols(stage: SymbolSource, groups: list[Group], backends: Backends) -> _StepOut:
     seen: dict[str, Row] = {}
+    missing: list[str] = []
     for name in stage.names:
         owner, _, bare = name.rpartition(".")
-        for sym in backends.definitions(bare, cls=owner or None, file=stage.file):
+        found = backends.definitions(bare, cls=owner or None, file=stage.file)
+        if not found:
+            missing.append(name)
+        for sym in found:
             row = row_from_symbol(sym)
             seen.setdefault(row.key, row)
     rows = sorted(seen.values(), key=lambda r: (r.file, r.line or 0))
     groups.append(Group(_group_name("symbol", groups), rows, COMPLETE_COVERAGE))
     gate = backends.source_gate(sorted({r.file for r in rows}), frozenset())
+    if missing:
+        # dogfood 2026-11-09（P1-2）：0 个定义不是「证明该符号不存在」——
+        # 索引可能过期或不完整。与 nav action=callers 的 SYMBOL_NOT_DEFINED
+        # 保持一致：降为 unknown，并点名缺失的名字。
+        note = "no indexed definition for: " + ", ".join(missing[:5])
+        if len(missing) > 5:
+            note += f" (+{len(missing) - 5} more)"
+        return combine([gate, gap(UNKNOWN, SYMBOL_NOT_DEFINED)]), [], note
     return gate, [], None
 
 
