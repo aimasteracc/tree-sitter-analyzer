@@ -142,12 +142,6 @@ _CORE_FACADE_PARAMS: dict[str, dict[str, Any]] = {
 }
 
 
-#: 支持跨回合去重/增量参数（§12.1/§12.2）的门面：nav 的 callers/callees/test_map
-#: 与 search 的 uql。其他门面不声明这两个参数，避免在 ``tools/list`` 里多报能力。
-_INCREMENTAL_FACADES = frozenset({"nav", "search"})
-_INCREMENTAL_FACADE_PARAMS = frozenset({"if_none_match", "previous_entries"})
-
-
 class FacadeTool(BaseMCPTool):
     """One MCP tool fanning ``action`` out to many inner tools.
 
@@ -667,12 +661,6 @@ class FacadeTool(BaseMCPTool):
         }
         # Core shared params — copy specs so callers can't mutate our constants.
         for key, spec in _CORE_FACADE_PARAMS.items():
-            if (
-                key in _INCREMENTAL_FACADE_PARAMS
-                and self.facade_name not in _INCREMENTAL_FACADES
-            ):
-                # 只有真正路由这两个参数的门面才声明它们：声明不支持的能力就是多报。
-                continue
             properties[key] = dict(spec)
         # Facade-specific public params (#640) — declared, never required.
         for key, spec in self._extra_public_params.items():

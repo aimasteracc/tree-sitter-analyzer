@@ -1209,29 +1209,21 @@ def test_expires_when_generation_is_null_when_the_evidence_has_none() -> None:
     assert scope["index_generation"] is None
 
 
-def test_mcp_facade_schema_declares_the_incremental_parameters() -> None:
+def test_every_facade_declares_the_incremental_parameters() -> None:
     """§12.1/§12.2 的可发现性：MCP 客户端按工具模式发现能力。
 
-    此前只写在门面 ``action=help`` 文本与路由白名单里，``tools/list`` 看不到，
-    等于对按模式工作的客户端不可见（第 90 轮实测发现）。
+    门面的既有契约是「核心参数在每个门面都声明、且都不必填」（
+    ``test_facade_tool_scenarios`` 已钉死），所以这两个参数也按同一规则声明；
+    真正路由它们的是 ``nav``（callers/callees/test_map）与 ``search``（uql）。
     """
     from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
 
-    tools = dict(create_tool_registry(".")[0])
+    tools = create_tool_registry(".")[0]
 
-    for name in ("nav", "search"):
-        properties = tools[name].get_tool_schema()["properties"]
-        assert {"if_none_match", "previous_entries"} <= set(properties)
-
-
-def test_facades_that_cannot_route_the_incremental_parameters_do_not_claim_them() -> (
-    None
-):
-    """不路由的门面不声明：在 ``tools/list`` 里多报一个参数就是多报能力。"""
-    from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
-
-    tools = dict(create_tool_registry(".")[0])
-
-    for name in ("index", "viz", "structure", "health", "project"):
-        properties = tools[name].get_tool_schema()["properties"]
-        assert not ({"if_none_match", "previous_entries"} & set(properties))
+    for name, tool in tools:
+        schema = tool.get_tool_schema()
+        properties = schema["properties"]
+        assert {"if_none_match", "previous_entries"} <= set(properties), name
+        assert not ({"if_none_match", "previous_entries"} & set(schema["required"])), (
+            name
+        )
