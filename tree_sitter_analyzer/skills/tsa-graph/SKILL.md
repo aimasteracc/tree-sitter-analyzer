@@ -183,6 +183,18 @@ An agent asks the same "who calls X" many times per task. Do not re-read a full
 - Before spending a call, ask `--capabilities nav.callers` (CLI) or
   `nav action=help`: it reports the tier (instant/indexed) and whether the index
   precondition is met right now.
+- The same protocol works for `nav action=callees`, `nav action=test_map` and
+  `search action=uql` (UQL's fingerprint includes the index generation, so a
+  re-index always invalidates it).
+- To reuse an answer **without asking at all**, keep `expires_when` from the
+  answer: `{files, index_generation}`. While those files are untouched and the
+  generation is unchanged, the previous answer still holds; `index_generation`
+  may be `null`, in which case only `files` can be trusted.
+- `absence` has four proven kinds and one honest downgrade: `unreferenced`,
+  `entry_point`, `script`, `untested`, plus `unknown` + `confidence: possible`
+  with the open sites named. `entry_point`/`script` are *identifications* (the
+  code is entered from outside the graph) and can appear even when the caller
+  list is not fully proven — `identification_only: true` says which case it is.
 
 ## Anti-patterns
 
