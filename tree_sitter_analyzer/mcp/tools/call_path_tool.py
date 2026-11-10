@@ -20,6 +20,7 @@ import sqlite3
 from typing import Any
 
 from ...call_path import CallPathFinder
+from ...call_path_pinned import NAME_KEYED_REASON
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
 
@@ -388,7 +389,8 @@ class CodeGraphCallPathTool(BaseMCPTool):
         # #1942: a name-keyed search does not track the calls it could not bind,
         # so its NO_PATH is not evidence of absence.
         result_dict["completeness"] = "unknown"
-        result_dict["completeness_reason"] = "NAME_KEYED_SEARCH"
+        result_dict["completeness_reason"] = NAME_KEYED_REASON
+        result_dict["completeness_reasons"] = [NAME_KEYED_REASON]
         result_dict["next_step"] = (
             "No static path between these names; "
             + (

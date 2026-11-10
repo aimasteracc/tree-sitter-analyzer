@@ -213,3 +213,21 @@ async def test_bare_name_hops_report_call_site_lines(tmp_path: Path) -> None:
             assert hop["line"] == hop["call_site_line"]
     lines = {hop["call_site_line"] for hop in result["paths"][0]["hops"]}
     assert 5 not in lines  # `def start` in live.py is no call site
+
+
+@pytest.mark.asyncio
+async def test_no_path_with_unbound_frontier_is_not_complete(tmp_path: Path) -> None:
+    project = await _indexed(tmp_path)
+
+    result = await _path(
+        project,
+        source_function="Live.start",
+        target_function="Task.start",
+        target_file="other.py",
+    )
+
+    assert result["path_status"] == "NO_PATH"
+    assert result["completeness"] == "unknown"
+    assert result["completeness_reasons"] == ["UNBOUND_FRONTIER_CALLS"]
+    assert [(s["file"], s["line"]) for s in result["open_sites"]] == [("live.py", 8)]
+    assert "live.py:8" in result["next_step"]

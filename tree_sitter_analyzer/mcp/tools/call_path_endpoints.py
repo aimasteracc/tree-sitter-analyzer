@@ -140,6 +140,9 @@ def pinned_response(
         result["name_only_hops"] = True
     if not paths:
         result["completeness"] = "complete" if found.complete else "unknown"
+        if found.reasons:
+            result["completeness_reason"] = found.reasons[0]
+            result["completeness_reasons"] = found.reasons
         result["open_sites"] = found.open_sites[:OPEN_SITES_CAP]
         result["open_sites_total"] = len(found.open_sites)
         result["depth_limited"] = found.depth_limited

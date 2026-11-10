@@ -177,11 +177,17 @@ def known_completeness_reasons() -> frozenset[str]:
     (``nav action=callers``, the unified query language and the index
     snapshot) and this module must stay importable without them.
     """
+    from ...call_path_pinned import CALL_PATH_REASONS
     from ...index_completeness import INDEX_COMPLETENESS_REASONS
     from ...uql.coverage import UQL_REASONS
     from .callers_reasons import COMPLETENESS_REASONS
 
-    return frozenset(COMPLETENESS_REASONS | UQL_REASONS | INDEX_COMPLETENESS_REASONS)
+    return frozenset(
+        COMPLETENESS_REASONS
+        | UQL_REASONS
+        | INDEX_COMPLETENESS_REASONS
+        | CALL_PATH_REASONS
+    )
 
 
 def _verdict_violations(payload: dict[str, Any]) -> list[tuple[str, str]]:

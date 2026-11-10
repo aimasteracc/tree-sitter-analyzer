@@ -34,6 +34,11 @@ OPEN_SITES_CAP = 20
 _NODES_MAX = 5000
 RESOLVED = "resolved"
 NAME_ONLY = "name_only"
+#: Completeness reason codes of a ``call_path`` ``NO_PATH``.
+OPEN_SITES_REASON = "UNBOUND_FRONTIER_CALLS"
+DEPTH_REASON = "SEARCH_LIMIT"
+NAME_KEYED_REASON = "NAME_KEYED_SEARCH"
+CALL_PATH_REASONS = frozenset({OPEN_SITES_REASON, DEPTH_REASON, NAME_KEYED_REASON})
 #: Edge resolutions that name code outside the project.
 _OUTSIDE = frozenset({"builtin", "stdlib", "external"})
 
@@ -75,6 +80,11 @@ class PinnedResult:
     @property
     def complete(self) -> bool:
         return not self.open_sites and not self.depth_limited
+
+    @property
+    def reasons(self) -> list[str]:
+        found = [OPEN_SITES_REASON] if self.open_sites else []
+        return found + ([DEPTH_REASON] if self.depth_limited else [])
 
 
 class SymbolBook:
