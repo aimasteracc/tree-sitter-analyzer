@@ -646,7 +646,7 @@ equality — not a `count > 0` lower bound.
 `mypy`, `pyupgrade`, `actionlint`. You cannot add a `--self-check` mode to
 `ruff`, and requirement 2 below ("count of surface items outside the watch
 filter == 0") has **no referent at all** for `check-yaml` — it has no watched
-surface to be outside of. §3.2 therefore scopes to the **7 local hooks**:
+surface to be outside of. §3.2 therefore scopes to the **8 local hooks**:
 
 *Measured correction (2026-09-12).* This section previously read "27 hooks … 6
 local hooks" and omitted `test-encoding-ratchet` from the table below. Both
@@ -669,11 +669,12 @@ a ratchet, the same class whose dead-detector defect this section records as #1.
 | `workflow-consistency-tests` | **yes** — the set of workflows it checks vs `.github/workflows/*` |
 | `block-local-artifacts` | partial — a static path/glob denylist; requirement 1 applies, requirement 2 does not |
 | `tsa-ps-ascii` | partial — a static character-class check over `.ps1`; requirement 1 applies, requirement 2 does not |
+| `tsa-skill-copies-staged` | **yes** — the packaged skill tree vs its `.claude/skills` mirror (measured 2026-11-10: a half-staged copy pair passed every static test because the *working tree* agreed; only the commit differed) |
 
 Third-party hooks are out of scope: they are versioned upstream, and a pinned
 `rev` bump is the review surface for their behaviour. Requirements 1 and 2 apply
-to every row with a live surface — five in the table below, six once correction 1
-is applied; requirements 3 and 4 apply to all seven local hooks.
+to every row with a live surface — six in the table below, six once correction 1
+is applied plus `tsa-skill-copies-staged`; requirements 3 and 4 apply to all eight local hooks.
 
 **Two further scope corrections, measured 2026-09-12** while implementing the
 self-checks. The table above was written from recollection of the config rather
