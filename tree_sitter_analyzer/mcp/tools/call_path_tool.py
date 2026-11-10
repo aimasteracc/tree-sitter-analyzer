@@ -155,6 +155,16 @@ class CodeGraphCallPathTool(BaseMCPTool):
             if bound_cache is not None
             else self._get_finder()
         )
+        from ..utils.format_helper import apply_output_format_to_response
+
+        # #1942: a `Class.method` endpoint is resolved to one definition and the
+        # search runs between definitions, or the answer fails closed.
+        qualified = self._qualified_answer(
+            finder, bound_cache, source_reader, arguments, max_depth, max_paths
+        )
+        if qualified is not None:
+            return apply_output_format_to_response(qualified, output_format)
+
         result = finder.find_path(
             source_function=source_function,
             target_function=target_function,
@@ -196,9 +206,101 @@ class CodeGraphCallPathTool(BaseMCPTool):
             source_reader if result.data_source == "sql" else None,
         )
 
-        from ..utils.format_helper import apply_output_format_to_response
-
         return apply_output_format_to_response(result_dict, output_format)
+
+    def _qualified_answer(
+        self,
+        finder: CallPathFinder,
+        bound_cache: Any,
+        source_reader: Any,
+        arguments: dict[str, Any],
+        max_depth: int,
+        max_paths: int,
+    ) -> dict[str, Any] | None:
+        """The definition-to-definition answer, or None for two bare names."""
+        from . import call_path_endpoints as endpoints
+
+        source = str(arguments["source_function"])
+        target = str(arguments["target_function"])
+        if not (endpoints.is_qualified(source) or endpoints.is_qualified(target)):
+            return None
+        cache = bound_cache if bound_cache is not None else finder._try_get_cache()
+        if cache is None or not cache.has_call_edges():
+            return None
+        from ...call_path_pinned import SymbolBook
+
+        conn = cache.get_conn()
+        book = SymbolBook(conn)
+        ends = [
+            endpoints.resolve(book, "source", source, arguments.get("source_file")),
+            endpoints.resolve(book, "target", target, arguments.get("target_file")),
+        ]
+        if any(end.status != "resolved" for end in ends):
+            return {
+                **endpoints.failure_response(ends),
+                "source": source,
+                "target": target,
+            }
+        result = endpoints.pinned_response(
+            conn, book, ends[0], ends[1], max_depth, max_paths
+        )
+        bodies = self._pinned_bodies(book, result, source_reader)
+        if result["paths"]:
+            result["source_bodies"] = bodies
+            result["bodies_truncated"] = any(b.get("truncated") for b in bodies)
+            result["next_step"] = (
+                f"Path: {result['path_count']} path(s) between the resolved "
+                f"definitions, {len(bodies)} function bodies inlined in "
+                "source_bodies. Hops with callee_resolution=name_only go through "
+                "a receiver the index could not bind: read that call site."
+            )
+        else:
+            for block in result["dead_end"].values():
+                body = next(
+                    (
+                        b
+                        for b in bodies
+                        if (b["file"], b["start_line"])
+                        == (block["file"], block["line"])
+                    ),
+                    None,
+                )
+                if body is not None:
+                    block["body"] = body
+        return result
+
+    def _pinned_bodies(
+        self, book: Any, result: dict[str, Any], source_reader: Any
+    ) -> list[dict[str, Any]]:
+        """Verbatim bodies of the definitions in ``result`` (certified reads only)."""
+        if source_reader is None:
+            return []
+        from . import call_path_enrich as enrich
+        from .call_path_endpoints import path_definitions
+
+        budget = [enrich.MAX_TOTAL_BODY_LINES]
+        bodies: list[dict[str, Any]] = []
+        for definition in path_definitions(book, result):
+            try:
+                text = source_reader(definition.file)
+            except (OSError, ValueError, RuntimeError):
+                continue
+            if not isinstance(text, str):
+                continue
+            block = enrich._read_body(
+                self.project_root or ".",
+                {
+                    "name": definition.label,
+                    "file": definition.file,
+                    "line": definition.line,
+                    "end_line": definition.end_line,
+                },
+                budget,
+                source_text=text,
+            )
+            if block is not None:
+                bodies.append(block)
+        return bodies
 
     def _enrich_with_bodies(
         self,
@@ -283,8 +385,18 @@ class CodeGraphCallPathTool(BaseMCPTool):
             isinstance(endpoint, dict) and "body" in endpoint
             for endpoint in dead_end.values()
         )
+        # #1942: a name-keyed search does not track the calls it could not bind,
+        # so its NO_PATH is not evidence of absence.
+        result_dict["completeness"] = "unknown"
+        result_dict["completeness_reason"] = "NAME_KEYED_SEARCH"
         result_dict["next_step"] = (
-            "No static path; inspect certified endpoint bodies and neighbours."
-            if has_body
-            else "No static path; inspect the endpoint coordinates and neighbours."
+            "No static path between these names; "
+            + (
+                "inspect certified endpoint bodies and neighbours. "
+                if has_body
+                else "inspect the endpoint coordinates and neighbours. "
+            )
+            + "This search matches functions by name and does not track unbound "
+            "calls, so it is not evidence of absence: ask with `Class.method` "
+            "endpoints for a definition search that reports its open sites."
         )
