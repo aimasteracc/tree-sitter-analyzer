@@ -50,6 +50,7 @@ from .callers_confidence import (
     order_by_confidence,
     with_confidence,
 )
+from .callers_cross_file import cross_file_unresolved_sites
 from .callers_dispatch import narrow_to_target
 from .callers_external_producers import drop_external_producers
 from .callers_graph_bindings import drop_graph_bound, graph_bindings
@@ -87,6 +88,7 @@ from .callers_scip import (
 )
 from .callers_site_rank import rank_sites
 from .callers_target_set import (
+    is_qualified_name,
     sole_definition_file,
     target_set,
     unattributed_sites,
@@ -968,7 +970,10 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         receiver = getattr(ref, "receiver", None)
         if not receiver or ref.file_path != file_path or ref.name != func_name:
             return func_name
-        return f"{receiver}.{func_name}"
+        rewritten = f"{receiver}.{func_name}"
+        # #1936：``Minitest::Spec`` 这类接收者使改写名不再是限定名，按名计数的各项检查
+        # 会以整串为名而一无所获；保留裸名。
+        return rewritten if is_qualified_name(rewritten) else func_name
 
     @staticmethod
     def _sole_definition_file(
@@ -1206,6 +1211,21 @@ class CodeGraphCallersTool(CodeGraphRelationToolMixin, BaseMCPTool):
         unresolved_inbound, unresolved_list = read_unresolved_inbound(
             cache, count_name, file_path, bound_targets
         )
+        if unresolved_list is not None:
+            # #1936：其他文件里的未解析同名调用（占位目标在调用方文件中）同样是入边。
+            cross_file = cross_file_unresolved_sites(
+                cache,
+                count_name,
+                file_path,
+                listed=all_listed,
+                known=unresolved_list,
+                bound_targets=bound_targets,
+            )
+            if cross_file is None:
+                unresolved_inbound, unresolved_list = None, None
+            elif cross_file:
+                unresolved_list = unresolved_list + cross_file
+                unresolved_inbound = len(unresolved_list)
         if unresolved_list:
             unresolved_list = rank_sites(cache, unresolved_list, func_name, file_path)
         # RFC-0028 §1.2 scope guard.  A computed dispatch site is recorded under

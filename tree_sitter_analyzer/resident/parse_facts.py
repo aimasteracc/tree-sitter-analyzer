@@ -81,6 +81,28 @@ def facts(
     if not enabled():
         return compute()
     key = (kind, language, extra, type(content).__name__, digest(content))
+    return _lookup(key, compute)
+
+
+def facts_for_digest(
+    kind: str,
+    language: str,
+    content_digest: bytes,
+    compute: Callable[[], T],
+    extra: tuple[Any, ...] = (),
+) -> T:
+    """:func:`facts` for raw bytes whose :func:`digest` the caller already holds.
+
+    RFC-0043 Phase C: the Python supertype reader parses a file once per stat
+    stamp and keeps its digest; ``compute`` derives the facts from that parse.
+    The entry is the one :func:`facts` would use for the same bytes.
+    """
+    if not enabled():
+        return compute()
+    return _lookup((kind, language, extra, "bytes", content_digest), compute)
+
+
+def _lookup(key: tuple[Any, ...], compute: Callable[[], T]) -> T:
     global _hits, _misses
     with _lock:
         hit = _memo.get(key)
@@ -151,4 +173,13 @@ def clear() -> None:
         _misses = 0
 
 
-__all__ = ["ENV_VAR", "clear", "digest", "enabled", "estimate_bytes", "facts", "stats"]
+__all__ = [
+    "ENV_VAR",
+    "clear",
+    "digest",
+    "enabled",
+    "estimate_bytes",
+    "facts",
+    "facts_for_digest",
+    "stats",
+]

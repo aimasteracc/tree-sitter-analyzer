@@ -48,6 +48,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, cast
 
+from ...resident import parse_facts
+from .callers_py_members import member_table, node_at, owner_path
 from .callers_supertypes import SupertypeFinding
 from .evidence_file_cache import FILE_CACHE, StatKey
 
@@ -84,6 +86,8 @@ class _Module:
     #: Names a function declares ``global``: an extra module-level binding.
     globals_declared: frozenset[str]
     has_getattr: bool
+    #: RFC-0043 Phase C: digest of the bytes `tree` was parsed from (memo key).
+    digest: bytes = b""
     _bindings: dict[int, dict[str, list[ast.AST]]] = field(default_factory=dict)
     #: ``from m import *`` statements of the module scope (#1896: read per lookup).
     _stars: list[ast.ImportFrom] | None = None
@@ -125,7 +129,9 @@ def _parse(rel: str, data: bytes) -> _Module | None:
         isinstance(node, _FUNCTIONS) and node.name == "__getattr__"
         for node in tree.body
     )
-    return _Module(rel, tree, parents, frozenset(declared), has_getattr)
+    return _Module(
+        rel, tree, parents, frozenset(declared), has_getattr, parse_facts.digest(data)
+    )
 
 
 def _scope_nodes(scope: ast.AST) -> list[ast.AST]:
@@ -343,21 +349,16 @@ def python_dynamic_base(
 
 
 def _owner_class(module: _Module, line: int, bare: str) -> ast.ClassDef | None:
-    """The class whose body directly declares ``bare`` on ``line`` (innermost)."""
-    best: Any = None
-    node: Any
-    for node in ast.walk(module.tree):
-        if not _declares(node, bare):
-            continue
-        first = min(
-            [node.lineno, *(d.lineno for d in getattr(node, "decorator_list", ()))]
-        )
-        if not first <= line <= (node.end_lineno or node.lineno):
-            continue
-        if best is None or node.lineno >= best.lineno:
-            best = node
-    parent = None if best is None else module.parents.get(id(best))
-    return parent if isinstance(parent, ast.ClassDef) else None
+    """The class whose body directly declares ``bare`` on ``line`` (innermost).
+
+    RFC-0043 Phase C: chosen from the module's member table (per content
+    digest, :mod:`.callers_py_members`) instead of a walk of the whole tree.
+    """
+    path = owner_path(member_table(module.digest, module.tree), line, bare)
+    if path is None:
+        return None
+    owner = node_at(module.tree, path)
+    return owner if isinstance(owner, ast.ClassDef) else None
 
 
 def _declares(node: ast.AST, bare: str) -> bool:
