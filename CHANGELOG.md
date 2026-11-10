@@ -24,8 +24,7 @@
   (`source_evidence.reason: MISSING_INDEX`, not `complete`) now start
   `next_step` with the index-build command (#1943); verdict and
   completeness are unchanged. A bare call (no arguments) prints the error
-  and the short help on stderr without building the parser (82.8k -> 2.4k
-  chars). Under `python -m`, usage, errors and both `--version` paths say
+  and the short help on stderr (82.8k -> 2.4k chars). Under `python -m`, usage, errors and both `--version` paths say
   `tree-sitter-analyzer` instead of `__main__.py`.
   The CLI flag count claims move from 374 to 375 (`--help-all`).
 
