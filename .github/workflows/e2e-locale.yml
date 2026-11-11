@@ -70,11 +70,48 @@ jobs:
         run: uv python install 3.11
 
       - name: Install locale packages
+        # Network-free first: the runner image ships the `locales` package
+        # (glibc locale sources + charmaps), so `locale-gen` can compile the
+        # locale offline. apt is only a fallback (with retries), because the
+        # Ubuntu mirrors are intermittently unresolvable from runners and
+        # `locales-all` (a ~11 MB download) is not needed.
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y locales locales-all
-          sudo locale-gen ${{ matrix.lang }} || true
-          sudo update-locale LANG=${{ matrix.lang }} || true
+          set -u
+          LANG_NAME="${{ matrix.lang }}"
+          LOCALE_NAME="${{ matrix.locale }}"
+
+          locale_ready() {
+            locale -a | grep -qix "$LOCALE_NAME" || locale -a | grep -qix "$LANG_NAME"
+          }
+
+          if ! locale_ready; then
+            charset="${LANG_NAME#*.}"
+            echo "Generating ${LANG_NAME} offline with locale-gen"
+            sudo locale-gen "${LANG_NAME}" || true
+            # Fall back to a direct localedef if locale-gen did not register it
+            if ! locale_ready; then
+              sudo localedef -i "${LANG_NAME%%.*}" -f "${charset}" "${LANG_NAME}" || true
+            fi
+          fi
+
+          if ! locale_ready; then
+            echo "::warning::Offline generation failed; falling back to apt (with retries)"
+            sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=15 \
+              -o Acquire::https::Timeout=15 update -q || true
+            sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=15 \
+              -o Acquire::https::Timeout=15 install -y locales locales-all || true
+            sudo locale-gen "${LANG_NAME}" || true
+          fi
+
+          # Hard assertion: the E2E tests must run under the real locale.
+          if ! locale_ready; then
+            echo "::error::Locale ${LANG_NAME} (${LOCALE_NAME}) is not available; refusing to run E2E tests under a different locale."
+            locale -a
+            exit 1
+          fi
+          sudo update-locale LANG="${LANG_NAME}" || true
+          LC_ALL="${LANG_NAME}" locale charmap
+          LC_ALL="${LANG_NAME}" python3 -c "import locale; locale.setlocale(locale.LC_ALL, ''); print('locale OK:', locale.getlocale(), locale.getpreferredencoding(False))"
 
       - name: Setup System Dependencies
         uses: ./.github/actions/setup-system
