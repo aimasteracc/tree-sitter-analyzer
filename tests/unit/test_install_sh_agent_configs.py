@@ -217,8 +217,20 @@ def test_existing_entry_is_replaced_and_configured(installer):
     assert "✅ Configured agents:\n   • Claude Code (project)" in result.stdout
 
 
+def _case_sensitive(directory: Path) -> bool:
+    """Whether ``directory`` tells ``Claude`` and ``claude`` apart (not on macOS APFS)."""
+    probe = directory / "CaseProbe"
+    probe.mkdir()
+    try:
+        return not (directory / "caseprobe").exists()
+    finally:
+        probe.rmdir()
+
+
 def test_desktop_prefers_uppercase_path(installer):
     home, project, tools, run = installer
+    if not _case_sensitive(home):
+        pytest.skip("both spellings are one directory on a case-insensitive filesystem")
     for spelling in ("Claude", "claude"):
         config = home / f".config/{spelling}/claude_desktop_config.json"
         config.parent.mkdir(parents=True)
