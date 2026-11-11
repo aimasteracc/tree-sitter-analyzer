@@ -196,6 +196,11 @@ def dynamic_supertype(
         )
         if kotlin_found is not None:
             return kotlin_found
+    from .callers_lang_overrides import lang_override_finding
+
+    lang_found = lang_override_finding(project_root, declarations, bare, cache, owner)
+    if lang_found is not None:
+        return lang_found
     reader = SourceReader(project_root)
     for rel, line, _language in declarations:
         if not rel.lower().endswith(JSTS_SUFFIXES):
