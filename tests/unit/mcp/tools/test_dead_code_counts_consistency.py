@@ -78,6 +78,9 @@ def _fake_result(
             "unreferenced_variables": n_vars,
             "total_call_edges": 0,
         },
+        # #1958: an answer about dead code needs analyzed functions in scope.
+        function_files={"a.py": max(n_dead, 1)},
+        indexed=True,
     )
 
 
@@ -405,6 +408,14 @@ def _mixed_path_result() -> DeadCodeResult:
             "unreferenced_variables": 2,
             "total_call_edges": 0,
         },
+        function_files={
+            "tree_sitter_analyzer/mcp/x.py": 1,
+            "tree_sitter_analyzer/mcp/sub/y.py": 1,
+            "corpus/python/z.py": 1,
+            "benchmarks/agent-tasks/scenarios.py": 1,
+            "analyze_coverage_json.py": 1,
+        },
+        indexed=True,
     )
 
 
@@ -508,7 +519,8 @@ class TestDeadCodePathScoping:
         )
         assert result["stats"]["total_dead_functions_transitive"] == 2
 
-    def test_path_no_match_is_empty_not_error(self, fake_root, monkeypatch):
+    def test_path_no_match_is_insufficient_evidence(self, fake_root, monkeypatch):
+        """#1958: a path holding no function is not a 'no dead code' answer."""
         monkeypatch.setattr(
             mod, "analyze_dead_code", lambda *a, **k: _mixed_path_result()
         )
@@ -516,9 +528,12 @@ class TestDeadCodePathScoping:
         result = _run(
             tool.execute({"output_format": "json", "path": "nonexistent/dir"})
         )
-        assert result["success"] is True
+        assert result["success"] is False
+        assert result["status"] == "unknown"
+        assert result["error_code"] == "INSUFFICIENT_EVIDENCE"
+        assert result["insufficient_evidence_reason"] == "EMPTY_SCOPE"
         assert result["stats"]["total_dead_functions_transitive"] == 0
-        assert result["verdict"] == "INFO"
+        assert '--dead-code-path "tree_sitter_analyzer"' in result["next_step"]
 
 
 def test_scoped_mode_ignores_hidden_category_truncation(tmp_path) -> None:

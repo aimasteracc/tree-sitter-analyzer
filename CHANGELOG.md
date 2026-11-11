@@ -141,6 +141,30 @@
 
 ### Fixed
 
+- **`--dead-code` / `health action=dead` and the `codegraph_overview` dead-code section no longer answer "No dead code found" without evidence** (#1958).
+  An empty root, a `path` that matches no function, a scope of only test
+  files (entry points by default) and a project without an index all
+  answered `success: true, "No dead code found in scope."`. Without an index
+  the callers evidence cannot certify any candidate, so on rich v13.9.4 the
+  unindexed run said "none" where the indexed run lists 2 certified dead
+  functions. These answers are now `success: false`, `status: unknown`,
+  `error_code: INSUFFICIENT_EVIDENCE` with `insufficient_evidence_reason`
+  (`NO_FUNCTIONS`, `EMPTY_SCOPE`, `TESTS_ONLY`, `NO_INDEX`,
+  `CERTIFICATION_BUDGET`) and a `next_step` naming the CLI and MCP command
+  for that cause (`--project-root`, `--dead-code-path` with the prefixes
+  that hold functions, `--dead-code-include-tests`, `--full-index` /
+  `index action=full`). A known answer carries `status`
+  (`dead_code_found` / `none_found`), `stats.functions_in_scope`,
+  `files_in_scope`, `test_functions_in_scope` and `index_used`, and its
+  `next_step` names the counts (rich: 2 certified dead of 961 functions in
+  89 files). `codegraph_overview` adds `dead_code_next_step` and
+  `functions_analyzed` / `files_analyzed` / `index_used` to
+  `dead_code_evidence`; with no index its `dead_code_status` is `unknown`,
+  and with 0 functions the whole overview is `INSUFFICIENT_EVIDENCE`. The
+  #1941 certification is unchanged: the same functions are listed as dead.
+  New `mcp/tools/dead_code_answer.py`; `DeadCodeResult` gains
+  `function_files` and `indexed`.
+
 - **`--unreachable-code` / `health action=unreachable` no longer answers success with 0 functions analyzed** (#1955).
   Project mode on a clean repository answered `success: true,
   total_functions_analyzed: 0`. The scanner kept a per-file result only for

@@ -24,6 +24,16 @@ from ...dead_code_analyzer import (
 from ...utils import setup_logger
 from ._validators import invalid_enum_error
 from .base_tool import BaseMCPTool
+from .dead_code_answer import (
+    STATUS_FOUND,
+    STATUS_NONE_FOUND,
+    CertCounts,
+    evidence_sentence,
+    insufficient_evidence,
+    mark_unknown,
+    scope_evidence,
+)
+from .dead_code_answer import under_path as _under_path
 from .dead_code_certify import (
     STATUS_CERTIFIED,
     certify_transitive,
@@ -235,12 +245,31 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
             "total_call_edges": result.stats.get("total_call_edges", 0),
         }
 
+        # #1958: count what the answer covers; with no evidence it is unknown.
+        evidence = scope_evidence(
+            result.function_files,
+            path=path,
+            include_tests=include_tests,
+            indexed=result.indexed,
+        )
+        labeled_stats.update(evidence.to_stats())
+        insufficient = None
+        if dead_visible:
+            counts = CertCounts(
+                candidates_total, total_dead_funcs, cert_section.get("unchecked", 0)
+            )
+            insufficient = insufficient_evidence(evidence, counts, self.project_root)
+
         # Wave 1b (audit health-10): emit an actionable next_step. dead_code
         # previously set none, so the boundary left agent_summary.next_step
         # empty — an agent saw a REVIEW verdict with N findings and no guidance.
         if total_all == 0:
             verdict = "INFO"
-            next_step = "No dead code found in scope."
+            next_step = (
+                f"No dead code found among {evidence_sentence(evidence)} in scope."
+                if dead_visible
+                else "No unused imports or unreferenced variables found in scope."
+            )
         else:
             verdict = "REVIEW" if total_all > 20 else "CAUTION"
             if any_truncated:
@@ -273,6 +302,11 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
                     "dynamic refs (reflection, plugins, __all__). Run edit action=guard "
                     "on a symbol to confirm zero callers before deleting it."
                 )
+            if dead_visible:
+                next_step += (
+                    f" {total_dead_funcs} certified dead function(s) of "
+                    f"{evidence_sentence(evidence)} analyzed."
+                )
             if dead_visible and low_confidence_dead:
                 next_step += (
                     f" {low_confidence_dead} dead function(s) are confidence=low "
@@ -293,6 +327,7 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
         response: dict[str, Any] = {
             "success": True,
             "verdict": verdict,
+            "status": STATUS_FOUND if total_all else STATUS_NONE_FOUND,
             "mode": mode,
             "project_root": self.project_root,
             "stats": labeled_stats,
@@ -304,6 +339,9 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
             "unused_imports": [_serialize_unused_import(ui) for ui in unused_imports],
             "unreferenced_variables": [_serialize_unref_var(uv) for uv in unref_vars],
         }
+        if insufficient is not None:
+            mark_unknown(response, *insufficient)
+            labeled_stats["dead_functions_status"] = response["status"]
 
         if mode != "all":
             sections_to_keep = {
@@ -356,26 +394,6 @@ async def _certified(
         "elapsed_seconds": cert.elapsed_seconds,
     }
     return [df for df in scoped if df.function in dead], section
-
-
-def _under_path(file_path: str, path: str) -> bool:
-    """True if ``file_path`` is the ``path`` itself or lives under it, matched
-    on whole path segments (so 'a/m' does NOT match 'a/mcp/x.py'). Both sides
-    are normalized to forward slashes; a trailing slash on ``path`` is ignored.
-
-    Root-relative aliases are accepted: a leading ``./`` is stripped, and ``.``
-    (or an empty prefix) means the whole project, so every item matches.
-    Result file paths are project-relative (e.g. ``tree_sitter_analyzer/x.py``),
-    so without this an agent passing ``.`` or ``./pkg`` would match nothing.
-    """
-    f = file_path.replace("\\", "/")
-    p = path.replace("\\", "/").strip()
-    if p.startswith("./"):
-        p = p[2:]
-    p = p.rstrip("/")
-    if p in ("", "."):
-        return True
-    return f == p or f.startswith(p + "/")
 
 
 def _serialize_dead_function(df: DeadFunction) -> dict[str, Any]:
