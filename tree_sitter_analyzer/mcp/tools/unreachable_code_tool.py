@@ -23,10 +23,11 @@ from typing import Any
 from ...unreachable_code import (
     UnreachableCodeResult,
     analyze_file_unreachable,
-    analyze_project_unreachable,
 )
+from ...unreachable_code_scan import ProjectUnreachableScan, scan_project_unreachable
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
+from .unreachable_code_answer import file_answer, project_answer
 
 logger = setup_logger(__name__)
 
@@ -134,7 +135,7 @@ class UnreachableCodeTool(BaseMCPTool):
         max_files = int(arguments.get("max_files", 500))
 
         try:
-            results = analyze_project_unreachable(
+            scan = scan_project_unreachable(
                 self.project_root,
                 include_test_files=include_tests,
                 max_files=max_files,
@@ -143,28 +144,21 @@ class UnreachableCodeTool(BaseMCPTool):
             logger.error("unreachable_code project analysis failed: %s", exc)
             return {"success": False, "error": str(exc)}
 
-        response = self._build_project_response(results, output_format)
+        response = self._build_project_response(scan, output_format)
         return response
 
     def _build_file_response(
         self, result: UnreachableCodeResult, output_format: str
     ) -> dict[str, Any]:
-        return {"success": not result.errors, **result.to_dict()}
+        # #1955: 0 functions analyzed is ``unknown``, never a clean answer.
+        return file_answer(result)
 
     def _build_project_response(
-        self, results: list[UnreachableCodeResult], output_format: str
+        self, scan: ProjectUnreachableScan, output_format: str
     ) -> dict[str, Any]:
-        total_blocks = sum(len(r.unreachable_blocks) for r in results)
-        total_functions = sum(r.functions_analyzed for r in results)
-        files_with_issues = sum(1 for r in results if r.unreachable_blocks)
-
-        return {
-            "success": not any(r.errors for r in results),
-            "files_with_issues": files_with_issues,
-            "total_functions_analyzed": total_functions,
-            "total_unreachable_blocks": total_blocks,
-            "results": [r.to_dict() for r in results],
-        }
+        # #1955: counts come from every analyzed file, not only the files
+        # with findings, and 0 functions analyzed is ``unknown``.
+        return project_answer(scan, str(self.project_root or ""))
 
     def _resolve_path(self, file_path: str) -> str | None:
         import os
