@@ -78,7 +78,9 @@ _TYPES = frozenset(
     }
 )
 _BODIES = frozenset({"declaration_list", "enum_declaration_list"})
-_NAMES = frozenset({"name", "qualified_name"})
+_NAMES = frozenset({"name", "qualified_name", "relative_name"})
+#: Children of a supertype clause that name no supertype.
+_NOT_NAMES = frozenset({"comment", "use_list"})
 _USE_CLAUSE = re.compile(r"^\\?([\w\\]+)(?:\s+as\s+(\w+))?$", re.IGNORECASE)
 _REDEFINES_VERB = "may redefine"
 _REDEFINES_LEAD = (
@@ -299,8 +301,13 @@ class _Reader:
                 ):
                     return f"a trait `use` in {file} adapts trait methods"
                 for entry in clause.named_children:
-                    if entry.type not in _NAMES:
+                    if entry.type in _NOT_NAMES:
                         continue
+                    if entry.type not in _NAMES:
+                        return (
+                            f"its supertype `{parsed.text(entry)}` in {file} is "
+                            "not a name that can be resolved"
+                        )
                     resolved = self._resolve(file, parsed, node, entry)
                     if isinstance(resolved, str):
                         return resolved

@@ -259,9 +259,11 @@ def test_php_broken_index_blocks(tmp_path) -> None:
 # ------------------------------------------------------------------ Swift
 
 
-def _swift(tmp_path: Path, files: dict[str, str], rel: str, bare: str, cache):
+def _swift(
+    tmp_path: Path, files: dict[str, str], rel: str, bare: str, cache, needle=None
+):
     _write(tmp_path, files)
-    line = _line(files[rel], f"func {bare}(")
+    line = _line(files[rel], needle or f"func {bare}(")
     return swift_row_finding(str(tmp_path), rel, line, bare, cache)
 
 
@@ -307,7 +309,8 @@ def test_swift_override_branches(tmp_path) -> None:
             ("Dup", "B.swift", "swift"),
         ]
     )
-    assert _swift(tmp_path, files, "A.swift", "speak", index)[1] is None
+    speak = _swift(tmp_path, files, "A.swift", "speak", index, "override func speak(")
+    assert speak == ("Dog", None)
     _o, purr = _swift(tmp_path, files, "A.swift", "purr", index)
     assert purr is not None and "no superclass" in purr.why
     _o, bark = _swift(tmp_path, files, "A.swift", "bark", index)
@@ -335,3 +338,214 @@ def test_router_prefers_rows_of_the_owner_and_skips_other_languages(tmp_path) ->
     found = lang_override_finding(str(tmp_path), rows, "__invoke", _Index(), "B")
     assert found is not None and found.class_name == "B"
     assert lang_override_finding(str(tmp_path), rows[2:], "m", _Index()) is None
+
+
+# ------------------------------------------------------- more fail-closed paths
+
+
+class _NoEdges(_Index):
+    def __init__(self, types) -> None:
+        super().__init__(types)
+        self._conn.execute("DROP TABLE edges")
+
+
+def test_csharp_supertypes_that_declare_nothing_or_only_classes(tmp_path) -> None:
+    files = {
+        "N.cs": (
+            "namespace N;\nusing System;\n\n"
+            "public class Base\n{\n"
+            "#if NET\n    public virtual void Cond() { }\n#endif\n"
+            "}\n"
+            "public class Gen<T> { public virtual void G() { } }\n"
+            "public interface IFoo { }\n"
+            "public class A : Base, IFoo\n{\n"
+            "    public override void Missing() { }\n"
+            "    public void Pub() { }\n"
+            "    public override void Cond() { }\n"
+            "}\n"
+            "public class O : object, IFoo { public void Pub2() { } }\n"
+            "public class GA : Gen<int> { public override void G() { } }\n"
+        )
+    }
+    index = _Index(
+        [(n, "N.cs", "csharp") for n in ("Base", "Gen", "IFoo", "A", "O", "GA")]
+    )
+    _o, missing = _cs(tmp_path, files, "N.cs", "Missing", index)
+    assert missing is not None and "no supertype" in missing.why
+    assert _cs(tmp_path, files, "N.cs", "Pub", index)[1] is None
+    assert _cs(tmp_path, files, "N.cs", "Pub2", index)[1] is None
+    assert _cs(tmp_path, files, "N.cs", "Cond", index, "override void Cond")[1] is None
+    assert _cs(tmp_path, files, "N.cs", "G", index, "override void G")[1] is None
+    _o, no_edges = _cs(
+        tmp_path,
+        files,
+        "N.cs",
+        "Cond",
+        _NoEdges(index_rows(index)),
+        "override void Cond",
+    )
+    assert no_edges is not None and "call edges" in no_edges.why
+
+
+def index_rows(index: _Index) -> list[tuple[str, str, str]]:
+    return list(
+        index.get_conn().execute(
+            "SELECT name, file_path, language FROM ast_symbol_rows"
+        )
+    )
+
+
+def test_csharp_large_closures_missing_files_and_enclosing_bases(tmp_path) -> None:
+    chain = "".join(f"public interface I{i} : I{i + 1} {{ }}\n" for i in range(70))
+    files = {
+        "Big.cs": chain + "public interface I70 { }\n"
+        "public class Big : I0 { public void Run() { } }\n",
+        "Enc.cs": (
+            "public class Base { public virtual void M() { } }\n"
+            "public class Outer : External\n{\n"
+            "    public class In : Base { public override void M() { } }\n"
+            "}\n"
+            "public class Gone2 : Gone { public override void M() { } }\n"
+        ),
+        "Al.cs": (
+            "using X = N;\n"
+            "namespace N { public class B { public virtual void M() { } } }\n"
+            "public class Q : X.B { public override void M() { } }\n"
+        ),
+    }
+    rows = [(f"I{i}", "Big.cs", "csharp") for i in range(71)]
+    rows += [("Big", "Big.cs", "csharp"), ("Base", "Enc.cs", "csharp")]
+    rows += [("Gone", "Missing.cs", "csharp"), ("B", "Al.cs", "csharp")]
+    index = _Index(rows)
+    _o, big = _cs(tmp_path, files, "Big.cs", "Run", index)
+    assert big is not None and "too large" in big.why
+    _o, enclosing = _cs(tmp_path, files, "Enc.cs", "M", index, "class In")
+    assert enclosing is not None and "enclosing type" in enclosing.why
+    _o, gone = _cs(tmp_path, files, "Enc.cs", "M", index, "class Gone2")
+    assert gone is not None and "could not be parsed" in gone.why
+    _o, alias = _cs(tmp_path, files, "Al.cs", "M", index, "class Q")
+    assert alias is not None and "alias" in alias.why
+
+
+def test_parse_failures_leave_the_checks_not_run(tmp_path, monkeypatch) -> None:
+    from tree_sitter_analyzer.mcp.tools import (
+        callers_csharp_overrides,
+        callers_php_overrides,
+        callers_swift_overrides,
+    )
+
+    _write(tmp_path, {"A.cs": "class A { }\n", "a.php": "<?php\n", "a.swift": "\n"})
+    for module in (
+        callers_csharp_overrides,
+        callers_php_overrides,
+        callers_swift_overrides,
+    ):
+        monkeypatch.setattr(module, "parse", lambda _language, _text: None)
+    for check, rel in (
+        (csharp_row_finding, "A.cs"),
+        (php_row_finding, "a.php"),
+        (swift_row_finding, "a.swift"),
+    ):
+        found = check(str(tmp_path), rel, 1, "m", _Index())[1]
+        assert found is not None and found.unchecked, rel
+
+
+def test_common_parse_returns_none_for_a_missing_grammar(monkeypatch) -> None:
+    from tree_sitter_analyzer import language_loader
+    from tree_sitter_analyzer.mcp.tools.callers_override_common import parse, same
+
+    monkeypatch.setattr(language_loader, "create_parser_safely", lambda _l: None)
+    assert parse("csharp", "class A { }") is None
+
+    def boom(_language):
+        raise RuntimeError("grammar")
+
+    monkeypatch.setattr(language_loader, "create_parser_safely", boom)
+    assert parse("csharp", "class A { }") is None
+    monkeypatch.undo()
+    tree = parse("csharp", "class A { }")
+    assert tree is not None and same(tree.root, tree.root)
+
+
+def test_php_large_closures_and_unreadable_candidates(tmp_path) -> None:
+    chain = "".join(f"interface I{i} extends I{i + 1} {{}}\n" for i in range(70))
+    files = {
+        "big.php": "<?php\n" + chain + "interface I70 {}\n"
+        "class Big implements I0 {\n    public function run() {}\n}\n"
+        "class Lost extends Gone {\n    public function lost() {}\n}\n"
+    }
+    rows = [(f"I{i}", "big.php", "php") for i in range(71)]
+    rows += [("Gone", "missing.php", "php")]
+    index = _Index(rows)
+    _o, big = _php(tmp_path, files, "big.php", "run", index)
+    assert big is not None and "too large" in big.why
+    _o, lost = _php(tmp_path, files, "big.php", "lost", index)
+    assert lost is not None and "could not be parsed" in lost.why
+
+
+def test_swift_unparsed_bodies_fallback_lines_cycles_and_unknown_extensions(
+    tmp_path,
+) -> None:
+    files = {
+        "R.swift": (
+            "#if canImport(SystemConfiguration)\n\nimport XCTest\n\n"
+            "final class R: XCTestCase {\n    // MARK: - Tests\n\n"
+            "    override func setUp() {\n        super.setUp()\n    }\n\n"
+            '    func testA() {\n        let m = M(host: "h")\n    }\n}\n\n#endif\n'
+        ),
+        "C.swift": (
+            "class A: B {\n}\n\nclass B: A {\n    override func f() {\n    }\n}\n\n"
+            "extension Ghost {\n    override func g() {\n    }\n}\n"
+        ),
+        "L.swift": "class Lost: Gone {\n    override func h() {\n    }\n}\n",
+    }
+    rows = [("A", "C.swift", "swift"), ("B", "C.swift", "swift")]
+    rows += [("Gone", "missing.swift", "swift")]
+    index = _Index(rows)
+    _o, set_up = _swift(tmp_path, files, "R.swift", "setUp", index)
+    assert set_up is not None and not set_up.unchecked
+    _o, test = _swift(tmp_path, files, "R.swift", "testA", index, "final class R")
+    assert test is not None and "XCTest" in test.why
+    _o, cycle = _swift(tmp_path, files, "C.swift", "f", index)
+    assert cycle is not None and "cyclic" in cycle.why
+    _o, ghost = _swift(tmp_path, files, "C.swift", "g", index)
+    assert ghost is not None and "Ghost" in ghost.why
+    _o, lost = _swift(tmp_path, files, "L.swift", "h", index)
+    assert lost is not None and "could not be parsed" in lost.why
+
+
+def test_duplicate_supertypes_bodiless_records_and_broken_indexes(tmp_path) -> None:
+    files = {
+        "D.cs": (
+            "public interface I { }\npublic interface J : I { }\n"
+            "public class K : I, J { public void Pub() { } }\n"
+            "public class Base { public virtual void M() { } }\n"
+            "public record R(int X) : Base;\n"
+            "public record S(int X) : R(X) { public override void M() { } }\n"
+            "public class Q : N.B { public override void M() { } }\n"
+        ),
+        "d.php": (
+            "<?php\ninterface I {}\ninterface J extends I {}\n"
+            "class K implements I, J {\n    public function k() {}\n}\n"
+            "$x = new class {\n    public function anon() {}\n};\n"
+        ),
+        "D.swift": (
+            "class Animal {\n    class Inner {\n        func speak() {\n        }\n    }\n}\n\n"
+            "class Dog: Animal {\n    override func speak() {\n    }\n}\n"
+        ),
+    }
+    cs = _Index([(n, "D.cs", "csharp") for n in ("I", "J", "K", "Base", "R", "S")])
+    assert _cs(tmp_path, files, "D.cs", "Pub", cs)[1] is None
+    assert _cs(tmp_path, files, "D.cs", "M", cs, "record S")[1] is None
+    _o, qualified = _cs(tmp_path, files, "D.cs", "M", _Broken(), "class Q")
+    assert qualified is not None and "could not be read" in qualified.why
+    php = _Index([("I", "d.php", "php"), ("J", "d.php", "php"), ("K", "d.php", "php")])
+    assert _php(tmp_path, files, "d.php", "k", php)[1] is None
+    assert _php(tmp_path, files, "d.php", "anon", php) == (None, None)
+    swift = _Index([("Animal", "D.swift", "swift"), ("Dog", "D.swift", "swift")])
+    _o, inner = _swift(tmp_path, files, "D.swift", "speak", swift, "override func")
+    assert inner is not None and "no superclass" in inner.why
+    _o, broken = _swift(tmp_path, files, "D.swift", "speak", _Broken(), "override func")
+    assert broken is not None and "could not be read" in broken.why
+    missing = swift_row_finding(str(tmp_path), "D.swift", 1, "absent", swift)
+    assert missing == (None, None)
