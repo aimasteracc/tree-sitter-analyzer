@@ -240,7 +240,6 @@ async def test_plain_base_control_keeps_its_answer(tmp_path) -> None:
         "Gen.gen_only",
         "TGen.tgen_only",
         "Proto.proto_only",
-        "Std.std_only",
         "Oops.oops_only",
         "Meta.meta_only",
         "Child.child_only",
@@ -256,7 +255,22 @@ async def test_plain_and_known_external_bases_keep_complete(tmp_path, name) -> N
 
 
 @pytest.mark.asyncio
-async def test_third_party_base_keeps_complete(tmp_path) -> None:
+async def test_open_external_bases_are_not_complete(tmp_path) -> None:
+    # #1949: the walk stops at an external base, but that base may call the
+    # method (``OrderedDict`` calls ``keys``; ``io`` calls ``writable``).
+    root = await _index(tmp_path, {"a.py": _PROC, "c.py": _PLAIN})
+
+    result = await _callers(root, "Std.std_only")
+
+    assert (result["completeness"], result["completeness_reasons"]) == (
+        "unknown",
+        ["OVERRIDE_DISPATCH"],
+    )
+    assert "`collections.OrderedDict`" in result["next_step"]
+
+
+@pytest.mark.asyncio
+async def test_third_party_base_is_not_complete(tmp_path) -> None:
     files = {
         "app/__init__.py": "",
         "app/main.py": _CALLS,
@@ -275,12 +289,17 @@ async def test_third_party_base_keeps_complete(tmp_path) -> None:
     }
     root = await _index(tmp_path, files)
 
-    for name in ("Item.item_only", "Row.row_only"):
+    # #1949: a third-party base may define or call any name.
+    for name, base in (
+        ("Item.item_only", "`BaseModel`"),
+        ("Row.row_only", "`sqlalchemy.orm.DeclarativeBase`"),
+    ):
         result = await _callers(root, name)
         assert (result["completeness"], result["completeness_reasons"]) == (
-            "complete",
-            [],
+            "unknown",
+            ["OVERRIDE_DISPATCH"],
         ), name
+        assert base in result["next_step"], name
 
 
 @pytest.mark.asyncio

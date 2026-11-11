@@ -266,6 +266,17 @@ def _python_finding(
         )
         if inherited is not None:
             return inherited
+    # #1949: a base outside the project, or the interpreter, may call it.
+    from .callers_py_overrides import python_override_finding
+
+    for (rel, line, _language), (name, _found) in zip(rows, results, strict=True):
+        if owned and name != wanted:
+            continue
+        external = python_override_finding(
+            project_root, rel, line, bare, lambda: python_project_tops(cache)
+        )
+        if external is not None:
+            return external
     return None
 
 
