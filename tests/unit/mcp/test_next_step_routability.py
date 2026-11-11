@@ -127,8 +127,9 @@ def test_the_harvest_is_not_vacuous() -> None:
     # RFC-0041: the uql answer summary adds 1 next_step constant, 178 -> 179.
     # uql adoption (nav_uql_hints.py): the callers -> test_map / callers
     # follow-up hints and the caller_tree impact pointer add 7, 179 -> 186.
-    assert len(harvest) == 186, (
-        f"expected 186 next_step string constants, harvested {len(harvest)}; "
+    # PR-4: the useful-unknowns hints add 1, 186 -> 187.
+    assert len(harvest) == 187, (
+        f"expected 187 next_step string constants, harvested {len(harvest)}; "
         "update this constant if the phrasing changed, otherwise the AST walk is "
         "no longer matching how next_step is assigned"
     )

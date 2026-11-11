@@ -78,6 +78,60 @@ Reference implementation:
 `total_matches`), but the four-part shape — flag, exact pre-cap total, listed
 count + cap, interpolated `next_step` — is the contract.
 
+## Absence certificates (`nav action=callers`, RFC-0044)
+
+An empty answer can be a fact. When `caller_count == 0`, `completeness == "complete"`
+(every required caller check ran) and there is no unresolved / name-only / declaring-file
+site, the response carries:
+
+```json
+"absence": {
+  "kind": "unreferenced",
+  "confidence": "proven",
+  "evidence": [{"kind": "complete_call_graph", "detail": "..."}],
+  "next_step": "..."
+}
+```
+
+Rules:
+
+- `confidence: "proven"` appears **only** on a `complete`, non-stale zero-caller answer with no
+  open site of any kind (unresolved, name-only, declaring-file, module-level, non-call
+  reference). Anything less is at most `possible` — no certificate beats a false one.
+- Proven kinds: `unreferenced`, and `entry_point` when a `[project.scripts]` /
+  `[tool.poetry.scripts]` entry names exactly the declaring module file (path-segment boundary;
+  flat or `src/` layout; `pkg:f` → `pkg/__init__.py`) and an undotted attribute that file defines
+  as a module-level function. A shebang or a `__main__.py` file is never evidence about one
+  function in it: a function such a file actually runs is called from module level, so it has a
+  `<module>` caller and needs no certificate; an uncalled one is plain `unreferenced`.
+- `possible` kinds: `untested` (`nav action=test_map`: zero *direct* test call edges, one helper
+  hop followed, zero name-only candidates — indirect coverage through non-test callers is not
+  checked, so it is never `proven`), and the honest downgrade `unknown` when the caller list is
+  empty but evidence is incomplete or stale — its `incomplete_call_graph` evidence names the open
+  sites so the agent knows what to close.
+- A `NOT_FOUND` answer never carries `absence` at all: "not in the index" is not
+  "nobody calls it". Consumers must treat unknown `kind` values as informational.
+- **Identification vs absence** (2026-11-10): `entry_point` asserts "entered from a console
+  script", which is provable without RFC-0040 completeness; it therefore carries
+  `identification_only: true` plus `symbol_defined` evidence even when the answer is `NOT_FOUND`
+  with `NON_CALL_REFERENCES` (a real entry point often looks like that). The negative claim
+  `unreferenced` still requires `completeness: "complete"`. `SYMBOL_NOT_DEFINED` never gets a
+  certificate of any kind: not being indexed is not being an entry.
+- The certificate is part of the answer content, so it participates in `answer_etag`.
+
+## Re-asking an answer (ETag / `If-None-Match`)
+
+Four answers support the incremental loop: `callers`, `callees`, `test_map` and `search action=uql`.
+
+- `answer_etag` covers the answer **content** plus its scope: source freshness for the relation
+  answers, the index generation for `test_map` and UQL.
+- A matching `if_none_match` returns a minimal `{unchanged: true}` payload; a stale answer is
+  re-sent in full rather than reported as unchanged. A stale scope never yields a 304.
+- `previous_entries` returns `{delta: {added, removed, unchanged_count}}` only for a fresh,
+  **untruncated** answer: a capped list cannot tell a removed entry from one beyond the cap, so a
+  truncated answer is sent in full.
+- UQL's `index_generation` is part of the fingerprint, so re-indexing always changes it.
+
 ## `next_step` conventions
 
 - One concrete, imperative action — a command or a tool call, not prose
@@ -88,6 +142,47 @@ count + cap, interpolated `next_step` — is the contract.
   the verdict (e.g. the pre-edit verification command on `SAFE`).
 - Treat it as the default next call when you have no better plan; it is
   advisory, not binding.
+
+## Repeat answers: cache provenance vs ETag (two different guarantees)
+
+There are two independent mechanisms, and an Agent should know which one it is
+relying on:
+
+| mechanism | what it answers | how to read it |
+|---|---|---|
+| answer cache (RFC-0027) | "was this answer reused without recomputation?" | `provenance.served_from` is exactly `"cache"` or `"computed"` |
+| `answer_etag` / `if_none_match` (§12.1) | "is this the same answer I already have?" | a matching etag returns `{unchanged: true}` instead of the payload |
+
+A third, weaker field governs reuse **without asking again**: `callers` returns
+`expires_when: {files, index_generation, reusable_without_reask, rule}`. `files` (the declaring
+file plus every caller file) are the answer's inputs, **not** its full invalidation scope — a new
+call added in any other file adds a caller, and only the index generation can witness that. So:
+
+- `reusable_without_reask: true` only when `index_generation` is known and the answer is not
+  stale; the answer may then be reused while that generation is unchanged **and** the listed
+  files are unchanged.
+- When `index_generation` is `null` (or the answer is stale), `reusable_without_reask` is
+  `false`: the answer cannot be reused without re-asking. Re-ask with `if_none_match` — a match
+  costs a ~400 B `{unchanged: true}`.
+
+They answer different questions — cached means *the server did not recompute*,
+unchanged means *you already hold this content*. A cached answer can still differ
+from what you hold (another turn may have changed the scope), and an unchanged
+answer can be produced without any cache.
+
+Cache soundness, verified 2026-11-10 by editing a file between two identical
+`edit action=safe` calls on a temp project:
+
+| call | `provenance.served_from` | wall clock |
+|---|---|---|
+| first | `computed` | 132 ms |
+| identical repeat | `cache` | **0 ms** |
+| same call after an edit | `computed` | 13 ms |
+
+`safe` means single-process. The on-disk answer cache is keyed by the source
+fingerprint (and per `docs/dev/callers-gate.md`, by every answer's cache key incl.
+line endings), so an edit invalidates it rather than serving the previous verdict;
+an unquiet tree skips the cache by design rather than risking a stale hit.
 
 ## JSON control fields
 
@@ -129,7 +224,7 @@ still hold for the unchanged files (#1672).
 `REQUIRED_CHECKS` ([`callers_checks.py`](../tree_sitter_analyzer/mcp/tools/callers_checks.py))
 ran over the queried target set and found nothing. A check that did not run makes the
 answer `unknown` (or `incomplete` with callers listed) with a code naming it. The bounded
-`completeness_checks` field shows the proof: `{"required": 12, "checked": 12}` on a census;
+`completeness_checks` field shows the proof: `{"required": 13, "checked": 13}` on a census (14 when the opt-in SCIP check `scip_agreement` applies);
 otherwise `not_checked` maps each check that did not run to its code, and `not_run` counts
 the gates skipped after an earlier gate decided.
 <!-- drift:completeness-reasons:start -->
@@ -155,7 +250,11 @@ the gates skipped after an earlier gate decided.
 | `NON_CALL_REFERENCES_UNCHECKED` | The non-call reference scan did not finish within budget. | Retry, or search the name directly. |
 | `ACCESSOR_NOT_CALL_EDGES` | The target is a property/accessor; reads are not call edges. | Search attribute reads. |
 | `ACCESSOR_UNCHECKED` | The declaration could not be read, so a property/accessor (whose reads are not call edges) cannot be ruled out (RFC-0040). | Read the declaration; search attribute reads. |
-| `DECORATOR_MAY_REGISTER` | A decorator may register the target for dispatch. | Inspect the decorator. |
+| `DECORATOR_MAY_REGISTER` | A decorator may register the target for dispatch. When the decorator is on the target's own definition, it is listed as a `registration` caller entry and the answer is `incomplete` (PR-4). | The `registration` entry is a known use; the framework-side callers cannot be listed. Otherwise inspect the decorator. |
+| `OVERRIDE_DISPATCH` | Java: the target carries `@Override`, or (#1884) it is a non-static, non-private method without `@Override` whose declaring type (named, anonymous or an enum constant body) has a supertype or that is named like a `java.lang.Object` method, and a call through its supertype could reach it without a call edge naming it. For a method without `@Override`, a supertype closure that resolves in the project and declares no method of that name proves it overrides nothing; a closure that cannot be resolved does not. A JDK interface with a known member set (`Cloneable`, `Serializable`, `AutoCloseable`, `Closeable`, `Flushable`, `Comparable`, `Runnable`, `Iterable`; no project type of that name) ends the walk; a method named like one of its members overrides it. Either the overridden method is not proved to be declared in the project (an external, `java.lang` or unresolved supertype, a `java.lang.Object` method; e.g. an override of `java.lang.ClassValue.computeValue`, which the JDK calls), or a call named like it is bound elsewhere and may dispatch here (`next_step` names up to 3 sites). Also (#1894) a non-static, non-private method with a body declared in a class or interface that is not `final`, when a project subtype (found from source, transitively) inherits it and has another supertype declaring the same name (`class B extends A implements I`: `m()` in a default method of `I` runs `A.m`): it passes only when every call edge named like it is bound to this declaration or outside the project. A JDK type with that member, a subtype whose supertypes do not resolve, a clause that may name the type but does not resolve, or more than 128 subtypes also block. Subtypes outside the project are not considered. Python (#1896): a class-body member whose class has a project subclass (found from source through the import resolver, transitively; `A[int]` counts as `A`) whose ancestry holds another class, unrelated to the declaring one, that declares the same name (`class B(A, I)`: `self.m()` in `I.run` runs `A.m`). It passes only when no call edge named like it may dispatch there: outside the project, a plain `m()` call, bound to this declaration, or with a receiver class (the class around `self.` / `cls.` / `super().`, or the class the edge is bound to) in no such subclass's ancestry. A base that may name the class but cannot be followed (`mix(A)`), a subclass whose ancestry cannot be followed, a file that may declare a subclass but cannot be read or parsed, or more than 4096 subclasses also block; a mangled `__m` and members of external bases are not checked; subclasses outside the project are not considered. `next_step` names the subclass, the other class and up to 3 sites. `@SuppressWarnings`, `@Deprecated`, `@SafeVarargs` and `@FunctionalInterface` register nothing and do not block (PR-2). | For an external supertype, the callers are outside the project. Otherwise read the named sites and check each receiver's type. |
+| `DYNAMIC_SUPERTYPE` | JS/TS: the target is a class member that may override a supertype member (an instance or static method, accessor or field; not a constructor), and its class, or a class above it, has an `extends` clause the index cannot follow: a call (`extends mix(Proc)`), a conditional, a cast, a local value, an import that does not resolve to one project class, an unknown identifier, a duplicated name or a cycle (#1882). The index records no inheritance edge for it, so a call through a supertype (`this.getQuery()` in a base class) could reach the target without a call edge naming it. The chain is read from source; a package import or an ECMAScript / web platform global (`Error`, `HTMLElement`) ends it as a known external class. Also reported when a file on the chain could not be read or parsed, and when the declaring Java file of a method checked for `OVERRIDE_DISPATCH` could not be (#1884). Python (#1883): the same for any class member when its class, or a project class above it, has a base the index cannot follow: a call (`class V1(mix(Proc))`), a starred argument, a conditional, a subscripted project class (`GProc[int]`), a name bound to a value (`Alias = Proc`) or bound twice, an unbound name, an import that does not resolve to one project file, a `**` class keyword, or a `metaclass=` that is not external, may rebind the bases in `__new__` or defines `mro`. Standard-library and third-party classes, builtins (`object`, `Exception`) and their subscripts (`Generic[T]`) end the walk; no Python member is exempt. `next_step` names the class, its file and line, and the clause. | Read what the clause evaluates to, and search those classes for calls of the method through `this` / `self` or a supertype receiver. |
+| `SCIP_UNLISTED_REFERENCE` | Opt-in SCIP evidence (TS/JS; `scip.status` is `used`): the SCIP index references the target at a place that no listed caller and no open site covers (`scip.unlisted_references`). The check is `scip_agreement`, required only when the SCIP layer is used. | Read each `scip.unlisted_references` entry: it is a caller or a use TSA did not attribute. |
+| `SCIP_AGREEMENT_UNCHECKED` | Opt-in SCIP evidence: the `scip_agreement` check could not be evaluated. | Retry; regenerate the SCIP index and its manifest if it persists. |
 <!-- drift:completeness-reasons:end -->
 
 ### Evidence behind the codes (#1672)
@@ -178,6 +277,15 @@ names the first three sites inline and says how many more there are.
 `unresolved_inbound` is the length of `unresolved_inbound_sites` before the cap,
 so the count and the sites describe the same edges. `caller` is `<module>` for a
 module-level site; `callee` is the call's source text (`api.open`).
+
+PR-3: a JS/TS site the call graph already binds is not counted by either guard.
+`reason_code: listed_caller_edge` marks a listed caller's own call into the
+target; `graph_bound_elsewhere` marks `this.m()` bound to the enclosing class's
+own `m` when the source proves the target unreachable through that `this`. Such
+sites appear in `excluded_sites` (declaring-file guard) and in
+`unresolved_inbound_excluded` (capped at 20, total in
+`unresolved_inbound_excluded_total`; the field is absent when nothing was
+dropped).
 
 **Ranking (#1706).** `name_only_sites` and `unresolved_inbound_sites` are ranked
 before the cap, by how close the site is to the target:
@@ -255,6 +363,124 @@ listed in `non_call_reference_sites` under the alias (`alias: "_f"`), not just
 the import line. Because the alias is used from another module, it is a
 re-export: the import line in `hub` stays a reference.
 
+### Per-caller confidence tier (#1854)
+
+Every `nav action=callers` caller entry carries `confidence_tier`, derived only
+from the two resolution fields already on the entry. Each field gives a tier and
+the entry gets the less confident of the two; any value not in the table below
+(missing, misspelled, a future kind) is `unconfirmed_receiver`.
+
+| Field | Value | Tier |
+|---|---|---|
+| `callee_resolution` | `local`, `project` | `proven` |
+| `callee_resolution` | `stdlib`, `external`, `builtin`, `unknown` | `unconfirmed_receiver` |
+| `resolution_kind` | absent, `import_alias` | `proven` |
+| `resolution_kind` | `annotated_receiver` | `inferred` |
+| `resolution_kind` | `scip` | `scip` (opt-in SCIP evidence, below) |
+
+`proven`: the resolver bound the call edge to a project definition (self/cls,
+an import, the same file, a unique function, a class-name or constructed
+receiver and its MRO). `inferred`: the binding rests on a type annotation
+(RFC-0038). `unconfirmed_receiver`: a same-named call whose edge is not bound to
+a project definition; this is what an unscoped bare-name query lists when the
+name has several definitions.
+
+The tier is presentation only. It never enters the RFC-0040 checks: an
+unconfirmed call site still counts as unresolved evidence, and
+`completeness` / `completeness_reasons` are the same whatever the order or
+folding. `order=confidence` (opt-in; the default `order=index` keeps the
+existing order) sorts proven, then inferred, then unconfirmed, stable within a
+tier, before the `limit` cut. `format=compact` uses `order=confidence` and folds
+the `unconfirmed_receiver` callers of the page into one line,
+`+N unconfirmed-receiver candidates (include_unconfirmed=true to list)`, with the
+same number in `unconfirmed_collapsed`; `include_unconfirmed=true` lists them.
+The listed and the folded callers together are the callers of the full answer.
+The numeric `confidence` (0.8) of an annotated entry is a different field.
+
+### Registration entries (PR-4)
+
+A decorator such as `@app.get("/items")` or `@pytest.fixture` hands the function
+to a framework when the `def` runs; the framework then calls it under another
+name, so the call graph has no edge. When `DECORATOR_MAY_REGISTER` is the only
+blocker and the decorator is on **the target's own definition**, the answer
+lists it as a caller entry and becomes `incomplete`:
+
+```json
+{"completeness": "incomplete", "completeness_reasons": ["DECORATOR_MAY_REGISTER"],
+ "caller_count": 1,
+ "callers": [{"name": "<module>", "file": "app/routes.py", "line": 12,
+              "language": "python", "callee_resolution": "local",
+              "callee_resolved_file": "app/routes.py",
+              "resolution_kind": "registration", "via": "@app.get(\"/items\")",
+              "confidence_tier": "registration"}],
+ "next_step": "'read_items' is registered by `@app.get(\"/items\")` (app/routes.py:12), listed as `registration` entries. The framework calls it through that registration, and those framework-side callers cannot be listed, so the list is incomplete; ..."}
+```
+
+- `line` is the decorator's line; `name` is `<module>` (the decorator runs when
+  the module body runs); `via` is the decorator text.
+- `confidence_tier: "registration"` is its own tier, ranked after `proven` and
+  before `inferred`, so a registration is never mistaken for a call edge.
+  `format=compact` lists it (it is not folded) as
+  `@app.get("/items")  app/routes.py:12  registration`.
+- It is never `complete`: the gate keeps its code.
+- Soundness: Python only (a Java annotation such as `@Override` registers
+  nothing); exactly one declaration backs the query, in the queried file; the
+  definition's name and class chain match the query; it is a direct statement of
+  the module body or of class bodies nested in it (a `def` inside a function,
+  `if` or `try` runs conditionally and gets no entry); only decorators outside
+  `KNOWN_WRAPPERS` (`functools.lru_cache`, `staticmethod`, ...) are listed. Any
+  read or parse failure keeps the answer `unknown`.
+
+### Open-site bound (`open_sites`, PR-4)
+
+Every `unknown` answer carries `open_sites`, a bound on what keeps it from
+`complete`. `complete` and `incomplete` answers do not carry it.
+
+```json
+{"completeness": "unknown", "completeness_reasons": ["NAME_ONLY_INBOUND"],
+ "caller_count": 0,
+ "name_only_sites": [{"file": "user.py", "line": 2, "caller": "use"}],
+ "non_call_reference_sites": [{"file": "user.py", "line": 6}],
+ "non_call_references": 1,
+ "open_sites": {"total": 2, "enumerated": true,
+                "fields": ["name_only_sites", "non_call_reference_sites"]},
+ "next_step": "The bound is exhaustive (`open_sites`): these 2 site(s) are all that keep 'Box.fetch' from a complete answer: user.py:2; user.py:6. Read them instead of searching; ..."}
+```
+
+`enumerated: true` means: the `total` distinct `(file, line)` sites in the
+`fields` lists are **all** the evidence that blocks `complete`. If none of them
+calls the target or passes it on (a callback, a rebinding) for a later call,
+nothing else in the indexed project does. Read those sites; do not grep. The
+verdict stays `unknown`: with 0 known callers, `incomplete` would claim a caller
+exists.
+
+This is a trust claim like `complete`. It is `true` only when every failed
+check has a site list that is not truncated (its `*_total` equals its length):
+
+| Failed check | Site list |
+|---|---|
+| `UNRESOLVED_INBOUND` | `unresolved_inbound_sites` |
+| `UNRESOLVED_IN_DECLARING_FILE` | `unresolved_sites` |
+| `NAME_ONLY_INBOUND` | `name_only_sites`, only when every line is a call line from an edge (no fallback to the caller's definition line) |
+| `NON_CALL_REFERENCES` | `non_call_reference_sites` (capped at 5, so at most 5 references), only when every later gate passes |
+
+When the edge layer decides the answer, the review gates (freshness, target,
+unindexed files, reference freshness, accessor, non-call references, decorator)
+did not run; they are run for the bound, and it is `true` only if they all pass
+or only the non-call gate fails. The non-call sites found that way are added to
+the answer. Any other case is `{"enumerated": false, "reason": ...}`:
+
+- `SITES_TRUNCATED`: a site list was capped;
+- `NO_SITE_LIST`: a failed check has no exhaustive site list (accessor,
+  decorator, unattributed module-level sites, an empty call graph, a gate that
+  did not run, approximate name-only lines).
+
+`format=compact` adds one line before the verdict line,
+`open: k sites (exhaustive)  a.py:3; b.py:9` (up to 10 sites, then
+`+n more (format=verbose)`), and the machine field
+`open_sites: {"total": k, "enumerated": true}`; a non-enumerated bound is
+omitted from compact.
+
 The alias is **re-exported** (#1709) when another file imports that name
 (`from .hub import _f`), calls it through a module object (`owner._f()`), or
 mentions it in any other way in a file the reference scan read. The re-export
@@ -263,6 +489,64 @@ that binds the same name **on its own**, by renaming something
 (`from .other import g as _f`, or its own `from .core import f as _f`) or by
 defining `_f`, is not a re-export: its uses are checked against its own import
 line.
+### Opt-in SCIP evidence (`scip`, TS/JS)
+
+A compiler-grade SCIP index (scip-typescript) can bind call sites TSA enumerated
+but could not bind. It is opt in: set `TSA_SCIP_INDEX=<path>` (relative to the
+project root) or put the index at `.ast-cache/scip/index.scip`. TSA never runs
+the indexer. Beside the index, `<index>.manifest.json` records the git tree,
+the hash of every uncommitted or untracked file, the lockfile hashes and the
+index hash; write it right after indexing with
+`python -m tree_sitter_analyzer.mcp.tools.callers_scip_manifest --project . --index <index>`.
+
+Without either opt-in the answer has no `scip` field and no extra check: it is
+exactly the answer without this layer. With it, `scip.status` is one of:
+
+| `scip.status` | Meaning |
+|---|---|
+| `used` | The manifest matches the project; the evidence below applies. |
+| `stale` | No manifest, or it no longer matches (another commit, edited or untracked files, a changed lockfile, a rewritten index). No evidence. |
+| `absent` | `TSA_SCIP_INDEX` names a missing file. No evidence. |
+| `invalid` | The index or manifest cannot be decoded, or another indexer wrote it. No evidence. |
+| `unsupported_language` | The target is not TS/JS (Python and Java stay out). No evidence. |
+
+`used` also reports `scip.target`: `{"mapped": true, "symbols": [...]}`, or
+`{"mapped": false, "reason": ...}` (`not_found`, `ambiguous`,
+`file_not_indexed`, `tsa_definition_mismatch`) and then no evidence. When there
+is no evidence, `completeness_checks.not_applicable` holds
+`{"scip_agreement": <status or target_<reason>>}` and the answer is today's.
+
+With evidence, SCIP only classifies the sites TSA listed (`unresolved_inbound_sites`,
+`unresolved_sites`, `name_only_sites`):
+
+- `proven_target`: every occurrence of the name on the site resolves to the
+  target or to a trusted other symbol, at least one to the target, and TSA and
+  SCIP agree on the enclosing definition. The definition is listed as a caller
+  with `resolution_kind: "scip"`, `confidence_tier: "scip"`.
+- `proven_other`: every occurrence resolves to a trusted other symbol: a bare
+  call bound to another function, a subclass override, a member of an
+  unrelated class that declares a private / `#private` / protected member, or
+  a core ECMAScript type. The site is dropped with `reason_code:
+  "SCIP_RESOLVED_OTHER"` (in `excluded_sites`, `unresolved_inbound_excluded`
+  and `scip.resolved_other`).
+- otherwise `open`, as today: interfaces, type literals, non-nominal classes,
+  lib.dom / `@types`, `.d.ts` declarations, supertype members, locals and
+  function-valued properties are never trusted, and a line whose text holds
+  the name more often than SCIP reports, or a position with two symbols, gives
+  no evidence.
+
+SCIP never removes a TSA caller; a listed caller in whose span SCIP sees no
+reference is logged in `scip.disagreements`. A SCIP reference to the target
+outside every listed caller and open site fails the `scip_agreement` check
+(`SCIP_UNLISTED_REFERENCE`), and an exhaustive `open_sites` bound becomes
+`{"enumerated": false, "reason": "SCIP_UNLISTED_REFERENCE"}`. A reference
+inside an import or export-list statement (`import {…} from`, `import type`,
+`export {…} from`, `export *`), on any of its lines (#1892), is not a use and
+is not counted; only positions inside a statement tree-sitter parsed without
+errors qualify, so dynamic `import()`, `export const` values and code after
+the statement on its last line still count. `scip.sites`
+counts the three outcomes; lists in `scip` are capped at 20 with `*_total`
+beside them.
 ### Inherited `self.m()` calls (#1677)
 
 When the enclosing class does not define `m`, `self.m()` / `cls.m()` is a

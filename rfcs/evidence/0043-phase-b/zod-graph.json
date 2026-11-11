@@ -1,0 +1,16 @@
+{
+ "repo": "zod",
+ "files": 521,
+ "symbols": 6586,
+ "call_edge_rows": 53798,
+ "build_s_under_tracemalloc": 3.39,
+ "memo_estimate_mb": 109.3,
+ "built": true,
+ "nodes": 2407,
+ "certain_edges": 13214,
+ "possible_edges": 67958,
+ "nodes_plus_edges": 83579,
+ "retained_mb": 35.0,
+ "peak_mb": 82.0,
+ "bytes_per_node_edge": 419
+}

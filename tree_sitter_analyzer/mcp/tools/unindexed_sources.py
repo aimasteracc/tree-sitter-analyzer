@@ -25,6 +25,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
+from ...graph.read_interrupt import ReadInterrupted, raise_if_interrupted
 from .project_walk_cache import WALK_CACHE
 
 #: 存在尚未入索引的同语言源码文件。
@@ -98,7 +99,10 @@ def _project_files(
         }
     except (sqlite3.Error, AttributeError):
         return None
-    excludes = effective_excludes(conn)
+    try:
+        excludes = effective_excludes(conn)
+    except ReadInterrupted:
+        return None  # #1873: not read -> the check did not run.
     unindexed: list[str] = []
     config: list[str] = []
     starts = [""] + [
@@ -204,8 +208,9 @@ def effective_excludes(conn: Any) -> frozenset[str]:
         ).fetchone()
         if row is not None and row[0]:
             return parse_source_scope_descriptor(str(row[0])).effective_excludes
-    except (sqlite3.Error, ValueError):
-        pass
+    except (sqlite3.Error, ValueError) as exc:
+        # #1873: an interrupted read is "not read", never the default patterns.
+        raise_if_interrupted(exc)
     return make_source_scope_descriptor().effective_excludes
 
 

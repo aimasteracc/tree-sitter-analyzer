@@ -70,6 +70,13 @@ def test_no_coverage_suites_have_runtime_headroom() -> None:
             r"(?m)^      timeout-minutes:\s*20\s*$",
             no_coverage.group("body"),
         ), job_name
+        # 3-vCPU macos-latest machines need up to ~1020 s for the session; the
+        # override must stay below the 20-minute step so the session reports.
+        budgets = re.findall(
+            r"runner\.os == 'macOS' && format\('--shard=\{0\}/2 --session-timeout=(\d+)'",
+            no_coverage.group("body"),
+        )
+        assert budgets == ["1080"], job_name
 
 
 def test_coverage_suites_dump_stuck_test_stacks() -> None:
@@ -120,7 +127,7 @@ def test_pr_ci_uses_fast_matrix_while_release_keeps_full_matrix() -> None:
     )
     assert pr_matrix is not None
     pr_body = pr_matrix.group("body")
-    assert pr_body.count("python-version:") == 4
+    # 4 axes + the second macOS shard (#1910).\n    assert pr_body.count("python-version:") == 5
     assert 'python-version: "3.10"' not in pr_body
     assert 'python-version: "3.12"' not in pr_body
     assert 'python-version: "3.13"' in pr_body
@@ -149,10 +156,13 @@ def test_slow_suite_runs_once_per_reusable_test_matrix() -> None:
     workflow = PROJECT_ROOT / ".github" / "workflows" / "reusable-test.yml"
     text = workflow.read_text(encoding="utf-8")
     slow_marker = (
-        '-m "slow and not network and not e2e and not benchmark and not full_language"'
+        '-m "slow and not performance and not network and not e2e and not benchmark and not full_language"'
     )
 
     assert text.count(slow_marker) == 2
+    # Wall-clock perf checks run only in a non-gating step (#1852).
+    assert text.count('name: Perf regression signal (non-gating)') == 2
+    assert text.count('-m "performance and not network and not e2e and not benchmark"') == 2
 
 
 def test_budget_retry_is_bounded_and_budget_only() -> None:

@@ -131,7 +131,13 @@ def pr_identity(root: str, url: str) -> dict[str, str]:
 
     def run(argv: list[str]) -> str:
         return subprocess.run(
-            argv, cwd=root, check=True, capture_output=True, text=True, timeout=30
+            argv,
+            stdin=subprocess.DEVNULL,
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
         ).stdout.strip()
 
     remote = json.loads(

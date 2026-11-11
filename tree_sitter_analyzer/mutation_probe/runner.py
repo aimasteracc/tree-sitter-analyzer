@@ -182,6 +182,7 @@ def _execute(
     try:
         result = subprocess.run(
             cmd,
+            stdin=subprocess.DEVNULL,
             cwd=cwd,
             capture_output=True,
             text=True,

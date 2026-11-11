@@ -34,6 +34,9 @@ class Observation:
     batch_mismatches: tuple[str, ...] = ()
     #: #1798：同两种模式、但不带 ``file_path`` 的回答。
     unscoped: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+    #: #1853：同一提问的 ``format=compact`` 答复（键为 ``answers`` / ``unscoped``
+    #: 的模式名，带范围的前缀 ``scoped:``、不带的前缀 ``unscoped:``）。
+    compact: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
 
     def callers(self, mode: str) -> list[ListedCaller]:
         """该模式列出的调用方（TS 缺失的 ``end_line`` 按源码补齐）。"""
@@ -126,12 +129,20 @@ async def _observe(case: Case, root: Path) -> Observation:
     unscoped = {
         mode: await query_callers(root, case.query_name(mode), None) for mode in MODES
     }
+    compact = {
+        f"{scope}:{mode}": await query_callers(
+            root, case.query_name(mode), file_path, answer_format="compact"
+        )
+        for mode in MODES
+        for scope, file_path in (("scoped", case.target.file), ("unscoped", None))
+    }
     return Observation(
         case=case,
         answers=answers,
         sites=oracle_sites(case),
         batch_mismatches=await _batch_mismatches(root, case),
         unscoped=unscoped,
+        compact=compact,
     )
 
 

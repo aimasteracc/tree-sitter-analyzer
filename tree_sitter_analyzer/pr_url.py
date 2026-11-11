@@ -72,6 +72,7 @@ def _run_gh(args: list[str], timeout: int = 30) -> tuple[int, str]:
     try:
         result = subprocess.run(
             ["gh"] + args,
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             encoding="utf-8",

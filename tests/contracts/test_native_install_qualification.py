@@ -397,14 +397,23 @@ def _assert_late_spawn_cleanup(tmp_path: Path, iterations: int) -> None:
         ready = tmp_path / f"late-child-{iteration}.ready"
         child_pid_path = tmp_path / f"late-child-{iteration}.pid"
         grandchild_pid_path = tmp_path / f"late-grandchild-{iteration}.pid"
-        grandchild = "import time;time.sleep(60)"
+        # PID files are published with os.replace: the cleanup under test may
+        # kill a writer mid-write, and a truncated file read back as '' made
+        # int() raise (flaky on CI). The grandchild records its own PID, so a
+        # grandchild that never started leaves no file instead of a torn one.
+        grandchild = (
+            "import os,pathlib,time;"
+            f"t=pathlib.Path({str(grandchild_pid_path)!r}+'.tmp');"
+            f"t.write_text(str(os.getpid()));os.replace(t,{str(grandchild_pid_path)!r});"
+            "time.sleep(60)"
+        )
         child = (
             "import os,pathlib,signal,subprocess,sys,time;"
             "signal.signal(signal.SIGTERM,signal.SIG_IGN);"
-            f"pathlib.Path({str(child_pid_path)!r}).write_text(str(os.getpid()));"
+            f"t=pathlib.Path({str(child_pid_path)!r}+'.tmp');"
+            f"t.write_text(str(os.getpid()));os.replace(t,{str(child_pid_path)!r});"
             f"pathlib.Path({str(ready)!r}).write_text('ready');time.sleep(0.25);"
-            f"p=subprocess.Popen([sys.executable,'-c',{grandchild!r}],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True);"
-            f"pathlib.Path({str(grandchild_pid_path)!r}).write_text(str(p.pid));"
+            f"subprocess.Popen([sys.executable,'-c',{grandchild!r}],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True);"
             "time.sleep(60)"
         )
         parent = (
@@ -419,16 +428,28 @@ def _assert_late_spawn_cleanup(tmp_path: Path, iterations: int) -> None:
             env=dict(os.environ),
             timeout=5,
         )
-        child_pid, grandchild_pid = (
-            int(child_pid_path.read_text()),
-            int(grandchild_pid_path.read_text()),
+        child_pid = int(child_pid_path.read_text())
+        # A grandchild the cleanup missed still publishes its PID once it runs,
+        # so give a late starter time to show up before trusting "no file".
+        appear_by = time.monotonic() + 1
+        while not grandchild_pid_path.exists() and time.monotonic() < appear_by:
+            time.sleep(0.01)
+        # No file: the cleanup stopped the child before the grandchild started.
+        grandchild_pid = (
+            int(grandchild_pid_path.read_text())
+            if grandchild_pid_path.exists()
+            else None
         )
+
+        def _live(pid: int | None) -> bool:
+            return pid is not None and pid_is_live(pid)
+
         deadline = time.monotonic() + 2
         while time.monotonic() < deadline and (
-            pid_is_live(child_pid) or pid_is_live(grandchild_pid)
+            _live(child_pid) or _live(grandchild_pid)
         ):
             time.sleep(0.01)
-        observed.append((rc, pid_is_live(child_pid), pid_is_live(grandchild_pid)))
+        observed.append((rc, _live(child_pid), _live(grandchild_pid)))
     assert observed == [(0, False, False)] * iterations
 
 

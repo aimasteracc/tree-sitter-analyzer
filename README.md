@@ -44,6 +44,16 @@ claude mcp add tree-sitter-analyzer --scope project \
   -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
 ```
 
+**Guided alternative** (project-scoped, never writes to your home directory):
+
+```bash
+uvx --from tree-sitter-analyzer tree-sitter-analyzer setup                # dry run: lists the exact files it would change
+uvx --from tree-sitter-analyzer tree-sitter-analyzer setup --setup-yes    # apply: .mcp.json + .claude/skills, warm index, print overview
+# options: --setup-agents claude-code,cursor,vscode   --setup-no-index
+```
+
+Idempotent; an existing `tree-sitter-analyzer` entry is never overwritten, malformed config files are left untouched, and no network access is used.
+
 Build the index once: `uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer --project-root "$PWD" --full-index`.
 Restart your agent, then say: *"Run the `index` tool with action=status."* — expect `indexed: true`
 CLI equivalent (no agent needed): `uvx --from tree-sitter-analyzer tree-sitter-analyzer --codegraph-status`
@@ -173,7 +183,7 @@ TSA ships curated workflows under `.claude/skills/tsa-*/`:
 
 Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 8 tools on every question.
 
-### 367 CLI flags
+### 374 CLI flags
 
 Highlights:
 

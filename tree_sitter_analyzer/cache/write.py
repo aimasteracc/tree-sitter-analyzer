@@ -710,6 +710,10 @@ def write_graph_edges_for_file(
         receiver_hint = edge.get("receiver_hint")
         if receiver_hint is not None:
             edge_metadata["receiver_hint"] = receiver_hint
+        kotlin_scope = edge.get("kotlin_scope")
+        if kotlin_scope is not None:
+            # #1926：Kotlin 裸调用可用的隐式接收者（构图按它决定是否按 this 绑定）。
+            edge_metadata["kotlin_scope"] = kotlin_scope
         edges.append(
             Edge(
                 source,

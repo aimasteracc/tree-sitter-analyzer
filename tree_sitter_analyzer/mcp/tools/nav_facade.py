@@ -49,8 +49,10 @@ from ... import read_existing_access as read_access
 from ...call_graph_binding import RefIdentity, ref_identity
 from ...constants import JS_TS_MODULE_EXTS
 from ...module_scope_caller import is_module_caller
+from . import callers_compact, callers_confidence
 from .facade_tool import FacadeTool
 from .nav_facade_help import (
+    CALLERS_POINT_KEYS,
     CONTEXT_KEYS,
     GRAPH_RELATION_KEYS,
     POINT_RELATION_KEYS,
@@ -186,6 +188,17 @@ def _is_collectible_caller(file_path: str, name: str, language: str = "") -> boo
     return True
 
 
+def _callers_arg_error(
+    answer_format: Any, include_unconfirmed: Any, order: Any
+) -> dict[str, Any] | None:
+    """#1853 / #1854: the first invalid presentation argument of action=callers."""
+    return (
+        callers_compact.invalid_format(answer_format)
+        or callers_compact.invalid_include_unconfirmed(include_unconfirmed)
+        or (None if order is None else callers_confidence.invalid_order(order))
+    )
+
+
 def _test_map_next_step(
     test_files: list[str],
     *,
@@ -271,7 +284,16 @@ _NAV_DESCRIPTION = (
     "source_generation, output_format.\n"
     "- action=callers — who calls a function (codegraph_callers equivalent).\n"
     "  scope=point (default) → direct 1-hop callers (fast). "
-    "Params: function_name/symbol (required), file_path, include_bodies, output_format.\n"
+    "Params: function_name/symbol (required), file_path, include_bodies, output_format, "
+    "format (verbose|compact). format=compact → one line per caller "
+    "(name  file:line  resolution_kind) + one verdict line "
+    "(complete | incomplete (reasons) | unknown (reasons)), same RFC-0040 verdict "
+    "as the full answer, ~20x fewer tokens (median). Each caller has "
+    "confidence_tier (proven|registration|inferred|unconfirmed_receiver); "
+    "order=confidence puts proven first; compact folds unconfirmed_receiver into "
+    "a count (include_unconfirmed=true lists them). unknown + "
+    "open_sites.enumerated=true: those k sites are all that block complete; "
+    "read them instead of grepping.\n"
     "  scope=graph → full call-graph traversal (callers mode). "
     "Params: function_name/symbol (required), file_path, depth, output_format.\n"
     "  Best for ONE hop. If the next question is about those callers (their "
@@ -316,6 +338,59 @@ _NAV_DESCRIPTION = (
     "in one call. Params: targets (required array of {file, symbol}), format "
     "(skeletal|compact), token_budget_per_symbol, max_symbols."
 )
+
+
+def _index_generation_id(project_root: str | None) -> str:
+    """活动索引世代 id；读不到返回空串（此时不提供 304 语义）。"""
+    if not project_root:
+        return ""
+    try:
+        from ...cache.generation_routing import resolve_index_location
+
+        selector = resolve_index_location(str(project_root)).selector
+        return str(getattr(selector, "generation_id", "") or "")
+    except Exception:  # noqa: BLE001 — 读不到就不承诺 unchanged
+        return ""
+
+
+def _relation_delta(previous: Any, current: list[str]) -> dict[str, Any] | None:
+    """两个「file::name」列表的差集；``previous`` 不是列表时返回 None。
+
+    #1746 同源做法：增量只描述差集，调用方负责把截断状态一起呈现。
+    """
+    if not isinstance(previous, list):
+        return None
+    before = {str(entry) for entry in previous if isinstance(entry, str)}
+    after = {str(entry) for entry in current}
+    return {
+        "added": sorted(after - before),
+        "removed": sorted(before - after),
+        "unchanged_count": len(before & after),
+    }
+
+
+def _test_map_etag(result: dict[str, Any], generation: str) -> str:
+    """test_map 答案的指纹（含索引世代：同一世代 + 同一内容才敢说没变）。"""
+    import hashlib
+    import json
+
+    payload = {
+        "symbol": result.get("symbol"),
+        "generation": generation,
+        "test_files": result.get("test_files") or [],
+        "test_functions": result.get("test_functions") or [],
+        "edge_count": result.get("edge_count"),
+        "unique_function_count": result.get("unique_function_count"),
+        "truncated": bool(result.get("truncated", False)),
+        # The whole answer is content: a changed name-only list or absence
+        # certificate must not be reported {unchanged: true}.
+        "name_only_test_functions": result.get("name_only_test_functions") or [],
+        "absence": result.get("absence"),
+    }
+    encoded = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), default=str
+    ).encode()
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
 def build_nav_facade(project_root: str | None = None) -> FacadeTool:
@@ -384,8 +459,24 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         return await context_inner.execute(context_args)
 
     async def _callers_route(args: dict[str, Any]) -> Any:
-        """R4: scope=point → direct callers; scope=graph → call-graph traversal."""
+        """R4: scope=point → direct callers; scope=graph → call-graph traversal.
+
+        #1853: ``format=compact`` projects the full scope=point answer to one
+        line per caller plus one verdict line; the default stays the full answer.
+        #1854: compact asks for ``order=confidence`` and folds unconfirmed-receiver
+        callers unless ``include_unconfirmed`` is true.
+        """
         scope = args.pop("scope", "point")
+        answer_format = args.pop("format", callers_compact.VERBOSE_FORMAT)
+        include_unconfirmed = args.pop(callers_compact.INCLUDE_UNCONFIRMED, False)
+        arg_error = _callers_arg_error(
+            answer_format, include_unconfirmed, args.get("order")
+        )
+        if arg_error is not None:
+            return arg_error
+        compact = answer_format == callers_compact.COMPACT_FORMAT
+        if scope == "graph" and compact:
+            return callers_compact.compact_scope_error()
         if scope == "graph":
             # Inject mode=callers for the call-graph inner; project to its schema.
             graph_args = {k: v for k, v in args.items() if k in GRAPH_RELATION_KEYS}
@@ -393,14 +484,25 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
             return await callers_graph.execute(graph_args)
         # scope=point (default): use the dedicated callers tool.
         # limit is forwarded so callers=point honours the budget cap.
-        point_args = {k: v for k, v in args.items() if k in POINT_RELATION_KEYS}
+        point_args = {k: v for k, v in args.items() if k in CALLERS_POINT_KEYS}
+        if compact:
+            # Bodies never reach a compact answer; skip reading them unless asked.
+            point_args.setdefault("include_bodies", False)
+            # The limit cut keeps the most confident callers on the page.
+            point_args.setdefault("order", callers_confidence.ORDER_CONFIDENCE)
         symbol = point_args.get("function_name")
         source = follow_ups.source_of(symbol)
         result = await callers_point.execute(point_args)
         follow_ups.record(symbol, result)
-        return append_next_step(
-            result, hint_after_callers(source) if source is not None else None
-        )
+        hint = hint_after_callers(source) if source is not None else None
+        if compact:
+            return callers_compact.with_hint(
+                callers_compact.compact_callers(
+                    result, include_unconfirmed=include_unconfirmed
+                ),
+                hint,
+            )
+        return append_next_step(result, hint)
 
     async def _callees_route(args: dict[str, Any]) -> Any:
         """R4: scope=point → direct callees; scope=graph → call-graph traversal."""
@@ -430,6 +532,21 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
         """
         symbol: str | None = args.get("symbol") or args.get("function_name")
         file_path: str | None = args.get("file_path")
+        requested_etag = str(args.get("if_none_match") or "").strip()
+        previous_entries = args.get("previous_entries")
+        if isinstance(previous_entries, str):
+            from ..utils.format_helper import apply_output_format_to_response
+
+            return apply_output_format_to_response(
+                {
+                    "success": False,
+                    "verdict": "ERROR",
+                    "error_code": "INVALID_ARGUMENT",
+                    "error": "previous_entries must be a JSON array of test entries",
+                    "next_step": "Pass the test_functions array from a previous answer.",
+                },
+                args.get("output_format", "json"),
+            )
 
         if not symbol:
             return {
@@ -564,12 +681,95 @@ def build_nav_facade(project_root: str | None = None) -> FacadeTool:
                 ),
             },
         }
+        # RFC-0044 `untested`, honestly scoped: zero direct test-call edges (plus
+        # one helper hop) and zero name-only candidates. That does NOT prove "no
+        # test exercises it" — a test can reach it through a non-test caller, or
+        # through a call site the graph left unresolved — so it is only `possible`.
+        if (
+            not test_files_sorted
+            and not result["name_only_test_functions"]
+            and total_edge_count == 0
+        ):
+            result["absence"] = {
+                "kind": "untested",
+                "confidence": "possible",
+                "evidence": [
+                    {
+                        "kind": "no_direct_test_caller",
+                        "detail": (
+                            f"{len(targets)} resolved target(s), 0 direct test call "
+                            "edges (one helper hop followed), 0 name-only "
+                            "candidates; indirect coverage through non-test callers "
+                            "and unresolved call sites were not checked"
+                        ),
+                    }
+                ],
+                "next_step": (
+                    "No test calls this symbol directly. It may still be exercised "
+                    "indirectly through its callers: check `nav action=callers` and "
+                    "their tests (or a coverage run) before treating it as untested."
+                ),
+            }
+
         source = follow_ups.source_of(symbol)
         if source is not None:
             result = append_next_step(result, hint_after_test_map(source))
 
         from ..utils.format_helper import apply_output_format_to_response
 
+        generation = _index_generation_id(project_root)
+        result["answer_etag"] = _test_map_etag(result, generation)
+        # A capped list cannot tell a removed test from one beyond the cap: no
+        # delta for a truncated answer — send it in full.
+        delta = (
+            None
+            if result["truncated"]
+            else _relation_delta(previous_entries, result.get("test_functions") or [])
+        )
+        if delta is not None:
+            # 增量只描述差集；截断/去重后的总数必须一并带出，避免把子集当全部。
+            return apply_output_format_to_response(
+                {
+                    "success": True,
+                    "verdict": "INFO",
+                    "symbol": symbol,
+                    "answer_etag": result["answer_etag"],
+                    "truncated": result["truncated"],
+                    "unique_function_count": result["unique_function_count"],
+                    "delta": delta,
+                    "agent_summary": {
+                        "summary_line": (
+                            f"test_map: {symbol!r} delta +{len(delta['added'])} "
+                            f"-{len(delta['removed'])} "
+                            f"={delta['unchanged_count']} unchanged"
+                        ),
+                        "next_step": (
+                            "Apply the added/removed tests; unchanged entries do "
+                            "not need to be re-read."
+                        ),
+                    },
+                },
+                output_format,
+            )
+        if requested_etag and generation and requested_etag == result["answer_etag"]:
+            # 同一索引世代 + 同一内容指纹：答案不可能变，回最小载荷。
+            return apply_output_format_to_response(
+                {
+                    "success": True,
+                    "verdict": "INFO",
+                    "unchanged": True,
+                    "answer_etag": requested_etag,
+                    "symbol": symbol,
+                    "agent_summary": {
+                        "summary_line": f"test_map: {symbol!r} unchanged (etag match)",
+                        "next_step": (
+                            "Reuse the previous answer; the index generation and "
+                            "the tests are unchanged."
+                        ),
+                    },
+                },
+                output_format,
+            )
         return apply_output_format_to_response(result, output_format)
 
     async def _co_change_route(args: dict[str, Any]) -> Any:

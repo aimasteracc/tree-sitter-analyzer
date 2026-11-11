@@ -1,6 +1,6 @@
 ---
 name: tsa-graph
-version: 2.1.0
+version: 2.2.0
 description: |
   Code archaeology via call graph + symbol resolution. Answer "who calls X",
   "what does Y call", "where is Z defined", "what's the path from A to B" in
@@ -76,6 +76,19 @@ Returns: `callers: [{name, file, line, callee_resolution, callee_resolved_file},
 The `callee_resolution` field tells you `local` / `project` / `stdlib` /
 `unknown` so you can filter out noise.
 
+Reading a non-`complete` answer (do this before falling back to grep):
+
+- `incomplete` with a `resolution_kind: "registration"` entry (`via:
+  "@app.get(...)"`): the decorator registers the function with a framework.
+  That is a known use; the framework-side callers cannot be listed.
+- `unknown` with `open_sites.enumerated: true`: the `open_sites.total` sites in
+  the `open_sites.fields` lists are all that block `complete`. Read those k
+  sites (compact: the `open:` line). If none calls the target or passes it on,
+  nothing else in the indexed project does, so do not grep.
+- `unknown` with `open_sites.enumerated: false`: the bound is not exhaustive
+  (`SITES_TRUNCATED` / `NO_SITE_LIST`); follow `next_step`, and treat 0 callers
+  as "not known", not "none".
+
 ### Multi-hop case: one `uql` call, not one call per caller
 
 If the answer to the first call would make you call `nav` again **for each
@@ -149,6 +162,46 @@ uv run tree-sitter-analyzer --codegraph-xref <SYMBOL> --output-format toon
 uv run tree-sitter-analyzer --call-path --call-path-source X --call-path-target Y
 uv run tree-sitter-analyzer --uml class --output-format toon
 ```
+
+## Cheap re-asking — the incremental primitives (v3.2)
+
+An agent asks the same "who calls X" many times per task. Do not re-read a full
+15 KB list every turn; use the answer's own identity:
+
+- Responses carry `answer_etag` (`sha256:…`). Ask again with
+  `if_none_match=<etag>` (MCP) / `--if-none-match <etag>` (CLI): a match returns
+  `{success: true, unchanged: true, answer_etag}` (~400 B) instead of the list.
+  A stale scope is never reported unchanged — the full answer comes back.
+- Hold the previous `callers[]` and ask with `previous_entries=[…]`
+  (`--previous-entries-json` on the CLI): you get
+  `{delta: {added, removed, unchanged_count}}` plus the same `completeness`
+  evidence, so only new/removed callers need re-reading.
+- A zero-caller answer that is `complete` (and not stale) carries `absence`
+  (`kind: unreferenced | entry_point`, `confidence: proven`, `evidence`). Treat
+  it as a fact; do not grep to double-check. `entry_point` means a
+  `[project.scripts]` / `[tool.poetry.scripts]` entry names exactly this module
+  file and function. A shebang or a `__main__.py` file proves nothing about one
+  function in it (a function such a file really runs has a `<module>` caller).
+- Before spending a call, ask `--capabilities nav.callers` (CLI) or
+  `nav action=help`: it reports the tier (instant/indexed) and whether the index
+  precondition is met right now.
+- The same protocol works for `nav action=callees`, `nav action=test_map` and
+  `search action=uql` (UQL's fingerprint includes the index generation, so a
+  re-index always invalidates it).
+- `expires_when: {files, index_generation, reusable_without_reask, rule}` says
+  whether an answer may be reused **without asking at all**. `files` are the
+  answer's own inputs, not its whole scope: a new call added in any *other*
+  file adds a caller. So reuse without re-asking only when
+  `reusable_without_reask` is `true` — the index generation is known — and
+  then only while that generation is unchanged AND the listed files are
+  unchanged. When `index_generation` is `null` (or the answer is stale),
+  `reusable_without_reask` is `false`: re-ask, cheaply, with `if_none_match`.
+- `absence` has two proven kinds — `unreferenced`, `entry_point` — and two
+  `possible` ones: `untested` (`test_map`: no *direct* test caller; indirect
+  coverage through callers is not checked) and the honest downgrade `unknown`
+  with the open sites named. `entry_point` is an *identification* (entered
+  from a console script) and can appear even when the caller list is not fully
+  proven — `identification_only: true` says which case it is.
 
 ## Anti-patterns
 

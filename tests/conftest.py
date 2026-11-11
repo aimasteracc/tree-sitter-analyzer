@@ -20,7 +20,11 @@ from hypothesis import settings as hypothesis_settings  # noqa: E402
 from tests import (  # noqa: E402
     pytest_crash_guard,
     pytest_hang_watchdog,
+    pytest_shard,
     pytest_tool_response_guard,
+)
+from tests.hypothesis_local_constants import (  # noqa: E402
+    disable_local_constants,
 )
 from tests.pytest_temp_hygiene import (  # noqa: E402
     cleanup_pytest_temp_root,
@@ -49,6 +53,9 @@ hypothesis_settings.register_profile(
     "tree_sitter_analyzer", deadline=None, database=None
 )
 hypothesis_settings.load_profile("tree_sitter_analyzer")
+# Cost-determinism fix: stop Hypothesis AST-scanning every imported project
+# module on the first string draw (see tests/hypothesis_local_constants.py).
+disable_local_constants()
 
 
 def _cleanup_pytest_git_repos() -> None:
@@ -59,7 +66,21 @@ def _cleanup_pytest_git_repos() -> None:
 
 
 def pytest_xdist_auto_num_workers(config) -> int:
-    """Cap automatic xdist worker sizing on Windows."""
+    """Size ``-n auto``: ``PYTEST_XDIST_AUTO_NUM_WORKERS`` wins, then the defaults.
+
+    This hook replaces xdist's own sizing, which is what reads the variable, so
+    it must honour it itself. Without that, CI's ``PYTEST_XDIST_AUTO_NUM_WORKERS:
+    "4"`` and the documented ``=1`` / ``=2`` local settings were ignored off
+    Windows, and ``-n auto`` followed ``os.cpu_count()`` (3 or 5 on macos-latest).
+    """
+    configured = os.environ.get("PYTEST_XDIST_AUTO_NUM_WORKERS", "").strip()
+    if configured:
+        try:
+            return max(1, int(configured))
+        except ValueError:
+            raise pytest.UsageError(
+                f"PYTEST_XDIST_AUTO_NUM_WORKERS must be an integer, got {configured!r}"
+            ) from None
     if sys.platform == "win32":
         return 4
     return os.cpu_count() or 4
@@ -67,12 +88,14 @@ def pytest_xdist_auto_num_workers(config) -> int:
 
 def pytest_addoption(parser):
     pytest_hang_watchdog.add_options(parser)
+    pytest_shard.add_options(parser)
 
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config):
     """Configure pytest with custom markers and safety checks."""
     configure_pytest_temp_root(config)
+    pytest_shard.validate(config)
     # #1675: the tools/list definition cache writes under the user's home; the
     # suite builds definitions live unless a test opts in with its own dir.
     os.environ.setdefault("TSA_TOOL_DEFINITION_CACHE_DIR", "off")
@@ -149,7 +172,8 @@ def pytest_configure(config):
 
 
 def pytest_collection_modifyitems(config, items):
-    """只对已登记的不稳定测试禁用重跑。"""
+    """按 --shard 选择本分片 (#1910)；只对已登记的不稳定测试禁用重跑。"""
+    pytest_shard.apply(config, items)
     for item in items:
         if "quarantine" in item.keywords:
             item.add_marker(pytest.mark.flaky(reruns=0, reruns_delay=0))
@@ -427,10 +451,40 @@ def _reset_all_singletons():
             "clear",
             lambda fn: fn(),
         ),
+        # RFC-0042 P2b：边层检查读取按认证快照身份记忆在进程内；每个测试如同新进程。
+        (
+            "tree_sitter_analyzer.resident.snapshot_memo",
+            "clear",
+            lambda fn: fn(),
+        ),
+        # RFC-0043：解析派生事实按内容摘要记忆在进程内（默认开启）；每个测试如同新进程。
+        (
+            "tree_sitter_analyzer.resident.parse_facts",
+            "clear",
+            lambda fn: fn(),
+        ),
+        (
+            "tree_sitter_analyzer.mcp.tools.callers_external_producers",
+            "clear_shapes",
+            lambda fn: fn(),
+        ),
         # #1708：调用 MCP 服务器 main() 的测试会启用发布后预构图；每个测试从关闭开始。
         (
             "tree_sitter_analyzer.call_graph_warm",
             "disable",
+            lambda fn: fn(),
+        ),
+        # RFC-0042：调用 main() 的测试同样会启用常驻加载；每个测试从关闭开始，
+        # 否则之后的服务器测试会在后台为临时项目捕获快照、构图。
+        (
+            "tree_sitter_analyzer.resident.loader",
+            "reset",
+            lambda fn: fn(),
+        ),
+        # RFC-0042 P2a：常驻句柄按项目根留在进程内；每个测试如同新进程。
+        (
+            "tree_sitter_analyzer.resident.handle",
+            "reset",
             lambda fn: fn(),
         ),
     ]

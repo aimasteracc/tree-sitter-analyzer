@@ -24,6 +24,12 @@ from ...dead_code_analyzer import (
 from ...utils import setup_logger
 from ._validators import invalid_enum_error
 from .base_tool import BaseMCPTool
+from .dead_code_certify import (
+    STATUS_CERTIFIED,
+    certify_transitive,
+    query_name,
+    uncertified_entry,
+)
 
 logger = setup_logger(__name__)
 
@@ -147,6 +153,7 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
         # cross-file reachability stays whole-project but the *reported* items
         # are limited to definitions under ``path``. Applied before any total
         # is computed so every count reflects the scoped set.
+        all_dead = list(result.dead_functions)
         if path is not None:
             result.dead_functions = [
                 df
@@ -159,6 +166,15 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
             result.unreferenced_variables = [
                 uv for uv in result.unreferenced_variables if _under_path(uv.file, path)
             ]
+
+        # #1941: a transitive candidate is listed only when nav action=callers
+        # certifies it (complete, every caller dead too, no outside supertype).
+        candidates_total = len(result.dead_functions)
+        cert_section: dict[str, Any] = {}
+        if mode in ("all", "dead_functions"):
+            result.dead_functions, cert_section = await _certified(
+                self.project_root, result.dead_functions, all_dead, max_dead
+            )
 
         # Totals BEFORE the display cap — used for truncation signals.
         total_dead_funcs = len(result.dead_functions)
@@ -200,7 +216,11 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
             # (zero-caller roots PLUS functions only reachable from them,
             # reason=unreachable_from_entry) — not pure zero-caller orphans.
             "total_dead_functions_transitive": total_dead_funcs,
-            "candidates_after_filters": total_dead_funcs,  # filter = transitive reachability
+            # filter = transitive reachability; #1941: listed = certified ones.
+            "candidates_after_filters": candidates_total,
+            "dead_functions_status": STATUS_CERTIFIED,
+            "dead_functions_not_certified": cert_section.get("not_certified", 0),
+            "dead_functions_unchecked": cert_section.get("unchecked", 0),
             "dead_functions_listed": listed_dead,
             "dead_functions_cap": max_dead,
             "dead_functions_high_confidence": total_dead_funcs - low_confidence_dead,
@@ -260,6 +280,15 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
                     "cross-file uses may be missing, so do not delete them on "
                     "this evidence alone."
                 )
+        not_certified = cert_section.get("not_certified", 0)
+        unchecked_dead = cert_section.get("unchecked", 0)
+        if dead_visible and (not_certified or unchecked_dead):
+            next_step += (
+                f" {not_certified} candidate(s) are not certified dead "
+                "(possibly_dead_functions names the open callers evidence or the "
+                f"outside supertype for each) and {unchecked_dead} were not checked "
+                "in the time budget; neither is listed in dead_functions."
+            )
 
         response: dict[str, Any] = {
             "success": True,
@@ -270,6 +299,8 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
             "truncated": any_truncated,
             "next_step": next_step,
             "dead_functions": [_serialize_dead_function(df) for df in dead_funcs],
+            # #1941: candidates the callers evidence does not certify, and why.
+            "possibly_dead_functions": cert_section.get("possibly_dead", []),
             "unused_imports": [_serialize_unused_import(ui) for ui in unused_imports],
             "unreferenced_variables": [_serialize_unref_var(uv) for uv in unref_vars],
         }
@@ -281,13 +312,50 @@ class CodeGraphDeadCodeTool(BaseMCPTool):
                 "variables": ["unreferenced_variables"],
             }
             keep = sections_to_keep.get(mode, [])
-            for key in ("dead_functions", "unused_imports", "unreferenced_variables"):
+            if "dead_functions" in keep:
+                keep = [*keep, "possibly_dead_functions"]
+            for key in (
+                "dead_functions",
+                "possibly_dead_functions",
+                "unused_imports",
+                "unreferenced_variables",
+            ):
                 if key not in keep:
                     response.pop(key, None)
 
         from ..utils.format_helper import apply_output_format_to_response
 
         return apply_output_format_to_response(response, output_format)
+
+
+async def _certified(
+    project_root: str,
+    scoped: list[DeadFunction],
+    all_dead: list[DeadFunction],
+    cap: int,
+) -> tuple[list[DeadFunction], dict[str, Any]]:
+    """#1941: the ``scoped`` candidates that the callers evidence certifies dead.
+
+    Every candidate of the project is asked (the scoped ones first), because a
+    scoped function called only from an out-of-scope candidate is dead only if
+    that caller is. Candidates the budget left unasked are never listed.
+    """
+    scoped_funcs = [df.function for df in scoped]
+    dead, cert = await certify_transitive(
+        project_root, scoped_funcs, [df.function for df in all_dead]
+    )
+    not_certified = [
+        uncertified_entry(func, cert, dead)
+        for func in scoped_funcs
+        if func in cert.verdicts and func not in dead
+    ]
+    section = {
+        "possibly_dead": not_certified[:cap],
+        "not_certified": len(not_certified),
+        "unchecked": sum(1 for func in scoped_funcs if func not in cert.verdicts),
+        "elapsed_seconds": cert.elapsed_seconds,
+    }
+    return [df for df in scoped if df.function in dead], section
 
 
 def _under_path(file_path: str, path: str) -> bool:
@@ -313,6 +381,7 @@ def _under_path(file_path: str, path: str) -> bool:
 def _serialize_dead_function(df: DeadFunction) -> dict[str, Any]:
     return {
         "name": df.function.name,
+        "qualified_name": query_name(df.function),
         "file": df.function.file_path,
         "line": df.function.start_line,
         "end_line": df.function.end_line,

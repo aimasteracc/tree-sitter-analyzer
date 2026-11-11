@@ -20,6 +20,9 @@ import sqlite3
 from collections.abc import Callable, Collection, Iterable
 from typing import Any
 
+from . import snapshot_tables
+from .read_interrupt import raise_if_interrupted
+
 #: ES 模块语言（与 ``languages_compatible`` 的 JS/TS 家族一致）。
 ES_LANGUAGES = frozenset({"javascript", "jsx", "typescript", "tsx"})
 
@@ -49,7 +52,9 @@ def imported_unresolved_rows(
         if _language(conn, callee_file) not in ES_LANGUAGES:
             return []
         rows = conn.execute(_ROWS_SQL, (callee_name,)).fetchall()
-    except sqlite3.Error:
+    except sqlite3.Error as exc:
+        # #1873: an interrupted read was not read; `[]` would count as 0 sites.
+        raise_if_interrupted(exc)
         return []
     out: list[Any] = []
     imported: dict[tuple[str, str], bool] = {}
@@ -76,7 +81,29 @@ def imported_unresolved_rows(
 #: #1768：直接导入 ``callee_file`` 的文件里，以另一个本地名导入的绑定（改名的默认导入
 #: ``import makeSig from './jws'``、``import { signer as s }``）。对它们未解析的裸调用
 #: 可能就是 ``callee_file`` 默认导出 / 改名导出的那个函数。
+#:
+#: RFC-0042 P3-lite: the query plan. Written as ``SELECT DISTINCT … FROM edges m
+#: JOIN ast_imports i``, SQLite drove the join from ``ast_imports`` through
+#: ``idx_imp_star`` (every non-star import) and searched each import's file for
+#: the module edge: about 50 ms per call on hono (2,117 imports). ``CROSS JOIN``
+#: starts from the few module edges into ``callee_file`` (``idx_edges_resolved``)
+#: and ``+i.is_star`` keeps the import side on ``idx_imp_file``: about 0.1 ms.
+#: The old statement had no ``ORDER BY``; its rows came in the order of that
+#: plan, which is ``ast_imports`` rowid order (the ``idx_imp_star`` entries for
+#: ``is_star = 0``), each distinct binding at its first matching import row.
+#: ``GROUP BY`` over the same three columns with ``ORDER BY MIN(i.rowid)`` is
+#: that set in that order (``DISTINCT`` and ``GROUP BY`` treat NULLs alike).
+#: Proven against the old statement on every (file, name) pair of real indexes:
+#: ``tests/integration/test_snapshot_tables_p3_lite.py``.
 _RENAMED_SQL = (
+    "SELECT i.file_path, i.local_name, i.alias_of FROM edges m CROSS JOIN ast_imports i "
+    "ON i.file_path = m.file_path AND m.target_node_id = 'module:' || i.module_path "
+    "WHERE m.kind = 'imports' AND m.callee_resolved_file = ? AND +i.is_star = 0 "
+    "AND i.local_name <> '' AND i.local_name <> ? "
+    "GROUP BY i.file_path, i.local_name, i.alias_of ORDER BY MIN(i.rowid)"
+)
+#: The statement before P3-lite (the differential tests' oracle; not used here).
+_RENAMED_SQL_PER_IMPORT = (
     "SELECT DISTINCT i.file_path, i.local_name, i.alias_of FROM edges m JOIN ast_imports i "
     "ON i.file_path = m.file_path AND m.target_node_id = 'module:' || i.module_path "
     "WHERE m.kind = 'imports' AND m.callee_resolved_file = ? AND i.is_star = 0 "
@@ -94,7 +121,8 @@ def _renamed_import_rows(
     """经改名导入调用、且没能解析的裸调用行（解析器绑定了的经 ``import_alias`` 可见）。"""
     try:
         bindings = conn.execute(_RENAMED_SQL, (callee_file, callee_name)).fetchall()
-    except sqlite3.Error:
+    except sqlite3.Error as exc:
+        raise_if_interrupted(exc)
         return []
     exports: dict[str, Any] | None = None
     defined: set[str] = set()
@@ -103,7 +131,8 @@ def _renamed_import_rows(
         try:
             exports = _export_shape(conn, callee_file)
             defined = _definitions(conn, callee_file)
-        except sqlite3.Error:
+        except sqlite3.Error as exc:
+            raise_if_interrupted(exc)
             exports = None  # 读不到导出表：每个改名绑定都保留。
     try:
         return [
@@ -119,7 +148,8 @@ def _renamed_import_rows(
             )
             for row in conn.execute(_LOCAL_CALLS_SQL, (local, file_path)).fetchall()
         ]
-    except sqlite3.Error:
+    except sqlite3.Error as exc:
+        raise_if_interrupted(exc)
         return []
 
 
@@ -198,14 +228,48 @@ def _binding_form(
 
 
 def _import_statements(conn: sqlite3.Connection, file_path: str) -> list[str]:
-    """``file_path`` 的导入语句文本；读不到为空（形态未知，两种都算）。"""
+    """``file_path`` 的导入语句文本；读不到为空（形态未知，两种都算）。
+
+    RFC-0042 P3-lite: one ``symbols_json`` decode per importing file and
+    snapshot (a declaring file such as hono's ``context.ts`` has 72 importing
+    files, each decoded on every ask). Only a successful read is kept; a
+    failed one is ``[]`` for this call alone, as before.
+    """
     try:
-        row = conn.execute(
-            "SELECT symbols_json FROM ast_index WHERE file_path = ?", (file_path,)
-        ).fetchone()
-        symbols = (json.loads(row[0] or "{}").get("symbols") or []) if row else []
-    except (sqlite3.Error, TypeError, ValueError, AttributeError):
+        texts = snapshot_tables.table(
+            conn,
+            f"import_statements:{file_path}",
+            lambda: _read_import_texts(conn, file_path),
+        )
+        if texts is None:
+            texts = _read_import_texts(conn, file_path)
+    except (sqlite3.Error, TypeError, ValueError, AttributeError) as exc:
+        raise_if_interrupted(exc)
         return []
+    if not isinstance(texts, tuple):
+        # Not iterable: the TypeError escapes, outside the ``try``, as it always did.
+        return _texts(texts)
+    return list(texts)
+
+
+def _read_import_texts(conn: sqlite3.Connection, file_path: str) -> Any:
+    """The import texts as a tuple; read errors propagate.
+
+    A ``symbols`` value that cannot be iterated is returned as is, so that
+    :func:`_import_statements` raises its ``TypeError`` where it always did.
+    """
+    row = conn.execute(
+        "SELECT symbols_json FROM ast_index WHERE file_path = ?", (file_path,)
+    ).fetchone()
+    symbols = (json.loads(row[0] or "{}").get("symbols") or []) if row else []
+    try:
+        iter(symbols)
+    except TypeError:
+        return symbols
+    return tuple(_texts(symbols))
+
+
+def _texts(symbols: Any) -> list[str]:
     return [
         str(s.get("text") or "")
         for s in symbols
@@ -244,7 +308,8 @@ def _head(callee_full: str) -> str:
 def _imports(conn: sqlite3.Connection, file_path: str, local: str) -> bool:
     try:
         return conn.execute(_IMPORTED_SQL, (file_path, local)).fetchone() is not None
-    except sqlite3.Error:
+    except sqlite3.Error as exc:
+        raise_if_interrupted(exc)
         return True  # 读不到导入表：保守地保留调用点。
 
 
@@ -258,6 +323,10 @@ def _value(row: Any, key: str) -> Any:
         return row[key]
     except (IndexError, KeyError):
         return None
+
+
+def prefill(conn: sqlite3.Connection) -> None:
+    """Build this module's per-snapshot tables now (the resident loader; no-op unbound)."""
 
 
 def row_ids(rows: Iterable[Any]) -> set[int]:

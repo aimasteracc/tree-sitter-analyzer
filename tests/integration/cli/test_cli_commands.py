@@ -7,6 +7,7 @@ Merged from test_cli.py and test_cli_commands_coverage.py.
 """
 
 import contextlib
+import json
 import sys
 import tempfile
 from io import StringIO
@@ -122,13 +123,78 @@ class TestCLIInfoCommands:
         """Test CLI with no arguments"""
         monkeypatch.setattr(sys, "argv", ["cli"])
         mock_stderr = StringIO()
+        mock_stdout = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
+        monkeypatch.setattr("sys.stdout", mock_stdout)
 
         with contextlib.suppress(SystemExit):
             main()
 
         error_output = mock_stderr.getvalue()
-        assert error_output == "ERROR: File path not specified.\n"
+        # dogfood 2026-11-09（docs/dev/dogfood-trust-2026-11-09.md P2-1）：分派失败的
+        # usage 曾打到 stdout，违反 CLAUDE.md §3；现在错误与 usage 都在 stderr，
+        # stdout 必须为空，否则 `--format json | jq` 会解析失败。
+        assert error_output.startswith("ERROR: File path not specified.\n")
+        assert "usage:" in error_output
+        assert mock_stdout.getvalue() == ""
+
+    def test_invalid_project_root_json_envelope(self, monkeypatch):
+        """dogfood 2026-11-09 P0-1：坏 --project-root 不得降级成 NOT_FOUND。"""
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "cli",
+                "--project-root",
+                "/no/such/dir/zzz",
+                "--callers",
+                "main",
+                "--format",
+                "json",
+            ],
+        )
+        mock_stdout = StringIO()
+        mock_stderr = StringIO()
+        monkeypatch.setattr("sys.stdout", mock_stdout)
+        monkeypatch.setattr("sys.stderr", mock_stderr)
+
+        with contextlib.suppress(SystemExit):
+            main()
+
+        payload = json.loads(mock_stdout.getvalue())
+        assert (
+            payload["success"],
+            payload["verdict"],
+            payload["error_code"],
+        ) == (False, "ERROR", "INVALID_PROJECT_ROOT")
+        assert "caller_count" not in payload
+        assert mock_stderr.getvalue() == ""
+
+    def test_invalid_project_root_text_mode_uses_stderr(self, monkeypatch):
+        """--output-format text 下诊断走 stderr，stdout 保持为空。"""
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "cli",
+                "--output-format",
+                "text",
+                "--project-root",
+                "/no/such/dir/zzz",
+                "--callers",
+                "main",
+            ],
+        )
+        mock_stdout = StringIO()
+        mock_stderr = StringIO()
+        monkeypatch.setattr("sys.stdout", mock_stdout)
+        monkeypatch.setattr("sys.stderr", mock_stderr)
+
+        with contextlib.suppress(SystemExit):
+            main()
+
+        assert mock_stdout.getvalue() == ""
+        assert "not a directory" in mock_stderr.getvalue()
 
 
 class TestCLIQueryCommands:
@@ -418,7 +484,9 @@ class TestCLIErrorHandling:
         """Test handling of nonexistent files"""
         nonexistent_path = "/path/that/does/not/exist.java"
         monkeypatch.setattr(
-            sys, "argv", ["cli", nonexistent_path, "--project-root", "/tmp"]
+            sys,
+            "argv",
+            ["cli", nonexistent_path, "--project-root", tempfile.gettempdir()],
         )
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
@@ -489,3 +557,27 @@ class TestTableCommandCoverage:
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+class TestAgentSummaryOnlyScope:
+    """dogfood 2026-11-09 P2-5：这个 flag 只对 --change-impact 生效。"""
+
+    def test_agent_summary_only_without_change_impact_is_rejected(
+        self, monkeypatch
+    ) -> None:
+        monkeypatch.setattr(
+            sys, "argv", ["cli", "--callers", "main", "--agent-summary-only"]
+        )
+        mock_stdout = StringIO()
+        mock_stderr = StringIO()
+        monkeypatch.setattr("sys.stdout", mock_stdout)
+        monkeypatch.setattr("sys.stderr", mock_stderr)
+
+        with pytest.raises(SystemExit) as excinfo:
+            main()
+
+        assert excinfo.value.code == 2
+        assert "--agent-summary-only requires --change-impact" in (
+            mock_stderr.getvalue()
+        )
+        assert mock_stdout.getvalue() == ""

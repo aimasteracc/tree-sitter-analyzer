@@ -614,3 +614,20 @@ class TestHandleSpecialCommands(
     """Tests for handle_special_commands() covering all branches."""
 
     __test__ = True
+
+
+def test_filter_help_success_exits_zero(monkeypatch) -> None:
+    """filter_help 处理成功时是干净的 exit 0，不进入任何错误分支。"""
+    import argparse
+
+    import pytest as _pytest
+
+    from tree_sitter_analyzer.cli_main import _execute_selected_command
+
+    args = argparse.Namespace(filter_help=True, file_path=None)
+    parser = argparse.ArgumentParser()
+
+    with _pytest.raises(SystemExit) as excinfo:
+        _execute_selected_command(args, parser)
+
+    assert excinfo.value.code == 0

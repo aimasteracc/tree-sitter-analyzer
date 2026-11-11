@@ -17,6 +17,13 @@ import weakref
 import pytest
 
 
+def _without_reseal(monkeypatch) -> None:
+    """#1902: keep the typed busy path under test; POSIX would seal a byte copy."""
+    from tree_sitter_analyzer.cache import generation_store
+
+    monkeypatch.setattr(generation_store, "reseal_supported", lambda: False)
+
+
 class _Tracker:
     def __init__(self) -> None:
         self.opened: list[tuple[weakref.ref[sqlite3.Connection], str, str, str]] = []
@@ -235,6 +242,7 @@ def test_seal_still_held_after_the_wait_is_a_typed_busy_error(tmp_path, monkeypa
     holders: list[sqlite3.Connection] = []
     _hold_build_database(monkeypatch, holders)
     monkeypatch.setattr(generation_seal, "SEAL_BUSY_TIMEOUT_S", 0.05)
+    _without_reseal(monkeypatch)
     cache = ASTCache(str(tmp_path))
     try:
         with pytest.raises(generation_seal.SealBusy) as raised:
@@ -310,6 +318,7 @@ def test_seal_busy_logs_holder_evidence(tmp_path, monkeypatch, caplog):
     holders: list[sqlite3.Connection] = []
     _hold_build_database(monkeypatch, holders)
     monkeypatch.setattr(generation_seal, "SEAL_BUSY_TIMEOUT_S", 0.05)
+    _without_reseal(monkeypatch)
     cache = ASTCache(str(tmp_path))
     try:
         with caplog.at_level("WARNING", logger=generation_seal.__name__):
@@ -344,3 +353,86 @@ def test_seal_does_not_retry_errors_other_than_busy():
 
     with pytest.raises(sqlite3.OperationalError, match="disk I/O error"):
         leave_wal(Broken(), sleep=lambda _s: pytest.fail("must not wait"))
+
+
+class _AlwaysBusy:
+    def execute(self, _sql):
+        raise sqlite3.OperationalError("database is locked")
+
+
+def _fake_clock():
+    now = [0.0]
+
+    def sleep(seconds: float) -> None:
+        now[0] += seconds
+
+    return (lambda: now[0]), sleep
+
+
+@pytest.mark.parametrize("fallback", [True, False])
+def test_seal_fallback_skips_deadline_heap_forensics(monkeypatch, caplog, fallback):
+    # #1909：调用方能改封存副本时，期满不再做数秒 CPU 的堆扫描取证；
+    # 首次证据随 SealBusy 交给调用方。没有出路时照旧完整取证。
+    from tree_sitter_analyzer.cache import generation_seal
+
+    scans: list[str] = []
+    monkeypatch.setattr(
+        generation_seal,
+        "holder_evidence",
+        lambda _db, **_k: scans.append("evidence") or {"n": len(scans)},
+    )
+    monkeypatch.setattr(
+        generation_seal, "sqlite_objects", lambda: scans.append("heap") or []
+    )
+    monkeypatch.setattr(
+        generation_seal,
+        "holder_objects",
+        lambda *_a, **_k: scans.append("objects") or [],
+    )
+    monkeypatch.setattr(
+        generation_seal, "creators", lambda *_a, **_k: scans.append("creators") or []
+    )
+    clock, sleep = _fake_clock()
+    with caplog.at_level("WARNING", logger=generation_seal.__name__):
+        with pytest.raises(generation_seal.SealBusy) as raised:
+            generation_seal.leave_wal(
+                _AlwaysBusy(),
+                database="index.db",
+                timeout=1.0,
+                clock=clock,
+                sleep=sleep,
+                fallback=fallback,
+            )
+    if fallback:
+        assert (scans, raised.value.first_busy, caplog.text) == (
+            ["evidence"],
+            {"n": 1},
+            "",
+        )
+    else:
+        # 期满的三项证据共用一次 SQLite 对象查找。
+        assert scans == ["evidence", "heap", "evidence", "objects", "creators"]
+        assert raised.value.first_busy is None
+        assert "first busy {'n': 1}" in caplog.text
+
+
+def test_a_failing_shared_lookup_still_logs_each_evidence(monkeypatch, caplog):
+    # 共用的查找失败时，各项证据自行查找；封存结果仍是类型化的忙错误。
+    from tree_sitter_analyzer.cache import generation_seal
+
+    def broken():
+        raise RuntimeError("injected lookup failure")
+
+    monkeypatch.setattr(generation_seal, "sqlite_objects", broken)
+    clock, sleep = _fake_clock()
+    with caplog.at_level("WARNING", logger=generation_seal.__name__):
+        with pytest.raises(generation_seal.SealBusy):
+            generation_seal.leave_wal(
+                _AlwaysBusy(),
+                database="index.db",
+                timeout=1.0,
+                clock=clock,
+                sleep=sleep,
+            )
+    assert "open_connections" in caplog.text
+    assert "holders [" in caplog.text

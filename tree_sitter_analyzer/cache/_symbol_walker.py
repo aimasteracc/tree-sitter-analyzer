@@ -30,8 +30,13 @@ from ._symbol_syntax import (
     _find_parent_class,
     _node_text,
     _scala_symbol_from_node,
+    java_superclass,
     jsts_class_expression_name,
+    kotlin_superclass,
 )
+
+#: Languages whose class symbols record the superclass apart from ``parents``.
+_SUPERCLASS_EXTRACTORS = {"java": java_superclass, "kotlin": kotlin_superclass}
 
 _CPP_MODULE_IMPORT_RE = re.compile(
     r"(?m)^[ \t]*(?:export[ \t]+)?import[ \t]+[^;\r\n]+[ \t]*;"
@@ -909,6 +914,11 @@ class _SymbolWalker:
         parents = _extract_parent_classes(node, self.source, self.language)
         if parents:
             symbol["parents"] = parents
+        superclass_of = _SUPERCLASS_EXTRACTORS.get(self.language)
+        if superclass_of is not None:
+            superclass = superclass_of(node, self.source)
+            if superclass:
+                symbol["superclass"] = superclass  # #1880 / #1916
         self._add_python_docstring(symbol, node)
         self.symbols.append(symbol)
 

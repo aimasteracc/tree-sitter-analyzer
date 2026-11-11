@@ -1,0 +1,47 @@
+# CI Runner Re-queue
+#
+# GitHub cancels a queued job when no hosted runner acquires it in time
+# ("The job was not acquired by Runner of type hosted even after multiple
+# attempts"). On macos-latest (arm64) that happened 15-18 minutes after
+# queueing while GitHub reported macOS arm64 capacity constraints: the job
+# ends cancelled with no runner and no steps, and the fail-closed Quality
+# Gate turns the commit red although no test ran or failed.
+#
+# The gate stays fail-closed. This workflow re-runs the failed jobs of such a
+# CI run instead, only when every failure is a stranded job (plus the gate it
+# failed), the run is still the newest for its branch and event, and it is
+# below attempt 3. Decision logic: scripts/ci_runner_requeue.py.
+#
+# workflow_run workflows run from the default branch, so this takes effect
+# once it reaches main.
+
+name: CI Runner Re-queue
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  actions: write
+  checks: read
+  contents: read
+
+jobs:
+  requeue:
+    name: Re-queue runner-stranded CI jobs
+    if: github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.run_attempt < 3
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Trusted default-branch code only; the triggering run's head is never
+      # checked out.
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/ci_runner_requeue.py
+          sparse-checkout-cone-mode: false
+      - name: Re-run failed jobs when only runner acquisition failed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: python3 scripts/ci_runner_requeue.py --repo "$GITHUB_REPOSITORY" --run-id "$RUN_ID"

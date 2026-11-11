@@ -76,6 +76,7 @@ from .index_symbol_projection import (
     sqlite_compile_supports_fts5,
     symbol_projection_is_exact,
 )
+from .resident import handle as resident_handle
 
 ACTION_VERSION = "index.status/v1"
 
@@ -761,14 +762,21 @@ def lease_reusable_snapshot(
 
 
 @contextmanager
-def _lease_certified_query_snapshot(
-    project_root: str, *, deadline: float
-) -> Iterator[IndexSnapshot]:
-    """优先复用已固定的私有数据库；仅在没有能力时重新捕获。"""
+def _pin_certified_reusable(project_root: str) -> Iterator[IndexSnapshot | None]:
+    """固定一个可直接复用的完整能力（同一活动数据库）；没有时为 None。"""
     from .cache.generation_routing import resolve_index_path
 
+    # RFC-0042 P2a：nav callers 请求内，活动库取本请求已按选择器与已封存库 stat
+    # 证据核验过的常驻句柄；其余情况照常解析。
+    handle = resident_handle.current_handle(project_root)
     with REGISTRY.pin_reusable(project_root) as reusable:
-        active_database = os.path.abspath(str(resolve_index_path(project_root)))
+        active_database = os.path.abspath(
+            str(
+                handle.database
+                if handle is not None
+                else resolve_index_path(project_root)
+            )
+        )
         if (
             reusable is not None
             and reusable.snapshot_id is not None
@@ -778,7 +786,31 @@ def _lease_certified_query_snapshot(
             and os.path.abspath(reusable.database_path) == active_database
         ):
             yield reusable
+        else:
+            yield None
+
+
+@contextmanager
+def _lease_certified_query_snapshot(
+    project_root: str, *, deadline: float
+) -> Iterator[IndexSnapshot]:
+    """优先复用已固定的私有数据库；仅在没有能力时重新捕获。
+
+    RFC-0042 P1：常驻加载线程正在捕获同一项目根时，本次捕获本来也要等它持有的
+    捕获锁，然后再捕获一遍同一状态；改为等它结束，按同一复用规则再查一次，
+    仍不可复用才自行捕获。
+    """
+    with _pin_certified_reusable(project_root) as reusable:
+        if reusable is not None:
+            yield reusable
             return
+    from .resident.loader import await_capture
+
+    if await_capture(project_root, deadline - _clock()):
+        with _pin_certified_reusable(project_root) as reusable:
+            if reusable is not None:
+                yield reusable
+                return
     with lease_existing_snapshot(project_root, deadline=deadline) as captured:
         yield captured
 

@@ -2,6 +2,763 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Callers gate: kotlinpoet is the 8th repo, with a Kotlin grep-oracle classifier** (#1933).
+  None of the 7 gate repos was Kotlin, so a later PR could bring back a wrong
+  Kotlin `complete` (#1926, #1930) and the gate stayed green. kotlinpoet
+  (tag 2.4.0) adds 114 Kotlin declarations in bare and qualified mode (228
+  targets; the other 7 repos' targets and keys are unchanged), stratified by
+  kind, with labels for 68 of them in `corpus_data/labels/kotlinpoet.json`.
+  **The labels are AI-drafted and pending human review.** A label may carry
+  `external` (an override of a JDK / library supertype, a JUnit `@Test`
+  method, a `@JvmName` bridge): code outside the project calls it, so every
+  head `complete` for it fails (`label_external_complete`). The grep oracle
+  now classifies Kotlin hits (`oracle_kotlin.py`): every named `fun` is a
+  definition; a bare or `this` call in a class body is `other_symbol` only
+  when every enclosing class is provably unrelated to the target's class and
+  no lambda, anonymous function, extension, companion object, object
+  expression, enum entry, labelled `this@X` or script lies in between (#1926);
+  the own declaration of an `override fun` is residual unless every supertype
+  of its class is a project class and one declares the name (#1930). `.api`
+  dumps are non-code and Kotlin raw strings are strings. Without #1928 the
+  gate fails on kotlinpoet (forbidden `unknown -> incomplete` transitions);
+  without #1931 it fails on the 15 JDK / KSP overrides that become `complete`.
+
+- **RFC-0043 prototype: opt-in memo of the per-text decorator table for `nav callers`** (#1855).
+  The registering-decorator gate (RFC-0040) re-parsed the target's declaring
+  file with tree-sitter and walked the whole tree on every review-gated query;
+  on zod that was about 0.7 s per query. With `TSA_RESIDENT_PARSE_MEMO=1` the
+  walk's result (decorator text and declaration-header lines, no syntax tree)
+  is kept per `(language, digest of the text)`, at most 256 entries. The text is
+  still read through the stamp-validated file cache on every request, so an
+  edited file has a new digest and is parsed again; freshness and answers are
+  unchanged. Default off. `benchmarks/resident/corpus_replay.py` replays every
+  stored callers-gate answer in-process (identity and warm latency by answer
+  kind) and `benchmarks/resident/copy_gate_index.py` copies a gate index to a
+  scratch root without writing the gate cache. RFC-0043 records the 7-repo
+  measurements: graph reads are 0.5–2.3 % of warm time; the review gates are
+  70–93 %.
+
+### Changed
+
+- **`nav callers`: the Python supertype gate reuses its parse-derived facts by content digest; the per-snapshot memo has a byte budget (RFC-0043 Phase C)** (#1855).
+  The gate walked the whole declaring module twice per target to find the
+  member's class, and the subclass search ran a header / rename regex over
+  every candidate file on every request. Both now come from the parse-facts
+  memo, keyed by the digest of the bytes read live on that request: a member
+  table (names, line spans, the parent class's path; no syntax tree) and, per
+  file and shape, the set of words the regex can match (exactly equivalent:
+  0 differences over 164,968 checks on pydantic, fastapi and rich). The
+  decorator gate's first-touch table build splits a file into lines once
+  instead of once per decorator. The per-snapshot memo now counts its entries
+  and whole-snapshot tables against 128 MB (estimated), dropping least
+  recently used snapshots first and never the one in use. Identity: 0
+  differing rows over all 2,457 stored callers-gate answers with the memo off
+  and on. ABBA against Phase B on a loaded host, means: pydantic 206–236 ->
+  149–160 ms (review-gated median 122–146 -> 77–84 ms), fastapi 514 -> 377–380
+  ms; zod (TypeScript, untouched) unchanged.
+
+- **Callers gate: the corpus is versioned in the repo; `setup` no longer reads dogfood folders.**
+  The 2,457 targets, the hono / zod hand labels and the corpus manifest are
+  now in `benchmarks/callers_gate/corpus_data/`, byte for byte (`-text`), and
+  `setup` installs them from there. GT2 (~39 MB, generated outside the repo)
+  stays unversioned: the versioned manifest pins its digests, and `setup`
+  fails with the file and the expected digest when the gate-root copy is
+  missing or different, before it writes anything. `run`, `report --rejudge`
+  and `import-legacy` also require the gate-root manifest to equal the
+  versioned one. The digests are unchanged, so every existing cache stays
+  valid.
+
+- **`nav callers`: the review gates reuse parse-derived facts by content digest, on by default (RFC-0043 Phase B)** (#1855).
+  The gates re-parsed the declaring files on every request. A new process-wide
+  memo (`tree_sitter_analyzer/resident/parse_facts.py`) keeps immutable tables
+  per `(kind, language, digest of the content)`, at most 4,096 entries and
+  64 MB estimated, with no syntax trees. It covers the tree-sitter decorator
+  table (Phase A), the Python definition table (decorator gate and
+  declaration-header check), the tree-sitter declaration table and the Python
+  class facts of the subtype index. Sources are still read live on every
+  request, so an edited file has a new digest; answers and freshness are
+  unchanged. `TSA_RESIDENT_PARSE_MEMO=0` (or `TSA_RESIDENT=off`) turns it off.
+  The Java subtype search now tests for the name as a substring before its
+  clause regex (exact; gson mean 127–139 ms -> 57–70 ms). Identity: 0
+  differing rows over all 2,457 stored callers-gate answers with the memo off
+  and on; ABBA means on zod 722–856 ms -> 93–101 ms (p90 3.1–3.6 s ->
+  148–160 ms), hono 74–76 -> 52–53 ms, axios 44–62 -> 30–38 ms, pydantic
+  234–254 -> 154–170 ms.
+
+- **The call-graph memo has a byte budget** (`TSA_RESIDENT_GRAPH_MB`, default 256; RFC-0043 §4).
+  Each stored graph state is estimated (container entries × 200 bytes; the
+  measured 54–155 bytes per entry on the 7 benchmark repos keep the estimate
+  high) and least recently used roots are evicted until the 4-root bound and
+  the budget hold. The root just stored is always kept, so a repository
+  larger than the budget still keeps its own graph. `graph_size.py` reports
+  the estimate next to the measured retained memory.
+
+- **SQL Platform Compatibility runs macOS as one job instead of four.** macOS arm64 runners are capacity-constrained, and each of the four `macos-latest` Python 3.10-3.13 jobs did only ~30 s of work while needing its own runner. `sql-platform-compat.yml` now runs one `Test Compatibility (macos-latest, Python 3.10-3.13)` job that loops over all four versions (`uv run --python`), keeps per-version results in collapsible log groups, continues past a failing version and fails the job if any version failed. Ubuntu/Windows stay a per-version matrix; `SQL Platform Compatibility` is still the single reusable-workflow job the `Quality Gate` aggregates. `tests/governance/test_ci_sql_macos_contract.py` pins the four-version macOS coverage. macOS jobs per run: 6 -> 3 (PR, SQL lane routed), 10 -> 7 (full validation).
+
+- **macOS CI lanes run as 2 deterministic shards** (#1910). `macos-latest` 3-vCPU machines needed up to 982 s against a 1080 s session budget. Both the full and the PR matrix now run each macOS version as `--shard=1/2` and `--shard=2/2` (`tests/pytest_shard.py`: `zlib.crc32` of the node id, no new dependency, no stored durations); the shards are disjoint and their union is the unsharded selection. Ubuntu and Windows lanes are unchanged. `tests/governance/test_ci_shard_contract.py` pins the partition and the matrix wiring; the `Quality Gate` check still aggregates `needs.test.result`.
+
+### Fixed
+
+- **`call_path` resolves `Class.method` endpoints and fails closed when it cannot** (#1942). `Progress.start` never equals a stored caller name (`start`), so the search answered `NO_PATH` / `NOT_FOUND`, and the dead end showed the callees of another `start`. When an endpoint is qualified, both endpoints are now resolved to one definition each (owner class from the index; a bare other endpoint must name one definition) and the search runs between definitions (`call_path_pinned.py`): a call bound to a symbol leads to that definition, and a call through an unbound receiver is followed only onto the target, as a hop marked `callee_resolution: name_only`. A name with no matching definition answers `ENDPOINT_NOT_RESOLVED`, several answer `ENDPOINT_AMBIGUOUS` (verdict `WARN`), with the candidates and the exact retry (`source_file` / `--call-path-source-file`). `NO_PATH` carries `completeness` (`UNBOUND_FRONTIER_CALLS` / `SEARCH_LIMIT` when not complete) and the unbound calls on the explored frontier (`open_sites`); a name-keyed (bare) `NO_PATH` says `completeness: unknown`, `NAME_KEYED_SEARCH`. Every hop reports the call-site line as `line` and `call_site_line` (a backward hop reported the caller's definition line), and dead-end neighbours pair `file` / `line` with the definition and `call_site_file` / `call_site_line` with the call (`LiveError` was shown in `rich/errors.py` at a line of `rich/console.py`). rich v13.9.4: `Progress.start -> Console.set_live` and `Live.start -> Console.set_live` now find `rich/progress.py:1173 -> rich/live.py:113`.
+- **Dead-code lists only name functions that `nav callers` certifies** (#1941). `codegraph_overview` read only the resolved edges of the in-memory call graph, so a method called through an attribute receiver whose type is not inferred (`self.console.set_live(self)`) was listed as dead while `nav callers` answered `unknown` and named the call site. On rich v13.9.4, 129 functions were listed and only `_svg_hash` is unreferenced (the rest were called through untyped receivers, referenced from asv's `benchmarks.json`, `io.RawIOBase` overrides, IPython `_repr_*_` hooks, or pytest test functions). Every dead-code candidate of `codegraph_overview`, `health action=dead` and `health action=refactor_queue` is now asked through the callers tool itself (one batch at a time, `dead_code_certify.py`) and is listed only when the answer is `complete` and every caller it lists is a certified candidate too. A Python method whose class has a base outside the project (`EXTERNAL_SUPERTYPE`, `dead_code_overrides.py`) and a method in another language (`OVERRIDE_UNCHECKED`) are never certified, because `callers` counts project callers only. The other candidates are listed in `possibly_dead` / `possibly_dead_functions` with the blocking reasons and open sites; `dead_code_status: certified`, `dead_code_evidence` (overview) and `dead_functions_not_certified` / `dead_functions_unchecked` (health) give the counts. Asking is bounded (30 s); what was not asked is reported unchecked, never dead. Test functions in test files and IPython `_repr_*_` methods are entry points (`dead_code_entries.py`). rich v13.9.4: overview 129 -> 1 (`_svg_hash`; 32 candidates not certified), `health action=dead` 46 -> 2 (`_svg_hash`, `SegmentSuite.test_divide_complex`); neither is referenced anywhere in the repo. The overview takes about 8 s instead of 3 s there.
+- **`nav callers` / `test_map` agent fields no longer claim more than their evidence** (#1939 review). A function in a shebang script or a `__main__.py` was certified `absence: script` / `entry_point` `proven` ("not dead code") although nothing called it; those two rules are withdrawn, and such a function is `unreferenced` (complete answer) or `unknown` / `possible`. A console-script entry matched its module by suffix (`app = "cli:main"` certified `main` in `src/mycli.py`); it now needs a path-segment match (flat or `src/` layout, `pkg:main` -> `pkg/__init__.py`), an undotted attribute, and a module-level `def` in that file. A stale answer, or one with module-level or non-call reference sites open, never carries a `proven` certificate. `expires_when` gains `reusable_without_reask` and `rule`: a new call in any other file invalidates the answer, so it may be reused without re-asking only when the index generation is known (and unchanged, with the listed files unchanged); with a `null` generation it is `false`. `test_map` `untested` is `possible`, not `proven`, because indirect coverage through non-test callers is not checked. A truncated `callers` / `test_map` answer no longer returns a `previous_entries` delta, which reported entries beyond the cap as removed. `answer_etag` now covers the open-site counts (and `test_map`'s name-only list and certificate), so a changed count is never reported `{unchanged: true}`. The helpers moved to `callers_agent_fields.py`; `callers_tool` re-exports them.
+- **An unresolved call in another file no longer lets `nav callers` answer `complete` in languages without a callers-gate repo** (#1936). An audit of Go, Rust, C#, C, C++, PHP, Ruby, Swift, Lua and Scala (one pinned OSS repo each, 400 sampled functions / methods, every `complete` checked against `git grep -w`) found wrong `complete` answers in Swift, C# and Ruby. With `file_path` set, an unresolved CALLS edge whose placeholder target sits in the calling file was dropped before `UNRESOLVED_INBOUND` counted it, and the non-call reference scan skipped its line because a CALLS edge of that name is there (#1622), so the call was in no list at all. Alamofire `BaseTestCase.stored` answered `complete, 0` although 57 subclass methods call `stored(Session())`; Newtonsoft.Json `JsonWriter.UpdateScopeWithFinishedValue` missed the calls in the other `partial class JsonWriter` file and in `JsonTextWriter : JsonWriter`. Now an unresolved call of the same name in another file of the same language, made from a function that is not a listed caller, is an `unresolved_inbound_sites` entry (`callers_cross_file.py`). Python, JavaScript / TypeScript, Java and Kotlin bind such calls through imports and types and are guarded by the callers gate, so they are unchanged. Also, the bare-name rewrite of #1759 no longer turns a method of `class Minitest::Spec` into `Minitest::Spec.capture_warnings`: that name is not a qualified name, so every by-name check looked up the whole string and found nothing (rack `capture_warnings` answered `complete, 0` with 3 callers). Query path only; the index key does not change. Audit sample (3,847 targets): exactly the 5 confirmed wrong answers change (Swift 1, C# 3, Ruby 1, all to `unknown` / `incomplete UNRESOLVED_INBOUND`); no other answer changes in any of the 10 repos.
+- **A Kotlin bare call to an inherited method no longer lets an override answer `complete`** (#1926). In Kotlin, `make()` inside a class body means `this.make()`, but only Java read a bare call that way. So an override in `class B : A()` reached only through `make()` in `A.run` answered `complete` with 0 callers. The extractor now records, on each Kotlin bare / `this` call, which implicit receivers it may use (`kotlin_scope` in the edge metadata), and the call graph reads it. Inside a class, when the caller's class declares exactly one `make` in its file and that file has no receiver-less function `make`, that method is the certain target and every subclass override is a possible one. The site stays open (nothing certain; every project definition `make` and the static candidates are possible targets) when an enclosing lambda, anonymous function or extension may supply its own receiver (`x.apply {}`, `with(x) {}`, `x.run {}`, DSL builders, `fun Box.ext()`), when a lambda is passed to a function the project defines, when the class does not declare `make` (inherited, outer-class or companion member), when the same file has a local or top-level `make`, on a parse error, and on an index built before this change. Lambdas passed to standard-library functions without a receiver (`let`, `also`, `map`, `forEach`, ...) and `apply {}` / `run {}` called on the implicit `this` keep the class scope. Top-level code has no implicit receiver and is unchanged. kotlinpoet (1427 Kotlin methods): no verdict became `complete`, 20 lost callers that sat in receiver scopes (16 `incomplete` -> `unknown`, 4 stay `incomplete` with fewer callers; spot checks: `toBuilder()` inside `fun CodeBlock.returnsWithoutLinebreak()` was bound to `FunSpec.toBuilder` but calls `CodeBlock.toBuilder`; `emitAnnotations(this)` sits in a `buildCodeString {}` receiver lambda). The index key changes (extractor version 55), so indexes are rebuilt.
+- **A Kotlin `override` of an external supertype is no longer `complete`** (#1930). `class F : java.io.Closeable { override fun close() {} }` answered `complete` with 0 callers, although whoever holds a `Closeable` (the JDK, a library, `use { }`) calls it. The `supertype_dispatch` check now runs a Kotlin form of the Java `@Override` gate (`callers_kotlin_overrides.py`) on every function declared `override`: it passes only when it is not a `kotlin.Any` member (`equals` / `hashCode` / `toString`), every supertype in the closure of its class, object, companion object, object expression or enum entry resolves from source to a Kotlin type in the project (nested type in scope, same file, explicit import incl. `as` aliases, same package, star imports), one of them declares the name, and every call edge named like it is bound to this declaration or outside the project. Otherwise the answer is `unknown OVERRIDE_DISPATCH`, and `next_step` names the external supertype (`its supertype `Filer` (`javax.annotation.processing.Filer`) is declared outside the project`). Functions without `override` override nothing in Kotlin and are unchanged. Query path only; the index key does not change. kotlinpoet (1448 Kotlin methods): 16 answers go from `complete, 0` to `unknown` (all overrides of `javax` interfaces such as `Filer`, `Element`, `ErrorType`, `SimpleJavaFileObject`), none becomes more complete; the 2 answers still `complete` are private non-override helpers.
+- **Kotlin classes get supertype edges** (#1916). Kotlin had no parent extractor, so no Kotlin class, interface, `enum class` or named companion object recorded `parents` and the index had no supertype edge for any of them. `this.make()` in `open class A` therefore never offered the override in `class B : A<String>()` as a possible target, and `B.make` answered `complete` with 0 callers. Supertypes are now recorded as written, without type arguments, annotations, the constructor call or the delegate (`class A : pkg.B<T>(1), @Ann I, J by d` gives `pkg.B`, `I`, `J`). A function-type supertype names no class and is skipped. Cross-file Kotlin supertypes keep the `class:Name` placeholder, as Java's do, and the subclass index now reads them, so `B.make` answers `unknown NAME_ONLY_INBOUND` and names the dispatching site. Kotlin class symbols also record their `superclass`, but only when the syntax shows it: the one supertype called as a constructor (`: B()`). An entry without the call may be an interface or a class initialised by a secondary constructor, so nothing is recorded for it. The typed resolver has no Kotlin path, so nothing reads `superclass` yet. An `object` declaration has no class symbol, so it still gets no edge. kotlinpoet: 0 -> 66 Kotlin supertype edges, and the callers answers for all 1427 Kotlin methods are unchanged. The index key changes, so indexes are rebuilt.
+- **`nav callers format=compact` no longer drops `open_sites` silently after a budget miss** (#1923).
+  An `unknown` answer whose edge layer failed reruns the review gates only for
+  the `open_sites` bound, and those gates have wall-clock budgets (the non-call
+  reference scan, the absence freshness scan). When one ran out, the bound read
+  `NO_SITE_LIST`, the same as a structural gap, and the compact answer omitted
+  `open_sites` without saying why. The gate asks the compact form in a separate
+  call, so under load the same code on the same row gave a compact answer with
+  and without the bound. A review gate that could not run on this call (a
+  `*_UNCHECKED` code, or `SOURCE_SCOPE_UNKNOWN`) now gives
+  `{"enumerated": false, "reason": "REVIEW_UNCHECKED", "unchecked": <code>}`,
+  and the compact answer carries it with an `open: unchecked (<code>); re-ask or
+  format=verbose` line. The verdict and reasons are unchanged (still `unknown`,
+  never `complete`); structural skips still read `NO_SITE_LIST`. The callers gate
+  now treats an unchecked bound, or a compact bound that differs from the full
+  answer's projection, as budget-limited and re-asks the row.
+
+- **Cold first `nav callers`: the certification walk runs its file system calls on 4 threads** (#1835).
+  A fresh process pays the certified index capture before its first answer:
+  four pathname walks of the source scope (two before the index read, two
+  after it), each an `lstat` plus an NTFS change-time probe per file, and a
+  content read of every file on the first walk. Run one after another these
+  calls were most of the first query on Windows. `_portable_inventory` now
+  spreads directories, and 32-entry chunks of large directories, over a
+  small work queue. Each entry gets the same checks and the walk gives the
+  same rows and the same verdicts. Entry, byte and file budgets are still
+  counted over the whole walk. The identity of every scanned directory is
+  re-checked after the walk ends, which covers the window of the old
+  per-directory re-check. Same-session ABBA, medians of fresh processes 2–3
+  on the certified path: fastapi 4.92 s → 3.30 s (v3.0.0: 6.12 s), pydantic
+  3.31 s → 2.74 s (v3.0.0: 3.93 s). Warm queries are unchanged and answers
+  are identical. The ~1.3 s that v3.0.0 showed in the release gate came from
+  the #1710 certification-timeout skip: its slower first capture ran past the
+  10 s deadline, and later processes then took the uncertified fallback.
+  The index fingerprint store now keeps 512 project files instead of 64.
+  A machine running agents on many worktrees had filled all 64 slots, and an
+  evicted project paid a full fingerprint recompute in its next fresh process.
+
+- **`INDEX_GENERATION_SEAL_BUSY` evidence costs a fraction of the CPU in a large process** (#1904).
+  When a seal stays busy with no byte-copy fallback, the warning still names
+  the holder objects, their reference chains, the connection creation stacks
+  and the first-busy snapshot, but gathering them no longer walks the heap in
+  Python four times. SQLite connections and cursors (and subclass instances)
+  are found in one C-level pass over the referrers of their types, probed once
+  per process with a fallback to the old full walk; the deadline evidence
+  shares that one lookup; and all reference chains advance together, one heap
+  traversal per step (plus at most one to find `__dict__` owners) instead of
+  one per holder per step and one per dict referrer. The chain time cap drops
+  from 3 s to 1 s, which the batched chains no longer reach where the old ones
+  hit 3 s. Busy-path CPU: 1.8 s to 0.6 s on a 1.5 M-object heap, 5.1 s to
+  1.4 s on a 3 M-object heap with leaked cursors (the rest is the `gc.collect()`
+  that releases cycle-held connections). This kept
+  `test_seal_busy_evidence_names_the_holder_creator` over its 8 s unit budget
+  on CI.
+
+- **SCIP callers layer: multi-line imports no longer raise `SCIP_UNLISTED_REFERENCE`** (#1892).
+  `scip_agreement` skipped a target reference only on a line that *starts*
+  an import, so a specifier on a continuation line of `import {\n  a,\n  b\n}
+  from "./x"` (also `import type {…}`, `import D, {…}`, `export {…} from`)
+  was reported as unlisted and blocked a valid `complete`. The layer now
+  parses the file with tree-sitter (`callers_scip_imports.py`) and skips a
+  reference only when it lies inside the exact span of an import or
+  export-list statement parsed without errors. A call after the statement on
+  its closing line, code in template literals and comments that look like
+  imports, `import x = NS.y` aliases and `export const` / `export default`
+  values all still count. Dynamic `import("./x")` lines, which the old
+  line-start pattern skipped, now count too (fail-closed).
+
+### Added
+
+- **CI re-queues runs stranded without a hosted runner** (`.github/workflows/ci-runner-requeue.yml`, `scripts/ci_runner_requeue.py`). GitHub cancels a queued job that no hosted runner acquires within about 15-18 minutes ("The job was not acquired by Runner of type hosted even after multiple attempts"); on `macos-latest` (arm64, under GitHub capacity constraints) that left jobs `cancelled` with no runner and zero steps, and the fail-closed `Quality Gate` failed develop although no test failed (runs 42075950677, 42071993107; PR run 42049630824 twice). The gate stays fail-closed. When a CI run fails and every failed or cancelled job is such a stranded job (identified by the check-run annotation, not only by zero steps, so concurrency and manual cancels do not qualify) or the `Quality Gate` itself, the new `workflow_run` workflow re-runs the failed jobs, at most until attempt 3 and only while the run is still the newest CI run for its branch and event. A run with any real failure is never re-run. `workflow_run` workflows load from the default branch, so this takes effect once it reaches `main`. `tests/governance/test_ci_runner_requeue_contract.py` pins the wiring.
+
+- **Opt-in SCIP evidence for `nav callers` on TS / JS** (`callers_scip*.py`).
+  Set `TSA_SCIP_INDEX=<path>` or put a scip-typescript index at
+  `.ast-cache/scip/index.scip`, with a manifest beside it
+  (`python -m tree_sitter_analyzer.mcp.tools.callers_scip_manifest --project .
+  --index <index>`: git tree, hashes of dirty files and lockfiles, index hash).
+  TSA never runs the indexer. The layer only classifies the sites TSA already
+  enumerated: a site whose every occurrence of the name resolves to the target
+  (or a trusted other symbol) adds its enclosing definition as a caller with
+  `confidence_tier: "scip"`; a site that resolves only to trusted other symbols
+  (another function, a subclass override, a nominal unrelated class, a core
+  ECMAScript type) is dropped as `SCIP_RESOLVED_OTHER`; everything else stays
+  open. SCIP never removes a TSA caller, and a SCIP reference TSA lists nowhere
+  is the new blocker `SCIP_UNLISTED_REFERENCE` (optional check
+  `scip_agreement`). A stale, absent or undecodable index, an unsupported
+  language (Python, Java) or an ambiguous target gives no evidence and exactly
+  today's answer; `scip.status` says which. Without the opt-in the answer is
+  byte-identical to before. The protobuf reader is stdlib-only (no new
+  dependency). `benchmarks.callers_gate run --scip DIR` measures it with an
+  additive policy. See `docs/agent-envelope-contract.md` and
+  `docs/dev/callers-gate.md`.
+- **Callers verification gate (dev tooling, `benchmarks/callers_gate`).**
+  `py -3 -m benchmarks.callers_gate {setup,run,promote,precheck,report}`
+  replaces the per-PR manual replay of the r15 callers corpus. It keeps the 7
+  pinned repos and their indexes on disk (index key: git blobs of every
+  package file except the query-only `mcp/tools/callers_*.py`, audited at build
+  time, plus interpreter, distributions and pyproject), caches base answers by
+  package tree hash, runs repos and shards in parallel on long-lived isolated
+  servers, and judges the diff automatically: a transition table, a policy
+  (default: only `X->complete` and reason changes), GT2 for Python completes,
+  the PR-4 `open_sites` soundness check, and a tree-sitter classifier of every
+  `git grep -w` hit for TS/JS/Java completes, so a human reads only the
+  residual hits. Every cache fails closed. `precheck` runs ruff, format, mypy,
+  the related tests and Codecov-style patch coverage locally. See
+  `docs/dev/callers-gate.md`.
+
+- **`nav callers` lists a registering decorator as a known use** (PR-4). When the
+  only blocker is `DECORATOR_MAY_REGISTER` and the decorator sits on the
+  target's own definition, the answer lists it as a caller entry with
+  `resolution_kind: "registration"`, `via` (the decorator text), `file` and
+  `line` (`name` is `<module>`; `confidence_tier: "registration"`, ranked after
+  `proven`). The answer becomes `incomplete`: the decorator certainly hands the
+  function to the framework, and the framework-side callers cannot be listed.
+  It never becomes `complete` (the gate keeps its code). Python only, and only
+  for a single unconditional definition (module or class body, not inside a
+  function, `if` or `try`) whose name and class match the query; decorators in
+  `KNOWN_WRAPPERS` are not listed. Compact shows `@app.get("/x")  file:line
+  registration`.
+- **`open_sites` bounds an `unknown` callers answer** (PR-4). Every `unknown`
+  answer carries `open_sites`. `{"total": k, "enumerated": true, "fields":
+  [...]}` means the `k` distinct sites in the named site lists are all the
+  evidence that blocks `complete`: if none of them calls the target or passes it
+  on, nothing else in the indexed project does. The verdict stays `unknown`.
+  `enumerated` is `true` only when every failed check has an untruncated site
+  list (`unresolved_inbound_sites`, `unresolved_sites`, `name_only_sites` with
+  call lines, `non_call_reference_sites`) and the review gates the edge layer
+  skipped were run as well and pass (or only the non-call gate fails, with every
+  later gate passing). Otherwise it is `{"enumerated": false, "reason":
+  "SITES_TRUNCATED" | "NO_SITE_LIST"}`. `next_step` starts with the sites to
+  read; `format=compact` adds `open: k sites (exhaustive)  a.py:3; ...` (up to
+  10) and `open_sites: {total, enumerated}`. Gate: the r15 callers corpus of
+  fastapi, pydantic, rich, hono and zod (2,028 answers), develop vs branch on
+  one index each through a long-lived MCP server: 240 `unknown` → `incomplete`
+  (fastapi 224, pydantic 16), 0 other verdict or reason changes, 0 new
+  `complete`; 345 of 707 `unknown` answers have `enumerated: true` (175 with
+  k ≤ 3), and every true caller missing from them is at a listed site (GT2 on
+  222 Python answers, hand labels on 12 hono / zod answers: 0 violations).
+  Median payload, develop → branch: full +0–7.5 %, compact +3–14 %.
+
+- **The MCP server loads the call graph and the certified snapshot lease at
+  start** (#1855, RFC-0042 Phase 1). After the `initialize` answer, a
+  background thread runs the work a first `nav callers` query does: it takes
+  the certified snapshot lease, builds the call graph (the #1708 post-publish
+  build), binds it to the lease, and imports the `nav` modules. The first query
+  then reuses all of it. It never blocks the handshake and never builds an
+  index. A request that arrives during the load waits for the in-flight
+  capture or build instead of repeating it. Nothing is a new cache or key:
+  another index generation or source state never sees the preloaded state.
+  `TSA_RESIDENT=off` (or `first-use`) keeps today's lazy behaviour; CLI runs
+  are unchanged. MCP first query after start, ABBA medians, off → on: rich
+  1,278 → 199 ms and hono 2,681 → 346 ms; the warm median is unchanged (rich
+  41.5 / 41.8 ms, hono 132 / 128 ms). Answers are identical with the feature
+  on and off on the stored dogfood rows of rich, hono and zod (601 rows, 0
+  differences).
+- **No latency cliff after 35 s of idle** (#1855, RFC-0042 Phase 1b). While a
+  request arrived in the last 10 minutes, the resident loader renews the
+  certified snapshot lease shortly before its 35 s TTL ends. A renewal is the
+  same full capture a request would run: it re-checks every source, and the
+  lease is extended only when nothing changed. An answer is therefore still
+  certified against a capture at most one TTL old, and an idle server stops
+  renewing. MCP query after 40 s idle, ABBA medians, off → on: rich 342 → 56 ms,
+  hono 884 → 147 ms (warm 48 and 162 ms).
+- **`nav callers` checks one resident handle instead of about ten per-request
+  probes** (#1855, RFC-0042 Phase 2a). The index location, the live-index probe,
+  the cost tier and the certified-lease reuse check are read through a handle
+  per project root, kept only for a sealed published generation and validated
+  on every request by two `lstat` calls (selector and database). Any change, a
+  missing file or a database that regained a write bit drops the handle, and
+  the request takes today's path. The rebuild flag is still read on every
+  request. The MCP server builds the handle and the first cost tier at the end
+  of its background load; `TSA_RESIDENT=first-use` builds it on the first
+  request; `off` disables it. In-process warm medians, ABBA, off → on: rich
+  edge-only answers 52.1 → 26.6 ms and review-gated 114.6 → 91.1 ms. Answers
+  are identical with the feature on and off.
+- **`nav callers` remembers the edge-layer check reads of each certified
+  snapshot** (#1855, RFC-0042 Phase 2b). The RFC-0040 checks 1–5 read SQL from
+  the request's certified snapshot, an immutable private copy named by a
+  random ID. Their readers (declaring-file call sites, unresolved inbound sites
+  and counts, definitions, module-level sites, name-only lines, the evidence
+  base and the index facts of the external-producer check) are now memoized
+  per snapshot identity: the same functions over the same immutable input. A
+  refresh, republish or watcher sync gives the next request a new snapshot, and
+  the old memo is dropped. Source text is still read on every request; the
+  external-producer check's parse of a declaring file is reused only for
+  byte-identical text. Failed, empty-on-error and past-deadline reads are never
+  stored. With Phase 2a, MCP warm medians, ABBA, `develop` → this change: rich
+  87 → 21 ms (edge-only 79 → 19 ms), hono 262 → 74 ms (edge-only 229 → 34 ms).
+  Answers are identical with the feature on and off.
+- **The first `nav callers` question about a new TypeScript or JavaScript
+  target is fast too** (#1855, RFC-0042 Phase 3-lite). Two edge-layer readers
+  cost about 30–100 ms on every new target: the renamed-import bindings of the
+  declaring file (a query plan that walked every import row) and the ES alias
+  call rows (a scan of every call edge's metadata, per name). The bindings
+  query now starts from the module edges into the declaring file (about 50 ms
+  → 0.1 ms on hono, same rows in the same order). The ES alias rows, the
+  alias-import buckets and each importing file's import statements are read
+  once per certified snapshot into immutable tables kept in the snapshot memo,
+  and each name's rows are taken from them with the per-name query's own
+  conditions; the MCP server's background load builds the tables on its lease.
+  `TSA_RESIDENT=off`, the live index and any other connection read per name as
+  before. No index schema change and no reindex. A differential test compares
+  the new readers with the old per-name ones on every name and file of real
+  indexes (hono, zod and rich: 0 differences). In-process first touch of a
+  target, ABBA medians, `develop` → this change: hono edge-only answers
+  128 → 13 ms and review-gated 165 → 75 ms; zod 79 → 19 ms and 160 → 75 ms.
+  Answers are identical to `develop`.
+
+- **Compact answer mode for `nav action=callers`** (#1853). Opt-in
+  `format=compact` returns one line per caller (`name  file:line
+  resolution_kind`) and one verdict line (`complete` |
+  `incomplete (<top reason codes>)` | `unknown (<top reason codes>)`).
+  The compact answer is a projection of the full answer: the same caller list
+  and the same RFC-0040 completeness result, never more optimistic, with the
+  full `completeness_reasons` kept as a field. On the stored answers of 7
+  open-source repos (rich, pydantic, fastapi, gson, axios, hono, zod; 138
+  questions) the median answer drops from 2,282 to 116 cl100k tokens (19.6x).
+  The default (`format=verbose`) is unchanged.
+- **RFC-0042 measurement harness** (#1855, Phase 0). `benchmarks/resident/`
+  holds portable versions of the RFC's profiling scripts: in-process stage
+  buckets of `nav callers` (`prof_callers.py`), latency through a real MCP
+  stdio server with the first query after start, warm, after idle and the
+  MCP-layer share (`mcp_latency.py`), graph size and memory
+  (`graph_size.py`), the idle-cliff probe and the host's `stat` cost. hono and
+  zod graph sizes are measured and recorded in the RFC. No product change.
+- **Per-caller confidence for `nav action=callers`** (#1854). Each caller
+  carries `confidence_tier`: `proven` / `inferred` / `unconfirmed_receiver`,
+  derived from `callee_resolution` and `resolution_kind` (table in
+  `docs/agent-envelope-contract.md`; any unknown value is
+  `unconfirmed_receiver`). Opt-in `order=confidence` puts proven callers first
+  before the `limit` cut; the default order is unchanged. `format=compact`
+  orders by tier and folds unconfirmed-receiver callers into one count line
+  (`include_unconfirmed=true` lists them). Folding never changes
+  `completeness` or its reason codes. On the 138 stored answers the compact
+  size is unchanged (median 116 tokens): those questions are file-scoped or
+  qualified, and their listed callers are all resolver-bound. On unscoped
+  bare-name questions (r15 scope answers) the compact total drops 39% on
+  pydantic (43,621 to 26,714 tokens).
+
+### Changed
+
+- **CI: the MCP black-box E2E job runs two attempts in parallel** (a matrix on
+  the same head, `fail-fast: false`) instead of a manual rerun. The check
+  names gain `(attempt 1)` / `(attempt 2)`; the required `Quality Gate` still
+  reads the job result, which passes only when both attempts pass.
+
+### Fixed
+
+- **Intermittent 30 s timeout of `test_gate_output_does_not_depend_on_the_working_directory[check_test_encoding.py]`** (macOS shard 1/2 on develop). The case ran `check_test_encoding.py --baseline` twice over the whole `tests/` tree (about 1450 files, an `ast.parse` of each: 15-25 s per run on an unloaded machine, 100 s on a loaded one), so any slow runner crossed the 30 s limit. The two whole-tree `--baseline` gates (`check_test_encoding.py`, `check_loose_assertions.py`) are now exercised on a small fixture repository that holds a copy of the script and a few test files with a known number of findings, from the root and from `scripts/`. Their path anchoring is unchanged and still proven (a cwd-relative scan would report 0 files), and the real tree stays covered by the `--self-check` cases. The per-case 120 s timeout on `check_loose_assertions.py` is no longer needed and is removed.
+- **Java supertypes with type arguments get an `extends` / `implements` edge** (#1880). `_java_parents` kept only bare names, so `class B extends A<String>`, `implements Comparable<T>`, nested generics, qualified (`pkg.A<T>`, `Outer.In`) and annotated (`@Ann A`, `pkg.@Ann A`) supertypes, and an interface's own `extends` clause were dropped (gson: 109 supertype edges, now 263, 92 of them to `TypeAdapter*`). Parents are recorded as written without type arguments or annotations (`pkg.A<T>` becomes `pkg.A`). The call graph now offers a generic subclass's override as a possible target, so such an override answers `NAME_ONLY_INBOUND` with the dispatching site instead of `OVERRIDE_DISPATCH` without one. Java class symbols also record their `superclass`. The typed resolver uses it so that a method found in the superclass chain wins over an interface outside the project ("class wins"); otherwise the new `Iterable<JsonElement>` parent of `JsonArray` would unbind `jsonArray.toString()`. A project interface declaring the name still makes the binding ambiguous. The index key changes, so indexes are rebuilt.
+- **Intermittent 30 s timeout of the first Hypothesis string test in a shard**
+  (`test_adapter_properties.py::test_function_name_normalization`). Hypothesis
+  harvests literals from every imported project module by parsing each with
+  `ast` the first time a string strategy is drawn; in a full shard that scan
+  (12.6 s locally for the package alone) landed on whichever `@given` test ran
+  first. `tests/conftest.py` now disables that harvest, so example cost no
+  longer depends on how many modules the process has imported. The properties
+  themselves are unchanged.
+- **The test hang watchdog no longer crashes a passing Windows session** (xdist). `pytest_sessionfinish` read each worker's faulthandler dump with an unguarded `read_bytes()`; on Windows a dump a worker still holds open can raise `OSError: [Errno 22]`, turning a green run red. Reads now retry briefly and a dump that stays unreadable is reported in the terminal summary instead of raising. Readable dumps are reported as before.
+- **A candidate command's process-group grace period is now a real upper
+  bound** (#1908). On POSIX, `terminate_group` waits up to `GROUP_GRACE_S`
+  (2 s) for the group to go away after SIGTERM, but slept a whole poll step
+  each round. When the group stayed signalable after its leader was reaped,
+  a poll step longer than the grace (the over-cap test sets it to 30 s) slept
+  past the deadline. That tripped the 30 s per-test timeout on macOS. Each
+  step is now cut to the time left, so the wait never exceeds the grace.
+- **Sealing a still-held build database by copy now skips the heap-scan
+  forensics at the deadline** (#1909). #1903 waits only 1 s before copying,
+  but at the end of that wait `leave_wal` still ran its full at-deadline
+  evidence: a second holder snapshot, `holder_objects` reference chains, and
+  creation stacks. Each scans the whole heap. A CI probe measured the busy
+  seal at 3.4-5.6 s on Linux and 6-9 s on macOS, and 13.2 s once in the seal
+  test, which pushed `index_project` past the 10 s it was meant to beat. When
+  the caller can copy, `leave_wal` now raises right after the wait and hands
+  the first-busy evidence to the caller, which logs it with the creation
+  stacks it already collects. The no-fallback path keeps the full evidence.
+  The seal test now asserts the behaviour instead of end-to-end wall time:
+  the short budget was requested with the fallback, total sleep stayed within
+  it, the database was still busy, and the copy was taken.
+- **An LSP request no longer reports a timeout when the answer has already
+  arrived.** The reader can settle a request's future in the same event-loop
+  iteration in which its timer fires; `asyncio.wait_for` then raised a timeout
+  even though the result, or the server's error, was already there. The
+  request now returns that outcome. A near-zero timeout reproduces the race on
+  every run (all three reader-failure cases failed before the fix), which is
+  what a loaded Windows runner hit with the test's 0.02 s timeout.
+- **The scoped-stat count test counts only its own files.** It patches the
+  process-wide `os.stat`, so on Python 3.13 an unclosed SQLite connection left
+  by an earlier test, reclaimed by the garbage collector mid-test, added one
+  stat: pytest's unraisable-exception hook formats the ResourceWarning's
+  traceback through `linecache`, which stats the frame's source file. A
+  two-test probe reproduces the extra stat on 3.13 and not on 3.12. The test
+  now requires each of its own paths to be stat'ed exactly once.
+- **`PYTEST_XDIST_AUTO_NUM_WORKERS` sizes `-n auto` again.** The suite's
+  `pytest_xdist_auto_num_workers` hook replaces xdist's own sizing, which is
+  the code that reads the variable, so CI's `"4"` and the documented `=1` /
+  `=2` local settings were ignored off Windows. `macos-latest` hands out
+  3- and 5-vCPU machines of the same image. On recent develop runs, 3 workers
+  took 586-911 s and 5 workers 349-409 s. The hook now returns the configured
+  count. Four workers on the slower machines measured 691-706 s (three lanes),
+  so this change alone does not remove the timeout risk.
+- **macOS test lanes get a 1080 s session budget instead of 900 s.** On the
+  3-vCPU machines the full session ran 586-911 s over 17 recent lanes. The run
+  that timed out was 89 % done at 911 s, which projects to about 1020 s. The
+  5-vCPU machines stay near 400 s, and progress showed no stalled test. The
+  ten slowest tests add up to about 155 s of roughly 2700 worker-seconds, so
+  speeding them up cannot close the gap. 1080 s still leaves room under the
+  20-minute step. Other platforms keep the pytest.ini 900 s.
+- **SQLite connections close with their owner instead of waiting for the
+  garbage collector** (#1904). Three production paths left a connection open
+  until a garbage-collection cycle: a cache's thread-local WAL writer when its
+  thread exits (`close()` only closes the calling thread's connection), the
+  in-memory anchor of a never-indexed project when its cache is dropped without
+  `close()`, and route-cache connections when the detector's owner (such as
+  the MCP tool) never closes it. Each is now closed when its owner goes away:
+  in the owning thread when the thread exits, and before the connection's own
+  finalizer when the owner is collected. On Python 3.13 the finalizer closes
+  an unclosed connection without clearing its statement cache; if the object
+  outlives that, SQLite keeps the file and its locks open while Python reports
+  the connection as closed. That state matches the still-unidentified
+  build-database holder at seal.
+- **Seal-busy evidence names who opened the build database** (#1904). An audit
+  hook records a bounded creation stack for each connection opened on a
+  version-store `index.db`. Every other audit event costs two string
+  compares (about 0.14 µs; about 2 ms on a 152-file cold index), and records
+  hold only the connection id, never the connection. The
+  `INDEX_GENERATION_SEAL_BUSY` warning and the "sealed a byte copy" warning
+  now include `creators`: every live connection on that file, open or closed,
+  with its thread and creation stack, so the next CI occurrence names the code
+  that opened the holder. Seal behaviour is unchanged.
+- **A refresh is no longer lost when another handle keeps the build database
+  open at seal** (#1902). Leaving WAL needs an exclusive lock, and SQLite counts
+  SHARED locks per inode inside the process, so any leftover handle on the
+  private build file made `PRAGMA journal_mode=DELETE` fail for the whole
+  10 s wait (`INDEX_WRITER_BUSY` / `INDEX_GENERATION_SEAL_BUSY`). On CI that
+  handle had no Python connection or cursor (`holders []`). On POSIX the seal
+  now waits 1 s, then seals a byte copy of the checkpointed build file and
+  atomically replaces the build path; a source change during the copy still
+  fails with `SealBusy` and publishes nothing. Windows keeps the bounded wait.
+- **Root cause of the `test_scope_prune_failure_rolls_back_all_stale_rows`
+  flake pinned with a deterministic witness** (#1815). The first-attempt
+  traceback, recovered on CI from the code at the time, is
+  `sqlite3.OperationalError: database is locked` at
+  `PRAGMA journal_mode=DELETE` in `GenerationStore.seal`. The test's fixture
+  indexes through the generation store. On Linux and macOS (Python 3.13 lanes)
+  another handle in the process still had the private build database open,
+  and the old seal had no busy handling, so `index_project` raised before the
+  rollback check. The busy seal is now handled by #1822 (bounded retry) and
+  #1903 (byte-copy seal on POSIX). Two new POSIX tests keep a reader open on
+  the build database during the fixture's index. With the pre-#1822 seal the
+  index does not publish; with the current seal it publishes both files. The
+  handle itself is still tracked in #1904.
+- **The callers gate runs on Python 3.10 again.** Its child interpreters were
+  started with `python -P`, a 3.11+ flag, so the 3.10 full-suite lane failed
+  with `Unknown option: -P` (red on develop since #1888). The gate now sets
+  `PYTHONSAFEPATH=1`, which 3.11+ treats like `-P`; it is not part of the env
+  fingerprint, so existing gate caches stay valid.
+- **`nav callers` no longer answers `complete` for a Python method that a
+  subclass inherits as another base's method** (#1896). With `class A` (with
+  `m`) in `pkg/a.py`, `class I` (with `m` and `run(self): return self.m()`) in
+  `pkg/i.py` and `class B(A, I)` in `pkg/b.py`, `A.m` answered `complete` with
+  0 callers: `self.m()` in `I.run` is bound to `I.m`, but on a `B` it runs
+  `A.m`. The `supertype_dispatch` check now walks the project subclasses of the
+  declaring class, found from source through the import resolver
+  (transitively; aliased and renamed re-exported imports, `mod.A` and `A[int]`
+  included). When a subclass's ancestry holds another class, unrelated to the
+  declaring one, that declares the name, the method passes only when no call
+  edge named like it may dispatch there (plain calls, calls outside the
+  project, edges bound to this declaration, and receivers whose class is in no
+  such subclass's ancestry do not); otherwise it is `OVERRIDE_DISPATCH`, and
+  `next_step` names the subclass, the other class and the sites. A base that
+  may name the class but cannot be followed (`mix(A)`), a subclass whose
+  ancestry cannot be followed, a file that may declare a subclass but cannot be
+  read or parsed, and more than 4096 subclasses also block. A mangled `__m`
+  and members of external bases are not checked; subclasses outside the
+  project are not considered (closed world, as for Java #1894). The class
+  index is built lazily and cached per project state (index snapshot plus the
+  stat of every indexed Python file). The same answer with listed callers is
+  now `incomplete`. Callers gate: no verdict changed on any repo; 6 pydantic
+  rows keep their verdict and reasons but lose an exhaustive open-site bound
+  (a base naming a rename of the class that the resolver cannot follow).
+- **Subprocesses no longer inherit the MCP server's stdin** (#1891). Every
+  `subprocess.run` / `Popen` call in `tree_sitter_analyzer/` now passes
+  `stdin=subprocess.DEVNULL` (31 call sites), so a child such as `git` can
+  no longer hang on Windows by sharing the MCP stdio pipe (#1890 fixed one
+  place). A unit test scans the package AST and fails if a new subprocess or
+  asyncio-subprocess call omits `stdin`/`input`.
+- **`nav callers` no longer answers `complete` for a Java method that a
+  subtype inherits as another supertype's method** (#1894). With
+  `class A { public void m() {} }`, `class B extends A implements I` and
+  `m()` in a default method of `I`, `A.m` answered `complete` with 0 callers:
+  the call edge is bound to `I.m`, and `A` has no supertype, so the override
+  proof never ran. The `supertype_dispatch` check now also walks the project
+  subtypes of the declaring type (found from source, transitively; generic,
+  nested and cross-package clauses included). When a subtype's supertype
+  closure holds another type declaring the name, the method passes only when
+  every call edge named like it is bound to this declaration or outside the
+  project; otherwise it is `OVERRIDE_DISPATCH`, and `next_step` names the
+  subtype, the other type and the sites. A JDK type with that member, a
+  subtype whose supertypes do not resolve, a clause that may name the type but
+  does not resolve, or more than 128 subtypes also block. Abstract and
+  bodiless interface methods, `final` classes, enums, records and anonymous
+  bodies are not walked; subtypes outside the project are not considered
+  (closed world, as for the override proof). Callers gate: all 7 repos
+  unchanged (one pydantic site-list change under load was identical on a
+  re-run).
+- **`nav callers` no longer answers `complete` for a Java method that
+  overrides a supertype method without `@Override`** (#1884). `@Override` is
+  optional, but the PR-2 override gate ran only on annotated methods, so
+  `B.make` in `class B extends A<String>` answered `complete` with 0 callers
+  although `make()` in `A.run` dispatches to it (the index has no `extends`
+  edge for a generic supertype, #1880). The `supertype_dispatch` check now runs
+  the same proof on every non-static, non-private Java method whose declaring
+  type has a supertype (a named type with `extends` / `implements`, an
+  anonymous class or an enum constant body), and on every method named like a
+  `java.lang.Object` method. It passes only when every supertype resolves in
+  the project and none declares the name, or one does and every call edge
+  named like it is bound to this declaration or outside the project; otherwise
+  the answer is `OVERRIDE_DISPATCH`. A declaring file that cannot be read or
+  parsed is `DYNAMIC_SUPERTYPE` (check not run). A few JDK interfaces with a
+  known member set (`Cloneable`, `Serializable` with its serialization hooks,
+  `AutoCloseable`, `Closeable`, `Flushable`, `Comparable`, `Runnable`,
+  `Iterable`) end the walk instead of failing it, unless a project type of the
+  same name could shadow them; a method named like one of their members
+  overrides a JDK method and stays `OVERRIDE_DISPATCH`. Callers gate: all 7
+  repos unchanged (gson: 55 `complete` targets, 10 of them unannotated
+  instance methods of types with a supertype, each checked against its
+  supertypes in source).
+- **`nav callers` no longer answers `complete` for a Python method under a
+  base the index cannot follow** (#1883). The index records a Python base only
+  when it is a name or a dotted name, so `class V1(mix(Proc))`,
+  `class V3(*bases)`, `class V8(Alias)` with `Alias = Proc` and
+  `class V9(GProc[int])` got no inheritance edge: `self.get_query()` in
+  `Proc.run` was never offered the override, which answered `complete` with 0
+  callers. The `supertype_dispatch` check (#1882) now covers Python too. It
+  reads the bases of the declaring class, and of every project class above it,
+  with `ast`: a class bound once in the scope that runs the `class` statement,
+  and names imported from project modules (relative or absolute, `src` layout,
+  `__init__` re-exports, `import *`, `mod.Cls`, `Outer.Inner`) are followed.
+  The walk stops at a known external class: a standard-library or third-party
+  module, a builtin such as `object` or `Exception`, or a subscript of one
+  (`Generic[T]`, `Protocol[T]`). Anything else is `DYNAMIC_SUPERTYPE`, and
+  `next_step` names the class, its file and line, and the clause. That covers a
+  call, a starred argument, a conditional, a subscripted project class, a name
+  bound to a value or bound twice, an unbound name, an import that does not
+  resolve to one project file, a `**` class keyword, and a `metaclass=` that is
+  not external, whose `__new__` may rebind the bases, or that defines `mro`.
+  No Python member is exempt. Unlike a JS/TS constructor, `__init__` is
+  reached by `self.__init__()` in a base class, and a mangled `__m` is reached
+  from any base class with the same simple name.
+
+- **Callers gate: 13 ways a wrong `complete` could still pass are closed** (dev
+  tooling, `benchmarks/callers_gate`, gate format 2; caches move to
+  `<root>/v2/`, so a format-1 gate keeps running on the same root).
+  - An indexer change is no longer invisible: when the base and head index
+    keys differ, the base code also answers on its own index, the report shows
+    both comparisons, "pre-existing" is judged against the base's own index,
+    and every head `complete` that differs from either base set is checked.
+  - The grep oracle maps each hit to its innermost enclosing definition by
+    tree-sitter byte range and needs exactly that caller (name and start line)
+    listed; the answer's `end_line` is no longer trusted (nested functions, two
+    arrows on one line, Java anonymous-class methods).
+  - Aliased imports are followed to their local uses; aliased re-exports and
+    default exports are residual. A module is external only when it is a
+    declared dependency (or under `node_modules`) and no tsconfig
+    `paths`/`baseUrl` or import map can map it into the project.
+  - A receiver or supertype counts as a class only when that file binds the
+    name to it (class declaration or un-aliased import that resolves to it);
+    two classes are related through a common subtype, and an interface is
+    always related.
+  - The compact form is verified: a compact `complete` must be confirmed by the
+    full answer and list the same callers, on every head row; changes of kind
+    `other` are violations by default (`--allow-other-changes`).
+  - An allowed caller change on a `complete` row still goes through the
+    oracles; `allow_items` entries must name `file` and `mode`; a
+    `confidence_tier` change is a caller change.
+  - GT2: an open site is not coverage on a `complete` row, and GT2's own
+    `open_sites` outside a listed caller are residual on changed completes.
+  - Query-time disk memos are disabled in gate servers and base snapshots get
+    mtimes derived from their tree hash, so TSA's `source_fingerprint` can no
+    longer collide between base and head.
+  - Gate indexes build in one audited process (`TSA_INDEX_WORKERS=1`); a child
+    interpreter during the build fails it.
+  - `run --repos <subset>` is recorded as PARTIAL and exits 3 unless
+    `--allow-partial`; a parse error makes a hit residual before any other
+    check.
+  - From the first real use (#1887): `--fresh-base` recomputes base sides for
+    fair latency; `--jobs 1` is strictly sequential; a check result missing or
+    `null` on one side only is re-asked as budget noise; head results are kept
+    per run id and `promote --run` picks one; the report shows each changed
+    row's finding and `next_step`.
+
+- **`nav callers` no longer answers `complete` for a JS/TS member under an
+  `extends` clause the index cannot follow** (#1882). `class V1 extends
+  mix(Proc)` gets no inheritance edge, so `this.getQuery()` in `Proc.run` was
+  never offered `V1.getQuery` as a target, and the override answered `complete`
+  with 0 callers. A new review check, `supertype_dispatch` (the 13th required
+  check; a census now shows `{"required": 13, "checked": 13}`), walks the
+  declaring class's `extends` chain from source. It follows a class declared in
+  the same file, a named import from a relative module (through `export ... from`
+  re-exports) and `ns.B` for a relative namespace import. It stops at a known
+  external class: a package import or `require`, or an ECMAScript / web platform
+  global such as `Error`. Any other clause is reported with the new reason
+  `DYNAMIC_SUPERTYPE`, and `next_step` names the class, its file and line, and
+  the clause. Such clauses include a call, a conditional, a cast, a local value,
+  an unresolved import, an unknown identifier, a name bound twice in its file
+  or a cycle. The check covers the declaring class and every class above it,
+  for instance methods, accessors, fields and static methods (a static
+  `this.build()` in a base class dispatches to a subclass's static `build`);
+  constructors are exempt. With callers listed, the answer is `incomplete`.
+  The check only adds blocks: it runs after every other gate, so answers that
+  are already non-complete keep their reasons. Python (#1883) and Java
+  overrides without `@Override` (#1884) have the same gap and are tracked
+  separately.
+  Gate: on the r15 callers corpus (hono, zod, axios, gson, rich, fastapi and pydantic; 2,457 answers), develop 102007ac and the branch were run on one shared index per repo. No verdict changed, no `complete` was lost or added, and no caller count changed. No r15 target sits under an unfollowable clause; the only such clauses in these repos are cast class expressions in a zod test, and those answers are already non-complete at the edge layer. One zod reason changed, `flattenError` from `NON_CALL_REFERENCES` to `NON_CALL_REFERENCES_UNCHECKED`. That was the cold first query hitting the scan budget under load: a recheck on both builds gives `NON_CALL_REFERENCES`.
+
+- **`nav callers` no longer counts a JS/TS call site the call graph already
+  binds as an open site** (PR-3). The `UNRESOLVED_INBOUND` and
+  `UNRESOLVED_IN_DECLARING_FILE` guards counted every call row the index left
+  without a persisted resolution, including two kinds that cannot reach the
+  target unseen:
+  - a listed caller's own call, counted a second time (zod
+    `ParseStatus.mergeObjectSync`, line 125 of its listed caller
+    `mergeObjectAsync`). The site is dropped with reason `listed_caller_edge`
+    only when it is the graph's certain edge into the target from that very
+    caller at that line;
+  - `this.m()` in a method of class `C`, bound certainly to `C`'s own `m`
+    (zod `ZodNumber`'s `this.setLimit` blocked `ZodBigInt.setLimit`). Dropped
+    with reason `graph_bound_elsewhere` only when the target is in neither the
+    certain nor the possible set of the caller and the source proves it cannot
+    be reached through that `this`: the call's `this` is the receiver of a
+    non-static method declared directly in `class C` (only arrow functions in
+    between); the target's class is not `C` or a subclass of it, read from
+    source along its whole `extends` chain (same file or a named relative
+    import; a mixin call, a namespace member, a package or unresolvable import,
+    or a duplicated name fails), never from inheritance edges; and the target's
+    class is never used as a value that could copy its methods elsewhere
+    (`applyMixins(D, [T])`, `T.prototype`, an aliased or default export, a
+    namespace object read by name).
+  Both need the site to be exactly one index row (file, line, call text), the
+  only call named like the target on its source line (a second
+  `this.m()` on the line keeps it), a caller the graph knows by name and
+  definition line, and a file that still matches the index. A base class
+  calling `this.m()` that subclasses override keeps its site (hono
+  `getQueryString`), as do unknown or possible-only receivers, `function`
+  expressions, static methods, Python, Java and site lists over 64. Dropped
+  sites move to `excluded_sites` (declaring-file guard) or the new
+  `unresolved_inbound_excluded` list (with `unresolved_inbound_excluded_total`).
+
+  Gate: the r15 callers corpus of zod, hono, rich, pydantic, fastapi, axios and
+  gson (2,457 answers), develop vs branch on one index each through a
+  long-lived MCP server. 4 zod answers move from `incomplete` to `complete`
+  (`ZodBigInt.setLimit` and `ParseStatus.mergeObjectSync`, bare and qualified),
+  each checked by hand against every `git grep -w` hit. 15 answers keep their
+  verdict and report the next real blocker, `NON_CALL_REFERENCES`: 12 hono
+  `getCookies` answers (the `protected abstract getCookies(...)` signatures in
+  both copies of the base class) and 3 zod `_addCheck` answers (a multi-line
+  `})._addCheck({` call). 7 more answers (zod 1, hono 4, axios 2) only lose
+  some of their sites, all as `listed_caller_edge` or `graph_bound_elsewhere`. hono
+  `getQueryString` stays `unknown`. 0 caller-count changes, 0 answers leave
+  `complete`, and 0 changes in rich, pydantic, fastapi and gson.
+- **`nav callers`: a declaration's own name line is not a reference to it, and
+  Java annotations that register nothing no longer block `complete`** (PR-2).
+  - The non-call reference scan skips the line the index records for each
+    same-named declaration. For a Java method that is its first annotation or
+    modifier, so the name line below it counted as a reference (gson
+    `JsonWriter.beforeValue`, blocked only by its own line 806). The line that
+    holds the declaration's name token is now skipped too, but only when the
+    name occurs on it once; a second mention on that line (a parameter, an
+    annotation argument, `this::m` in a one-line body) and every line after
+    the name still count.
+  - The decorator gate treated every Java annotation as "may register".
+    `@SuppressWarnings`, `@Deprecated`, `@SafeVarargs` and `@FunctionalInterface`
+    (simple or `java.lang.` names, not shadowed by a project type or a
+    single-type import) now pass. `@Override` passes only when the override is
+    closed in the project: every supertype in the transitive closure of the
+    declaring type (and of its enclosing types) resolves from source to a
+    project type (same file in scope, single-type import, or same package;
+    qualified, `java.lang`, wildcard-only or unresolved names fail), some type
+    in it declares the method, the name is not a `java.lang.Object` method, and
+    every call edge named like the method binds to this declaration or to an
+    external / standard-library receiver. Otherwise the gate reports the new
+    code `OVERRIDE_DISPATCH`, with a `next_step` that says why (for example
+    gson `Adapter.computeValue`: "its supertype `ClassValue` is outside the
+    project"), or names the call sites that may dispatch to it through a
+    supertype (the index has no `extends` edge for a generic supertype such as
+    `extends TypeAdapter<T>`, so these calls do not reach the override as
+    name-only edges). `@Subscribe`, `@Bean`, `@Test` and every other annotation
+    still report `DECORATOR_MAY_REGISTER`; Python and TS decorators are
+    unchanged.
+
+  Gate: the r15 callers corpus of gson, rich, pydantic, fastapi, axios, hono
+  and zod (2,457 answers), develop vs branch on one index each through a
+  long-lived MCP server. 11 gson answers (6 targets, all blocked only by their
+  own name line below `@SuppressWarnings`) move to `complete`, each checked by
+  hand against every `git grep -w` hit; 3 gson answers change only their reason
+  to `OVERRIDE_DISPATCH` (`Adapter.computeValue` stays `unknown`); 0 caller-count
+  changes and 0 changes in the other six repos. An `@Override` sweep over all
+  759 gson overrides moves 3 to `complete` (enum-constant bodies of an abstract
+  method that nothing calls) and 13 from `NON_CALL_REFERENCES` to
+  `OVERRIDE_DISPATCH`.
+- **`nav callers` no longer treats a generic-class construction or a private
+  name as "may call anything"** (PR-1). The declaring-file guard
+  (`UNRESOLVED_IN_DECLARING_FILE`) counted two call shapes as computed dispatch
+  that could name any symbol:
+  - Python `Cls[T](...)` (pydantic `_Pipeline[Any, Any](...)`). When `Cls` is
+    provably a plain class (one top-level `class` binding in the file, no
+    metaclass keyword, no `__class_getitem__` in it or its in-file bases, bases
+    only `object`, `typing.Generic` or such in-file classes, decorators only
+    `dataclasses.dataclass`, no dynamic rebinding in the file and no `.Cls =` or
+    `"Cls"` in another indexed Python file), the site only constructs and is
+    excluded with reason `class_subscript_construction`. It still counts for
+    `__init__`, `__new__`, `__post_init__`, `__setattr__`, `__call__`,
+    `__init_subclass__`, `__class_getitem__` and for the class names themselves.
+    `HANDLERS[k]()` and every other subscript keep the guard.
+  - TS/JS `this.#x(...)` (hono `Context.#newResponse`). A private name `#x`
+    names only a target called exactly `#x`, never a public `x` (and a public
+    `.x` never names `#x`). Bracket and computed access are unchanged. The site
+    is excluded with the existing `names_other_symbol` reason.
+
+  On the r15 corpus only answers whose sole blockers were these sites move from
+  `incomplete` / `unknown` to `complete`.
+- **A deadline-interrupted snapshot read is "not read", never "no rows"**
+  (#1873). The alias and ES import readers of `nav callers` turned the
+  certified snapshot's deadline interrupt into an empty result, so an RFC-0040
+  check could count 0 and the certified answer could still be `complete`.
+  An interrupt now propagates. Inside the `unresolved_inbound` check it is
+  `not_checked` (`unknown`, never memoized). Elsewhere the certified answer is
+  dropped and the request falls back. Two more readers that kept a default on
+  an interrupt (bound definitions, index excludes) do the same. The request
+  path was already safe: its after-read deadline check drops such an answer.
+  Answers without a deadline are unchanged.
+
+### Tests
+
+- **The `nav` facade wire E2E case runs on a two-file project** (#1902). It
+  ran `nav action=test_map` on the TSA checkout, which cold-builds the whole
+  repository's index and call graph (about 105 s cold in a local Linux run, close
+  to the 45 s client wait on CI), and timed out 3 of 4 times on #1898. Its work
+  is now fixed-size and it uses the generic 25 s wait.
+- **Regression guards: a supertype dispatch gap is `incomplete`, never
+  `complete`, when the target has listed callers** (#1899). The suspected
+  gap did not reproduce on develop: `assess_completeness` runs the
+  `supertype_dispatch` check whatever the caller count and downgrades a
+  listed answer to `incomplete`. `test_callers_supertypes_listed.py` pins it
+  for the Java subtype proof (#1894 shape plus one direct caller, several
+  callers, a caller in another package; a subtype adding no declaring type
+  stays `complete`), the Java override proof with and without `@Override`
+  (#1884) and the Python unfollowable base (#1883). The Python subclass path
+  (#1896) and the JS/TS `extends` path (#1882) already had such a test. No
+  code change.
+
 ## [3.1.2] - Unreleased (release date set at tag time)
 
 v3.1.2 is an install-path patch release. A first-time user who followed the

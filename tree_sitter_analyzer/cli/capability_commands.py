@@ -55,34 +55,6 @@ def _ensure_tsa_config(project_root: str) -> None:
     config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
 
 
-def _write_index_meta(
-    project_root: str, files_indexed: int, languages: list[str]
-) -> None:
-    """Write .tsa/index-meta.json after a successful --hotspot run."""
-    import datetime
-    import importlib.metadata
-    import json
-    from pathlib import Path
-
-    tsa_dir = Path(project_root) / ".tsa"
-    tsa_dir.mkdir(exist_ok=True)
-
-    try:
-        version = importlib.metadata.version("tree-sitter-analyzer")
-    except importlib.metadata.PackageNotFoundError:
-        version = "0.0.0+dev"
-
-    meta = {
-        "built_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "files_indexed": files_indexed,
-        "languages": languages,
-        "tsa_version": version,
-    }
-    (tsa_dir / "index-meta.json").write_text(
-        json.dumps(meta, indent=2), encoding="utf-8"
-    )
-
-
 def _execute_facade(
     facade: Any,
     tool_args: dict[str, Any],
@@ -355,7 +327,15 @@ def _handle_hotspot(
 
     n_critical = sum(1 for e in ranked if e.severity == "CRITICAL")
     n_review = sum(1 for e in ranked if e.severity == "REVIEW")
-    verdict = "CRITICAL" if n_critical > 0 else ("REVIEW" if n_review > 0 else "OK")
+    # 顶层 verdict 必须落在信封契约的八值字母表内（dogfood 2026-11-09 P2-3：
+    # 曾输出 "CRITICAL"/"OK"，两者都不是合法 verdict）。严重度保留在
+    # results[].severity 与 summary_line 里，verdict 只表达「是否需要处置」。
+    if n_critical:
+        verdict = "WARN"
+    elif n_review:
+        verdict = "REVIEW"
+    else:
+        verdict = "INFO"
     summary_line = (
         f"hotspot: top={min(top_n, len(ranked))} files "
         f"CRITICAL={n_critical} REVIEW={n_review} OK={len(ranked) - n_critical - n_review}"
@@ -382,11 +362,6 @@ def _handle_hotspot(
             files_with_alias_gap=gaps,
             total_files=len(set(ca_map) | set(heatmap_map)),
         )
-
-    # --- Write index-meta.json (P6) ---
-    if result.success:  # always True at this point; False branch is dead code
-        langs = list({fh.language for fh in heatmap_files if fh.language})
-        _write_index_meta(project_root, len(heatmap_files), sorted(langs))
 
     context.output_json(result_to_dict(result))
     return 0

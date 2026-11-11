@@ -11,9 +11,20 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
+from ...resident import snapshot_memo
+
 
 def call_edge_lines(cache: Any, bare: str) -> dict[str, frozenset[int]] | None:
-    """以 ``bare`` 为被调方的 CALLS 边所在行，按文件分组；读取失败为 None。"""
+    """以 ``bare`` 为被调方的 CALLS 边所在行，按文件分组；读取失败为 None。
+
+    RFC-0042 P2b：认证快照上按快照身份记忆（读取失败不记）。
+    """
+    return snapshot_memo.cached(
+        cache, "call_edge_lines", (bare,), lambda: _read_call_edge_lines(cache, bare)
+    )
+
+
+def _read_call_edge_lines(cache: Any, bare: str) -> dict[str, frozenset[int]] | None:
     try:
         rows = cache.get_conn().execute(
             "SELECT file_path, line FROM edges WHERE kind = 'calls' AND callee_name = ?",

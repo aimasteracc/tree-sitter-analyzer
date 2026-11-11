@@ -56,6 +56,7 @@ def _tree_digest(root: Path, allowed_paths: tuple[str, ...]) -> str:
 def _run_git(root: Path, *args: str) -> str:
     completed = subprocess.run(  # nosec B603 B607
         ["git", *args],
+        stdin=subprocess.DEVNULL,
         cwd=str(root),
         capture_output=True,
         text=True,
@@ -191,6 +192,7 @@ def _run_registered_verification(root: Path, argv: tuple[str, ...]) -> dict[str,
     """以记录中的列表 argv 运行完整验证，不经过 shell。"""
     completed = subprocess.run(  # nosec B603
         list(argv),
+        stdin=subprocess.DEVNULL,
         cwd=str(root),
         env=dict(os.environ),
         capture_output=True,
@@ -212,6 +214,7 @@ def _run_reference_oracle(
     """只对仓库自带参考夹具运行 oracle；不授予 B1 沙箱资格。"""
     completed = subprocess.run(  # nosec B603
         [sys.executable, "-u", str(oracle_path)],
+        stdin=subprocess.DEVNULL,
         cwd=str(root),
         capture_output=True,
         text=True,

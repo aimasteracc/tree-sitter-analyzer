@@ -243,6 +243,7 @@ def _get_local_diff(mode: str, project_root: str | None) -> str:
     try:
         rc = subprocess.run(
             cmd,
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -270,6 +271,7 @@ def _current_pr_base(project_root: str) -> str:
     try:
         rc = subprocess.run(
             ["gh", "pr", "view", "--json", "baseRefName", "--jq", ".baseRefName"],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -286,6 +288,7 @@ def _git_ref_exists(project_root: str, ref: str) -> bool:
     try:
         rc = subprocess.run(
             ["git", "show-ref", "--verify", "--quiet", f"refs/remotes/{ref}"],
+            stdin=subprocess.DEVNULL,
             cwd=project_root,
             timeout=10,
         )
@@ -293,6 +296,7 @@ def _git_ref_exists(project_root: str, ref: str) -> bool:
             return True
         rc = subprocess.run(
             ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{ref}"],
+            stdin=subprocess.DEVNULL,
             cwd=project_root,
             timeout=10,
         )
@@ -346,6 +350,7 @@ def _get_old_source(project_root: str, file_path: str) -> str:
     try:
         rc = subprocess.run(
             ["git", "show", f"HEAD:{file_path}"],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             encoding="utf-8",

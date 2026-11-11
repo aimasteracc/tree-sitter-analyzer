@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .callers_compact import FORMAT_PROPERTY, INCLUDE_UNCONFIRMED_PROPERTY
 from .facade_discovery import build_bespoke_action_schema
 
 # callers/callees scope=point 路由转发给 inner 的参数。
@@ -18,6 +19,16 @@ POINT_RELATION_KEYS = (
     "limit",
     "include_bodies",
     "output_format",
+    # §12.1：callees 也支持 304 式重问。
+    "if_none_match",
+)
+# #1854：callers 另转发 ``order``（callees 没有置信层级）。
+# §12.1/§12.2：callers 另外转发增量参数（ETag 协商与无状态 delta）。
+CALLERS_POINT_KEYS = (
+    *POINT_RELATION_KEYS,
+    "order",
+    "if_none_match",
+    "previous_entries",
 )
 # callers/callees scope=graph 路由转发给 call_graph inner 的参数。
 GRAPH_RELATION_KEYS = ("function_name", "file_path", "depth", "output_format")
@@ -59,14 +70,27 @@ def register_nav_help_schemas(
     facade: Any, callers_inner: Any, callees_inner: Any, context_inner: Any
 ) -> None:
     """为 callers/callees/context 登记 help schema。"""
-    for action, inner in (("callers", callers_inner), ("callees", callees_inner)):
+    # #1853：只有 callers 有紧凑答复（format=compact）。
+    relation_extras: tuple[tuple[str, Any, tuple[str, ...], dict[str, Any]], ...] = (
+        (
+            "callers",
+            callers_inner,
+            CALLERS_POINT_KEYS,
+            {
+                "format": FORMAT_PROPERTY,
+                "include_unconfirmed": INCLUDE_UNCONFIRMED_PROPERTY,
+            },
+        ),
+        ("callees", callees_inner, POINT_RELATION_KEYS, {}),
+    )
+    for action, inner, keep, extras in relation_extras:
         facade.register_bespoke_schema(
             action,
             build_bespoke_action_schema(
                 action,
                 inner,
-                keep=POINT_RELATION_KEYS,
-                extra_properties={"scope": _SCOPE_PROPERTY},
+                keep=keep,
+                extra_properties={"scope": _SCOPE_PROPERTY, **extras},
             ),
         )
     facade.register_bespoke_schema(

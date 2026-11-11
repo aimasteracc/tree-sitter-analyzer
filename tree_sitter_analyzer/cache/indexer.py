@@ -30,7 +30,10 @@ from ..index_source_snapshot import (
     parse_source_scope_descriptor,
     validate_full_index_source_scope,
 )
-from ..index_symbol_projection import symbol_projection_is_exact
+from ..index_symbol_projection import (
+    converge_symbol_projection,
+    symbol_projection_is_exact,
+)
 from ..indexing_limits import normalize_index_max_files
 from ..indexing_snapshot import (
     IndexCandidateSnapshot,
@@ -140,7 +143,8 @@ _warned_extensions: set[str] = set()
 # v52：TS 调用经 ES 模块导入 / 再导出 / 项目包说明符解析到定义，symbols_json 记录 TS 导出形状与再导出（#1764 / #1768）。
 # v53：TS 类的 `extends` 基类写入 parents；`const X = class extends B {...}` 以常量名索引为类（#1765）。
 # v54：Python `@overload` 存根在 symbols_json 中标记 overload，构图时由唯一的实现代表（#1773）。
-_AST_CACHE_EXTRACTOR_VERSION = 54
+# v55：Kotlin 裸调用 / this 调用在边 metadata 中记录隐式接收者范围 kotlin_scope（#1926）。
+_AST_CACHE_EXTRACTOR_VERSION = 55
 # #1673：写入方核验符号投影的期限（秒）。未核完会被当作不精确并重写全部投影，
 # 因此写入方不使用读者的 5 秒期限；与认证盖戳的期限（120 秒）一致。
 _WRITER_PROJECTION_SECONDS = 120.0
@@ -515,8 +519,54 @@ def post_index_backfill(
     from .. import call_graph_incremental
 
     call_graph_incremental.note_scope(cache, decision)
+    if changed == 0:
+        skip_reason = _noop_skip_reason(cache, conn)
+        if skip_reason is not None:
+            # 输入没变且上一轮已在同一内容上收敛：回填只会重算同样的边。
+            # 缺 marker / 缺收敛记录时一律照旧回填——那是 #1253 的自愈路径。
+            stats["backfill_skipped"] = skip_reason
+            stats.setdefault("backfill_errors", 0)
+            return
     with backfill_scope.active(conn, decision.scope):
         _post_index_backfill(cache, stats, root_fd=root_fd)
+
+
+def _noop_skip_reason(cache: Any, conn: Any) -> str | None:
+    """无变化时是否有证据表明「上一轮已在同一内容上收敛」。None = 照旧回填。
+
+    两条互不替代的证据：
+
+    1. ``CERTIFIED_CONVERGED``：调用图已认证且解析已收敛；
+    2. ``CONVERGED_STABLE_FAILURES``：只差已记录的稳定失败（#1671 的收敛记录，
+       只在全部错误都是稳定失败、回填零错误的完整运行结束时签发，#1735 复用）。
+       缺可选语法的仓库永远走这条：标记按设计保持撤销，但内容确实收敛过。
+    """
+    if _resolution_is_certified(cache, conn):
+        return "CERTIFIED_CONVERGED"
+    try:
+        from .backfill_scope import published_parent
+        from .stable_failures import converged_except_stable_failures
+
+        if converged_except_stable_failures(conn, published_parent(cache)):
+            return "CONVERGED_STABLE_FAILURES"
+    except Exception:  # noqa: BLE001 — 判断不了就回填
+        return None
+    return None
+
+
+def _resolution_is_certified(cache: Any, conn: Any) -> bool:
+    """调用图已认证 **且** 解析已对当前索引状态收敛时返回 True。
+
+    ``call_graph_built`` 包含认证语义（缺 optional grammar 时为 False），
+    ``resolution_converged`` 读 ``ast_resolve_state`` 指纹。两者缺一律返回
+    False：判断不了就照旧回填，保持 #1253 的自愈语义。
+    """
+    try:
+        from .unresolved import resolution_converged
+
+        return bool(cache.call_graph_built()) and resolution_converged(conn)
+    except Exception:  # noqa: BLE001 — 判断不了就回填
+        return False
 
 
 def _post_index_backfill(

@@ -22,10 +22,12 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
+      # benchmarks/callers_gate/corpus_data/ is versioned byte for byte (its
+      # sha256 digests key the gate caches): no hook may rewrite it.
       - id: trailing-whitespace
-        exclude: \.md$
+        exclude: \.md$|^benchmarks/callers_gate/corpus_data/
       - id: end-of-file-fixer
-        exclude: \.md$
+        exclude: \.md$|^benchmarks/callers_gate/corpus_data/
       - id: check-yaml
         args: [--allow-multiple-documents]
       - id: check-json
@@ -37,6 +39,7 @@ repos:
       - id: check-case-conflict
       - id: mixed-line-ending
         args: [--fix=lf]
+        exclude: ^benchmarks/callers_gate/corpus_data/
       - id: check-ast
       - id: check-builtin-literals
       - id: check-docstring-first
@@ -196,6 +199,16 @@ repos:
   # Defense against incidents catalogued in docs/POSTMORTEM_v1.13.md.
   - repo: local
     hooks:
+      # 复制品一致性：改了打包 skill 就必须在同一次提交里改开发副本。
+      # 静态测试看不见这个错误（工作区两份内容一致），只有 CI 检出那次提交后才红。
+      - id: tsa-skill-copies-staged
+        name: "tsa-skill-copies-staged — packaged skill and dev copy must be staged together"
+        entry: uv run python scripts/check_skill_copies_staged.py
+        language: system
+        pass_filenames: false
+        files: ^(tree_sitter_analyzer/skills|\.claude/skills)/.*SKILL\.md$
+        stages: [pre-commit]
+
       - id: tsa-ps-ascii
         name: "tsa-ps-ascii — block non-ASCII in `shell: powershell` run blocks"
         entry: uv run python scripts/check_ps_ascii.py

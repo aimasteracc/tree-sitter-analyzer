@@ -5,6 +5,8 @@ import sqlite3
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 import tests.unit._ast_cache_helpers as _fixtures
 import tree_sitter_analyzer.ast_cache as ast_cache_module
 from tests.unit._ast_cache_helpers import _BACKFILL_ROUTES
@@ -386,3 +388,173 @@ def test_incomplete_cached_noop_clears_current_global_marker(tmp_path: Path) -> 
         cache.call_graph_built(),
     ) == (0, 1, "WARN", False)
     cache.close()
+
+
+def test_projection_residue_converges_without_full_reindex(engine):
+    """dogfood 2026-11-09：内部残余收敛后，索引必须仍是增量。
+
+    修复前，陈旧行 / 缺失投影状态会让 ``symbol_projection_is_exact`` 永远为假，
+    每次 ``index`` 都把全部文件重新提取（本仓库 2917 文件实测 0.6 s → 57 s）。
+    """
+    first = engine.index_project(workers=0)
+    assert first["indexed"] == 2
+    conn = engine.get_conn()
+    conn.execute(
+        "DELETE FROM ast_symbol_projection_state WHERE file_path = "
+        "(SELECT file_path FROM ast_index ORDER BY file_path LIMIT 1)"
+    )
+    conn.execute(
+        "INSERT INTO ast_symbol_rows(name, kind, file_path, language, line, end_line) "
+        "VALUES ('ghost', 'function', 'gone.py', 'python', 1, 2)"
+    )
+    conn.commit()
+
+    stats = engine.index_project(workers=0)
+
+    assert stats["indexed"] == 0
+    assert stats["cached"] == 2
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM ast_symbol_rows WHERE file_path = 'gone.py'"
+        ).fetchone()[0]
+        == 0
+    )
+    assert (
+        conn.execute("SELECT COUNT(*) FROM ast_symbol_projection_state").fetchone()[0]
+        == conn.execute("SELECT COUNT(*) FROM ast_index").fetchone()[0]
+    )
+
+
+def _projection_fixture_conn():
+    """最小的投影 schema：索引源 + 参考行 + 状态 + 外部内容 FTS。"""
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(
+        """
+        CREATE TABLE ast_index(file_path TEXT PRIMARY KEY, content_hash TEXT);
+        CREATE TABLE ast_symbol_rows(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL, kind TEXT NOT NULL, file_path TEXT NOT NULL,
+            language TEXT NOT NULL, line INTEGER NOT NULL DEFAULT 0,
+            end_line INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE ast_symbol_projection_state(
+            file_path TEXT PRIMARY KEY, content_hash TEXT NOT NULL,
+            symbol_count INTEGER NOT NULL CHECK(symbol_count >= 0),
+            projection_digest TEXT NOT NULL);
+        CREATE VIRTUAL TABLE ast_symbols_fts USING fts5(
+            name, kind, file_path, language,
+            content='ast_symbol_rows', content_rowid='id',
+            tokenize='porter unicode61');
+        CREATE TABLE ast_cache_metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        """
+    )
+    return conn
+
+
+def _fts_docsize(conn) -> int:
+    return conn.execute("SELECT COUNT(*) FROM ast_symbols_fts_docsize").fetchone()[0]
+
+
+def test_converge_symbol_projection_repairs_internal_residue():
+    """dogfood 2026-11-09：陈旧行 / 缺状态 / 孤儿 FTS 是三种可收敛的内部残余。
+
+    迁移后的旧缓存会同时带着它们，`symbol_projection_is_exact` 因此永远为假，
+    于是每次索引都重写全部文件。收敛只动这三类残余，不重写参考行。
+    """
+    from tree_sitter_analyzer.index_symbol_projection import (
+        converge_symbol_projection,
+        upsert_symbol_projection_state,
+    )
+
+    conn = _projection_fixture_conn()
+    conn.execute("INSERT INTO ast_index VALUES ('a.py', 'h1')")
+    # 解析失败/空文件：在 ast_index 里，但没有任何符号行与状态
+    conn.execute("INSERT INTO ast_index VALUES ('broken.swift', 'h2')")
+    conn.execute(
+        "INSERT INTO ast_symbol_rows(name, kind, file_path, language, line, end_line) "
+        "VALUES ('a', 'function', 'a.py', 'python', 1, 2)"
+    )
+    # 陈旧行：文件已不在 ast_index 中
+    conn.execute(
+        "INSERT INTO ast_symbol_rows(name, kind, file_path, language, line, end_line) "
+        "VALUES ('gone', 'function', 'gone.py', 'python', 3, 4)"
+    )
+    upsert_symbol_projection_state(conn, "a.py")
+    # FTS 与参考行同步一条，再加一条只存在于 FTS 的孤儿行
+    conn.execute(
+        "INSERT INTO ast_symbols_fts(rowid, name, kind, file_path, language) "
+        "SELECT id, name, kind, file_path, language FROM ast_symbol_rows ORDER BY id"
+    )
+    conn.execute(
+        "INSERT INTO ast_symbols_fts(rowid, name, kind, file_path, language) "
+        "VALUES (999, 'ghost', 'function', 'gone.py', 'python')"
+    )
+    assert _fts_docsize(conn) == 3
+    assert conn.execute("SELECT COUNT(*) FROM ast_symbol_rows").fetchone()[0] == 2
+
+    assert converge_symbol_projection(conn, require_fts=True) is True
+
+    assert conn.execute(
+        "SELECT file_path FROM ast_symbol_rows ORDER BY file_path"
+    ).fetchall() == [("a.py",)]
+    assert conn.execute(
+        "SELECT file_path FROM ast_symbol_projection_state ORDER BY file_path"
+    ).fetchall() == [("a.py",), ("broken.swift",)]
+    assert _fts_docsize(conn) == 1
+    # 幂等：第二次没有可收敛的残余
+    assert converge_symbol_projection(conn, require_fts=True) is False
+
+
+def test_convergence_requires_the_projection_tables():
+    """没有投影表的连接不参与收敛（预投影/最小 fixture 保持原样）。"""
+    from tree_sitter_analyzer.index_symbol_projection import (
+        converge_symbol_projection,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_index(file_path TEXT)")
+
+    assert converge_symbol_projection(conn, require_fts=True) is False
+
+
+@pytest.mark.parametrize("first_outcome", ["raise", "returns_false"])
+def test_failed_convergence_certification_falls_back_to_a_full_repair(
+    engine, monkeypatch, first_outcome
+):
+    """收敛后认证失败（抛错或不认账）都必须退回全量修复。"""
+    engine.index_project(workers=0)
+    conn = engine.get_conn()
+    conn.execute(
+        "DELETE FROM ast_symbol_projection_state WHERE file_path = "
+        "(SELECT file_path FROM ast_index ORDER BY file_path LIMIT 1)"
+    )
+    conn.commit()
+
+    calls = {"n": 0}
+
+    def _fail_first(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            if first_outcome == "raise":
+                raise RuntimeError("certification failed")
+            return False
+        return False
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.index_snapshot_symbols.ensure_symbol_rows_backfilled",
+        _fail_first,
+    )
+
+    stats = engine.index_project(workers=0)
+
+    # 退回全量投影修复：每个文件都重新走写方路径。
+    assert stats["indexed"] == 2
+    assert stats["cached"] == 0
+
+
+def test_force_rebuild_skips_convergence_and_rewrites_every_file(engine):
+    """force 语义是「忽略缓存重建」：不先收敛，直接走全量重写。"""
+    engine.index_project(workers=0)
+
+    stats = engine.index_project(force=True, workers=0)
+
+    assert (stats["mode_used"], stats["indexed"], stats["cached"]) == ("full", 2, 0)

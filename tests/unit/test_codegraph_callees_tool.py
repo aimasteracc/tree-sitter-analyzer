@@ -372,6 +372,7 @@ async def test_new_symbol_absent_from_stale_index_is_not_a_spelling_error(
         {"action": "callees", "symbol": "_dogfood_probe", "include_bodies": False}
     )
 
+    # NOT_FOUND 保持 NOT_FOUND：它自己带 stale 证据与「不是缺席证据」的 next_step。
     assert (result["verdict"], result["source_evidence"]) == (
         "NOT_FOUND",
         _STALE,
@@ -570,3 +571,18 @@ class TestHierarchyCalleesNoBareNameFanout:
             {"symbol": "apply_budget", "mode": "hierarchy", "output_format": "json"}
         )
         assert result["hierarchy"]["callees"] == []
+
+
+@pytest.mark.asyncio
+async def test_callees_if_none_match_returns_a_minimal_unchanged_answer(
+    long_lived_nav,
+) -> None:
+    """§12.1 的 callees 半边：同一指纹重问只回最小载荷，不回整份 callee 列表。"""
+    nav, _root = long_lived_nav
+    query = {"action": "callees", "symbol": "Service.target", "include_bodies": False}
+    first = await nav.execute(dict(query))
+
+    second = await nav.execute({**query, "if_none_match": first["answer_etag"]})
+
+    assert (second["unchanged"], "callees" in second) == (True, False)
+    assert second["answer_etag"] == first["answer_etag"]
