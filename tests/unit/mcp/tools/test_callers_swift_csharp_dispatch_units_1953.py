@@ -312,3 +312,13 @@ def test_csharp_unreadable_msbuild_file_blocks(tmp_path) -> None:
     (tmp_path / "Odd.csproj").mkdir()
     found = _cs(tmp_path, files, "S.cs", "Area", _Index(files))
     assert found is not None and "global using" in found.why
+
+
+def test_csharp_class_header_lost_to_a_syntax_error_blocks(tmp_path) -> None:
+    files = {
+        "A.cs": "public class Engine { public void Run() { } }\n",
+        # No class node: the grammar leaves the whole header in an ERROR node.
+        "B.cs": "public class Lost : Engine } {\n",
+    }
+    found = _cs(tmp_path, files, "A.cs", "Run", _Index(files), "class Engine")
+    assert found is not None and "syntax error" in found.why

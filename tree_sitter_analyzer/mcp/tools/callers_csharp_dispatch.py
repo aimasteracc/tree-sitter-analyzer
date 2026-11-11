@@ -35,7 +35,6 @@ from .callers_override_common import (
     OverrideProof,
     dispatch_proof,
     fail,
-    walk,
 )
 from .evidence_file_cache import FILE_CACHE
 
@@ -106,6 +105,21 @@ NO_STATIC_ABSTRACT = frozenset(
 )
 _CLASSES = frozenset({"class_declaration", "record_declaration"})
 _STATIC_SLOTS = frozenset({"abstract", "virtual"})
+_TYPE_DECLS = frozenset(
+    {
+        "class_declaration",
+        "record_declaration",
+        "struct_declaration",
+        "interface_declaration",
+    }
+)
+#: Nodes that may hold type declarations.
+_CONTAINERS = _TYPE_DECLS | {
+    "compilation_unit",
+    "namespace_declaration",
+    "file_scoped_namespace_declaration",
+    "declaration_list",
+}
 
 
 def subtype_dispatch_proof(
@@ -117,7 +131,7 @@ def subtype_dispatch_proof(
         own = _scan(reader, start, bare, static=True)
         if own is not None:
             return _verdict(reader, own, bare, rel, line, start, "its type")
-    if start.node.type not in _CLASSES:
+    if start.node.type not in _CLASSES or _final(reader, start):
         return None
     subclasses = _subclasses(reader, start)
     if isinstance(subclasses, str):
@@ -128,6 +142,19 @@ def subtype_dispatch_proof(
             where = f"its subclass `{sub.dotted}` ({sub.file})"
             return _verdict(reader, found, bare, rel, line, start, where)
     return None
+
+
+def _final(reader: Any, start: Any) -> bool:
+    """A `static` or `sealed` class (in any part) has no subclass."""
+    parts = reader.parts(start)
+    for part in parts if isinstance(parts, list) else [start]:
+        parsed = reader.parse(part.file)
+        if parsed is None:
+            continue
+        modifiers = {parsed.text(c) for c in part.node.children if c.type == "modifier"}
+        if modifiers & {"static", "sealed"}:
+            return True
+    return False
 
 
 def _verdict(
@@ -180,6 +207,8 @@ def _scan(reader: Any, t: Any, bare: str, *, static: bool) -> tuple[str, str] | 
 
 def _entries(reader: Any, t: Any) -> list[tuple[str, str, Any]] | str:
     """``(text, simple name, resolved type or why not)`` per base list entry."""
+    from .callers_csharp_overrides import header_broken
+
     parts = reader.parts(t)
     if isinstance(parts, str):
         return parts
@@ -189,6 +218,8 @@ def _entries(reader: Any, t: Any) -> list[tuple[str, str, Any]] | str:
         if parsed is None:
             return "a file in its supertype closure could not be parsed"
         base_list = next((c for c in part.node.children if c.type == "base_list"), None)
+        if header_broken(part.node):
+            return f"the header of `{part.name}` could not be parsed"
         if base_list is None:
             continue
         if base_list.has_error:
@@ -259,11 +290,6 @@ def _subclasses(reader: Any, start: Any) -> list[Any] | str:
 
 def _direct_subclasses(reader: Any, files: list[str], base: Any) -> list[Any] | str:
     mention = re.compile(r"\b" + re.escape(base.name) + r"\b")
-    # A class header naming it after `:` (over-matches; only used on files
-    # whose tree has an error, where a header may be lost).
-    header = re.compile(
-        r"\b(?:class|record)\s+\w+[^{;]*?:[^{;]*?\b" + re.escape(base.name) + r"\b"
-    )
     found = []
     for rel in files:
         text = FILE_CACHE.read_text(os.path.join(reader.root, rel))
@@ -274,11 +300,11 @@ def _direct_subclasses(reader: Any, files: list[str], base: Any) -> list[Any] | 
         parsed = reader.parse(rel)
         if parsed is None:
             return f"the C# file {rel} could not be parsed"
-        if parsed.root.has_error and header.search(text):
+        if parsed.root.has_error and _lost_mention(parsed, mention):
             return (
                 f"a class in {rel} may derive from it, but the file has a syntax error"
             )
-        for node in walk(parsed.root):
+        for node in _type_nodes(parsed.root):
             if node.type not in _CLASSES:
                 continue
             first = _first_base(node)
@@ -299,6 +325,33 @@ def _direct_subclasses(reader: Any, files: list[str], base: Any) -> list[Any] | 
             if resolved.key == base.key:
                 found.append(candidate)
     return found
+
+
+def _type_nodes(root: Any) -> list[Any]:
+    """Type declarations, without descending into member bodies."""
+    found: list[Any] = []
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if node.type in _TYPE_DECLS:
+            found.append(node)
+        if node is root or node.type in _CONTAINERS or node.type.startswith("preproc"):
+            stack.extend(node.children)
+    return found
+
+
+def _lost_mention(parsed: Any, mention: re.Pattern[str]) -> bool:
+    """The name occurs in text the grammar could not read (a class header
+    there would hold no class node)."""
+    stack = [parsed.root]
+    while stack:
+        node = stack.pop()
+        if node.type == "ERROR":
+            if mention.search(parsed.text(node)):
+                return True
+            continue  # the whole region was searched
+        stack.extend(c for c in node.children if c.has_error)
+    return False
 
 
 def _first_base(node: Any) -> Any | None:

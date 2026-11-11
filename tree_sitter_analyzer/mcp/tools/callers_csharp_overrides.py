@@ -497,6 +497,8 @@ class _Reader:
             base_list = next(
                 (c for c in part.node.children if c.type == "base_list"), None
             )
+            if header_broken(part.node):
+                return f"the header of `{part.name}` could not be parsed"
             if base_list is None:
                 continue
             if base_list.has_error:
@@ -629,6 +631,17 @@ class _Reader:
             if found:
                 return f"its supertype `{raw}` is ambiguous in the project"
         return f"its supertype `{raw}` is declared outside the project"
+
+
+def header_broken(node: Any) -> bool:
+    """#1953: the grammar left part of the type's header (before its body) in
+    an ERROR node, where a base list entry may be lost."""
+    for child in node.children:
+        if child.type == "declaration_list":
+            return False
+        if child.type == "ERROR":
+            return True
+    return False
 
 
 def _aliased(usings: list[_Using], first: str, raw: str, verb: str) -> str | None:
