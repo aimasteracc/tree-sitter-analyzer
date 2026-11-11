@@ -760,6 +760,80 @@
   (#1896) and the JS/TS `extends` path (#1882) already had such a test. No
   code change.
 
+## [3.1.2] - Unreleased (release date set at tag time)
+
+v3.1.2 is an install-path patch release. A first-time user who followed the
+README could end up with an MCP entry their client never reads, a Swift or Lua
+repository that indexed as `unsupported language`, or an `[all]` install that
+pulled a test toolchain. This release fixes those paths. No MCP request or
+response shape changes, and the index does not need a rebuild.
+
+### Fixed
+
+- **`install.sh` writes the file each client actually reads.** Claude Code now
+  gets a project `.mcp.json` (the old `~/.claude/.mcp.json` and
+  `./.claude/.mcp.json` targets are not read by Claude Code). VS Code gets
+  `.vscode/mcp.json` with the `servers` key and `type: stdio` (VS Code ignores
+  `mcpServers`). Cursor gets a project `.cursor/mcp.json`; the global
+  `~/.cursor/mcp.json` is never written, because one fixed
+  `TREE_SITTER_PROJECT_ROOT` there points every project at one repository.
+  A detected client whose file does not exist yet gets a new file instead of
+  being skipped. Codex CLI users get a printed `config.toml` block.
+- **`--doctor` checks the same locations** and reports an unset
+  `TREE_SITTER_PROJECT_ROOT` in the shell as WARN instead of FAIL (the MCP
+  client config, not the shell, normally sets it). It flags a VS Code file that
+  uses `mcpServers` and accepts `${workspaceFolder}`.
+- **Swift and Lua grammars ship with the core install.** They were optional
+  extras, so a plain `uvx`/`pip` install answered `unsupported language` for
+  `.swift` and `.lua` files. The missing-grammar hint for them now asks for a
+  package upgrade.
+- **README and installation guide** (EN/JA/ZH/ES): the automated-install text
+  describes what the script does; every quick start includes the one-time
+  `--full-index` step and the expected `indexed: true`; CLI examples work
+  without a persistent install (`uvx --from tree-sitter-analyzer ...`);
+  a Codex CLI block was added; stale "in this PR" / "on develop" wording was
+  removed.
+
+### Changed
+
+- **`anthropic` is no longer a dependency.** No module imports it. This removes
+  `anthropic`, `distro`, `docstring-parser`, `jiter` and `sniffio` from the
+  resolved install.
+- **`[all]` means every language grammar plus the MCP extras.** It no longer
+  installs pytest, ruff, mypy, black, isort, pre-commit or memory-profiler, and
+  no longer pins `psutil<6`. Developer environments use `[full]` or `[dev]`.
+- **Core grammar packages carry the same upper bounds as the extras**
+  (for example `tree-sitter-python>=0.23.6,<0.25.0`), so a plain install
+  resolves the grammar series the test suite runs against.
+- `install.sh`: a config file that fails to parse is now a failure (exit 1)
+  instead of a silent skip.
+
+### Added
+
+- `llms.txt`: a non-interactive install guide for AI agents.
+- `.github/ISSUE_TEMPLATE/agent-trial.yml`: a structured report form for an
+  agent's install and first-use outcome.
+- `server.json`: title, website, `runtimeHint: uvx`, and the optional
+  `TREE_SITTER_PROJECT_ROOT` variable for the official MCP Registry; README
+  carries the `mcp-name` ownership marker the registry checks on PyPI.
+
+### Migration
+
+- If you installed with `[swift]` or `[lua]`, nothing changes; both extras are
+  kept as aliases.
+- If you relied on `pip install "tree-sitter-analyzer[all]"` for a test
+  toolchain, use `[full]` (or `uv sync --extra full` in a clone).
+- If you import `anthropic` in your own scripts next to TSA, install it
+  yourself; TSA no longer pulls it in.
+- If an earlier `install.sh` run wrote `~/.claude/.mcp.json` or
+  `./.claude/.mcp.json`, Claude Code never read those files. Re-run
+  `install.sh` in the project, or run
+  `claude mcp add tree-sitter-analyzer --scope project ...`, then delete the
+  stale file. The same applies to a VS Code `mcp.json` that uses
+  `mcpServers`.
+- Scripts that relied on `install.sh` exiting 0 on an unreadable config file
+  must now handle exit 1.
+
 ## [3.1.1] - 2026-11-01
 
 v3.1.1 is a patch release. It fixes how SQLite cursors are finished after an

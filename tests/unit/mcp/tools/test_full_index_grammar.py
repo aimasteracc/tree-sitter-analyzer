@@ -26,6 +26,6 @@ def test_next_step_caps_the_listed_files_and_counts_the_rest() -> None:
     assert missing_grammar_next_step(phases) == (
         "Published without 4 file(s) whose optional grammar is not installed "
         f"(a.swift: {_REASON}; b.swift: {_REASON}; c.swift: {_REASON}; and 1 more). "
-        "Install the extra and re-run index action=full; graph answers about "
+        "Follow the grammar hint and re-run index action=full; graph answers about "
         "those files stay incomplete until then."
     )
