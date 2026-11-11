@@ -505,7 +505,7 @@ def test_readme_cli_count_claim_matches_exact_runtime_inventory(label, count, bl
     actual = len({option for action in parser._actions for option in action.option_strings if option.startswith("--")})
     # #1582 新增 --ast-cache-include-details；#1617 新增 --change-impact-include-details；
     # RFC-0041 新增 4 个 --uql* 参数；#1856 新增 4 个 --setup* 参数；
-    # 2026-11-09 新增 --capabilities。
+    # 2026-11-09 新增 --capabilities；2026-11-10 新增 --help-all。
     assert actual == 375
     prose = f"{count} {label}"
     expected = () if count == actual else ("README_UNREGISTERED_QUANTITATIVE_CLAIM:3",)
