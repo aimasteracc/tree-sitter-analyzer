@@ -25,6 +25,7 @@ on:
     paths:
       - "tree_sitter_analyzer/**"
       - "tests/e2e/**"
+      - ".github/workflows/e2e-locale.yml"
   schedule:
     # Weekly on Monday 02:00 UTC
     - cron: "0 2 * * 1"
