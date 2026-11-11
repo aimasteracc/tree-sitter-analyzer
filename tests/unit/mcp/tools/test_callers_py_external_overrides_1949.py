@@ -310,3 +310,96 @@ def test_known_members() -> None:
     assert known_members("io.RawIOBase") is None
     assert known_members("enum.auto") is None
     assert known_members("builtins.len") is None
+
+
+def test_unfollowable_and_twice_bound_external_bases_block(tmp_path) -> None:
+    text = (
+        "try:\n"
+        "    from liba import Base\n"
+        "except ImportError:\n"
+        "    from libb import Base\n"
+        "\n"
+        "def mix(b):\n"
+        "    return b\n"
+        "\n"
+        "class K(Base):\n"
+        "    def m(self):\n"
+        "        return 1\n"
+        "\n"
+        "class D(mix(object)):\n"
+        "    def d(self):\n"
+        "        return 1\n"
+    )
+    root = _write(tmp_path, {"k.py": text})
+
+    twice = python_override_finding(root, "k.py", 10, "m", _tops)
+    dynamic = python_override_finding(root, "k.py", 14, "d", _tops)
+
+    assert twice is not None and "may define or call `m`" in twice.why
+    assert dynamic is not None and "a call" in dynamic.why
+
+
+def test_too_many_project_bases_block(tmp_path) -> None:
+    lines = ["class C0:\n    pass\n"]
+    lines += [f"class C{i}(C{i - 1}):\n    pass\n" for i in range(1, 70)]
+    lines.append("class Leaf(C69):\n    def m(self):\n        return 1\n")
+    text = "\n".join(lines)
+    root = _write(tmp_path, {"k.py": text})
+
+    found = python_override_finding(root, "k.py", _line_of(text, "def m"), "m", _tops)
+
+    assert found is not None and "too many" in found.why
+
+
+def test_recursion_fails_closed(tmp_path, monkeypatch) -> None:
+    from tree_sitter_analyzer.mcp.tools import callers_py_overrides
+
+    text = (
+        "from somelib import Meta\n"
+        "\n"
+        "class K(object, metaclass=Meta):\n"
+        "    def m(self):\n"
+        "        return 1\n"
+    )
+    root = _write(tmp_path, {"k.py": text})
+
+    def deep(*_args, **_kwargs):
+        raise RecursionError
+
+    monkeypatch.setattr(callers_py_overrides, "_eval", deep)
+    meta = python_override_finding(root, "k.py", 4, "m", _tops)
+    assert meta is None  # the base walk reports such a keyword itself
+    monkeypatch.setattr(callers_py_overrides, "_base_value", deep)
+    base = python_override_finding(root, "k.py", 4, "m", _tops)
+    assert base is not None and "too deeply nested" in base.why
+
+
+def test_origin_needs_a_provable_import(tmp_path) -> None:
+    import ast
+
+    from tree_sitter_analyzer.mcp.tools import callers_py_overrides as po
+
+    text = (
+        "import json\n"
+        "from . import rel\n"
+        "from somelib import mod\n"
+        "\n"
+        "class K:\n"
+        "    pass\n"
+    )
+    root = _write(tmp_path, {"k.py": text})
+    reader = po._Reader(root, _tops)
+    module = reader.module("k.py")
+    scopes = [module.tree]
+
+    def origin(source: str) -> str | None:
+        expr = ast.parse(source, mode="eval").body
+        return po._origin(reader, module, scopes, expr)
+
+    assert origin("make().X") is None  # not a name path
+    assert origin("missing.X") is None  # no binding for a dotted head
+    assert origin("json") is None  # a module, not a class
+    assert origin("rel") is None  # a relative import
+    assert origin("mod.Base") is None  # a name imported from a module, dotted
+    assert origin("json.JSONEncoder") == "json.JSONEncoder"
+    assert known_members("typing.TypedDict") is not None
