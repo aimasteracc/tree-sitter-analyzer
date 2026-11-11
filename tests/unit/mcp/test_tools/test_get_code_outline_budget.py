@@ -194,9 +194,9 @@ class TestGiantFixtureTruncation:
         """The actual classes list in the response is exactly the cap."""
         assert len(self.result["classes"]) == 50
 
-    def test_classes_list_length_in_outline(self):
-        """The outline.classes list is also capped."""
-        assert len(self.result["outline"]["classes"]) == 50
+    def test_classes_not_repeated_in_outline(self):
+        """#1956: the capped list is sent once, at the top level only."""
+        assert "classes" not in self.result["outline"]
 
     def test_class_count_stat_is_full_total(self):
         """statistics.class_count is the PRE-cap total — always honest."""
@@ -481,13 +481,15 @@ class TestByteBudgetDifferentialInvariant:
 
 
 # ---------------------------------------------------------------------------
-# Byte pins — measured 2026-06-12 with the synthetic fixture.
-# capped (50/80 classes, 5 methods each): 99217 B
-# uncapped (80/80 classes, 5 methods each): 158804 B  (ratio 1.60x)
+# Byte pins — measured 2026-11-12 with the synthetic fixture.
+# capped (50/80 classes, 5 methods each): 50127 B
+# uncapped (80/80 classes, 5 methods each): 79864 B  (ratio 1.59x)
+# #1956 halved both (99202 / 158789 before): `outline` no longer repeats
+# the hoisted classes / top_level_functions lists.
 # Re-measure and re-pin if response envelope fields change.
 # ---------------------------------------------------------------------------
-_EXPECTED_CAPPED_BYTES: int = 99202
-_EXPECTED_UNCAPPED_BYTES: int = 158789
+_EXPECTED_CAPPED_BYTES: int = 50127
+_EXPECTED_UNCAPPED_BYTES: int = 79864
 
 
 # ---------------------------------------------------------------------------

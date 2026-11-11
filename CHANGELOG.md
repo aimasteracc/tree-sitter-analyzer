@@ -42,6 +42,22 @@
 
 ### Changed
 
+- **`--outline` / `structure action=outline`: each list is sent once; `outline` no longer repeats the top-level keys** (#1956).
+  `classes`, `top_level_functions`, `top_level_fields`, `imports`,
+  `total_lines` and `package` were hoisted to the top level and also kept
+  inside `outline`, so a large module's outline was larger than the file.
+  The top-level keys stay unchanged. `outline` now holds only what is not
+  hoisted (`statistics`, the resolved `file_path`, `language` and the
+  per-language sections such as `headings`, `sql_objects` and
+  `json_top_keys`), plus `moved_to_top_level`, which names the keys that
+  moved. **Breaking for readers of `outline.classes` /
+  `outline.top_level_functions`: read the top-level `classes` /
+  `top_level_functions` instead.** On rich v13.9.4 the CLI JSON shrinks from
+  80,234 to 39,313 chars (`console.py`), from 27,319 to 13,766 (`table.py`)
+  and from 90,003 to 44,007 (`progress.py`). The module-level outline
+  helpers moved to `get_code_outline_helpers.py`. They are re-exported from
+  `get_code_outline_tool`, so existing imports keep working.
+
 - **`nav callers`: the Python supertype gate reuses its parse-derived facts by content digest; the per-snapshot memo has a byte budget (RFC-0043 Phase C)** (#1855).
   The gate walked the whole declaring module twice per target to find the
   member's class, and the subclass search ran a header / rename regex over
@@ -100,6 +116,26 @@
 - **macOS CI lanes run as 2 deterministic shards** (#1910). `macos-latest` 3-vCPU machines needed up to 982 s against a 1080 s session budget. Both the full and the PR matrix now run each macOS version as `--shard=1/2` and `--shard=2/2` (`tests/pytest_shard.py`: `zlib.crc32` of the node id, no new dependency, no stored durations); the shards are disjoint and their union is the unsharded selection. Ubuntu and Windows lanes are unchanged. `tests/governance/test_ci_shard_contract.py` pins the partition and the matrix wiring; the `Quality Gate` check still aggregates `needs.test.result`.
 
 ### Fixed
+
+- **`--unreachable-code` / `health action=unreachable` no longer answers success with 0 functions analyzed** (#1955).
+  Project mode on a clean repository answered `success: true,
+  total_functions_analyzed: 0`. The scanner kept a per-file result only for
+  files with findings or errors, and the tool summed `functions_analyzed`
+  over that list, so a clean project and an empty scan looked the same. On
+  rich v13.9.4 the same command now reports 124 files and 975 functions
+  analyzed (66 test files skipped) with `status: none_found`.
+  `scan_project_unreachable()` (new `unreachable_code_scan.py`) counts every
+  analyzed file and function, the skipped test files and `truncated`.
+  `analyze_project_unreachable()` keeps its list return. When 0 functions
+  were analyzed (wrong root, only test files, no function definitions,
+  only unparseable files), file and project mode answer `success: false`,
+  `status: unknown`, `error_code: INSUFFICIENT_EVIDENCE` (verdict `ERROR`),
+  with a `next_step` that names the exact CLI and MCP command to run
+  (`--unreachable-code-include-tests`, `--project-root`, `--outline FILE`).
+  Answers with evidence carry `status` (`none_found` / `unreachable_found`),
+  a verdict (`INFO` / `CAUTION` / `REVIEW`), `files_analyzed` and a
+  `next_step`. A scan cut at `max_files` names the larger
+  `--unreachable-code-max-files` to run.
 
 - **Swift protocol requirements, C# interfaces of a subclass, `global using` aliases and C# `static abstract` members no longer let `nav callers` answer `complete`** (#1953). Four shapes the #1937 gates missed are reached by dispatch no call edge names. Swift: a method that satisfies a requirement of a protocol outside the project is called by the framework (Alamofire 5.9.1 `ExtensionDelegate.handle` of a `WKExtensionDelegate` answered `complete, 0`). A non-`private` method now blocks when its type conforms -- in its declaration or in an extension in any file, directly, through a project superclass or through a refined project protocol -- to a name the project does not declare, unless it is a standard type whose method requirements are known and do not include the name (`Equatable`, `Hashable`, `Codable`, `Sendable`, `Error`, `NSObject`, raw-value types, ...), or to a project protocol that declares the name with a call edge named like it that is not bound here (`callers_swift_protocols.py`). Declarations are found by scanning the project's Swift files for the declaring keyword; one the grammar does not recover blocks, as does a method whose declaring type the grammar failed on. C#: a `public` method of class `A` implements interface `I` for a subclass `B : A, I`, so a call through `I` reaches `A.M` (`Engine.Run` with `class Car : Engine, IRun`); every project class deriving from `A` (transitively) is now found from source, and each interface it lists must resolve to a project interface that does not declare the name, or the call edges named like it must be bound here (`callers_csharp_dispatch.py`). A `public static` method implements a `static abstract` / `static virtual` interface member reached through a type parameter (`T.Parse(s)`); its type's interfaces (and its subclasses') are checked the same way, and an outside interface blocks unless it is a standard type known to declare no static abstract member (`IDisposable`, `IEquatable<T>`, `IEnumerable<T>`, ...; `IParsable<T>`, `INumber<T>` block). `global using` directives of every project file and the MSBuild `<Using>` items (`*.csproj`, `*.props`, `*.targets` at or above a C# file's directory) now belong to each file's compilation unit when supertype names are resolved (`callers_csharp_scope.py`): `global using IShape = Ext.IThing;` in `GlobalUsings.cs` made `Square : IShape` resolve to the project's `P.IShape` through `using P;`. Global directives that cannot be read block. Blocked methods answer `unknown OVERRIDE_DISPATCH` (`incomplete` with callers) with a `next_step` naming the outside protocol / interface or the dispatching sites. Query path only; the index key does not change. Audit repos, every method (base `develop` vs head): Alamofire 5.9.1 (1406 Swift methods) `complete` 36 -> 31 (`ExtensionDelegate.handle` to `unknown` naming `WKExtensionDelegate`; 4 methods of types the Swift grammar does not recover, in `SessionDelegate` extensions conforming to `URLSessionTaskDelegate`, `DataStreamRequest` and an `XCTestCase` subclass, to `unknown` 1 / `incomplete` 3); Newtonsoft.Json 13.0.3 (6273 C# methods) unchanged (318 `complete`: private and internal helpers). No answer became more complete.
 - **A Python method that a base class outside the project may call, and a Python special method, are no longer `complete`** (#1949). rich `_Reader.writable` (`class _Reader(io.RawIOBase)`) answered `complete, 0`: the supertype walk stopped at the external base, so no project call could dispatch there, but the standard library calls `writable()`. Special methods (`__init__`, `__eq__`, `__enter__`, a module-level `__getattr__`) answered `complete, 0` on any class, although the interpreter calls them (`Point.__init__` even with `Point(1)` in the project). The `supertype_dispatch` check now runs a Python gate after the base and subclass walks (`callers_py_overrides.py`): a special method never passes; any other class-body member (a mangled `__m` excepted) is walked up through its class and every project class above it, and a base outside the project (standard library, third party, or one the resolver cannot follow) blocks, unless its whole member set is known and holds neither the name nor a hook of that shape: a builtin class the module does not rebind (`object`, `Exception`, `dict`), `abc.ABC`, `typing.Generic` / `Protocol` / `NamedTuple` / `TypedDict`, and the `enum` classes (whose `_sunder_` names are hooks). An external metaclass other than `type`, `abc.ABCMeta` and the `enum` metaclass blocks too. The answer is then `unknown OVERRIDE_DISPATCH` (`incomplete` with callers), and `next_step` names the class and its external base (``class `_Reader` (rich/progress.py:182) has base `RawIOBase`, a class outside the project that may define or call `writable` ``). Classes whose whole MRO resolves in the project are unchanged. The walk reuses the supertype reader's parse memo and the member table; it adds no per-file facts. Query path only; the index key does not change. Callers gate (base `develop` vs head): rich 8 rows move (`complete -> unknown` 2, `complete -> incomplete` 6: `RichHandler` under `logging.Handler`, `NullFile` under `typing.IO`), pydantic 12 (`complete -> unknown`: `ast.NodeVisitor`, mypy `Plugin` / `TypeTranslator` overrides), fastapi 40 (`complete -> unknown` 4, `complete -> incomplete` 36: methods of `Starlette`, `routing.Router`, `BaseRoute`, `StaticFiles`, `HTMLParser`, `ThreadingHTTPServer` subclasses); other repos unchanged. Every moved row is a method of a class with an external base; none became more complete; truth failures 0. Rows already `unknown` under an external base lose their enumerated `open_sites` bound (rich 4, pydantic 8, fastapi 14). Warm `nav callers` latency on rich is unchanged.
