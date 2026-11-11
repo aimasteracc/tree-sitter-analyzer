@@ -328,9 +328,13 @@ jobs:
               assert kind in ("file","dir","symlink") and ((kind=="file" and isinstance(digest,str) and re.fullmatch(r"[0-9a-f]{64}",digest)) or (kind in ("dir","symlink") and digest is None))
               result[name]=item
             return result
-          def verify_initial_config(config):
+          def desktop_config_path(axis):
+            return "Library/Application Support/Claude/claude_desktop_config.json" if axis=="macos" else ".config/Claude/claude_desktop_config.json"
+          def verify_initial_config(config, axis="linux"):
             exact(config,("before","after_first","after_second","expected_entry","backup_sha256")); initial_digest=hashlib.sha256(b"{}\n").hexdigest()
-            initial=[{"path":".claude","type":"dir","sha256":None},{"path":".claude/.mcp.json","type":"file","sha256":initial_digest}]
+            relative=desktop_config_path(axis)
+            parents=list(pathlib.PurePosixPath(relative).parents)[:-1]
+            initial=[{"path":str(p),"type":"dir","sha256":None} for p in reversed(parents)]+[{"path":relative,"type":"file","sha256":initial_digest}]
             assert config["before"]==config["after_first"]==initial and config["backup_sha256"]==initial_digest
             return snapshots(config["before"])
           def strict_json_bytes(data):
@@ -355,7 +359,7 @@ jobs:
             exact(value,("mcpServers",)); servers=value["mcpServers"]; exact(servers,("tree-sitter-analyzer",))
             entry=servers["tree-sitter-analyzer"]; exact(entry,("command","args","env")); exact(entry["env"],("TREE_SITTER_PROJECT_ROOT",))
             expected={"command":"uvx","args":["--from","tree-sitter-analyzer[mcp]","tree-sitter-analyzer-mcp"],"env":{"TREE_SITTER_PROJECT_ROOT":project_root_from_stdout(second,axis,sandbox_root)}}
-            assert entry==config["expected_entry"]==expected and after[".claude/.mcp.json"]=={"path":".claude/.mcp.json","type":"file","sha256":hashlib.sha256(data).hexdigest()}
+            assert entry==config["expected_entry"]==expected and after[desktop_config_path(axis)]=={"path":desktop_config_path(axis),"type":"file","sha256":hashlib.sha256(data).hexdigest()}
           def verify_causal_binding(axis,path,causal,bound,supported_exec,wheel,wheel_path,parent_runner,causal_digest):
             verify_runner(causal["runner"],axis); assert causal["runner"]==parent_runner
             install=causal["install"]; tool=install["tool"]; runtime=causal["runtime"]; meta=causal["metadata"]; mcp=causal["mcp"]; record=meta["installed_record"]
@@ -451,13 +455,13 @@ jobs:
             sandbox_root=trusted_sandbox_root(axis)
             verify_executable_sandbox(old["executable"],old_member,"old",axis,sandbox_root); verify_executable_sandbox(supported["executable"],supported_member,"supported",axis,sandbox_root)
             assert report["status"]=="PASSED" and report["passed"] is True and report["qualification_performed"] is True
-            installer=report["installer"]; exact(installer,("path","sha256","first_exit","second_exit","curl_invocations","first_path","second_path","curated_tools")); assert installer["sha256"]==sha(path/"installer.source")=="937700c0f95e88faab97636c78021935c75ff305aae52d37e10fee1ac58c07ef" and (installer["first_exit"],installer["second_exit"],installer["curl_invocations"])==(1,0,0)
+            installer=report["installer"]; exact(installer,("path","sha256","first_exit","second_exit","curl_invocations","first_path","second_path","curated_tools")); assert installer["sha256"]==sha(path/"installer.source")=="c516fd5772f20f784c02eeea9a22e2b56470561c45a694cc667bec80129f676a" and (installer["first_exit"],installer["second_exit"],installer["curl_invocations"])==(1,0,0)
             verify_installer_paths(installer,old["executable"],supported["executable"],sandbox_root)
             first=(path/"first.stdout").read_text(); second=(path/"second.stdout").read_text()
             assert "TSA_DISABLE_UNVERIFIED_UV_BOOTSTRAP=1" in first and re.search(r"uv 0\.10\.9(?: [^\n]+)? does not satisfy required uv >= 0\.11\.0",first) and "installation complete" not in first and "uv 0.11.0" in second
-            config=report["config"]; before=verify_initial_config(config); snapshots(config["after_first"]); after=snapshots(config["after_second"]); added=set(after)-set(before)
-            backups={name for name in added if re.fullmatch(r"\.claude/\.mcp\.json\.bak\.\d{8}-\d{6}",name)}
-            assert set(before)-set(after)==set() and added==backups and len(backups)==1 and after[next(iter(backups))]["sha256"]==config["backup_sha256"] and before[".claude/.mcp.json"]!=after[".claude/.mcp.json"] and {k:v for k,v in before.items() if k!=".claude/.mcp.json"}=={k:v for k,v in after.items() if k not in added|{".claude/.mcp.json"}}
+            config=report["config"]; before=verify_initial_config(config,axis); snapshots(config["after_first"]); after=snapshots(config["after_second"]); added=set(after)-set(before)
+            backups={name for name in added if re.fullmatch(re.escape(desktop_config_path(axis))+r"\.bak\.\d{8}-\d{6}",name)}
+            assert set(before)-set(after)==set() and added==backups and len(backups)==1 and after[next(iter(backups))]["sha256"]==config["backup_sha256"] and before[desktop_config_path(axis)]!=after[desktop_config_path(axis)] and {k:v for k,v in before.items() if k!=desktop_config_path(axis)}=={k:v for k,v in after.items() if k not in added|{desktop_config_path(axis)}}
             verify_config_sidecar(path,config,after,axis,second,sandbox_root)
             causal_path=path/"mcp/report.json"; causal=json.loads(causal_path.read_text()); bound=report["mcp_causal_report"]
             exact(causal,("schema_version","kind","qualification_id","evidence_scope","axis","qualification_performed","passed","source","workflow","runner","wheel","stages","failure","build_manifest_sha256","install","metadata","runtime","mcp","dependency_manifest_sha256","installed_files_zip_sha256")); identity(causal,"outdated-axis")

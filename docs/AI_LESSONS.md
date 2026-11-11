@@ -829,3 +829,28 @@ dict / list / tuple / set 分发表、实参传递、属性与别名导入、dun
 模块作用域调用都不判死；死函数里的引用不会复活目标；真正未使用的函数仍被报告；
 连字符目录下的结论为 `confidence=low`，且 `scripts/_dogfood_sprint_priority.py`
 不把低置信度结论写进待办。
+
+## 2026-11 — 安装配置的可读性必须按客户端验证
+
+### Context
+
+2026-11-11 的干净 HOME 复现发现：安装器与 doctor 共用错误的 Claude Code
+`.claude/.mcp.json` 路径，VS Code 被写入 `mcpServers`，全局 Cursor 配置还固定了
+一个项目根目录。旧资格夹具也使用错误路径，所以合并测试通过并不能证明客户端会读取配置。
+
+### Lessons learned
+
+1. **路径与服务器键共同构成客户端协议。** Claude Code 项目配置是 `.mcp.json`，
+   VS Code 使用 `servers` 和 `type: stdio`，不能只验证 JSON 中存在一个条目。
+2. **项目与全局作用域必须分别测试。** 项目绝对路径写入全局 Cursor 配置会影响所有项目；
+   `${workspaceFolder}` 则应作为 VS Code 的合法占位符保留。
+3. **干净安装需要检测客户端后创建文件。** 只扫描已有文件会把刚安装的客户端全部跳过；
+   shell 未设置 MCP 配置里的环境变量也不应导致 doctor 失败。
+
+### Required guardrail
+
+`tests/unit/test_install_sh_agent_configs.py` 在隔离 HOME 与工具 PATH 中验证客户端路径、
+键、创建策略、备份、符号链接和全局 Cursor 不变；
+`tests/unit/cli/test_doctor_command.py` 验证 doctor 的对应路径、嵌套用户配置与占位符。
+`tests/contracts/test_fresh_install_qualification.py` 与
+`tests/contracts/test_outdated_uv_qualification.py` 保留失败封闭和精确配置快照检查。
