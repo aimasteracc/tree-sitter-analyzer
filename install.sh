@@ -204,62 +204,91 @@ echo "📁 Project root: $PROJECT_ROOT"
 # ─── Agent config paths ───────────────────────────────────────────────────────
 OS_TYPE="$(uname -s)"
 
-# Build list of (label, path) pairs using positional variables (bash 3.x compatible)
-# Format: "label|path" — process with IFS='|'
-
-AGENT_CONFIG_ENTRIES=""
-
+# One line per client: label|config path|servers key|create policy (bash 3.x compatible).
+CLAUDE_CREATE=existing
+CURSOR_CREATE=existing
+VSCODE_CREATE=existing
+if command -v claude >/dev/null 2>&1 || [ -d "$HOME/.claude" ]; then CLAUDE_CREATE=create; fi
+if command -v cursor >/dev/null 2>&1 || [ -d "$HOME/.cursor" ]; then CURSOR_CREATE=create; fi
 if [ "$OS_TYPE" = "Darwin" ]; then
-  AGENT_CONFIG_ENTRIES="${AGENT_CONFIG_ENTRIES}Claude Desktop (macOS)|$HOME/Library/Application Support/Claude/claude_desktop_config.json\n"
+  DESKTOP_PATH="$HOME/Library/Application Support/Claude/claude_desktop_config.json"
+  CODE_USER_DIR="$HOME/Library/Application Support/Code/User"
 else
-  AGENT_CONFIG_ENTRIES="${AGENT_CONFIG_ENTRIES}Claude Desktop (Linux)|$HOME/.config/claude/claude_desktop_config.json\n"
+  DESKTOP_PATH="$HOME/.config/Claude/claude_desktop_config.json"
+  if [ ! -f "$DESKTOP_PATH" ] && [ -f "$HOME/.config/claude/claude_desktop_config.json" ]; then
+    DESKTOP_PATH="$HOME/.config/claude/claude_desktop_config.json"
+  fi
+  CODE_USER_DIR="$HOME/.config/Code/User"
 fi
+if command -v code >/dev/null 2>&1 || [ -d "$CODE_USER_DIR" ]; then VSCODE_CREATE=create; fi
+AGENT_CONFIG_ENTRIES="Claude Desktop (global)|$DESKTOP_PATH|mcpServers|existing
+Claude Code (project)|$PROJECT_ROOT/.mcp.json|mcpServers|$CLAUDE_CREATE
+Cursor (project)|$PROJECT_ROOT/.cursor/mcp.json|mcpServers|$CURSOR_CREATE
+VS Code (project)|$PROJECT_ROOT/.vscode/mcp.json|servers|$VSCODE_CREATE"
 
-AGENT_CONFIG_ENTRIES="${AGENT_CONFIG_ENTRIES}Claude Code (global)|$HOME/.claude/.mcp.json\n"
-AGENT_CONFIG_ENTRIES="${AGENT_CONFIG_ENTRIES}Claude Code (project-local)|$(pwd)/.claude/.mcp.json\n"
-AGENT_CONFIG_ENTRIES="${AGENT_CONFIG_ENTRIES}Cursor|$HOME/.cursor/mcp.json\n"
-
-if [ "$OS_TYPE" = "Darwin" ]; then
-  AGENT_CONFIG_ENTRIES="${AGENT_CONFIG_ENTRIES}VS Code (macOS)|$HOME/Library/Application Support/Code/User/mcp.json\n"
-else
-  AGENT_CONFIG_ENTRIES="${AGENT_CONFIG_ENTRIES}VS Code (Linux)|$HOME/.config/Code/User/mcp.json\n"
+if [ -f "$HOME/.cursor/mcp.json" ] && command -v python3 >/dev/null 2>&1; then
+  if python3 - "$HOME/.cursor/mcp.json" <<'PYWARN'
+import json
+import sys
+try:
+    data = json.load(open(sys.argv[1], encoding="utf-8"))
+    sys.exit(0 if isinstance(data, dict) and isinstance(data.get("mcpServers"), dict) and "tree-sitter-analyzer" in data["mcpServers"] else 1)
+except (OSError, ValueError, RecursionError):
+    sys.exit(1)
+PYWARN
+  then
+    echo "⚠️  Global Cursor tree-sitter-analyzer entry pins every project to one root."
+  fi
+fi
+if command -v codex >/dev/null 2>&1 || [ -d "$HOME/.codex" ]; then
+  echo "Add this block to $HOME/.codex/config.toml:"
+  cat <<EOF
+[mcp_servers.tree-sitter-analyzer]
+command = "uvx"
+args = ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"]
+env = { TREE_SITTER_PROJECT_ROOT = "$PROJECT_ROOT" }
+EOF
 fi
 
 # ─── Process each agent config ────────────────────────────────────────────────
 CONFIGURED_AGENTS=""
 SKIPPED_AGENTS=""
+FAILED_AGENTS=""
 CONFIGURATION_FAILURE=0
 
 echo ""
 echo "🔍 Scanning for agent config files..."
 
-# Use printf to interpret \n, then process line by line
-while IFS='|' read -r AGENT_LABEL CONFIG_PATH; do
+# Read the table line by line; never use a path as a printf format string.
+while IFS='|' read -r AGENT_LABEL CONFIG_PATH SERVERS_KEY CREATE_POLICY; do
   # Skip empty lines
   if [ -z "$AGENT_LABEL" ]; then
     continue
   fi
 
-  if [ ! -f "$CONFIG_PATH" ]; then
+  if [ ! -e "$CONFIG_PATH" ] && [ ! -L "$CONFIG_PATH" ] && [ "$CREATE_POLICY" != create ]; then
     echo "   ⏭️  $AGENT_LABEL: config file not found ($CONFIG_PATH)"
     SKIPPED_AGENTS="${SKIPPED_AGENTS}${AGENT_LABEL}\n"
     continue
   fi
 
   echo "   🔧 $AGENT_LABEL: configuring..."
+  if [ "$AGENT_LABEL" = "Claude Desktop (global)" ]; then
+    echo "   Note: a global entry pins one project root."
+  fi
 
   # Merge MCP entry using python3. Keep the assignment in an explicit
   # failure list: under set -e a bare failing command substitution exits before
   # its status can be classified below.
   if ! command -v python3 >/dev/null 2>&1; then
     echo "   ❌ $AGENT_LABEL: python3 not found — skipping ($CONFIG_PATH)"
-    SKIPPED_AGENTS="${SKIPPED_AGENTS}${AGENT_LABEL} (python3 not found)\n"
+    FAILED_AGENTS="${FAILED_AGENTS}${AGENT_LABEL} (python3 not found)\n"
     CONFIGURATION_FAILURE=1
     continue
   fi
 
   MERGE_EXIT=0
-  MERGE_RESULT=$(python3 - "$CONFIG_PATH" "$PROJECT_ROOT" <<'PYEOF'
+  MERGE_RESULT=$(python3 - "$CONFIG_PATH" "$PROJECT_ROOT" "$SERVERS_KEY" <<'PYEOF'
 import datetime
 import json
 import os
@@ -270,10 +299,15 @@ import tempfile
 
 config_path = sys.argv[1]
 project_root = sys.argv[2]
+servers_key = sys.argv[3]
+exists = os.path.lexists(config_path)
 
 try:
-    with open(config_path, encoding="utf-8") as f:
-        data = json.load(f)
+    if exists:
+        with open(config_path, encoding="utf-8") as f:
+            data = json.load(f)
+    else:
+        data = {}
 except json.JSONDecodeError as exc:
     print(f"PARSE_ERROR:{exc}", file=sys.stderr)
     sys.exit(2)
@@ -282,13 +316,13 @@ if not isinstance(data, dict):
     print("TYPE_ERROR:config root must be a JSON object", file=sys.stderr)
     sys.exit(3)
 
-if "mcpServers" not in data:
+if servers_key not in data:
     mcp_servers = {}
-    data["mcpServers"] = mcp_servers
+    data[servers_key] = mcp_servers
 else:
-    mcp_servers = data["mcpServers"]
+    mcp_servers = data[servers_key]
 if not isinstance(mcp_servers, dict):
-    print("TYPE_ERROR:mcpServers must be a JSON object", file=sys.stderr)
+    print(f"TYPE_ERROR:{servers_key} must be a JSON object", file=sys.stderr)
     sys.exit(3)
 
 existing_entry = mcp_servers.get("tree-sitter-analyzer")
@@ -305,7 +339,9 @@ if isinstance(existing_entry, dict):
 # never the link path itself.
 write_path = os.path.realpath(config_path)
 config_dir = os.path.dirname(write_path) or "."
-target_mode = stat.S_IMODE(os.stat(write_path).st_mode)
+if not exists:
+    os.makedirs(config_dir, exist_ok=True)
+target_mode = stat.S_IMODE(os.stat(write_path).st_mode) if exists else 0o644
 if target_mode & 0o222 == 0:
     raise PermissionError(f"config file is not writable: {write_path}")
 if stat.S_IMODE(os.stat(config_dir).st_mode) & 0o222 == 0:
@@ -317,9 +353,16 @@ mcp_servers["tree-sitter-analyzer"] = {
     "env": {"TREE_SITTER_PROJECT_ROOT": project_root},
 }
 
+if servers_key == "servers":
+    mcp_servers["tree-sitter-analyzer"]["type"] = "stdio"
+    mcp_servers["tree-sitter-analyzer"]["env"]["TREE_SITTER_PROJECT_ROOT"] = "${workspaceFolder}"
+
 timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 backup_path = config_path + ".bak." + timestamp
-shutil.copy2(config_path, backup_path)
+if exists:
+    shutil.copy2(config_path, backup_path)
+else:
+    backup_path = "none (new file)"
 
 fd, temporary_path = tempfile.mkstemp(prefix=".tsa-mcp-", dir=config_dir, text=True)
 try:
@@ -343,19 +386,20 @@ PYEOF
 
   if [ "$MERGE_EXIT" = "2" ]; then
     echo "   ❌ $AGENT_LABEL: JSON parse error — skipping ($CONFIG_PATH)"
-    SKIPPED_AGENTS="${SKIPPED_AGENTS}${AGENT_LABEL} (JSON parse error)\n"
+    FAILED_AGENTS="${FAILED_AGENTS}${AGENT_LABEL} (JSON parse error)\n"
+    CONFIGURATION_FAILURE=1
   elif [ "$MERGE_EXIT" = "0" ]; then
     BACKUP_PATH="${MERGE_RESULT#OK:}"
     echo "   ✅ $AGENT_LABEL: configured (backup: $BACKUP_PATH)"
     CONFIGURED_AGENTS="${CONFIGURED_AGENTS}${AGENT_LABEL}\n"
   else
     echo "   ❌ $AGENT_LABEL: unexpected error (exit $MERGE_EXIT) — skipping"
-    SKIPPED_AGENTS="${SKIPPED_AGENTS}${AGENT_LABEL} (error)\n"
+    FAILED_AGENTS="${FAILED_AGENTS}${AGENT_LABEL} (error)\n"
     CONFIGURATION_FAILURE=1
   fi
 
 done <<EOF
-$(printf "$AGENT_CONFIG_ENTRIES")
+$(printf '%s\n' "$AGENT_CONFIG_ENTRIES")
 EOF
 
 # ─── Summary ──────────────────────────────────────────────────────────────────
@@ -369,24 +413,30 @@ echo ""
 
 if [ -n "$CONFIGURED_AGENTS" ]; then
   echo "✅ Configured agents:"
-  printf "$CONFIGURED_AGENTS" | while IFS= read -r agent; do
+  printf '%b' "$CONFIGURED_AGENTS" | while IFS= read -r agent; do
     [ -n "$agent" ] && echo "   • $agent"
   done
   echo ""
 fi
 
 if [ -n "$SKIPPED_AGENTS" ]; then
-  echo "⏭️  Skipped agents (config file not found):"
-  printf "$SKIPPED_AGENTS" | while IFS= read -r agent; do
+  echo "⏭️  Skipped agents (client not detected / config file not found):"
+  printf '%b' "$SKIPPED_AGENTS" | while IFS= read -r agent; do
     [ -n "$agent" ] && echo "   • $agent"
   done
   echo ""
 fi
 
+if [ -n "$FAILED_AGENTS" ]; then
+  echo "❌ Failed agents:"
+  printf '%b' "$FAILED_AGENTS"
+fi
+
 echo "📋 Next steps:"
-echo "   1. Restart your agent (Claude Code / Claude Desktop / Cursor / VS Code)"
-echo "   2. Ask your agent: \"Run the index tool with action=status\""
-echo "   3. If something looks wrong: tree-sitter-analyzer --doctor"
+echo "   1. Restart your agent"
+echo "   2. Build the index once: uvx --from \"tree-sitter-analyzer[mcp]\" tree-sitter-analyzer --project-root \"$PROJECT_ROOT\" --full-index"
+echo "   3. Verify: TREE_SITTER_PROJECT_ROOT=\"$PROJECT_ROOT\" uvx --from tree-sitter-analyzer tree-sitter-analyzer --doctor"
+echo "Note: .mcp.json and .cursor/mcp.json contain an absolute path; do not commit them, or edit the path."
 echo ""
 
 if [ "$WSL_ENV" = "1" ]; then

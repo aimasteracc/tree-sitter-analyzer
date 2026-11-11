@@ -721,7 +721,7 @@ class TestInstallScriptUvVersion:
 
     def test_agent_config_missing_mcp_servers_is_created(self, tmp_path: Path) -> None:
         # PR #1233: a missing key remains distinct from an explicit null value.
-        config = tmp_path / "home" / ".claude" / ".mcp.json"
+        config = tmp_path / ".cursor" / "mcp.json"
         config.parent.mkdir(parents=True)
         config.write_text("{}", encoding="utf-8")
         result = self._run(tmp_path, "uv 0.11.0")
@@ -735,7 +735,7 @@ class TestInstallScriptUvVersion:
         self, tmp_path: Path
     ) -> None:
         # PR #1233: explicit null is malformed input, not an absent key.
-        config = tmp_path / "home" / ".claude" / ".mcp.json"
+        config = tmp_path / ".cursor" / "mcp.json"
         config.parent.mkdir(parents=True)
         original = '{"mcpServers": null}\n'
         config.write_text(original, encoding="utf-8")
@@ -743,12 +743,12 @@ class TestInstallScriptUvVersion:
         assert (
             result.returncode,
             config.read_text(encoding="utf-8"),
-            list(config.parent.glob(".mcp.json.bak.*")),
+            list(config.parent.glob("mcp.json.bak.*")),
         ) == (1, original, [])
 
     def test_read_only_agent_config_fails_closed(self, tmp_path: Path) -> None:
         # PR #1233: atomic replacement must respect a target marked read-only.
-        config = tmp_path / "home" / ".claude" / ".mcp.json"
+        config = tmp_path / ".cursor" / "mcp.json"
         config.parent.mkdir(parents=True)
         original = '{"mcpServers": {}}\n'
         config.write_text(original, encoding="utf-8")
@@ -762,13 +762,13 @@ class TestInstallScriptUvVersion:
 
     def test_read_only_symlink_target_fails_closed(self, tmp_path: Path) -> None:
         # PR #1233: permission checks must inspect the resolved managed target.
-        config_dir = tmp_path / "home" / ".claude"
+        config_dir = tmp_path / ".cursor"
         config_dir.mkdir(parents=True)
         target = tmp_path / "managed-mcp.json"
         original = '{"mcpServers": {}}\n'
         target.write_text(original, encoding="utf-8")
         target.chmod(0o444)
-        link = config_dir / ".mcp.json"
+        link = config_dir / "mcp.json"
         link.symlink_to(target)
         result = self._run(tmp_path, "uv 0.11.0")
         assert (
@@ -785,11 +785,10 @@ class TestInstallScriptUvVersion:
     def test_agent_config_symlink_target_is_updated_without_replacing_link(
         self, tmp_path: Path
     ) -> None:
-        home = tmp_path / "home"
-        (home / ".claude").mkdir(parents=True)
+        (tmp_path / ".cursor").mkdir(parents=True)
         managed = tmp_path / "managed-mcp.json"
         managed.write_text('{"mcpServers": {}}', encoding="utf-8")
-        link = home / ".claude" / ".mcp.json"
+        link = tmp_path / ".cursor" / "mcp.json"
         link.symlink_to(managed)
         result = self._run(tmp_path, "uv 0.11.0")
         assert result.returncode == 0

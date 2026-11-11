@@ -112,7 +112,7 @@ def test_offline_contract_covers_independent_failure_boundaries() -> None:
         1,
         1,
         0,
-        0,
+        1,
         1,
         1,
         1,

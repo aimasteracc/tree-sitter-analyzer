@@ -17,7 +17,7 @@ This document provides comprehensive installation instructions for Tree-sitter A
 
 ### 1. Install uv (Required)
 
-**uv** is a fast Python package manager required to run tree-sitter-analyzer.
+**uv >=0.11.0** is a fast Python package manager required to run tree-sitter-analyzer.
 
 #### macOS/Linux
 
@@ -47,7 +47,36 @@ Install Git for history and change analysis. File discovery and source verificat
 
 For users integrating with AI assistants (Claude Desktop, Cursor, etc.):
 
-**No additional installation required!** The MCP server runs directly using `uv run`.
+**No additional installation required!** The MCP server runs directly using `uvx`.
+
+#### Automated install
+
+Installs or updates `uv` to >=0.11.0 when needed. For detected clients it configures project-level Claude Code `.mcp.json`, Cursor `.cursor/mcp.json`, and VS Code `.vscode/mcp.json` (`servers`); it updates an existing global Claude Desktop config and prints a Codex block when Codex is detected. Existing entries are merged with backups. It does not install the CLI. Verify with `TREE_SITTER_PROJECT_ROOT="$PWD" uvx --from tree-sitter-analyzer tree-sitter-analyzer --doctor`.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aimasteracc/tree-sitter-analyzer/main/install.sh | bash
+```
+
+#### Claude Code
+
+```bash
+claude mcp add tree-sitter-analyzer --scope project --env TREE_SITTER_PROJECT_ROOT="$PWD" -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
+```
+
+Build the index once: `uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer --project-root "$PWD" --full-index`.
+Run the `index` tool with action=status — expect `indexed: true`.
+
+<details>
+<summary>Codex CLI</summary>
+
+`~/.codex/config.toml`:
+```toml
+[mcp_servers.tree-sitter-analyzer]
+command = "uvx"
+args = ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"]
+env = { TREE_SITTER_PROJECT_ROOT = "/absolute/path/to/your/project" }
+```
+</details>
 
 #### Claude Desktop Configuration
 
@@ -79,14 +108,24 @@ For users integrating with AI assistants (Claude Desktop, Cursor, etc.):
 }
 ```
 
-> **Note**: `TREE_SITTER_PROJECT_ROOT` must be an **absolute** path. The server enforces a security boundary (`SecurityValidator`) that rejects relative paths. You can also set it dynamically per-call via the AI assistant, but the value must still be absolute.
+> ⚠️ `TREE_SITTER_PROJECT_ROOT`: If set, it must be absolute. If unset, the server uses its working directory. Do not put it in a global (all-projects) config — every project would point at the same repository.
+
+Build the index once: `uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer --project-root "$PWD" --full-index`.
+Run the `index` tool with action=status — expect `indexed: true`.
 
 3. Restart your AI client
 4. Verify by asking the AI to use the tree-sitter-analyzer tools
 
 #### Cursor Configuration
 
-Cursor has built-in MCP support. Use the same configuration format in Cursor settings.
+Cursor has built-in MCP support. Use the same `mcpServers` configuration in project `.cursor/mcp.json`.
+
+#### VS Code Copilot
+
+Create project `.vscode/mcp.json`:
+```json
+{"servers":{"tree-sitter-analyzer":{"type":"stdio","command":"uvx","args":["--from","tree-sitter-analyzer[mcp]","tree-sitter-analyzer-mcp"],"env":{"TREE_SITTER_PROJECT_ROOT":"${workspaceFolder}"}}}}
+```
 
 #### Roo Code Configuration
 
@@ -113,9 +152,10 @@ uv add "tree-sitter-analyzer[all,mcp]"
 |--------|-------------|
 | `tree-sitter-analyzer` | Core package only |
 | `tree-sitter-analyzer[popular]` | Core + popular language support |
-| `tree-sitter-analyzer[all]` | All language support |
+| `tree-sitter-analyzer[all]` | All language grammars + MCP extras (no dev tools) |
+| `tree-sitter-analyzer[full]` | Developer environment |
 | `tree-sitter-analyzer[mcp]` | MCP server support |
-| `tree-sitter-analyzer[all,mcp]` | Everything |
+| `tree-sitter-analyzer[all,mcp]` | All language grammars + MCP extras (no dev tools) |
 
 ### Developers
 
@@ -127,7 +167,7 @@ git clone https://github.com/aimasteracc/tree-sitter-analyzer.git
 cd tree-sitter-analyzer
 
 # Install dependencies
-uv sync --extra all --extra mcp
+uv sync --extra full
 
 # Verify installation
 uv run pytest tests/ -v --tb=short
@@ -221,6 +261,9 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
    ```bash
    uvx --from tree-sitter-analyzer[mcp] tree-sitter-analyzer-mcp
    ```
+Build the index once: `uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer --project-root "$PWD" --full-index`.
+Run the `index` tool with action=status — expect `indexed: true`.
+
 3. Restart your AI client completely
 
 #### Permission Denied Errors

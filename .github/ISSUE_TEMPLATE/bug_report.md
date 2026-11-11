@@ -33,8 +33,10 @@ If applicable, add screenshots to help explain your problem.
 
 - OS: [e.g. Windows 11, macOS 14, Ubuntu 22.04]
 - Python version: [e.g. 3.11.5]
-- Tree-sitter Analyzer version: [e.g. 0.2.1]
-- Installation method: [e.g. pip, uv, conda]
+- Tree-sitter Analyzer version: [e.g. 3.1.2]
+- MCP client (Claude Code / Cursor / Codex / …):
+- Install method (uvx / uv tool / pip / install.sh / Docker):
+- Output of --doctor:
 
 ## 📋 Additional Context
 

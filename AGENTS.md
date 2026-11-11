@@ -1,3 +1,5 @@
+Installing TSA as a user/agent? Read llms.txt. This file is for contributors.
+
 # Agent Instructions
 
 > **Discovery path**: read this file → skim [`CLAUDE.md`](CLAUDE.md) for the locked design decisions → check [`docs/AI_LESSONS.md`](docs/AI_LESSONS.md) for a failure that already happened in the area you are about to touch → load only the [`docs/CODEMAPS/`](docs/CODEMAPS/) map matching the area you're touching. Do **not** load the full source tree blindly — the codemaps exist to keep agent context lean.

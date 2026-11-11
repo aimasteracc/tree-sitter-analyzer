@@ -12,11 +12,10 @@ from tree_sitter_analyzer.call_graph import (
 
 
 def _grammar_available(module_name: str) -> bool:
-    """Return True when an optional tree-sitter grammar package is importable.
+    """Return True when a tree-sitter grammar package is importable.
 
-    tree-sitter-swift and tree-sitter-lua are optional extras, not part of
-    the default dev/test dependency set (Codex #1157). Mirrors the guard
-    pattern already used by test_swift_plugin.py / test_lua_plugin.py.
+    tree-sitter-swift and tree-sitter-lua are core dependencies since 3.1.2;
+    the guard stays for local environments not yet re-synced (Codex #1157).
     """
     try:
         importlib.import_module(module_name)
