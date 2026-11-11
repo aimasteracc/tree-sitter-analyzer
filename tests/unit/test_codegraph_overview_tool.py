@@ -179,7 +179,9 @@ class TestCodeGraphOverviewToolExecute:
         os.makedirs(empty_dir)
         t = CodeGraphOverviewTool(empty_dir)
         result = await _execute(t)
-        assert result["success"] is True
+        # #1958: 0 functions is not an overview, it is insufficient evidence.
+        assert result["success"] is False
+        assert result["error_code"] == "INSUFFICIENT_EVIDENCE"
         assert result["summary"]["function_count"] == 0
 
 

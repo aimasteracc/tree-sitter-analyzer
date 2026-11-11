@@ -41,9 +41,13 @@ class TestDeadCodeToolDefinition:
 @pytest.mark.asyncio
 class TestDeadCodeToolExecute:
     async def test_runs_on_project(self, project):
+        # #1958: without an index callers cannot certify the 2 orphans, so the
+        # answer is an explicit unknown naming the index command.
         tool = DeadCodeTool(str(project))
         result = await tool.execute({"output_format": "json"})
-        assert result["success"] is True
+        assert result["success"] is False
+        assert result["insufficient_evidence_reason"] == "NO_INDEX"
+        assert "--full-index" in result["next_step"]
 
     async def test_emits_actionable_next_step(self, project):
         # Wave 1b (audit health-10): dead_code must emit a next_step (the boundary
@@ -73,6 +77,8 @@ class TestDeadCodeToolExecute:
             ],
             unreferenced_variables=[],
             stats={},
+            function_files={"m.py": 1},
+            indexed=True,
         )
         monkeypatch.setattr(mod, "analyze_dead_code", lambda *a, **k: fake)
         tool = DeadCodeTool(str(project))
@@ -92,12 +98,18 @@ class TestDeadCodeToolExecute:
             unused_imports=[],
             unreferenced_variables=[],
             stats={},
+            function_files={"m.py": 2},
+            indexed=True,
         )
         monkeypatch.setattr(mod, "analyze_dead_code", lambda *a, **k: empty)
         tool = DeadCodeTool(str(project))
         result = await tool.execute({"output_format": "json"})
         assert result["verdict"] == "INFO"
-        assert "No dead code" in result["next_step"]
+        # #1958: "none found" names how much was analyzed.
+        assert (
+            "No dead code found among 2 function(s) in 1 file(s)"
+            in (result["next_step"])
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -18,7 +18,7 @@ and the core parser for import/variable extraction.
 from __future__ import annotations
 
 import os
-from collections import deque
+from collections import Counter, deque
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -135,6 +135,11 @@ class DeadCodeResult:
     unused_imports: list[UnusedImport]
     unreferenced_variables: list[UnreferencedVariable]
     stats: dict[str, int] = field(default_factory=dict)
+    #: ``{file: functions defined}`` for every function the graph holds, so an
+    #: answer can say how much it covers (#1958).
+    function_files: dict[str, int] = field(default_factory=dict)
+    #: The graph came from the AST index; without it callers cannot certify.
+    indexed: bool = False
 
 
 def find_transitive_dead_code(
@@ -734,6 +739,7 @@ def analyze_dead_code(
         )
 
     graph_summary = graph.summary()
+    function_files = Counter(func.file_path for func in graph.function_refs())
 
     return DeadCodeResult(
         dead_functions=dead_funcs,
@@ -746,4 +752,6 @@ def analyze_dead_code(
             "unreferenced_variables": len(unref_vars),
             "total_call_edges": graph_summary.get("call_edge_count", 0),
         },
+        function_files=dict(function_files),
+        indexed=isinstance(graph, CachedCallGraph),
     )

@@ -12,6 +12,7 @@ Provides project-wide call graph intelligence:
 CodeGraph parity: equivalent to CodeGraph's code intelligence overview.
 """
 
+from collections import Counter
 from typing import Any, cast
 
 from ...call_graph import CachedCallGraph, CallGraph, FunctionRef
@@ -19,6 +20,13 @@ from ...call_graph_binding import RefIdentity, ref_identity
 from ...dead_code_analyzer import filter_value_referenced, is_entry_point
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
+from .dead_code_answer import (
+    NO_FUNCTIONS,
+    CertCounts,
+    mark_unknown,
+    overview_dead_answer,
+    scope_evidence,
+)
 from .dead_code_certify import (
     STATUS_CERTIFIED,
     Certification,
@@ -157,9 +165,32 @@ class CodeGraphOverviewTool(BaseMCPTool):
 
         summary = graph.summary()
 
+        # #1958: the dead-code section says how much it covers, and is unknown
+        # when nothing could be analyzed or certified.
+        scope = scope_evidence(
+            Counter(func.file_path for func in graph.function_refs()),
+            path=None,
+            include_tests=False,
+            indexed=isinstance(graph, CachedCallGraph),
+        )
+        counts = CertCounts(
+            evidence["candidates"], evidence["certified"], evidence["unchecked"]
+        )
+        dead_status, dead_next_step, cause = overview_dead_answer(
+            scope, counts, self.project_root or ".", STATUS_CERTIFIED
+        )
+        evidence.update(
+            functions_analyzed=scope.functions_in_scope,
+            files_analyzed=scope.files_in_scope,
+            index_used=scope.indexed,
+        )
+        if cause is not None:
+            evidence["insufficient_evidence_reason"] = cause
+
         # Pain #18 (dogfood pass 3): codegraph_overview emitted no verdict.
         # REVIEW when there is significant dead code (signals project debt),
-        # NOT_FOUND for an empty graph, INFO otherwise. #1941: only certified
+        # NOT_FOUND for an empty graph (#1958 turns that into
+        # INSUFFICIENT_EVIDENCE below), INFO otherwise. #1941: only certified
         # entries count.
         fn_count = summary.get("function_count", 0)
         dead_count = len(dead_code)
@@ -190,7 +221,8 @@ class CodeGraphOverviewTool(BaseMCPTool):
             "agent_summary": {
                 "summary_line": agent_summary_line,
                 "next_step": (
-                    "dead_code lists only functions that --callers certifies as "
+                    (f"{dead_next_step} " if cause is not None else "")
+                    + "dead_code lists only functions that --callers certifies as "
                     "having no caller (complete, 0 callers, no outside supertype). "
                     "possibly_dead lists the other candidates with the reason and "
                     "open sites that block the claim; read those sites before "
@@ -210,12 +242,18 @@ class CodeGraphOverviewTool(BaseMCPTool):
             "entry_points": entry_points,
             "hub_functions": hubs,
             "dead_code": dead_code,
-            "dead_code_status": STATUS_CERTIFIED,
+            "dead_code_status": dead_status,
+            "dead_code_next_step": dead_next_step,
             "possibly_dead": dead_section["possibly_dead"],
             "dead_code_evidence": evidence,
             "call_depth_distribution": depth_dist,
             "module_coupling": coupling,
         }
+        if cause == NO_FUNCTIONS:
+            # Nothing in the overview holds without a function (#1958).
+            mark_unknown(result, cause, dead_next_step)
+            result["agent_summary"]["verdict"] = result["verdict"]
+            result["agent_summary"]["next_step"] = dead_next_step
 
         from ..utils.format_helper import apply_output_format_to_response
 
