@@ -259,6 +259,11 @@ def _subclasses(reader: Any, start: Any) -> list[Any] | str:
 
 def _direct_subclasses(reader: Any, files: list[str], base: Any) -> list[Any] | str:
     mention = re.compile(r"\b" + re.escape(base.name) + r"\b")
+    # A class header naming it after `:` (over-matches; only used on files
+    # whose tree has an error, where a header may be lost).
+    header = re.compile(
+        r"\b(?:class|record)\s+\w+[^{;]*?:[^{;]*?\b" + re.escape(base.name) + r"\b"
+    )
     found = []
     for rel in files:
         text = FILE_CACHE.read_text(os.path.join(reader.root, rel))
@@ -269,6 +274,10 @@ def _direct_subclasses(reader: Any, files: list[str], base: Any) -> list[Any] | 
         parsed = reader.parse(rel)
         if parsed is None:
             return f"the C# file {rel} could not be parsed"
+        if parsed.root.has_error and header.search(text):
+            return (
+                f"a class in {rel} may derive from it, but the file has a syntax error"
+            )
         for node in walk(parsed.root):
             if node.type not in _CLASSES:
                 continue

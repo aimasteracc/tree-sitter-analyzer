@@ -255,3 +255,60 @@ def test_csharp_static_members_and_interfaces(tmp_path) -> None:
     assert _cs(tmp_path, files, "A.cs", "Of", index) is None
     found = _cs(tmp_path, files, "A.cs", "One", index)
     assert found is not None and "INumber" in found.why
+
+
+def test_csharp_subclass_interfaces_closed_in_the_project_pass(tmp_path) -> None:
+    files = {
+        "A.cs": (
+            "public interface IRun { void Run(); int Speed { get; } }\n"
+            "public class Engine { public void Run() { } }\n"
+            "public record Car(int X) : Engine, IRun { public int Speed => 1; }\n"
+        ),
+        "Other.cs": "public class Unrelated { }\n",
+    }
+    # `IRun.Run` is declared, but no call edge may dispatch through it.
+    assert _cs(tmp_path, files, "A.cs", "Run", _Index(files), "class Engine") is None
+
+
+def test_csharp_subclass_scan_fails_closed(tmp_path) -> None:
+    files = {
+        "A.cs": "public class Engine { public void Run() { } }\n",
+        "B.cs": "public class Bad : Engine, ( { }\n",
+    }
+    found = _cs(tmp_path, files, "A.cs", "Run", _Index(files), "class Engine")
+    assert found is not None and "B.cs" in found.why
+    ok = {"A.cs": files["A.cs"]}
+    found = _cs(tmp_path, ok, "A.cs", "Run", _Index(ok, unlisted=["G.cs"]))
+    assert found is not None and "G.cs could not be read" in found.why
+    index = _Index(ok)
+    index.get_conn().execute("DROP TABLE ast_index")
+    found = _cs(tmp_path, ok, "A.cs", "Run", index)
+    assert found is not None and "could not be listed" in found.why
+
+
+def test_csharp_static_scan_shapes(tmp_path) -> None:
+    chain = "".join(f"public interface I{i} : I{i + 1} {{ }}\n" for i in range(70))
+    files = {
+        "A.cs": chain
+        + "public interface I70 { }\n"
+        + "public struct Big : I0 { public static void Make() { } }\n"
+        + "public class Obj : object { public static void Of() { } }\n"
+        + "public class Base { }\n"
+        + "public record Rec(int X) : Base { public static void New() { } }\n"
+        + "public record Kid(int X) : Rec(X) { }\n",
+    }
+    index = _Index(files)
+    found = _cs(tmp_path, files, "A.cs", "Make", index)
+    assert found is not None and "too many" in found.why
+    assert _cs(tmp_path, files, "A.cs", "Of", index) is None
+    assert _cs(tmp_path, files, "A.cs", "New", index) is None
+
+
+def test_csharp_unreadable_msbuild_file_blocks(tmp_path) -> None:
+    files = {
+        "I.cs": "namespace P { public interface IShape { int Area(); } }\n",
+        "S.cs": "using P;\npublic class Sq : IShape { public int Area() { return 1; } }\n",
+    }
+    (tmp_path / "Odd.csproj").mkdir()
+    found = _cs(tmp_path, files, "S.cs", "Area", _Index(files))
+    assert found is not None and "global using" in found.why
