@@ -346,6 +346,39 @@ def relation_files(cache: Any, func_name: str, entries: list[dict]) -> list[str]
     return [path.replace("\\", "/") for path in files]
 
 
+#: ``source_evidence.reason`` when the project has no index at all.
+MISSING_INDEX_REASON = "MISSING_INDEX"
+#: #1943: without an index the answer is parsed on every call and cannot be
+#: certified; the one command that changes that must come first.
+INDEX_BUILD_STEP = (
+    "No index for this project: build it once with "
+    "`index action=auto mode=warm` (CLI: `--autoindex --autoindex-mode warm`), "
+    "then ask again for a certified, warm answer."
+)
+
+
+def _prepend_index_build_step(result: dict[str, Any]) -> None:
+    """Put :data:`INDEX_BUILD_STEP` first in ``next_step`` and ``agent_summary``.
+
+    Verdict and completeness are untouched: this only adds the next step.
+    A ``complete`` answer needs no build step to be trusted, so it is left as is.
+    """
+    if result.get("completeness") == "complete":
+        return
+    previous = result.get("next_step")
+    if previous and INDEX_BUILD_STEP not in previous:
+        result["next_step"] = f"{INDEX_BUILD_STEP} {previous}"
+    elif not previous:
+        result["next_step"] = INDEX_BUILD_STEP
+    summary = result.get("agent_summary")
+    if isinstance(summary, dict):
+        step = summary.get("next_step")
+        if not step:
+            summary["next_step"] = INDEX_BUILD_STEP
+        elif INDEX_BUILD_STEP not in step:
+            summary["next_step"] = f"{INDEX_BUILD_STEP} {step}"
+
+
 def apply_source_evidence(
     result: dict[str, Any], evidence: dict[str, Any], changed: list[str]
 ) -> None:
@@ -357,6 +390,9 @@ def apply_source_evidence(
     ``source_evidence.freshness`` 和散文 next_step 透露过期）。
     """
     result["source_evidence"] = evidence
+    if evidence.get("reason") == MISSING_INDEX_REASON:
+        _prepend_index_build_step(result)
+        return
     if evidence.get("freshness") != "stale":
         return
     # NOT_FOUND 已经是「没有答案」：它自带 source_evidence 与

@@ -168,6 +168,39 @@ class TestCodeGraphAutoIndexTool:
         assert "indexed" in result
 
     @pytest.mark.asyncio
+    async def test_status_without_index_names_the_warm_command(self, project_root):
+        from tree_sitter_analyzer.mcp.tools.auto_index_tool import (
+            CodeGraphAutoIndexTool,
+        )
+
+        tool = CodeGraphAutoIndexTool(project_root=project_root)
+        result = await tool.execute({"mode": "status", "output_format": "json"})
+        assert result["indexed"] is False
+        summary = result["agent_summary"]
+        assert summary["summary_line"] == "autoindex: no index for this project yet"
+        assert summary["next_step"].startswith(
+            "Build it once: tree-sitter-analyzer --autoindex --autoindex-mode warm "
+            "(MCP: index action=auto mode=warm)."
+        )
+
+    @pytest.mark.asyncio
+    async def test_status_after_warm_reports_counts(self, project_root):
+        from tree_sitter_analyzer.mcp.tools.auto_index_tool import (
+            CodeGraphAutoIndexTool,
+        )
+
+        tool = CodeGraphAutoIndexTool(project_root=project_root)
+        await tool.execute({"mode": "warm", "max_files": 10, "output_format": "json"})
+        result = await tool.execute({"mode": "status", "output_format": "json"})
+        assert result["indexed"] is True
+        files = result["cache_stats"]["total_files"]
+        symbols = result["cache_stats"]["total_symbols"]
+        assert result["agent_summary"]["summary_line"] == (
+            f"autoindex: indexed {files} file(s), {symbols} symbol(s)"
+        )
+        assert "--callers NAME" in result["agent_summary"]["next_step"]
+
+    @pytest.mark.asyncio
     async def test_execute_warm(self, project_root):
         from tree_sitter_analyzer.mcp.tools.auto_index_tool import (
             CodeGraphAutoIndexTool,

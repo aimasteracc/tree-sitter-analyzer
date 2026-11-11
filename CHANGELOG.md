@@ -4,6 +4,30 @@
 
 ### Added
 
+- **Agent-first CLI front door: short `--help`, `--help-all`, actionable parser errors.**
+  A zero-knowledge agent's first call was `--help`: 1,377 lines / 82.8k chars
+  (~20k tokens) in 2.9 s, with no mention of `--callers`, `--test-map` or the
+  index step. `-h` / `--help` now print 36 lines (2.3k chars): the index step,
+  15 top tasks with the exact command, how to read `verdict` / `completeness` /
+  `agent_summary`, and a pointer to `--help-all`, which prints the unchanged
+  full reference (`print_help()` / `format_help()` are unchanged too). Every
+  argparse error printed 276 lines of usage before the one-line error; it is
+  now 2-3 lines: the error, a `Did you mean` (close flag names, or `callers X`
+  -> `--callers X`) and a next step. Exit codes are unchanged (0 / 2). The
+  parser no longer imports the symbol/text search tools (and with them the AST
+  cache, chardet, pathspec) to read three defaults, which now live in the
+  import-free `mcp/tools/search_defaults.py` (re-exported from the tools):
+  help and errors drop from 2.9 s to 1.7 s on Windows, where the bare
+  interpreter start is 1.35 s. `--autoindex` status now carries an
+  `agent_summary`; with no index its `next_step` names the warm command.
+  Callers, callees and codegraph context answers computed without an index
+  (`source_evidence.reason: MISSING_INDEX`, not `complete`) now start
+  `next_step` with the index-build command (#1943); verdict and
+  completeness are unchanged. A bare call (no arguments) prints the error
+  and the short help on stderr (82.8k -> 2.4k chars). Under `python -m`, usage, errors and both `--version` paths say
+  `tree-sitter-analyzer` instead of `__main__.py`.
+  The CLI flag count claims move from 374 to 375 (`--help-all`).
+
 - **Callers gate: kotlinpoet is the 8th repo, with a Kotlin grep-oracle classifier** (#1933).
   None of the 7 gate repos was Kotlin, so a later PR could bring back a wrong
   Kotlin `complete` (#1926, #1930) and the gate stayed green. kotlinpoet

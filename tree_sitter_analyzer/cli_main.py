@@ -8,6 +8,7 @@ import os
 import sys
 from typing import Any
 
+from .cli.agent_help import format_agent_help
 from .cli.argument_validator import CLIArgumentValidator
 
 # 命令类（cli.commands / cli.info_commands）在选中命令时才导入：
@@ -226,8 +227,12 @@ def _exit_if_bare_version_request(argv: list[str]) -> None:
     if argv != ["--version"]:
         return
     from . import __version__
+    from .cli.agent_help import program_name
 
+    # Same program name as the full parser (``tree-sitter-analyzer`` under
+    # ``python -m``), so both --version paths print identical text.
     parser = argparse.ArgumentParser(
+        prog=program_name(sys.argv[0]),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -455,7 +460,9 @@ def _execute_selected_command(
             output_error("No executable command specified.")
         # 诊断信息走 stderr（CLAUDE.md §3）：这里是分派失败，不是 --help 请求，
         # 把 usage 打到 stdout 会让 `--format json | jq` 解析失败。
-        parser.print_help(sys.stderr)
+        # 打印简短的 agent-first help（约 2k 字符），而不是 ~83k 字符的完整参考；
+        # 完整参考见 --help-all。
+        sys.stderr.write(format_agent_help())
         sys.exit(1)
 
 
