@@ -525,8 +525,9 @@ async def test_full_index_with_missing_grammar_names_the_files_to_install_for(
     result = await CodeGraphFullIndexTool(project_root).execute({})
     assert result["agent_summary"]["next_step"] == (
         "Published without 1 file(s) whose optional grammar is not installed "
-        "(src/greet.swift: Swift grammar not installed — pip install "
-        '"tree-sitter-analyzer[swift]"). Install the extra and re-run '
+        "(src/greet.swift: Swift grammar not installed — ships with the core install; "
+        "pip install -U tree-sitter-analyzer or uv tool upgrade tree-sitter-analyzer). "
+        "Follow the grammar hint and re-run "
         "index action=full; graph answers about those files stay incomplete "
         "until then."
     )

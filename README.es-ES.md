@@ -10,7 +10,7 @@ TSA indexa tu base de código con tree-sitter y sirve gráficos de llamadas corr
 
 **Por qué es diferente:**
 * **Los vínculos entre lenguajes están controlados por familia.** Una coincidencia de nombre no crea por sí sola una arista entre lenguajes; las puertas que lo imponen son pruebas ejecutables, no una convención.
-* **Diseñado nativo para agentes.** 8 herramientas MCP con salida JSON estructurada y sobres de veredicto, más acceso por CLI y flujos de trabajo curados.
+* **Diseñado nativo para agentes.** 8 herramientas MCP (más `set_project_path`) con salida JSON estructurada y sobres de veredicto, más acceso por CLI y flujos de trabajo curados.
 * **Amplio y correctamente clasificado.** El [inventario de profundidad de soporte generado](#lenguajes-soportados) distingue la evidencia de pipeline del comportamiento entre archivos aún no verificado.
 
 > ¿Actualizando desde v1.x? Consulta [docs/MIGRATION.md](docs/MIGRATION.md).
@@ -27,7 +27,7 @@ TSA indexa tu base de código con tree-sitter y sirve gráficos de llamadas corr
 curl -fsSL https://raw.githubusercontent.com/aimasteracc/tree-sitter-analyzer/main/install.sh | bash
 ```
 
-Instala automáticamente `uv` si falta, detecta Claude Desktop / Claude Code / Cursor / VS Code, y escribe la entrada MCP. Ejecuta `tree-sitter-analyzer --doctor` para verificar.
+Instala o actualiza `uv >=0.11.0` cuando hace falta. Configura Claude Code `.mcp.json`, Cursor `.cursor/mcp.json` y VS Code `.vscode/mcp.json` (`servers`) a nivel de proyecto para los clientes detectados; actualiza la configuración global existente de Claude Desktop e imprime un bloque para Codex si lo detecta. Combina las entradas existentes con copias de seguridad. No instala la CLI. Verifica con `TREE_SITTER_PROJECT_ROOT="$PWD" uvx --from tree-sitter-analyzer tree-sitter-analyzer --doctor`.
 
 > **Confianza en el arranque (bootstrap):** por comodidad, el comando anterior descarga y ejecuta el instalador oficial de `uv` cuando `uv` falta o está desactualizado. Ese instalador es mutable y **no está vinculado a un contenido fijo**; TSA avisa antes de descargarlo a un archivo temporal por TLS y realiza una comprobación estricta de versión tras la instalación. Para evitar este arranque no verificado, instala `uv >= 0.11.0` manualmente primero, o usa la opción segura de exclusión (que termina con instrucciones de instalación manual cuando se necesita el arranque):
 > ```bash
@@ -38,18 +38,19 @@ Instala automáticamente `uv` si falta, detecta Claude Desktop / Claude Code / C
 Comando de instalación para **Claude Code**:
 
 ```bash
-claude mcp add tree-sitter-analyzer \
+claude mcp add tree-sitter-analyzer --scope project \
   --env TREE_SITTER_PROJECT_ROOT="$PWD" \
   -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
 ```
 
-Reinicia tu agente y luego di: *"Ejecuta la herramienta `index` con action=status."*
-Equivalente en CLI (sin agente): `tree-sitter-analyzer --codegraph-status`
+Construye el índice una vez: `uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer --project-root "$PWD" --full-index`.
+Reinicia tu agente y luego di: *"Ejecuta la herramienta `index` con action=status."* — se espera `indexed: true`
+Equivalente en CLI (sin agente): `uvx --from tree-sitter-analyzer tree-sitter-analyzer --codegraph-status`
 
 > **Usuarios de PyPI / uvx — instala las skills:** las skills `tsa-*` vienen empaquetadas en la wheel. Cópialas una vez con:
 > ```bash
-> tree-sitter-analyzer --install-skills              # into ./.claude/skills/ (this project)
-> tree-sitter-analyzer --install-skills-global       # into ~/.claude/skills/ (all projects)
+> uvx --from tree-sitter-analyzer tree-sitter-analyzer --install-skills              # into ./.claude/skills/ (this project)
+> uvx --from tree-sitter-analyzer tree-sitter-analyzer --install-skills-global       # into ~/.claude/skills/ (all projects)
 > ```
 > Los usuarios que clonan el repositorio ya las tienen bajo `.claude/skills/` — no se requiere ninguna acción.
 
@@ -64,13 +65,13 @@ Equivalente en CLI (sin agente): `tree-sitter-analyzer --codegraph-status`
 # see https://docs.astral.sh/uv/ for alternative manual installation methods.
 curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
-
 ```
 
 #### 2. Instalar Tree-sitter Analyzer
 
 ```bash
 # Standalone install (persistent CLI command):
+# [all] = todas las gramáticas + extras MCP (sin herramientas de desarrollo)
 uv tool install "tree-sitter-analyzer[all,mcp]"
 # — or skip installing entirely: the MCP entry below runs via uvx on demand.
 # Inside a uv-managed Python project, use: uv add "tree-sitter-analyzer[all,mcp]"
@@ -92,8 +93,9 @@ Consulta **[Agentes soportados](#supported-agents)**. La mayoría de los cliente
 }
 ```
 
-Tras reiniciar: *"Ejecuta la herramienta `index` con action=status."*
-Equivalente en CLI (sin agente): `tree-sitter-analyzer --codegraph-status`
+Construye el índice una vez: `uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer --project-root "$PWD" --full-index`.
+Tras reiniciar: *"Ejecuta la herramienta `index` con action=status."* — se espera `indexed: true`
+Equivalente en CLI (sin agente): `uvx --from tree-sitter-analyzer tree-sitter-analyzer --codegraph-status`
 
 **Comprueba la ventaja de corrección en tu propio repositorio** — sin instalación, sin CodeGraph (primero reindexa):
 
@@ -130,7 +132,7 @@ El coste de un agente lo dominan los turnos, no el tamaño de cada respuesta: ca
 | Buscar un símbolo por nombre | `search` action=symbol | coincidencias ordenadas por relevancia (FTS5 + BM25) |
 | Obtener símbolos relacionados con su mapa de relaciones | `structure` action=explore | los símbolos solicitados y cómo se conectan |
 | ¿El índice es utilizable ahora mismo? | `index` action=status | cobertura, antigüedad y número de bordes |
-| Construir o refrescar el gráfico de llamadas | `index` action=auto / action=full / action=sync | estado del índice tras la ejecución |
+| Construir o refrescar el gráfico de llamadas | `index` action=full (primera ejecución) / action=sync (tras editar) | estado del índice tras la ejecución |
 | Qué pruebas toca este cambio | `--affected FILE...` (CLI) | pruebas afectadas de forma transitiva |
 
 ### Capacidades más allá de la navegación de código
@@ -188,7 +190,7 @@ tree-sitter-analyzer --uml class                  # Mermaid UML class diagram
 
 TSA realiza la búsqueda indexada y la verificación de código fuente en el mismo proceso, sin instalar ripgrep ni fd.
 
-`search-content` y `find-and-grep` se han eliminado en develop. Consulta la
+`search-content` y `find-and-grep` se eliminaron en 1.30.0. Consulta la
 [guía de migración](docs/MIGRATION.md) y el [`mapa de CLI`](docs/CODEMAPS/cli.md).
 
 ---
@@ -225,9 +227,9 @@ Source code → tree-sitter parse → SQLite + FTS5 index (.ast-cache/index.db)
                               MCP client / CLI consumer
 ```
 
-Las 8 herramientas MCP exponen consultas indexadas y análisis directo del código fuente.
+Las 8 herramientas MCP (más `set_project_path`) exponen consultas indexadas y análisis directo del código fuente.
 Construye el índice AST explícitamente antes de las consultas indexadas de símbolos/contexto con
-`tree-sitter-analyzer --ast-cache --ast-cache-mode index --format json`. Actualízalo
+`tree-sitter-analyzer --full-index --format json`. Actualízalo
 tras cambios en el código fuente con `index` action=sync. Las consultas indexadas reutilizan
 datos AST en caché; el precalentamiento automático es específico de cada herramienta.
 
@@ -236,22 +238,27 @@ datos AST en caché; el precalentamiento automático es específico de cada herr
 ## Agentes soportados
 
 <details>
+<summary><b>Codex CLI</b></summary>
+
+`~/.codex/config.toml`:
+```toml
+[mcp_servers.tree-sitter-analyzer]
+command = "uvx"
+args = ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"]
+env = { TREE_SITTER_PROJECT_ROOT = "/absolute/path/to/your/project" }
+```
+</details>
+
+<details>
 <summary><b>📘 Claude Code</b> (recomendado)</summary>
 
 ```bash
-claude mcp add tree-sitter-analyzer \
+claude mcp add tree-sitter-analyzer --scope project \
   --env TREE_SITTER_PROJECT_ROOT="$PWD" \
   -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
 ```
 
 Verifica: `claude mcp list`. Las skills `tsa-*` empaquetadas se auto-descubren desde `.claude/skills/`.
-
-**Usuarios de PyPI / uvx** — instala las skills empaquetadas una vez con:
-```bash
-tree-sitter-analyzer --install-skills              # into ./.claude/skills/ (this project)
-tree-sitter-analyzer --install-skills-global       # into ~/.claude/skills/ (all projects)
-```
-Los usuarios que clonan el repositorio ya las tienen — no se requiere ninguna acción.
 </details>
 
 <details>
@@ -294,7 +301,7 @@ Crea `.vscode/mcp.json` (nota: `servers`, no `mcpServers`):
 <details>
 <summary><b>🖱 Cursor / Cline / Continue / Roo Code</b></summary>
 
-Todos leen el mismo esquema `mcpServers` que Claude Desktop. Cursor: **Settings → MCP**. Cline: panel MCP → Edit settings. Continue: `~/.continue/config.json` bajo `experimental.modelContextProtocolServers`. Roo Code: panel MCP → Edit MCP Settings.
+Todos leen el mismo esquema `mcpServers` que Claude Desktop. Cursor: project `.cursor/mcp.json`. Cline: panel MCP → Edit settings. Continue: `~/.continue/config.json` bajo `experimental.modelContextProtocolServers`. Roo Code: panel MCP → Edit MCP Settings.
 </details>
 
 <details>
@@ -334,7 +341,7 @@ Configuración del cliente MCP (la raíz del proyecto dentro del contenedor es e
 ```
 </details>
 
-> ⚠️ `TREE_SITTER_PROJECT_ROOT` debe ser **absoluto**. El servidor aplica un límite de seguridad contra escapes de ruta mediante `SecurityValidator`.
+> ⚠️ `TREE_SITTER_PROJECT_ROOT`: Si se establece, debe ser una ruta absoluta. Si se omite, el servidor usa su directorio de trabajo. No la pongas en una configuración global para todos los proyectos: todos apuntarían al mismo repositorio.
 
 ---
 
@@ -381,8 +388,8 @@ uv run python check_quality.py --new-code-only  # quality gate
 
 | Síntoma | Solución |
 |---|---|
-| `unsupported language` en `.swift / .kt / .rb / .php / .cs` | Actualiza a una versión soportada actual — la brecha del lenguaje faltante se corrigió en el commit `50e99a8f`. Los módulos de gramática para lenguajes controlados por extras no vienen empaquetados en la instalación base; ejecuta `pip install "tree-sitter-analyzer[swift]"` (o `kotlin`, `ruby`, `php`, `csharp`) para añadirlos. |
-| El servidor MCP no aparece en el cliente | `TREE_SITTER_PROJECT_ROOT` debe ser una **ruta absoluta** (p. ej. `$(pwd)` o `/home/user/project`); una ruta relativa hace que el servidor resuelva contra el directorio incorrecto. Reinicia el cliente después de editar. Ejecuta `tree-sitter-analyzer --doctor` para verificar. |
+| `unsupported language` en `.swift / .kt / .rb / .php / .cs` | Swift, Lua y las gramáticas de todos los demás lenguajes soportados vienen con la instalación principal. Actualiza con `pip install -U tree-sitter-analyzer` o `uv tool upgrade tree-sitter-analyzer`; no hace falta ningún extra de lenguaje. |
+| El servidor MCP no aparece en el cliente | `TREE_SITTER_PROJECT_ROOT` debe ser una **ruta absoluta** (p. ej. `$(pwd)` o `/home/user/project`); una ruta relativa hace que el servidor resuelva contra el directorio incorrecto. Reinicia el cliente después de editar. Ejecuta `TREE_SITTER_PROJECT_ROOT="$PWD" uvx --from tree-sitter-analyzer tree-sitter-analyzer --doctor` para verificar. |
 | `database is locked` | Detén cualquier otro proceso que tenga abierto `.ast-cache/index.db`; si persiste, `rm -rf .ast-cache && tree-sitter-analyzer --full-index`. |
 | Primera llamada lenta o índice faltante | Algunas herramientas precalientan el índice automáticamente. Ejecuta `--full-index` de antemano antes de las consultas indexadas. |
 | El agente elige la herramienta equivocada | Usa una skill `tsa-*` (`/tsa-graph`, `/tsa-find`, ...) — cada skill restringe el conjunto de herramientas visible a su flujo de trabajo dedicado. |
@@ -434,7 +441,7 @@ estén deshabilitadas. No se ha realizado la calificación nativa de Windows par
 de captura; una prueba local de capacidad no la sustituye.
 
 El estado `certified_at` por archivo no reemplaza la autoridad completa de instantáneas. El
-historial persistente `partial_at` **no está implementado ni incluido en este PR**. Una
+historial persistente `partial_at` **no está implementado**. Una
 proyección incompleta o no verificable no puede autorizar a un consumidor certificado.
 
 ### Pulse / TQL / Semantic Query

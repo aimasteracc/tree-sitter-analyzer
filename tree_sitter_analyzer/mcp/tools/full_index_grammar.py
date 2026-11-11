@@ -37,6 +37,6 @@ def missing_grammar_next_step(phases: dict[str, Any]) -> str:
     )
     return (
         f"Published without {len(failures)} file(s) whose optional grammar is not "
-        f"installed ({listed}{more}). Install the extra and re-run index "
+        f"installed ({listed}{more}). Follow the grammar hint and re-run index "
         "action=full; graph answers about those files stay incomplete until then."
     )

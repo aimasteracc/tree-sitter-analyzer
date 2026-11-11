@@ -19,12 +19,12 @@ from tree_sitter_analyzer.language_loader import (
 class TestGrammarInstallHint:
     """Leg 1: grammar_install_hint() returns the correct pip-install instruction."""
 
-    def test_swift_hint_contains_extras_name(self):
+    def test_swift_hint_describes_core_upgrade(self):
         hint = grammar_install_hint("swift")
         assert hint is not None
-        # Must mention the extras group name
-        assert "swift" in hint
-        # Must be a pip install instruction
+        # Swift ships with the core install, so the hint must suggest an upgrade.
+        assert "Swift" in hint
+        assert "ships with the core install" in hint
         assert "pip install" in hint
 
     def test_kotlin_hint_contains_extras_name(self):
@@ -43,10 +43,11 @@ class TestGrammarInstallHint:
         """A language not in LANGUAGE_MODULES has no hint."""
         assert grammar_install_hint("unknown_lang_xyz") is None
 
-    def test_hint_format_uses_tree_sitter_analyzer_bracket(self):
-        """Hints must use the canonical 'pip install tree-sitter-analyzer[<extra>]' form."""
+    def test_swift_hint_offers_both_upgrade_commands(self):
+        """The Swift hint offers both the pip and the uv upgrade command."""
         hint = grammar_install_hint("swift")
-        assert "tree-sitter-analyzer[swift]" in hint
+        assert "pip install -U tree-sitter-analyzer" in hint
+        assert "uv tool upgrade tree-sitter-analyzer" in hint
 
     def test_rust_hint_format(self):
         hint = grammar_install_hint("rust")
@@ -61,9 +62,11 @@ class TestGrammarInstallHint:
         assert hint is not None
         assert "pip install" in hint
 
-    def test_lua_hint_uses_canonical_acronym_and_extra(self):
+    def test_lua_hint_uses_canonical_acronym_and_core_upgrade(self):
         assert grammar_install_hint("lua") == (
-            'LUA grammar not installed — pip install "tree-sitter-analyzer[lua]"'
+            "LUA grammar not installed — ships with the core install; "
+            "pip install -U tree-sitter-analyzer or "
+            "uv tool upgrade tree-sitter-analyzer"
         )
 
     def test_all_loader_languages_have_a_hint(self):

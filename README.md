@@ -1,6 +1,7 @@
 # 🌳 Tree-sitter Analyzer
+<!-- mcp-name: io.github.aimasteracc/tree-sitter-analyzer -->
 
-**English** | **[日本語](README_ja.md)** | **[简体中文](README_zh.md)**
+**English** | **[日本語](README_ja.md)** | **[简体中文](README_zh.md)** | **[Español](README.es-ES.md)**
 
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/) [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org) [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) [![Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer) [![Works with Claude Code · Cursor · MCP](https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Cursor%20%C2%B7%20MCP-6f42c1.svg)](#supported-agents)
 
@@ -10,7 +11,7 @@ TSA indexes your codebase with tree-sitter and serves correct call graphs, symbo
 
 **Why it's different:**
 * **Cross-language bindings are gated by language family.** A name match alone does not create a cross-language edge, and the gates that enforce this are executable tests rather than a convention.
-* **Built agent-native.** 8 MCP tools provide structured JSON output and verdict envelopes, with CLI access and curated workflows.
+* **Built agent-native.** 8 MCP tools (plus `set_project_path`) provide structured JSON output and verdict envelopes, with CLI access and curated workflows.
 * **Broad and correctly classified.** The [generated support-depth inventory](#supported-languages) distinguishes pipeline evidence from unverified cross-file behavior.
 
 > Upgrading from v1.x? See [docs/MIGRATION.md](docs/MIGRATION.md).
@@ -27,7 +28,7 @@ TSA indexes your codebase with tree-sitter and serves correct call graphs, symbo
 curl -fsSL https://raw.githubusercontent.com/aimasteracc/tree-sitter-analyzer/main/install.sh | bash
 ```
 
-Auto-installs `uv` if missing, detects Claude Desktop / Claude Code / Cursor / VS Code, and writes the MCP entry. Run `tree-sitter-analyzer --doctor` to verify.
+Installs or updates `uv >=0.11.0` when needed. For detected clients it configures project-level Claude Code `.mcp.json`, Cursor `.cursor/mcp.json`, and VS Code `.vscode/mcp.json` (`servers`); it updates an existing global Claude Desktop config and prints a Codex block when Codex is detected. Existing entries are merged with backups. It does not install the CLI. Verify with `TREE_SITTER_PROJECT_ROOT="$PWD" uvx --from tree-sitter-analyzer tree-sitter-analyzer --doctor`.
 
 > **Bootstrap trust:** for convenience, the command above downloads and executes the official `uv` installer when `uv` is missing or outdated. That installer is mutable and **not content-bound**; TSA warns before downloading it to a temporary file over TLS and performs a strict post-install version check. To avoid this unverified bootstrap, install `uv >= 0.11.0` manually first, or use the secure opt-out (which exits with manual-install instructions when bootstrap is needed):
 > ```bash
@@ -37,20 +38,20 @@ Auto-installs `uv` if missing, detects Claude Desktop / Claude Code / Cursor / V
 
 Install command for **Claude Code**:
 
-
 ```bash
-claude mcp add tree-sitter-analyzer \
+claude mcp add tree-sitter-analyzer --scope project \
   --env TREE_SITTER_PROJECT_ROOT="$PWD" \
   -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
 ```
 
-Restart your agent, then say: *"Run the `index` tool with action=status."*
-CLI equivalent (no agent needed): `tree-sitter-analyzer --codegraph-status`
+Build the index once: `uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer --project-root "$PWD" --full-index`.
+Restart your agent, then say: *"Run the `index` tool with action=status."* — expect `indexed: true`
+CLI equivalent (no agent needed): `uvx --from tree-sitter-analyzer tree-sitter-analyzer --codegraph-status`
 
 > **PyPI / uvx users — install skills:** the `tsa-*` skills are bundled in the wheel. Copy them once with:
 > ```bash
-> tree-sitter-analyzer --install-skills              # into ./.claude/skills/ (this project)
-> tree-sitter-analyzer --install-skills-global       # into ~/.claude/skills/ (all projects)
+> uvx --from tree-sitter-analyzer tree-sitter-analyzer --install-skills              # into ./.claude/skills/ (this project)
+> uvx --from tree-sitter-analyzer tree-sitter-analyzer --install-skills-global       # into ~/.claude/skills/ (all projects)
 > ```
 > Git-clone users already have them under `.claude/skills/` — no action needed.
 
@@ -65,13 +66,13 @@ CLI equivalent (no agent needed): `tree-sitter-analyzer --codegraph-status`
 # see https://docs.astral.sh/uv/ for alternative manual installation methods.
 curl -LsSf https://astral.sh/uv/install.sh | sh        # macOS / Linux
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
-
 ```
 
 #### 2. Install Tree-sitter Analyzer
 
 ```bash
 # Standalone install (persistent CLI command):
+# [all] = every language grammar + MCP extras (no dev tools)
 uv tool install "tree-sitter-analyzer[all,mcp]"
 # — or skip installing entirely: the MCP entry below runs via uvx on demand.
 # Inside a uv-managed Python project, use: uv add "tree-sitter-analyzer[all,mcp]"
@@ -93,8 +94,9 @@ See **[Supported Agents](#supported-agents)**. Most clients want this MCP server
 }
 ```
 
-After restart: *"Run the `index` tool with action=status."*
-CLI equivalent (no agent needed): `tree-sitter-analyzer --codegraph-status`
+Build the index once: `uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer --project-root "$PWD" --full-index`.
+After restart: *"Run the `index` tool with action=status."* — expect `indexed: true`
+CLI equivalent (no agent needed): `uvx --from tree-sitter-analyzer tree-sitter-analyzer --codegraph-status`
 
 **Check resolver behavior on your own repository** — no install required:
 
@@ -134,7 +136,7 @@ asking.
 | Find a symbol by name | `search` action=symbol | relevance-ranked matches (FTS5 + BM25) |
 | Fetch related symbols with their relationship map | `structure` action=explore | the requested symbols and how they connect |
 | Is the index usable right now? | `index` action=status | coverage, staleness, and edge count |
-| Build or refresh the call graph | `index` action=auto / action=full / action=sync | index state after the run |
+| Build or refresh the call graph | `index` action=full (first run) / action=sync (after edits) | index state after the run |
 | Which tests does this change touch? | `--affected FILE...` (CLI) | transitively affected tests |
 
 ### Capabilities beyond code navigation
@@ -192,7 +194,7 @@ tree-sitter-analyzer --uml class                  # Mermaid UML class diagram
 
 TSA performs indexed code search and live source verification in process. No ripgrep or fd installation is required.
 
-`search-content` and `find-and-grep` have been removed on develop. See the
+`search-content` and `find-and-grep` were removed in version 1.30.0. See the
 [migration guide](docs/MIGRATION.md) and [`CLI codemap`](docs/CODEMAPS/cli.md).
 
 ---
@@ -228,9 +230,9 @@ Source code → tree-sitter parse → SQLite + FTS5 index (.ast-cache/index.db)
                               MCP client / CLI consumer
 ```
 
-The 8 MCP tools expose indexed queries and direct source analysis.
+The 8 MCP tools expose indexed queries and direct source analysis (plus `set_project_path`).
 Build the AST index explicitly before indexed symbol/context queries with
-`tree-sitter-analyzer --ast-cache --ast-cache-mode index --format json`. Refresh
+`tree-sitter-analyzer --full-index --format json`. Refresh
 it after source changes with `index` action=sync. Indexed queries reuse cached
 AST data; automatic warming is specific to individual tools.
 
@@ -239,22 +241,27 @@ AST data; automatic warming is specific to individual tools.
 ## Supported Agents
 
 <details>
+<summary><b>Codex CLI</b></summary>
+
+`~/.codex/config.toml`:
+```toml
+[mcp_servers.tree-sitter-analyzer]
+command = "uvx"
+args = ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"]
+env = { TREE_SITTER_PROJECT_ROOT = "/absolute/path/to/your/project" }
+```
+</details>
+
+<details>
 <summary><b>📘 Claude Code</b> (recommended)</summary>
 
 ```bash
-claude mcp add tree-sitter-analyzer \
+claude mcp add tree-sitter-analyzer --scope project \
   --env TREE_SITTER_PROJECT_ROOT="$PWD" \
   -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
 ```
 
 Verify: `claude mcp list`. The bundled `tsa-*` skills auto-discover from `.claude/skills/`.
-
-**PyPI / uvx users** — install the bundled skills once with:
-```bash
-tree-sitter-analyzer --install-skills              # into ./.claude/skills/ (this project)
-tree-sitter-analyzer --install-skills-global       # into ~/.claude/skills/ (all projects)
-```
-Git-clone users already have them — no action needed.
 </details>
 
 <details>
@@ -297,7 +304,7 @@ Create `.vscode/mcp.json` (note: `servers`, not `mcpServers`):
 <details>
 <summary><b>🖱 Cursor / Cline / Continue / Roo Code</b></summary>
 
-All read the same `mcpServers` schema as Claude Desktop. Cursor: **Settings → MCP**. Cline: MCP panel → Edit settings. Continue: `~/.continue/config.json` under `experimental.modelContextProtocolServers`. Roo Code: MCP panel → Edit MCP Settings.
+All read the same `mcpServers` schema as Claude Desktop. Cursor: project `.cursor/mcp.json`. Cline: MCP panel → Edit settings. Continue: `~/.continue/config.json` under `experimental.modelContextProtocolServers`. Roo Code: MCP panel → Edit MCP Settings.
 </details>
 
 <details>
@@ -337,7 +344,7 @@ MCP client config (the project root inside the container is the mount point `/wo
 ```
 </details>
 
-> ⚠️ `TREE_SITTER_PROJECT_ROOT` must be **absolute**. The server enforces a security boundary against escapes via `SecurityValidator`.
+> ⚠️ `TREE_SITTER_PROJECT_ROOT`: If set, it must be absolute. If unset, the server uses its working directory. Do not put it in a global (all-projects) config — every project would point at the same repository.
 
 ---
 
@@ -384,8 +391,8 @@ uv run python check_quality.py --new-code-only  # quality gate
 
 | Symptom | Fix |
 |---|---|
-| `unsupported language` on `.swift / .kt / .rb / .php / .cs` | Update to a current supported release — the missing-language gap was patched in commit `50e99a8f`. Grammar modules for extras-gated languages are not bundled in the base install; run `pip install "tree-sitter-analyzer[swift]"` (or `kotlin`, `ruby`, `php`, `csharp`) to add them. |
-| MCP server doesn't appear in client | `TREE_SITTER_PROJECT_ROOT` must be an **absolute path** (e.g. `$(pwd)` or `/home/user/project`); a relative path causes the server to resolve against the wrong directory. Restart the client after editing. Run `tree-sitter-analyzer --doctor` to verify. |
+| `unsupported language` on `.swift / .kt / .rb / .php / .cs` | Swift and Lua ship with the core install, as do all other supported language grammars. Upgrade with `pip install -U tree-sitter-analyzer` or `uv tool upgrade tree-sitter-analyzer`; no language extra is required. |
+| MCP server doesn't appear in client | `TREE_SITTER_PROJECT_ROOT` must be an **absolute path** (e.g. `$(pwd)` or `/home/user/project`); a relative path causes the server to resolve against the wrong directory. Restart the client after editing. Run `TREE_SITTER_PROJECT_ROOT="$PWD" uvx --from tree-sitter-analyzer tree-sitter-analyzer --doctor` to verify. |
 | `database is locked` | Stop any other process holding `.ast-cache/index.db`; if persistent, `rm -rf .ast-cache && tree-sitter-analyzer --full-index`. |
 | Slow first call or missing index | Some tools warm the index automatically. Run `--full-index` upfront before indexed queries. |
 | Agent picks the wrong tool | Use a `tsa-*` skill (`/tsa-graph`, `/tsa-find`, ...) — each skill restricts the visible tool set to its dedicated workflow. |
@@ -436,7 +443,7 @@ are disabled. Native Windows qualification for the new capture path has not been
 performed; a local capability test is not a substitute for it.
 
 The per-file `certified_at` state is not a replacement for full snapshot authority.
-`partial_at` persistent history is **not implemented or included in this PR**.
+`partial_at` persistent history is **not implemented**.
 An incomplete or unverifiable projection cannot authorize a certified consumer.
 
 ### Pulse / TQL / Semantic Query

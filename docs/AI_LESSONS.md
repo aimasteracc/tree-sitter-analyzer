@@ -854,3 +854,27 @@ dict / list / tuple / set 分发表、实参传递、属性与别名导入、dun
 `tests/unit/cli/test_doctor_command.py` 验证 doctor 的对应路径、嵌套用户配置与占位符。
 `tests/contracts/test_fresh_install_qualification.py` 与
 `tests/contracts/test_outdated_uv_qualification.py` 保留失败封闭和精确配置快照检查。
+
+## 2026-11 — Installation guidance must match the runtime dependency boundary
+
+### Context
+
+安装文档把 Swift 当作 extra，并把安装脚本描述为安装 CLI；实际脚本只配置
+MCP 客户端。此次依赖修复将 Swift 和 Lua 纳入核心安装，并将 `all` 从开发环境
+改为语言语法与 MCP 依赖的集合。历史采集 receipt 中的 anthropic 是历史事实，
+不能为了当前依赖变更而重写。提示中用斜杠连接升级命令还会被响应脱敏器
+误判为路径；README 数量扫描器也会把未标识的版本与普通中文数量词当作声明。
+
+### Lessons learned
+
+1. 安装指导必须读取当前脚本，区分 MCP 注册与持久 CLI 安装。
+2. 核心依赖与 extra 的约束取交集，避免 extra 意外改变语法版本系列。
+3. 当前错误提示随依赖边界更新；历史 receipt 与锁文件保留原始证据。
+4. 安装提示须经过真实响应路径测试；README 使用扫描器认可的版本表述，不能放宽治理门禁。
+
+### Required guardrail
+
+`tests/unit/core/test_grammar_install_hints.py` 验证 Swift 和 Lua 的核心升级提示；
+`tests/contracts/test_collect_no1_006b_baseline.py` 保留历史 receipt 的校验。
+`tests/unit/test_generation_indexing.py` 验证真实提示，
+`tests/unit/test_claim_registry.py` 验证 README 全文没有未授权声明。

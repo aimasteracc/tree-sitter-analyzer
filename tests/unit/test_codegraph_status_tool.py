@@ -389,7 +389,7 @@ async def test_explicit_mode_enriches_older_status_payload(monkeypatch) -> None:
     }
 
 
-_SWIFT_INSTALL = 'pip install "tree-sitter-analyzer[swift]"'
+_SWIFT_INSTALL = "ships with the core install; pip install -U tree-sitter-analyzer or uv tool upgrade tree-sitter-analyzer"
 _SWIFT_REASON = f"Swift grammar not installed — {_SWIFT_INSTALL}"
 
 
