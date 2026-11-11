@@ -1,0 +1,89 @@
+name: Agent trial report
+description: Report an agent installation and first-use outcome.
+title: '[trial] <client> on <OS>: <worked | failed at step N>'
+labels:
+- trial-report
+body:
+- type: dropdown
+  id: outcome
+  attributes:
+    label: Outcome
+    options:
+    - Worked first try, no human help
+    - Worked after human help
+    - Failed
+  validations:
+    required: true
+- type: dropdown
+  id: client
+  attributes:
+    label: Client
+    options:
+    - Claude Code
+    - Codex CLI
+    - Cursor
+    - VS Code Copilot
+    - Grok Bot
+    - Cline
+    - Gemini CLI
+    - Windsurf
+    - Other
+  validations:
+    required: true
+- type: input
+  id: model
+  attributes:
+    label: Model
+- type: dropdown
+  id: install_path
+  attributes:
+    label: Install path
+    options:
+    - install.sh
+    - uvx MCP entry
+    - uv tool install
+    - pip
+    - Docker
+    - from source
+- type: input
+  id: env
+  attributes:
+    label: Environment (OS/arch/Python/uv)
+- type: input
+  id: version
+  attributes:
+    label: TSA version
+- type: textarea
+  id: commands
+  attributes:
+    label: Commands
+    render: shell
+- type: input
+  id: first_failure
+  attributes:
+    label: First failure
+- type: input
+  id: ttfa
+  attributes:
+    label: Time to first useful answer (minutes)
+- type: textarea
+  id: doctor
+  attributes:
+    label: Doctor output
+    render: text
+- type: textarea
+  id: usage
+  attributes:
+    label: 'Usage: tool calls, verdicts, were they correct?'
+- type: input
+  id: repo
+  attributes:
+    label: Repository (optional public URL or description)
+- type: checkboxes
+  id: consent
+  attributes:
+    label: Consent
+    options:
+    - label: I reviewed this report and removed secrets and private source code.
+      required: true
+    - label: I consent to use of this report to improve TSA.

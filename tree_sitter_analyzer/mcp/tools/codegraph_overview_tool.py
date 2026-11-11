@@ -14,11 +14,19 @@ CodeGraph parity: equivalent to CodeGraph's code intelligence overview.
 
 from typing import Any, cast
 
-from ...call_graph import CachedCallGraph, CallGraph
+from ...call_graph import CachedCallGraph, CallGraph, FunctionRef
 from ...call_graph_binding import RefIdentity, ref_identity
-from ...dead_code_analyzer import filter_value_referenced
+from ...dead_code_analyzer import filter_value_referenced, is_entry_point
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
+from .dead_code_certify import (
+    STATUS_CERTIFIED,
+    Certification,
+    certify,
+    query_name,
+    resolve_dead,
+    uncertified_entry,
+)
 from .index_bound_graph import index_bound_graph, reset_index_bound_graph
 
 logger = setup_logger(__name__)
@@ -141,7 +149,9 @@ class CodeGraphOverviewTool(BaseMCPTool):
 
         entry_points = _find_entry_points(graph, max_entry_points)
         hubs = _find_hub_functions(graph, max_hubs)
-        dead_code = _find_dead_code(graph, max_dead)
+        dead_section = await _certified_dead_code(self.project_root, graph, max_dead)
+        dead_code = dead_section["dead_code"]
+        evidence = dead_section["dead_code_evidence"]
         depth_dist = _compute_depth_distribution(graph)
         coupling = _compute_module_coupling(graph, max_coupled_files)
 
@@ -149,7 +159,8 @@ class CodeGraphOverviewTool(BaseMCPTool):
 
         # Pain #18 (dogfood pass 3): codegraph_overview emitted no verdict.
         # REVIEW when there is significant dead code (signals project debt),
-        # NOT_FOUND for an empty graph, INFO otherwise.
+        # NOT_FOUND for an empty graph, INFO otherwise. #1941: only certified
+        # entries count.
         fn_count = summary.get("function_count", 0)
         dead_count = len(dead_code)
         if fn_count == 0:
@@ -161,10 +172,11 @@ class CodeGraphOverviewTool(BaseMCPTool):
 
         # Codex P2: label capped counts with "+" so agents can tell a cap was hit.
         ep_count = len(entry_points)
-        dead_suffix = "+" if dead_count >= max_dead else ""
+        dead_suffix = "+" if dead_count >= max_dead or evidence["unchecked"] else ""
         ep_suffix = "+" if ep_count >= max_entry_points else ""
         agent_summary_line = (
-            f"{fn_count} functions, {dead_count}{dead_suffix} dead code entries — "
+            f"{fn_count} functions, {dead_count}{dead_suffix} certified dead code "
+            f"entries ({evidence['not_certified']} candidates not certified) — "
             f"{ep_count}{ep_suffix} entry points, "
             f"max call depth {depth_dist.get('max_depth', 0)}"
         )
@@ -178,8 +190,11 @@ class CodeGraphOverviewTool(BaseMCPTool):
             "agent_summary": {
                 "summary_line": agent_summary_line,
                 "next_step": (
-                    "Check dead_code list for cleanup opportunities. "
-                    "Use --callers to verify callers of flagged dead code."
+                    "dead_code lists only functions that --callers certifies as "
+                    "having no caller (complete, 0 callers, no outside supertype). "
+                    "possibly_dead lists the other candidates with the reason and "
+                    "open sites that block the claim; read those sites before "
+                    "deleting anything."
                 ),
                 "verdict": verdict,
             },
@@ -195,6 +210,9 @@ class CodeGraphOverviewTool(BaseMCPTool):
             "entry_points": entry_points,
             "hub_functions": hubs,
             "dead_code": dead_code,
+            "dead_code_status": STATUS_CERTIFIED,
+            "possibly_dead": dead_section["possibly_dead"],
+            "dead_code_evidence": evidence,
             "call_depth_distribution": depth_dist,
             "module_coupling": coupling,
         }
@@ -252,28 +270,72 @@ def _find_hub_functions(graph: CallGraph, limit: int) -> list[dict[str, Any]]:
     return hubs
 
 
-def _find_dead_code(graph: CallGraph, limit: int) -> list[dict[str, Any]]:
-    """Functions with zero callers AND zero callees (dead code candidates).
+def _dead_code_candidates(graph: CallGraph) -> list[FunctionRef]:
+    """Functions with zero callers AND zero callees: candidates, not yet dead.
 
     #1790：运行时隐式调用、或作为值使用（分发表、实参、装饰器）的孤立函数
-    不是死代码，按 ``dead_code_analyzer`` 的同一规则剔除。
+    不是死代码，按 ``dead_code_analyzer`` 的同一规则剔除。#1941：测试函数与
+    入口名同样由运行时调用。只有经 callers 证据认证的候选才是死代码
+    （:func:`_certified_dead_code`）。
     """
     orphans = [
         func
         for func in graph.function_refs()
-        if not graph.caller_refs_of(func) and not graph.callee_refs_of(func)
+        if not graph.caller_refs_of(func)
+        and not graph.callee_refs_of(func)
+        and not is_entry_point(func)
     ]
-    dead = [
-        {
-            "name": func.name,
-            "file": func.file_path,
-            "line": func.start_line,
-            "language": func.language,
-        }
-        for func in filter_value_referenced(graph, orphans)
+    found = filter_value_referenced(graph, orphans)
+    return sorted(found, key=lambda f: (f.file_path, f.name, f.start_line))
+
+
+def _find_dead_code(graph: CallGraph, limit: int) -> list[dict[str, Any]]:
+    """Uncertified orphan candidates (see :func:`_dead_code_candidates`)."""
+    return [_entry(func) for func in _dead_code_candidates(graph)[:limit]]
+
+
+def _entry(func: FunctionRef) -> dict[str, Any]:
+    return {
+        "name": func.name,
+        "qualified_name": query_name(func),
+        "file": func.file_path,
+        "line": func.start_line,
+        "language": func.language,
+    }
+
+
+async def _certified_dead_code(
+    project_root: str | None, graph: CallGraph, limit: int
+) -> dict[str, Any]:
+    """#1941: the orphan candidates that ``nav action=callers`` certifies.
+
+    Candidates are asked in listing order until ``limit`` are certified; the
+    rest is counted as unchecked, never listed as dead.
+    """
+    candidates = _dead_code_candidates(graph)
+    if not project_root or not candidates:
+        cert = Certification(unchecked=list(candidates))
+    else:
+        cert = await certify(project_root, candidates, stop_after=limit)
+    dead = resolve_dead(candidates, cert)
+    certified = [_entry(func) for func in candidates if func in dead]
+    not_certified = [
+        uncertified_entry(func, cert, dead)
+        for func in candidates
+        if func in cert.verdicts and func not in dead
     ]
-    dead.sort(key=lambda x: (x["file"], x["name"]))
-    return dead[:limit]
+    return {
+        "dead_code": certified[:limit],
+        "possibly_dead": not_certified[:limit],
+        "dead_code_evidence": {
+            "candidates": len(candidates),
+            "certified": len(certified),
+            "not_certified": len(not_certified),
+            "unchecked": len(cert.unchecked),
+            "possibly_dead_truncated": len(not_certified) > limit,
+            "elapsed_seconds": cert.elapsed_seconds,
+        },
+    }
 
 
 def _compute_depth_distribution(graph: CallGraph) -> dict[str, Any]:
