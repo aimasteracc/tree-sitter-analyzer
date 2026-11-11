@@ -98,14 +98,14 @@ def _prepare_fixture(
     restricted_path: bool = False,
     initial_uv_location: str = "mock-bin",
 ) -> dict[str, str]:
-    mock_bin, home, claude = root / "mock-bin", root / "home", root / ".claude"
+    mock_bin, home, cursor = root / "mock-bin", root / "home", root / ".cursor"
     mock_bin.mkdir()
     home.mkdir()
-    claude.mkdir()
+    cursor.mkdir()
     if config_mode != "none":
-        (claude / ".mcp.json").write_text(CONFIG_TEXT[config_mode], encoding="utf-8")
+        (cursor / "mcp.json").write_text(CONFIG_TEXT[config_mode], encoding="utf-8")
     if config_mode == "permission":
-        claude.chmod(0o555)
+        cursor.chmod(0o555)
     initial_bin = mock_bin
     if initial_uv_location == "legacy-bin":
         initial_bin = root / "legacy-bin"
@@ -184,7 +184,7 @@ def _fixture_fingerprint(root: Path, fixture: dict[str, str]) -> str:
         "legacy_uv": file_record(root / "legacy-bin" / "uv"),
         "curl": file_record(root / "mock-bin" / "curl"),
         "python3_present": (root / "tool-bin" / "python3").exists(),
-        "config": file_record(root / ".claude" / ".mcp.json"),
+        "config": file_record(root / ".cursor" / "mcp.json"),
     }
     return _fingerprint(manifest)
 
@@ -192,9 +192,9 @@ def _fixture_fingerprint(root: Path, fixture: dict[str, str]) -> str:
 def _remove_fixture(root: Path) -> None:
     if not root.exists():
         return
-    claude = root / ".claude"
-    if claude.exists():
-        claude.chmod(0o755)
+    cursor = root / ".cursor"
+    if cursor.exists():
+        cursor.chmod(0o755)
     shutil.rmtree(root)
 
 
@@ -283,7 +283,7 @@ def _scenario(repo: Path, scenario_id: str) -> dict[str, Any]:
         )
         output, config_path = (
             completed.stdout + completed.stderr,
-            root / ".claude" / ".mcp.json",
+            root / ".cursor" / "mcp.json",
         )
         if scenario_id == "disable_unverified_bootstrap":
             passed = completed.returncode == 1 and not (root / "curl.log").exists()
@@ -314,7 +314,7 @@ def _scenario(repo: Path, scenario_id: str) -> dict[str, Any]:
             )
         elif scenario_id == "json_parse_error_skips_and_continues":
             passed = (
-                completed.returncode == 0
+                completed.returncode == 1
                 and config_path.read_text(encoding="utf-8")
                 == CONFIG_TEXT["parse_error"]
                 and "JSON parse error — skipping" in output

@@ -41,6 +41,9 @@ DOCS_REQUIRING_CLI_EXAMPLES = [
 _CLI_LINE = re.compile(
     r"(?:uv\s+run\s+)?tree-sitter-analyzer(?:\s+|$)([^\n`]*)",
 )
+# ``claude mcp add tree-sitter-analyzer --scope project ...`` names the MCP
+# *server*; the flags after it belong to the ``claude`` CLI, not to ours.
+_MCP_SERVER_NAME = re.compile(r"\bmcp\s+(?:add|add-json|remove|get)\s+$")
 # Long-form flag (``--foo`` or ``--foo-bar``).
 _FLAG = re.compile(r"--[a-z][a-z0-9-]*")
 
@@ -53,9 +56,11 @@ def _iter_cli_lines() -> list[tuple[Path, int, str]]:
         if not path.exists():
             continue
         for ln, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            match = _CLI_LINE.search(line)
-            if match:
+            for match in _CLI_LINE.finditer(line):
+                if _MCP_SERVER_NAME.search(line[: match.start()]):
+                    continue
                 out.append((path, ln, match.group(1).strip()))
+                break
     return out
 
 
@@ -101,3 +106,17 @@ def test_canonical_cli_reference_doc_has_examples() -> None:
         f"tree-sitter-analyzer CLI examples — users get no concrete "
         f"reference: {sparse}"
     )
+
+
+def test_mcp_server_name_is_not_a_cli_invocation() -> None:
+    """``claude mcp add tree-sitter-analyzer --scope project`` passes flags to
+    the ``claude`` CLI; a real ``tree-sitter-analyzer --flag`` call still counts."""
+    server_line = "claude mcp add tree-sitter-analyzer --scope project \\"
+    match = _CLI_LINE.search(server_line)
+    assert match is not None
+    assert _MCP_SERVER_NAME.search(server_line[: match.start()]) is not None
+    cli_line = "uv run tree-sitter-analyzer --callers main"
+    match = _CLI_LINE.search(cli_line)
+    assert match is not None
+    assert _MCP_SERVER_NAME.search(cli_line[: match.start()]) is None
+    assert _FLAG.findall(match.group(1)) == ["--callers"]

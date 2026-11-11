@@ -365,11 +365,12 @@ _GRAMMAR_EXTRAS: dict[str, str] = {
 
 
 def grammar_install_hint(language: str) -> str | None:
-    """Return a pip-install instruction for a language's grammar, or None.
+    """Return an install or upgrade instruction for a language's grammar, or None.
 
     If the language is unknown (not in LANGUAGE_MODULES and not an alias),
-    returns None.  Otherwise returns a string like:
-        'Swift grammar not installed — pip install "tree-sitter-analyzer[swift]"'
+    returns None.  Swift and Lua ship with the core install, so their hint
+    asks for a package upgrade; every other language returns a string like:
+        'Kotlin grammar not installed — pip install "tree-sitter-analyzer[kotlin]"'
 
     The caller can use importlib.util.find_spec to check whether the grammar
     is actually missing before surfacing this hint to the user.
@@ -378,6 +379,12 @@ def grammar_install_hint(language: str) -> str | None:
     if extras is None:
         return None
     display = language.upper() if len(language) <= 3 else language.capitalize()
+    if language in {"swift", "lua"}:
+        return (
+            f"{display} grammar not installed — ships with the core install; "
+            "pip install -U tree-sitter-analyzer or "
+            "uv tool upgrade tree-sitter-analyzer"
+        )
     return (
         f"{display} grammar not installed — "
         f'pip install "tree-sitter-analyzer[{extras}]"'

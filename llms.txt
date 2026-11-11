@@ -1,0 +1,49 @@
+# Tree-sitter Analyzer
+> Non-interactive installation for AI agents: register the stdio MCP server per project, build its index, and verify readiness.
+
+## Preflight
+Python >=3.10 and uv >=0.11.0 are required. Check `python3 --version` and `uv --version`.
+Run commands from the repository you want to analyze. No persistent CLI installation is required.
+All supported language grammars, including Swift and Lua, ship in the core install.
+
+## Register one client
+Claude Code (project scope):
+```shell
+claude mcp add tree-sitter-analyzer --scope project --env TREE_SITTER_PROJECT_ROOT="$PWD" -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
+```
+Codex CLI: add to `~/.codex/config.toml` for this repository:
+```toml
+[mcp_servers.tree-sitter-analyzer]
+command = "uvx"
+args = ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"]
+env = { TREE_SITTER_PROJECT_ROOT = "/absolute/path/to/project" }
+```
+Use an absolute project root if set; if unset, the server uses its working directory.
+Do not put a fixed root in a global all-projects configuration: every project would point at one repository.
+For Codex, use this fixed-root block only for the intended repository, or omit env and start in each project's directory.
+
+Cursor: create project `.cursor/mcp.json` (generic stdio clients use the same `mcpServers` entry):
+```json
+{"mcpServers":{"tree-sitter-analyzer":{"command":"uvx","args":["--from","tree-sitter-analyzer[mcp]","tree-sitter-analyzer-mcp"],"env":{"TREE_SITTER_PROJECT_ROOT":"/absolute/path/to/project"}}}}
+```
+VS Code Copilot: create project `.vscode/mcp.json` using `servers`:
+```json
+{"servers":{"tree-sitter-analyzer":{"type":"stdio","command":"uvx","args":["--from","tree-sitter-analyzer[mcp]","tree-sitter-analyzer-mcp"],"env":{"TREE_SITTER_PROJECT_ROOT":"${workspaceFolder}"}}}}
+```
+Generic stdio: command `uvx`, args `['--from', 'tree-sitter-analyzer[mcp]', 'tree-sitter-analyzer-mcp']`.
+Restart the selected client after registering. Do not commit machine-specific absolute-path configuration.
+
+## Build and verify
+```shell
+uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer --project-root "$PWD" --full-index
+uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer --project-root "$PWD" --codegraph-status
+TREE_SITTER_PROJECT_ROOT="$PWD" uvx --from tree-sitter-analyzer tree-sitter-analyzer --doctor
+```
+Expect `"indexed": true` in status. MCP equivalent: `index action=full`, then `index action=status`.
+After edits use `index action=sync`. MCP `tools/list` returns 9 tools: 8 facade tools plus `set_project_path`.
+If verification fails, record the first failed command and doctor output before changing configuration.
+
+## Links and feedback
+- [README](README.md): supported agents and troubleshooting.
+- [Installation guide](docs/installation.md): platform details and installation options.
+- [Agent trial report](https://github.com/aimasteracc/tree-sitter-analyzer/issues/new?template=agent-trial.yml): report outcome, first failure, time to first useful answer, and correctness.

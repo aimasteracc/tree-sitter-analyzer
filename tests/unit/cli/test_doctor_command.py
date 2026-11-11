@@ -317,7 +317,7 @@ class TestCheckUvx:
 
 
 class TestCheckProjectRoot:
-    def test_fail_when_env_var_not_set(self) -> None:
+    def test_warn_when_env_var_not_set(self) -> None:
         from tree_sitter_analyzer.cli.commands.doctor import _check_project_root
 
         with patch.dict(os.environ, {}, clear=True):
@@ -326,7 +326,7 @@ class TestCheckProjectRoot:
             }
             with patch.dict(os.environ, env, clear=True):
                 result = _check_project_root()
-        assert result.status == "FAIL"
+        assert result.status == "WARN"
         assert "not set" in result.message
 
     def test_fail_when_relative_path(self) -> None:
@@ -564,9 +564,9 @@ class TestAgentConfigPaths:
             paths = _agent_config_paths()
         labels = [label for label, _ in paths]
         assert "Claude Desktop (Linux)" in labels
-        assert "Claude Code (global)" in labels
-        assert "Claude Code (project-local)" in labels
-        assert "Cursor" in labels
+        assert "Claude Code (user)" in labels
+        assert "Claude Code (project)" in labels
+        assert "Cursor (project)" in labels
         assert "VS Code (Linux)" in labels
 
     def test_macos_paths_include_correct_labels(self) -> None:
@@ -577,8 +577,8 @@ class TestAgentConfigPaths:
         labels = [label for label, _ in paths]
         assert "Claude Desktop (macOS)" in labels
         assert "VS Code (macOS)" in labels
-        assert "Claude Code (global)" in labels
-        assert "Cursor" in labels
+        assert "Claude Code (user)" in labels
+        assert "Cursor (project)" in labels
 
     def test_macos_desktop_path_contains_library(self) -> None:
         from tree_sitter_analyzer.cli.commands.doctor import _agent_config_paths
@@ -598,19 +598,19 @@ class TestAgentConfigPaths:
         assert ".config" in desktop_path
         assert "claude_desktop_config.json" in desktop_path
 
-    def test_returns_five_entries_on_linux(self) -> None:
+    def test_returns_eight_entries_on_linux(self) -> None:
         from tree_sitter_analyzer.cli.commands.doctor import _agent_config_paths
 
         with patch.object(sys, "platform", "linux"):
             paths = _agent_config_paths()
-        assert len(paths) == 5
+        assert len(paths) == 8
 
-    def test_returns_five_entries_on_macos(self) -> None:
+    def test_returns_seven_entries_on_macos(self) -> None:
         from tree_sitter_analyzer.cli.commands.doctor import _agent_config_paths
 
         with patch.object(sys, "platform", "darwin"):
             paths = _agent_config_paths()
-        assert len(paths) == 5
+        assert len(paths) == 7
 
 
 class TestDoctorFlagsRegistered:
@@ -685,3 +685,48 @@ class TestMainDoctor:
             main_doctor()
 
         assert called_with[1] == "--doctor"
+
+
+@pytest.mark.parametrize("key,root,status,message", [
+    ("mcpServers", "/tmp", "WARN", "VS Code reads `servers`, not `mcpServers`"),
+    ("servers", "${workspaceFolder}", "PASS", None),
+])
+def test_vscode_server_contract(tmp_path, key, root, status, message):
+    config = tmp_path / "mcp.json"
+    config.write_text(json.dumps({key: {"tree-sitter-analyzer": {"env": {"TREE_SITTER_PROJECT_ROOT": root}}}}))
+    result = _check_configs([("VS Code (project)", str(config))])[0]
+    assert result.status == status
+    assert result.message == (str(config) if message is None else message)
+
+
+def test_claude_user_projects_lookup(tmp_path):
+    config = tmp_path / ".claude.json"
+    config.write_text(json.dumps({"projects": {str(tmp_path): {"mcpServers": {"tree-sitter-analyzer": {"env": {"TREE_SITTER_PROJECT_ROOT": str(tmp_path)}}}}}}))
+    result = _check_configs([("Claude Code (user)", str(config))])[0]
+    assert result.status == "PASS"
+    assert result.message == str(config)
+
+
+def test_project_paths_use_configured_root(tmp_path, monkeypatch):
+    from tree_sitter_analyzer.cli.commands.doctor import _agent_config_paths
+
+    monkeypatch.setenv("TREE_SITTER_PROJECT_ROOT", str(tmp_path))
+    paths = dict(_agent_config_paths())
+    assert paths["Claude Code (project)"] == str(tmp_path / ".mcp.json")
+    assert paths["Cursor (project)"] == str(tmp_path / ".cursor/mcp.json")
+    assert paths["VS Code (project)"] == str(tmp_path / ".vscode/mcp.json")
+
+
+@pytest.mark.parametrize("data,status,message", [
+    ({"projects": []}, "WARN", "MCP entry 'tree-sitter-analyzer' not found in {config}"),
+    ({"mcpServers": [], "projects": {}}, "WARN", "mcpServers must be a JSON object: {config}"),
+    ({"projects": {}}, "WARN", "MCP entry 'tree-sitter-analyzer' not found in {config}"),
+    ({"projects": {"invalid": None, "empty": {}, "bad-map": {"mcpServers": []}}}, "WARN", "MCP entry 'tree-sitter-analyzer' not found in {config}"),
+    ({"mcpServers": {"tree-sitter-analyzer": {}}, "projects": {"ignored": {"mcpServers": {"tree-sitter-analyzer": {"env": []}}}}}, "PASS", "{config}"),
+])
+def test_claude_user_project_boundaries(tmp_path, data, status, message):
+    config = tmp_path / ".claude.json"
+    config.write_text(json.dumps(data))
+    result = _check_configs([("Claude Code (user)", str(config))])[0]
+    assert result.status == status
+    assert result.message == message.format(config=config)

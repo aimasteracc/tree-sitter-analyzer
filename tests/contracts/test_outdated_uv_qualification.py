@@ -701,8 +701,8 @@ def test_trusted_config_sidecar_accepts_noncanonical_format(tmp_path: Path) -> N
     data = json.dumps(value, separators=(",", ":")).encode()
     (tmp_path / "installed-mcp-config.json").write_bytes(data)
     after = {
-        ".claude/.mcp.json": {
-            "path": ".claude/.mcp.json",
+        ".config/Claude/claude_desktop_config.json": {
+            "path": ".config/Claude/claude_desktop_config.json",
             "type": "file",
             "sha256": qualification.hashlib.sha256(data).hexdigest(),
         }
@@ -742,8 +742,8 @@ def test_trusted_config_sidecar_rejects_forgery(tmp_path: Path, mutation: str) -
     )
     (tmp_path / "installed-mcp-config.json").write_bytes(data)
     after = {
-        ".claude/.mcp.json": {
-            "path": ".claude/.mcp.json",
+        ".config/Claude/claude_desktop_config.json": {
+            "path": ".config/Claude/claude_desktop_config.json",
             "type": "file",
             "sha256": digest,
         }
@@ -767,8 +767,8 @@ def test_trusted_config_rejects_coordinated_command_forgery(tmp_path: Path) -> N
     data = json.dumps(value).encode()
     (tmp_path / "installed-mcp-config.json").write_bytes(data)
     after = {
-        ".claude/.mcp.json": {
-            "path": ".claude/.mcp.json",
+        ".config/Claude/claude_desktop_config.json": {
+            "path": ".config/Claude/claude_desktop_config.json",
             "type": "file",
             "sha256": qualification.hashlib.sha256(data).hexdigest(),
         }
@@ -989,8 +989,13 @@ def test_trusted_initial_snapshot_rejects_mutation(mutation: str) -> None:
     digest = qualification.hashlib.sha256(b"{}\n").hexdigest()
     config = valid_passed_report()["config"]
     initial = [
-        {"path": ".claude", "type": "dir", "sha256": None},
-        {"path": ".claude/.mcp.json", "type": "file", "sha256": digest},
+        {"path": ".config", "type": "dir", "sha256": None},
+        {"path": ".config/Claude", "type": "dir", "sha256": None},
+        {
+            "path": ".config/Claude/claude_desktop_config.json",
+            "type": "file",
+            "sha256": digest,
+        },
     ]
     config["before"] = json.loads(json.dumps(initial))
     config["after_first"] = json.loads(json.dumps(initial))
@@ -998,7 +1003,7 @@ def test_trusted_initial_snapshot_rejects_mutation(mutation: str) -> None:
     if mutation == "backup":
         config["backup_sha256"] = "0" * 64
     elif mutation == "before-digest":
-        config["before"][1]["sha256"] = "0" * 64
+        config["before"][2]["sha256"] = "0" * 64
     else:
         config["before"].append({"path": "extra", "type": "dir", "sha256": None})
         config["after_first"].append({"path": "extra", "type": "dir", "sha256": None})

@@ -77,8 +77,9 @@ async def test_published_index_missing_only_optional_grammars_is_a_success(
         {
             "file": "src/greet.swift",
             "reason": (
-                "Swift grammar not installed — pip install "
-                '"tree-sitter-analyzer[swift]"'
+                "Swift grammar not installed — ships with the core install; "
+                "pip install -U tree-sitter-analyzer or "
+                "uv tool upgrade tree-sitter-analyzer"
             ),
         }
     ]

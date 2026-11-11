@@ -161,8 +161,8 @@ def _check_project_root() -> CheckResult:
     if not value:
         return CheckResult(
             "TREE_SITTER_PROJECT_ROOT",
-            "FAIL",
-            "env var is not set — set it to the absolute path of your project",
+            "WARN",
+            "not set in this shell — fine if your MCP client config sets it; the server otherwise uses its working directory",
         )
     if not os.path.isabs(value):
         return CheckResult(
@@ -180,9 +180,9 @@ def _check_project_root() -> CheckResult:
 
 
 def _agent_config_paths() -> list[tuple[str, str]]:
-    """Return (agent_label, expanded_path) pairs to check."""
+    """Return (agent_label, path) pairs for the config files each client actually reads."""
     home = os.path.expanduser("~")
-    cwd = os.getcwd()
+    cwd = os.environ.get("TREE_SITTER_PROJECT_ROOT") or os.getcwd()
     is_macos = sys.platform == "darwin"
 
     paths = []
@@ -203,15 +203,20 @@ def _agent_config_paths() -> list[tuple[str, str]]:
         paths.append(
             (
                 "Claude Desktop (Linux)",
-                os.path.join(home, ".config", "claude", "claude_desktop_config.json"),
+                os.path.join(home, ".config", "Claude", "claude_desktop_config.json"),
             )
         )
 
-    paths.append(("Claude Code (global)", os.path.join(home, ".claude", ".mcp.json")))
-    paths.append(
-        ("Claude Code (project-local)", os.path.join(cwd, ".claude", ".mcp.json"))
-    )
-    paths.append(("Cursor", os.path.join(home, ".cursor", "mcp.json")))
+    if not is_macos:
+        paths.append(
+            (
+                "Claude Desktop (Linux lowercase)",
+                os.path.join(home, ".config", "claude", "claude_desktop_config.json"),
+            )
+        )
+    paths.append(("Claude Code (user)", os.path.join(home, ".claude.json")))
+    paths.append(("Claude Code (project)", os.path.join(cwd, ".mcp.json")))
+    paths.append(("Cursor (global)", os.path.join(home, ".cursor", "mcp.json")))
 
     if is_macos:
         paths.append(
@@ -230,6 +235,8 @@ def _agent_config_paths() -> list[tuple[str, str]]:
             )
         )
 
+    paths.append(("Cursor (project)", os.path.join(cwd, ".cursor", "mcp.json")))
+    paths.append(("VS Code (project)", os.path.join(cwd, ".vscode", "mcp.json")))
     return paths
 
 
@@ -259,10 +266,39 @@ def _check_agent_configs() -> list[CheckResult]:
             )
             continue
 
-        mcp_servers = data.get("mcpServers", {})
+        servers_key = "servers" if label.startswith("VS Code") else "mcpServers"
+        if (
+            servers_key == "servers"
+            and isinstance(data.get("mcpServers"), dict)
+            and "tree-sitter-analyzer" in data["mcpServers"]
+        ):
+            results.append(
+                CheckResult(name, "WARN", "VS Code reads `servers`, not `mcpServers`")
+            )
+            continue
+        if label == "Claude Code (user)":
+            projects = data.get("projects", {})
+            top = data.get("mcpServers", {})
+            if (
+                isinstance(projects, dict)
+                and isinstance(top, dict)
+                and "tree-sitter-analyzer" not in top
+            ):
+                for project in projects.values():
+                    if isinstance(project, dict):
+                        servers = project.get("mcpServers", {})
+                        if (
+                            isinstance(servers, dict)
+                            and "tree-sitter-analyzer" in servers
+                        ):
+                            data = {"mcpServers": servers}
+                            break
+        mcp_servers = data.get(servers_key, {})
         if not isinstance(mcp_servers, dict):
             results.append(
-                CheckResult(name, "WARN", f"mcpServers must be a JSON object: {path}")
+                CheckResult(
+                    name, "WARN", f"{servers_key} must be a JSON object: {path}"
+                )
             )
             continue
 
@@ -307,7 +343,11 @@ def _check_agent_configs() -> list[CheckResult]:
                 )
             )
             continue
-        if root and not os.path.isabs(root):
+        if (
+            root
+            and not os.path.isabs(root)
+            and not (servers_key == "servers" and root == "${workspaceFolder}")
+        ):
             results.append(
                 CheckResult(
                     name,
