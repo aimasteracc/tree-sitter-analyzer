@@ -468,19 +468,20 @@ class TestTraceImpactMaxResultsCoercion:
 
 
 class TestUnreachableCodeMaxFilesCoercion:
-    """unreachable_code_tool.py:138 — max_files passed to analyze_project_unreachable."""
+    """unreachable_code_tool — max_files passed to scan_project_unreachable."""
 
     @pytest.mark.asyncio
     async def test_max_files_string_does_not_crash(self) -> None:
         from tree_sitter_analyzer.mcp.tools.unreachable_code_tool import (
             UnreachableCodeTool,
         )
+        from tree_sitter_analyzer.unreachable_code_scan import ProjectUnreachableScan
 
         tool = UnreachableCodeTool(project_root="/fake/root")
 
         with patch(
-            "tree_sitter_analyzer.mcp.tools.unreachable_code_tool.analyze_project_unreachable",
-            return_value=[],
+            "tree_sitter_analyzer.mcp.tools.unreachable_code_tool.scan_project_unreachable",
+            return_value=ProjectUnreachableScan(files_analyzed=1, functions_analyzed=1),
         ) as mock_analyze:
             resp = await tool.execute(
                 {
