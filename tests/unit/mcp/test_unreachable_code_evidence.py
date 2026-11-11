@@ -15,9 +15,20 @@ from pathlib import Path
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.health_facade import build_health_facade
+from tree_sitter_analyzer.mcp.tools.unreachable_code_answer import (
+    file_answer,
+    project_answer,
+)
 from tree_sitter_analyzer.mcp.tools.unreachable_code_tool import UnreachableCodeTool
-from tree_sitter_analyzer.unreachable_code import analyze_project_unreachable
-from tree_sitter_analyzer.unreachable_code_scan import scan_project_unreachable
+from tree_sitter_analyzer.unreachable_code import (
+    UnreachableCodeResult,
+    analyze_file_unreachable,
+    analyze_project_unreachable,
+)
+from tree_sitter_analyzer.unreachable_code_scan import (
+    ProjectUnreachableScan,
+    scan_project_unreachable,
+)
 
 
 def _write(root: Path, rel: str, code: str) -> Path:
@@ -182,6 +193,55 @@ class TestFileAnswer:
         assert resp["success"] is True
         assert resp["status"] == "none_found"
         assert resp["functions_analyzed"] == 2
+
+
+def _failed(path: str) -> UnreachableCodeResult:
+    return UnreachableCodeResult(file_path=path, language="python", errors=1)
+
+
+class TestAnswerBranches:
+    def test_file_findings_are_reported(self, tmp_path: Path) -> None:
+        result = analyze_file_unreachable(str(_write(tmp_path, "d.py", _DEAD)))
+
+        resp = file_answer(result)
+
+        assert resp["status"] == "unreachable_found"
+        assert resp["verdict"] == "CAUTION"
+        assert "Review each unreachable block" in resp["next_step"]
+
+    def test_many_findings_escalate_to_review(self, tmp_path: Path) -> None:
+        code = "".join(f"def f{i}():\n    return 0\n    x = 1\n" for i in range(21))
+        result = analyze_file_unreachable(str(_write(tmp_path, "many.py", code)))
+        scan = ProjectUnreachableScan(
+            results=[result], files_analyzed=1, functions_analyzed=21
+        )
+
+        resp = project_answer(scan, str(tmp_path))
+
+        assert resp["total_unreachable_blocks"] == 21
+        assert resp["verdict"] == "REVIEW"
+
+    def test_failed_files_are_named_as_uncovered(self) -> None:
+        # a.py analyzed 2 functions cleanly; bad.py failed to parse.
+        scan = ProjectUnreachableScan(
+            results=[_failed("bad.py")], files_analyzed=2, functions_analyzed=2
+        )
+
+        resp = project_answer(scan, "/root")
+
+        assert resp["success"] is False
+        assert resp["status"] == "none_found"
+        assert "1 file(s) failed to analyze" in resp["next_step"]
+
+    def test_only_unparseable_files_is_unknown(self) -> None:
+        scan = ProjectUnreachableScan(
+            results=[_failed("bad.py")], files_analyzed=1, functions_analyzed=0
+        )
+
+        resp = project_answer(scan, "/root")
+
+        assert resp["status"] == "unknown"
+        assert '--outline "bad.py"' in resp["next_step"]
 
 
 class TestMcpHealthFacade:
