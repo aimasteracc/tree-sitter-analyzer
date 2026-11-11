@@ -137,6 +137,9 @@ class SupertypeFinding:
     #: Problem code (#1884 / #1930: a Java or Kotlin override is
     #: ``OVERRIDE_DISPATCH``).
     reason: str = DYNAMIC_SUPERTYPE_REASON
+    #: #1937 / #1938: how the hint introduces the finding ("it may implement an
+    #: interface member", "it is a PHP magic method"); empty for the older gates.
+    lead: str = ""
 
     def describe(self) -> str:
         if self.unchecked:
@@ -258,6 +261,17 @@ def _python_finding(
         )
         if inherited is not None:
             return inherited
+    # #1949: a base outside the project, or the interpreter, may call it.
+    from .callers_py_overrides import python_override_finding
+
+    for (rel, line, _language), (name, _found) in zip(rows, results, strict=True):
+        if owned and name != wanted:
+            continue
+        external = python_override_finding(
+            project_root, rel, line, bare, lambda: python_project_tops(cache)
+        )
+        if external is not None:
+            return external
     return None
 
 
@@ -289,6 +303,13 @@ def dynamic_supertype_hint(func_name: str, finding: SupertypeFinding) -> str:
             f"No resolved caller for {func_name!r}, and its class's supertype "
             f"chain could not be read: {finding.describe()}. A call through a "
             "supertype could reach it without a call edge naming it, so this is "
+            "not evidence of absence."
+        )
+    if finding.lead:
+        return (
+            f"No resolved caller for {func_name!r}, but {finding.lead}: "
+            f"{finding.describe()}. A call through a supertype, or from the "
+            "language or a framework, leaves no call edge naming it, so this is "
             "not evidence of absence."
         )
     if finding.verb == SUBTYPE_VERB:
