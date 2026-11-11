@@ -12,6 +12,8 @@
   them declares the name, and every call edge named like it is bound to this
   declaration or outside the project. An ``override`` in an extension is
   checked against the extended class.
+* A method that may satisfy a protocol requirement (#1953) is checked in
+  :mod:`.callers_swift_protocols`.
 """
 
 from __future__ import annotations
@@ -88,24 +90,27 @@ def swift_row_finding(
             verb="declares the test method",
             lead=_TEST_LEAD,
         )
-    if "override" not in modifiers:
-        return name, None
-    if unparsed:
-        proof = fail("its declaring class could not be parsed")
-    else:
-        proof = _override_proof(
-            cache, project_root, rel, parsed, owner, keyword, line, bare
-        )
-    if proof.proved:
-        return name, None
-    return name, finding(
-        bare,
-        rel,
-        line,
-        name,
-        proof.detail,
-        verb=KOTLIN_OVERRIDE_VERB,
-        lead=_OVERRIDE_LEAD,
+    if "override" in modifiers:
+        if unparsed:
+            proof = fail("its declaring class could not be parsed")
+        else:
+            proof = _override_proof(
+                cache, project_root, rel, parsed, owner, keyword, line, bare
+            )
+        if not proof.proved:
+            return name, finding(
+                bare,
+                rel,
+                line,
+                name,
+                proof.detail,
+                verb=KOTLIN_OVERRIDE_VERB,
+                lead=_OVERRIDE_LEAD,
+            )
+    from .callers_swift_protocols import requirement_finding
+
+    return name, requirement_finding(
+        cache, project_root, rel, parsed, owner, line, bare, modifiers, name
     )
 
 
@@ -173,7 +178,7 @@ def _owner(function: Any) -> Any | None:
     for node in ancestors(function):
         if node.type == "ERROR":
             continue
-        if node.type != "class_body":
+        if node.type not in {"class_body", "enum_class_body"}:
             return None
         owner = node.parent
         return (

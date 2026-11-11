@@ -24,7 +24,9 @@ from tree_sitter_analyzer.mcp.tools.callers_swift_overrides import swift_row_fin
 class _Index:
     """``get_conn()`` over an in-memory index with the two tables the gates read."""
 
-    def __init__(self, types: list[tuple[str, str, str]] = (), calls=()) -> None:
+    def __init__(
+        self, types: list[tuple[str, str, str]] = (), calls=(), files=None
+    ) -> None:
         self._conn = sqlite3.connect(":memory:")
         self._conn.execute(
             "CREATE TABLE ast_symbol_rows (name TEXT, kind TEXT, file_path TEXT, "
@@ -37,6 +39,13 @@ class _Index:
         )
         self._conn.executemany(
             "INSERT INTO ast_symbol_rows VALUES (?, 'class', ?, ?)", types
+        )
+        self._conn.execute("CREATE TABLE ast_index (file_path TEXT, language TEXT)")
+        self._conn.executemany(
+            "INSERT INTO ast_index VALUES (?, ?)",
+            sorted({(rel, language) for _name, rel, language in types})
+            if files is None
+            else files,
         )
         self._conn.executemany(
             "INSERT INTO edges VALUES ('calls', ?, ?, ?, 'unknown', '', '{}')", calls
@@ -416,7 +425,7 @@ def test_csharp_large_closures_missing_files_and_enclosing_bases(tmp_path) -> No
     rows = [(f"I{i}", "Big.cs", "csharp") for i in range(71)]
     rows += [("Big", "Big.cs", "csharp"), ("Base", "Enc.cs", "csharp")]
     rows += [("Gone", "Missing.cs", "csharp"), ("B", "Al.cs", "csharp")]
-    index = _Index(rows)
+    index = _Index(rows, files=[(f, "csharp") for f in ("Al.cs", "Big.cs", "Enc.cs")])
     _o, big = _cs(tmp_path, files, "Big.cs", "Run", index)
     assert big is not None and "too large" in big.why
     _o, enclosing = _cs(tmp_path, files, "Enc.cs", "M", index, "class In")

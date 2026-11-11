@@ -35,9 +35,12 @@ Names resolve in C#'s order, from source: nested types of the enclosing types
 (also those they inherit), then each enclosing namespace from the innermost
 outward -- its types first, then its ``using`` directives. A level whose
 ``using`` directives could import an outside type of the name ends the search
-(fail closed), as do aliases, ``global using`` names that are not project
-types, generic arity mismatches, ambiguity and closures larger than
-:data:`MAX_TYPES`. ``partial`` types are read in all their parts.
+(fail closed), as do aliases, generic arity mismatches, ambiguity and closures
+larger than :data:`MAX_TYPES`. ``partial`` types are read in all their parts.
+#1953: the ``global using`` directives of every project file (and MSBuild
+``<Using>`` items) belong to each file's compilation unit
+(:mod:`.callers_csharp_scope`); interfaces a subclass lists and ``static
+abstract`` members are checked in :mod:`.callers_csharp_dispatch`.
 """
 
 from __future__ import annotations
@@ -47,6 +50,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from .callers_csharp_scope import ANY_ALIAS
 from .callers_override_common import (
     MAX_TYPES,
     OverrideProof,
@@ -134,14 +138,12 @@ def _proof(
 ) -> OverrideProof | None:
     """Whether the method is closed in the project; None when nothing applies."""
     overriding = kind is not _IMPLICIT
+    static = "static" in modifiers
+    public = "public" in modifiers and owner.type != "interface_declaration"
     if not overriding:
         if owner.type == "record_declaration" and bare in RECORD_METHODS:
             return fail(f"a record calls its `{bare}` from synthesized members")
-        if (
-            "public" not in modifiers
-            or "static" in modifiers
-            or owner.type == "interface_declaration"
-        ):
+        if not public:
             return None
     if kind is _OVERRIDES and bare in OBJECT_METHODS:
         return fail(
@@ -151,6 +153,22 @@ def _proof(
         return fail("the project index could not be read to resolve its supertypes")
     reader = _Reader(cache, project_root, {rel: parsed})
     start = reader.type_of(rel, owner)
+    proof = None
+    if overriding or not static:
+        proof = _own_proof(reader, start, overriding, bare, rel, line)
+    if (proof is None or proof.proved) and public and kind is not _EXPLICIT:
+        # #1953: interfaces of a subclass, `static abstract` members.
+        from .callers_csharp_dispatch import subtype_dispatch_proof
+
+        found = subtype_dispatch_proof(reader, start, bare, rel, line, static=static)
+        if found is not None:
+            return found
+    return proof
+
+
+def _own_proof(
+    reader: _Reader, start: _Type, overriding: bool, bare: str, rel: str, line: int
+) -> OverrideProof | None:
     closure = reader.closure(start, interfaces_only=not overriding)
     if isinstance(closure, str):
         return fail(closure)
@@ -158,7 +176,7 @@ def _proof(
         if overriding:
             return fail("no supertype in the project declares it")
         return None
-    return dispatch_proof(cache, bare, rel, line, start.name)
+    return dispatch_proof(reader.cache, bare, rel, line, start.name)
 
 
 def _owner_type(method: Any) -> Any | None:
@@ -351,6 +369,25 @@ class _Reader:
         self._named: dict[str, list[_Type] | str] = {}
         self._closures: dict[Any, list[_Type] | str] = {}
         self._active: set[Any] = set()
+        self._globals: list[_Using] | None = None
+
+    @property
+    def cache(self) -> Any:
+        return self._cache
+
+    @property
+    def root(self) -> str:
+        return self._root
+
+    def levels(self, parsed: Parsed, node: Any) -> list[tuple[str, list[_Using]]]:
+        """`_levels` with the project's global directives in the compilation unit."""
+        if self._globals is None:
+            from .callers_csharp_scope import global_usings
+
+            self._globals = global_usings(self._cache, self._root, self.parse)
+        levels = _levels(parsed, node)
+        namespace, usings = levels[-1]
+        return [*levels[:-1], (namespace, [*usings, *self._globals])]
 
     def _closure_memo(self, t: _Type) -> list[_Type] | str:
         if t.key not in self._closures:
@@ -499,9 +536,10 @@ class _Reader:
         if isinstance(named, str):
             return named
         hidden = False
-        for namespace, usings in _levels(parsed, user.node):
-            if any(u.kind == "alias" and u.value == name[0] for u in usings):
-                return f"its supertype `{raw}` names a using alias"
+        for namespace, usings in self.levels(parsed, user.node):
+            aliased = _aliased(usings, name[0], raw, "names")
+            if aliased is not None:
+                return aliased
             declared = _distinct(
                 n
                 for n in named
@@ -577,10 +615,11 @@ class _Reader:
         if isinstance(named, str):
             return named
         dotted = ".".join(n for n, _a in names)
-        levels = [("", [])] if absolute else _levels(parsed, user.node)
+        levels = [("", [])] if absolute else self.levels(parsed, user.node)
         for namespace, usings in levels:
-            if any(u.kind == "alias" and u.value == names[0][0] for u in usings):
-                return f"its supertype `{raw}` starts with a using alias"
+            aliased = _aliased(usings, names[0][0], raw, "starts with")
+            if aliased is not None:
+                return aliased
             full = f"{namespace}.{dotted}" if namespace else dotted
             found = _distinct(
                 n for n in named if n.dotted == full and n.arity == names[-1][1]
@@ -590,6 +629,19 @@ class _Reader:
             if found:
                 return f"its supertype `{raw}` is ambiguous in the project"
         return f"its supertype `{raw}` is declared outside the project"
+
+
+def _aliased(usings: list[_Using], first: str, raw: str, verb: str) -> str | None:
+    """Why ``first`` may be a using alias at this level; None when it is not."""
+    aliases = {u.value for u in usings if u.kind == "alias"}
+    if first in aliases:
+        return f"its supertype `{raw}` {verb} a using alias"
+    if ANY_ALIAS in aliases:
+        return (
+            f"its supertype `{raw}` may be renamed by a `global using` alias: "
+            "the project's global using directives could not be read"
+        )
+    return None
 
 
 def _distinct(types: Any) -> list[_Type]:
