@@ -128,8 +128,10 @@ def test_the_harvest_is_not_vacuous() -> None:
     # uql adoption (nav_uql_hints.py): the callers -> test_map / callers
     # follow-up hints and the caller_tree impact pointer add 7, 179 -> 186.
     # PR-4: the useful-unknowns hints add 1, 186 -> 187.
-    assert len(harvest) == 187, (
-        f"expected 187 next_step string constants, harvested {len(harvest)}; "
+    # #1958: dead code names its evidence counts; "No dead code found in scope."
+    # becomes 2 constants (dead functions vs imports/variables), 187 -> 189.
+    assert len(harvest) == 189, (
+        f"expected 189 next_step string constants, harvested {len(harvest)}; "
         "update this constant if the phrasing changed, otherwise the AST walk is "
         "no longer matching how next_step is assigned"
     )
