@@ -1,0 +1,760 @@
+{
+  "facade_map": {
+    "FACADE_NAMES": [
+      "search",
+      "nav",
+      "structure",
+      "health",
+      "edit",
+      "project",
+      "index",
+      "viz"
+    ],
+    "LEGACY_TOOL_MAP": {
+      "advise_parser_readiness": [
+        "project",
+        "parser"
+      ],
+      "analyze_change_impact": [
+        "edit",
+        "impact"
+      ],
+      "analyze_code_structure": [
+        "structure",
+        "analyze"
+      ],
+      "analyze_dependencies": [
+        "health",
+        "deps"
+      ],
+      "ast_cache": [
+        "index",
+        "cache"
+      ],
+      "ast_diff": [
+        "edit",
+        "ast_diff"
+      ],
+      "build_project_index": [
+        "index",
+        "build"
+      ],
+      "check_code_scale": [
+        "health",
+        "scale"
+      ],
+      "check_constraints": [
+        "edit",
+        "constraints"
+      ],
+      "check_file_health": [
+        "health",
+        "file"
+      ],
+      "check_project_health": [
+        "health",
+        "project"
+      ],
+      "code_patterns": [
+        "health",
+        "patterns"
+      ],
+      "codegraph_ast_path": [
+        "structure",
+        "ast_path"
+      ],
+      "codegraph_autoindex": [
+        "index",
+        "auto"
+      ],
+      "codegraph_call_graph": [
+        "nav",
+        "callers"
+      ],
+      "codegraph_call_path": [
+        "nav",
+        "call_path"
+      ],
+      "codegraph_callee_tree": [
+        "nav",
+        "callee_tree"
+      ],
+      "codegraph_callees": [
+        "nav",
+        "callees"
+      ],
+      "codegraph_caller_tree": [
+        "nav",
+        "caller_tree"
+      ],
+      "codegraph_callers": [
+        "nav",
+        "callers"
+      ],
+      "codegraph_class_hierarchy": [
+        "structure",
+        "class_tree"
+      ],
+      "codegraph_class_inspect": [
+        "structure",
+        "class_detail"
+      ],
+      "codegraph_complexity_heatmap": [
+        "health",
+        "heatmap"
+      ],
+      "codegraph_context": [
+        "nav",
+        "context"
+      ],
+      "codegraph_dead_code": [
+        "health",
+        "dead"
+      ],
+      "codegraph_dependency_matrix": [
+        "health",
+        "matrix"
+      ],
+      "codegraph_explore": [
+        "structure",
+        "explore"
+      ],
+      "codegraph_full_index": [
+        "index",
+        "full"
+      ],
+      "codegraph_impact": [
+        "nav",
+        "impact"
+      ],
+      "codegraph_import_graph": [
+        "health",
+        "imports"
+      ],
+      "codegraph_incremental_sync": [
+        "index",
+        "sync"
+      ],
+      "codegraph_metrics": [
+        "project",
+        "metrics"
+      ],
+      "codegraph_navigate": [
+        "nav",
+        "navigate"
+      ],
+      "codegraph_overview": [
+        "health",
+        "overview"
+      ],
+      "codegraph_pr_review": [
+        "edit",
+        "pr"
+      ],
+      "codegraph_query": [
+        "search",
+        "chain"
+      ],
+      "codegraph_resolve": [
+        "nav",
+        "resolve"
+      ],
+      "codegraph_similarity": [
+        "viz",
+        "similarity"
+      ],
+      "codegraph_sitemap": [
+        "structure",
+        "sitemap"
+      ],
+      "codegraph_status": [
+        "index",
+        "status"
+      ],
+      "codegraph_symbol_search": [
+        "search",
+        "symbol"
+      ],
+      "codegraph_test_gap": [
+        "health",
+        "test_gap"
+      ],
+      "codegraph_uml": [
+        "viz",
+        "uml"
+      ],
+      "codegraph_visualize": [
+        "viz",
+        "graph"
+      ],
+      "codegraph_xref": [
+        "nav",
+        "xref"
+      ],
+      "decision_journal": [
+        "project",
+        "journal"
+      ],
+      "detect_routes": [
+        "health",
+        "routes"
+      ],
+      "doc_sync": [
+        "project",
+        "doc_sync"
+      ],
+      "extract_code_section": [
+        "structure",
+        "read"
+      ],
+      "get_agent_workflow": [
+        "project",
+        "workflow"
+      ],
+      "get_code_outline": [
+        "structure",
+        "outline"
+      ],
+      "get_project_overview": [
+        "project",
+        "overview"
+      ],
+      "get_project_summary": [
+        "project",
+        "card"
+      ],
+      "list_agent_skills": [
+        "project",
+        "skills"
+      ],
+      "modification_guard": [
+        "edit",
+        "guard"
+      ],
+      "query_code": [
+        "search",
+        "query"
+      ],
+      "refactoring_suggestions": [
+        "edit",
+        "refactor"
+      ],
+      "safe_to_edit": [
+        "edit",
+        "safe"
+      ],
+      "semantic_classify": [
+        "edit",
+        "classify"
+      ],
+      "smart_context": [
+        "project",
+        "smart"
+      ],
+      "symbol_lineage": [
+        "nav",
+        "lineage"
+      ],
+      "trace_impact": [
+        "nav",
+        "trace"
+      ]
+    },
+    "MCP_ONLY_ACTIONS": {},
+    "NEW_ACTION_PARITY": {
+      "edit_mutation_probe": [
+        "edit",
+        "mutation_probe",
+        "--mutation-probe"
+      ],
+      "edit_plan_rename": [
+        "edit",
+        "plan_rename",
+        "--plan-rename"
+      ],
+      "edit_rename": [
+        "edit",
+        "rename",
+        "--rename"
+      ],
+      "edit_verify": [
+        "edit",
+        "verify",
+        "--verify-plan"
+      ],
+      "health_middleware": [
+        "health",
+        "middleware",
+        "--detect-middleware"
+      ],
+      "health_refactor_queue": [
+        "health",
+        "refactor_queue",
+        "--refactor-queue"
+      ],
+      "health_self": [
+        "health",
+        "self",
+        "--self-health"
+      ],
+      "health_unreachable": [
+        "health",
+        "unreachable",
+        "--unreachable-code"
+      ],
+      "index_knowledge": [
+        "index",
+        "knowledge",
+        "--knowledge-graph-index"
+      ],
+      "index_schema": [
+        "index",
+        "schema",
+        "--project-schema"
+      ],
+      "nav_co_change": [
+        "nav",
+        "co_change",
+        "--co-change"
+      ],
+      "nav_pulse": [
+        "nav",
+        "pulse",
+        "--pulse"
+      ],
+      "nav_pulse_batch": [
+        "nav",
+        "pulse_batch",
+        "--pulse-batch"
+      ],
+      "nav_test_map": [
+        "nav",
+        "test_map",
+        "--test-map"
+      ],
+      "search_semantic": [
+        "search",
+        "semantic",
+        "--semantic-neighbors"
+      ],
+      "search_text": [
+        "search",
+        "text",
+        "--text-search"
+      ],
+      "search_tql_execute": [
+        "search",
+        "tql_execute",
+        "--tql"
+      ],
+      "search_tql_schema": [
+        "search",
+        "tql_schema",
+        "--tql-schema"
+      ],
+      "search_uql": [
+        "search",
+        "uql",
+        "--uql"
+      ],
+      "structure_signatures": [
+        "structure",
+        "signatures",
+        "--table"
+      ],
+      "viz_knowledge": [
+        "viz",
+        "knowledge",
+        "--knowledge-graph-export"
+      ]
+    },
+    "REMOVED_TOOL_NAMES": [
+      "batch_search",
+      "check_tools",
+      "find_and_grep",
+      "list_files",
+      "search_content"
+    ],
+    "SET_PROJECT_PATH_TOOL_NAME": "set_project_path"
+  },
+  "facades": [
+    {
+      "actions": [
+        "chain",
+        "query",
+        "select",
+        "semantic",
+        "subscribe",
+        "symbol",
+        "text",
+        "tql_execute",
+        "tql_schema",
+        "unsubscribe",
+        "uql"
+      ],
+      "bespoke_actions": [],
+      "name": "search",
+      "takes_lifecycle_manager": true,
+      "tool_definition": {
+        "action_enum": [
+          "chain",
+          "help",
+          "query",
+          "select",
+          "semantic",
+          "subscribe",
+          "symbol",
+          "text",
+          "tql_execute",
+          "tql_schema",
+          "unsubscribe",
+          "uql"
+        ],
+        "additionalProperties": true,
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "name": "search",
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "actions": [
+        "call_path",
+        "callee_tree",
+        "caller_tree",
+        "impact",
+        "lineage",
+        "navigate",
+        "pulse",
+        "pulse_batch",
+        "resolve",
+        "trace",
+        "xref"
+      ],
+      "bespoke_actions": [
+        "callees",
+        "callers",
+        "co_change",
+        "context",
+        "test_map"
+      ],
+      "name": "nav",
+      "takes_lifecycle_manager": false,
+      "tool_definition": {
+        "action_enum": [
+          "call_path",
+          "callee_tree",
+          "callees",
+          "caller_tree",
+          "callers",
+          "co_change",
+          "context",
+          "help",
+          "impact",
+          "lineage",
+          "navigate",
+          "pulse",
+          "pulse_batch",
+          "resolve",
+          "test_map",
+          "trace",
+          "xref"
+        ],
+        "additionalProperties": true,
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "name": "nav",
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "actions": [
+        "analyze",
+        "ast_path",
+        "class_tree",
+        "explore",
+        "outline",
+        "sitemap"
+      ],
+      "bespoke_actions": [
+        "class_detail",
+        "read",
+        "signatures"
+      ],
+      "name": "structure",
+      "takes_lifecycle_manager": false,
+      "tool_definition": {
+        "action_enum": [
+          "analyze",
+          "ast_path",
+          "class_detail",
+          "class_tree",
+          "explore",
+          "help",
+          "outline",
+          "read",
+          "signatures",
+          "sitemap"
+        ],
+        "additionalProperties": true,
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "name": "structure",
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "actions": [
+        "dead",
+        "deps",
+        "file",
+        "heatmap",
+        "imports",
+        "matrix",
+        "middleware",
+        "overview",
+        "patterns",
+        "project",
+        "refactor_queue",
+        "routes",
+        "scale",
+        "self",
+        "test_gap",
+        "unreachable"
+      ],
+      "bespoke_actions": [],
+      "name": "health",
+      "takes_lifecycle_manager": false,
+      "tool_definition": {
+        "action_enum": [
+          "dead",
+          "deps",
+          "file",
+          "heatmap",
+          "help",
+          "imports",
+          "matrix",
+          "middleware",
+          "overview",
+          "patterns",
+          "project",
+          "refactor_queue",
+          "routes",
+          "scale",
+          "self",
+          "test_gap",
+          "unreachable"
+        ],
+        "additionalProperties": true,
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "name": "health",
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "actions": [
+        "ast_diff",
+        "classify",
+        "constraints",
+        "guard",
+        "impact",
+        "mutation_probe",
+        "plan_rename",
+        "pr",
+        "refactor",
+        "rename",
+        "safe",
+        "verify"
+      ],
+      "bespoke_actions": [
+        "release_snapshot"
+      ],
+      "name": "edit",
+      "takes_lifecycle_manager": false,
+      "tool_definition": {
+        "action_enum": [
+          "ast_diff",
+          "classify",
+          "constraints",
+          "guard",
+          "help",
+          "impact",
+          "mutation_probe",
+          "plan_rename",
+          "pr",
+          "refactor",
+          "release_snapshot",
+          "rename",
+          "safe",
+          "verify"
+        ],
+        "additionalProperties": true,
+        "annotations": {
+          "destructiveHint": true,
+          "idempotentHint": false,
+          "openWorldHint": true,
+          "readOnlyHint": false
+        },
+        "name": "edit",
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "actions": [
+        "card",
+        "doc_sync",
+        "journal",
+        "metrics",
+        "overview",
+        "parser",
+        "skills",
+        "smart",
+        "workflow"
+      ],
+      "bespoke_actions": [],
+      "name": "project",
+      "takes_lifecycle_manager": false,
+      "tool_definition": {
+        "action_enum": [
+          "card",
+          "doc_sync",
+          "help",
+          "journal",
+          "metrics",
+          "overview",
+          "parser",
+          "skills",
+          "smart",
+          "workflow"
+        ],
+        "additionalProperties": true,
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": false,
+          "readOnlyHint": false
+        },
+        "name": "project",
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "actions": [
+        "auto",
+        "build",
+        "cache",
+        "full",
+        "knowledge",
+        "schema",
+        "status",
+        "sync"
+      ],
+      "bespoke_actions": [],
+      "name": "index",
+      "takes_lifecycle_manager": true,
+      "tool_definition": {
+        "action_enum": [
+          "auto",
+          "build",
+          "cache",
+          "full",
+          "help",
+          "knowledge",
+          "schema",
+          "status",
+          "sync"
+        ],
+        "additionalProperties": true,
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": false,
+          "readOnlyHint": false
+        },
+        "name": "index",
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "actions": [
+        "graph",
+        "knowledge",
+        "similarity",
+        "uml"
+      ],
+      "bespoke_actions": [],
+      "name": "viz",
+      "takes_lifecycle_manager": false,
+      "tool_definition": {
+        "action_enum": [
+          "graph",
+          "help",
+          "knowledge",
+          "similarity",
+          "uml"
+        ],
+        "additionalProperties": true,
+        "annotations": {
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false,
+          "readOnlyHint": true
+        },
+        "name": "viz",
+        "required": [
+          "action"
+        ]
+      }
+    }
+  ],
+  "generator": "rust/fixtures/tools/gen_facade.py",
+  "package_version": "3.1.2",
+  "set_project_path_tool_definition": {
+    "description": "SMART Workflow 'Set' step (FIRST): Set the project root path for security boundaries. Call this before any other tool to ensure correct file resolution and security validation.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "project_path": {
+          "description": "Absolute path to the project root",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_path"
+      ],
+      "type": "object"
+    },
+    "name": "set_project_path"
+  }
+}

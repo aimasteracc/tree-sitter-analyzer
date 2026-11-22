@@ -1,0 +1,231 @@
+{
+  "meta": {
+    "generator": "rust/fixtures/tools/gen_envelope_cli.py",
+    "tsa_version": "3.1.2",
+    "tsa_module": "/tmp/tsa-v312-venv/lib/python3.12/site-packages/tree_sitter_analyzer/__init__.py",
+    "python_version": "3.12.16",
+    "python_executable": "/tmp/tsa-v312-venv/bin/python",
+    "generated_at_utc": "2026-11-22T06:07:37.808853+00:00",
+    "provenance": "captured from real tree_sitter_analyzer calls; never hand-edited"
+  },
+  "canonical_verdicts": [
+    "CAUTION",
+    "ERROR",
+    "INFO",
+    "NOT_FOUND",
+    "REVIEW",
+    "SAFE",
+    "UNSAFE",
+    "WARN"
+  ],
+  "build_response_all_verdicts": [
+    {
+      "verdict": "CAUTION",
+      "call": "build_response(verdict=verdict, mode='fixture', total_count=1)",
+      "result": {
+        "success": true,
+        "verdict": "CAUTION",
+        "mode": "fixture",
+        "total_count": 1
+      }
+    },
+    {
+      "verdict": "ERROR",
+      "call": "build_response(verdict=verdict, mode='fixture', total_count=1)",
+      "result": {
+        "success": true,
+        "verdict": "ERROR",
+        "mode": "fixture",
+        "total_count": 1
+      }
+    },
+    {
+      "verdict": "INFO",
+      "call": "build_response(verdict=verdict, mode='fixture', total_count=1)",
+      "result": {
+        "success": true,
+        "verdict": "INFO",
+        "mode": "fixture",
+        "total_count": 1
+      }
+    },
+    {
+      "verdict": "NOT_FOUND",
+      "call": "build_response(verdict=verdict, mode='fixture', total_count=1)",
+      "result": {
+        "success": true,
+        "verdict": "NOT_FOUND",
+        "mode": "fixture",
+        "total_count": 1
+      }
+    },
+    {
+      "verdict": "REVIEW",
+      "call": "build_response(verdict=verdict, mode='fixture', total_count=1)",
+      "result": {
+        "success": true,
+        "verdict": "REVIEW",
+        "mode": "fixture",
+        "total_count": 1
+      }
+    },
+    {
+      "verdict": "SAFE",
+      "call": "build_response(verdict=verdict, mode='fixture', total_count=1)",
+      "result": {
+        "success": true,
+        "verdict": "SAFE",
+        "mode": "fixture",
+        "total_count": 1
+      }
+    },
+    {
+      "verdict": "UNSAFE",
+      "call": "build_response(verdict=verdict, mode='fixture', total_count=1)",
+      "result": {
+        "success": true,
+        "verdict": "UNSAFE",
+        "mode": "fixture",
+        "total_count": 1
+      }
+    },
+    {
+      "verdict": "WARN",
+      "call": "build_response(verdict=verdict, mode='fixture', total_count=1)",
+      "result": {
+        "success": true,
+        "verdict": "WARN",
+        "mode": "fixture",
+        "total_count": 1
+      }
+    }
+  ],
+  "build_response_warnings_variants": [
+    {
+      "label": "none",
+      "warnings_argument": null,
+      "result": {
+        "success": true,
+        "verdict": "INFO",
+        "mode": "warnings_probe"
+      },
+      "warnings_key_present": false
+    },
+    {
+      "label": "empty_list",
+      "warnings_argument": [],
+      "result": {
+        "success": true,
+        "verdict": "INFO",
+        "mode": "warnings_probe"
+      },
+      "warnings_key_present": false
+    },
+    {
+      "label": "nonempty_list",
+      "warnings_argument": [
+        "stale cache"
+      ],
+      "result": {
+        "success": true,
+        "verdict": "INFO",
+        "mode": "warnings_probe",
+        "warnings": [
+          "stale cache"
+        ]
+      },
+      "warnings_key_present": true
+    }
+  ],
+  "build_error": [
+    {
+      "call": "build_error(error='boom')",
+      "result": {
+        "success": false,
+        "verdict": "ERROR",
+        "error": "boom"
+      }
+    },
+    {
+      "call": "build_error(error='no such symbol', verdict='NOT_FOUND', mode='lookup')",
+      "result": {
+        "success": false,
+        "verdict": "NOT_FOUND",
+        "error": "no such symbol",
+        "mode": "lookup"
+      }
+    }
+  ],
+  "build_error_response": [
+    {
+      "call": "build_error_response('query', 'bad symbol')",
+      "result": {
+        "success": false,
+        "verdict": "ERROR",
+        "error": "bad symbol",
+        "tool": "query"
+      }
+    },
+    {
+      "call": "build_error_response('read_partial', 'key missing', verdict='NOT_FOUND', available_keys=['a', 'b'])",
+      "result": {
+        "success": false,
+        "verdict": "NOT_FOUND",
+        "error": "key missing",
+        "tool": "read_partial",
+        "available_keys": [
+          "a",
+          "b"
+        ]
+      }
+    }
+  ],
+  "build_success_response": [
+    {
+      "call": "build_success_response('query', {'total': 3}, verdict='INFO', duration_ms=<see field>, page=1)",
+      "duration_ms_passed": null,
+      "duration_ms_present_in_result": false,
+      "result": {
+        "success": true,
+        "verdict": "INFO",
+        "tool": "query",
+        "total": 3,
+        "page": 1
+      }
+    },
+    {
+      "call": "build_success_response('query', {'total': 3}, verdict='INFO', duration_ms=<see field>, page=1)",
+      "duration_ms_passed": 12.5,
+      "duration_ms_present_in_result": true,
+      "result": {
+        "success": true,
+        "verdict": "INFO",
+        "tool": "query",
+        "total": 3,
+        "page": 1,
+        "duration_ms": 12.5
+      }
+    }
+  ],
+  "build_agent_summary": [
+    {
+      "call": "build_agent_summary('WARN', 'index is stale')",
+      "result": {
+        "success": true,
+        "verdict": "WARN",
+        "message": "index is stale"
+      }
+    },
+    {
+      "call": "build_agent_summary('CAUTION', 'coverage limited', ['narrow the query'])",
+      "result": {
+        "success": true,
+        "verdict": "CAUTION",
+        "message": "coverage limited",
+        "recommendations": [
+          "narrow the query"
+        ]
+      }
+    }
+  ]
+}

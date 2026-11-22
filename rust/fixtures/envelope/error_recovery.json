@@ -1,0 +1,569 @@
+{
+  "meta": {
+    "generator": "rust/fixtures/tools/gen_envelope_cli.py",
+    "tsa_version": "3.1.2",
+    "tsa_module": "/tmp/tsa-v312-venv/lib/python3.12/site-packages/tree_sitter_analyzer/__init__.py",
+    "python_version": "3.12.16",
+    "python_executable": "/tmp/tsa-v312-venv/bin/python",
+    "generated_at_utc": "2026-11-22T06:07:37.808853+00:00",
+    "provenance": "captured from real tree_sitter_analyzer calls; never hand-edited"
+  },
+  "error_cases": [
+    {
+      "name": "file_not_found",
+      "exception_class": "FileNotFoundError",
+      "sanitized_message": "FileNotFoundError: File not found: tests/golden/missing_xyz.py",
+      "classify": {
+        "error_type": "file_not_found",
+        "recovery_hint": "The file does not exist at the given path. Verify it with the host agent's live file-search capability. Rebuild the index before using structure action=sitemap for indexed source structure.",
+        "suggested_tool": ""
+      },
+      "build_agent_friendly_error": {
+        "success": false,
+        "error": "FileNotFoundError: File not found: tests/golden/missing_xyz.py",
+        "error_type": "file_not_found",
+        "error_category": "file_not_found",
+        "recovery_hint": "The file does not exist at the given path. Verify it with the host agent's live file-search capability. Rebuild the index before using structure action=sitemap for indexed source structure.",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: file_not_found — tests/golden/missing_xyz.py",
+          "next_step": "The file does not exist at the given path. Verify it with the host agent's live file-search capability. Rebuild the index before using structure action=sitemap for indexed source structure.",
+          "verdict": "ERROR"
+        },
+        "summary_line": "fixture_probe: file_not_found — tests/golden/missing_xyz.py",
+        "file_path": "tests/golden/missing_xyz.py"
+      },
+      "ensure_canonical_error_envelope_from_minimal": {
+        "success": false,
+        "error": "File not found: tests/golden/missing_xyz.py",
+        "error_type": "file_not_found",
+        "summary_line": "fixture_probe: file_not_found — tests/golden/missing_xyz.py",
+        "error_category": "file_not_found",
+        "recovery_hint": "The file does not exist at the given path. Verify it with the host agent's live file-search capability. Rebuild the index before using structure action=sitemap for indexed source structure.",
+        "file_path": "tests/golden/missing_xyz.py",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: file_not_found — tests/golden/missing_xyz.py",
+          "next_step": "The file does not exist at the given path. Verify it with the host agent's live file-search capability. Rebuild the index before using structure action=sitemap for indexed source structure.",
+          "verdict": "ERROR"
+        }
+      }
+    },
+    {
+      "name": "language_unsupported",
+      "exception_class": "ValueError",
+      "sanitized_message": "ValueError: Unsupported language: .xyz extension not recognized",
+      "classify": {
+        "error_type": "language_unsupported",
+        "recovery_hint": "The file extension is not recognized. Check supported languages with --show-supported-languages.",
+        "suggested_tool": ""
+      },
+      "build_agent_friendly_error": {
+        "success": false,
+        "error": "ValueError: Unsupported language: .xyz extension not recognized",
+        "error_type": "language_unsupported",
+        "error_category": "language_unsupported",
+        "recovery_hint": "The file extension is not recognized. Check supported languages with --show-supported-languages.",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: language_unsupported — config.xyz",
+          "next_step": "The file extension is not recognized. Check supported languages with --show-supported-languages.",
+          "verdict": "ERROR"
+        },
+        "summary_line": "fixture_probe: language_unsupported — config.xyz",
+        "file_path": "config.xyz"
+      },
+      "ensure_canonical_error_envelope_from_minimal": {
+        "success": false,
+        "error": "Unsupported language: .xyz extension not recognized",
+        "error_type": "language_unsupported",
+        "summary_line": "fixture_probe: language_unsupported — config.xyz",
+        "error_category": "language_unsupported",
+        "recovery_hint": "The file extension is not recognized. Check supported languages with --show-supported-languages.",
+        "file_path": "config.xyz",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: language_unsupported — config.xyz",
+          "next_step": "The file extension is not recognized. Check supported languages with --show-supported-languages.",
+          "verdict": "ERROR"
+        }
+      }
+    },
+    {
+      "name": "project_not_set",
+      "exception_class": "RuntimeError",
+      "sanitized_message": "RuntimeError: Project root has not been set",
+      "classify": {
+        "error_type": "project_not_set",
+        "recovery_hint": "Project root has not been set. Call set_project_path first.",
+        "suggested_tool": "set_project_path"
+      },
+      "build_agent_friendly_error": {
+        "success": false,
+        "error": "RuntimeError: Project root has not been set",
+        "error_type": "project_not_set",
+        "error_category": "project_not_set",
+        "recovery_hint": "Project root has not been set. Call set_project_path first.",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: project_not_set",
+          "next_step": "Project root has not been set. Call set_project_path first.",
+          "verdict": "ERROR"
+        },
+        "summary_line": "fixture_probe: project_not_set",
+        "suggested_tool": "set_project_path"
+      },
+      "ensure_canonical_error_envelope_from_minimal": {
+        "success": false,
+        "error": "Project root has not been set",
+        "error_type": "project_not_set",
+        "summary_line": "fixture_probe: project_not_set",
+        "error_category": "project_not_set",
+        "recovery_hint": "Project root has not been set. Call set_project_path first.",
+        "suggested_tool": "set_project_path",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: project_not_set",
+          "next_step": "Project root has not been set. Call set_project_path first.",
+          "verdict": "ERROR"
+        }
+      }
+    },
+    {
+      "name": "security_violation",
+      "exception_class": "ValueError",
+      "sanitized_message": "ValueError: The file is outside project boundary",
+      "classify": {
+        "error_type": "security_violation",
+        "recovery_hint": "The file is outside the project boundary. Use a path relative to the project root.",
+        "suggested_tool": ""
+      },
+      "build_agent_friendly_error": {
+        "success": false,
+        "error": "ValueError: The file is outside project boundary",
+        "error_type": "security_violation",
+        "error_category": "security_violation",
+        "recovery_hint": "The file is outside the project boundary. Use a path relative to the project root.",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: security_violation — ../secrets.py",
+          "next_step": "The file is outside the project boundary. Use a path relative to the project root.",
+          "verdict": "ERROR"
+        },
+        "summary_line": "fixture_probe: security_violation — ../secrets.py",
+        "file_path": "../secrets.py"
+      },
+      "ensure_canonical_error_envelope_from_minimal": {
+        "success": false,
+        "error": "The file is outside project boundary",
+        "error_type": "security_violation",
+        "summary_line": "fixture_probe: security_violation — ../secrets.py",
+        "error_category": "security_violation",
+        "recovery_hint": "The file is outside the project boundary. Use a path relative to the project root.",
+        "file_path": "../secrets.py",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: security_violation — ../secrets.py",
+          "next_step": "The file is outside the project boundary. Use a path relative to the project root.",
+          "verdict": "ERROR"
+        }
+      }
+    },
+    {
+      "name": "validation_blast_radius_mode",
+      "exception_class": "ValueError",
+      "sanitized_message": "ValueError: blast_radius mode requires function_names to be provided",
+      "classify": {
+        "error_type": "validation",
+        "recovery_hint": "blast_radius needs function_names (a list of function names). For file-level dependents, use nav action=xref mode=file instead.",
+        "suggested_tool": "nav action=xref mode=file"
+      },
+      "build_agent_friendly_error": {
+        "success": false,
+        "error": "ValueError: blast_radius mode requires function_names to be provided",
+        "error_type": "validation",
+        "error_category": "validation",
+        "recovery_hint": "blast_radius needs function_names (a list of function names). For file-level dependents, use nav action=xref mode=file instead.",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: validation — blast_radius",
+          "next_step": "blast_radius needs function_names (a list of function names). For file-level dependents, use nav action=xref mode=file instead.",
+          "verdict": "ERROR"
+        },
+        "summary_line": "fixture_probe: validation — blast_radius",
+        "suggested_tool": "nav action=xref mode=file",
+        "mode": "blast_radius"
+      },
+      "ensure_canonical_error_envelope_from_minimal": {
+        "success": false,
+        "error": "blast_radius mode requires function_names to be provided",
+        "error_type": "validation",
+        "summary_line": "fixture_probe: validation — blast_radius",
+        "error_category": "validation",
+        "recovery_hint": "blast_radius needs function_names (a list of function names). For file-level dependents, use nav action=xref mode=file instead.",
+        "suggested_tool": "nav action=xref mode=file",
+        "mode": "blast_radius",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: validation — blast_radius",
+          "next_step": "blast_radius needs function_names (a list of function names). For file-level dependents, use nav action=xref mode=file instead.",
+          "verdict": "ERROR"
+        }
+      }
+    },
+    {
+      "name": "validation_required",
+      "exception_class": "ValueError",
+      "sanitized_message": "ValueError: function_names is required for this action",
+      "classify": {
+        "error_type": "validation",
+        "recovery_hint": "A required parameter is missing. Check the tool schema and provide all required fields.",
+        "suggested_tool": ""
+      },
+      "build_agent_friendly_error": {
+        "success": false,
+        "error": "ValueError: function_names is required for this action",
+        "error_type": "validation",
+        "error_category": "validation",
+        "recovery_hint": "A required parameter is missing. Check the tool schema and provide all required fields.",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: validation",
+          "next_step": "A required parameter is missing. Check the tool schema and provide all required fields.",
+          "verdict": "ERROR"
+        },
+        "summary_line": "fixture_probe: validation"
+      },
+      "ensure_canonical_error_envelope_from_minimal": {
+        "success": false,
+        "error": "function_names is required for this action",
+        "error_type": "validation",
+        "summary_line": "fixture_probe: validation",
+        "error_category": "validation",
+        "recovery_hint": "A required parameter is missing. Check the tool schema and provide all required fields.",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: validation",
+          "next_step": "A required parameter is missing. Check the tool schema and provide all required fields.",
+          "verdict": "ERROR"
+        }
+      }
+    },
+    {
+      "name": "resource_exhausted",
+      "exception_class": "MemoryError",
+      "sanitized_message": "MemoryError: The operation ran out of memory",
+      "classify": {
+        "error_type": "resource_exhausted",
+        "recovery_hint": "The operation ran out of memory. Try analyzing a smaller scope or use suppress_output=true.",
+        "suggested_tool": ""
+      },
+      "build_agent_friendly_error": {
+        "success": false,
+        "error": "MemoryError: The operation ran out of memory",
+        "error_type": "resource_exhausted",
+        "error_category": "resource_exhausted",
+        "recovery_hint": "The operation ran out of memory. Try analyzing a smaller scope or use suppress_output=true.",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: resource_exhausted",
+          "next_step": "The operation ran out of memory. Try analyzing a smaller scope or use suppress_output=true.",
+          "verdict": "ERROR"
+        },
+        "summary_line": "fixture_probe: resource_exhausted"
+      },
+      "ensure_canonical_error_envelope_from_minimal": {
+        "success": false,
+        "error": "The operation ran out of memory",
+        "error_type": "resource_exhausted",
+        "summary_line": "fixture_probe: resource_exhausted",
+        "error_category": "resource_exhausted",
+        "recovery_hint": "The operation ran out of memory. Try analyzing a smaller scope or use suppress_output=true.",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: resource_exhausted",
+          "next_step": "The operation ran out of memory. Try analyzing a smaller scope or use suppress_output=true.",
+          "verdict": "ERROR"
+        }
+      }
+    },
+    {
+      "name": "timeout",
+      "exception_class": "TimeoutError",
+      "sanitized_message": "TimeoutError: The operation timed out after 30 seconds",
+      "classify": {
+        "error_type": "timeout",
+        "recovery_hint": "The operation timed out. Try reducing the scope (limit, max_count) or targeting a specific file.",
+        "suggested_tool": ""
+      },
+      "build_agent_friendly_error": {
+        "success": false,
+        "error": "TimeoutError: The operation timed out after 30 seconds",
+        "error_type": "timeout",
+        "error_category": "timeout",
+        "recovery_hint": "The operation timed out. Try reducing the scope (limit, max_count) or targeting a specific file.",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: timeout",
+          "next_step": "The operation timed out. Try reducing the scope (limit, max_count) or targeting a specific file.",
+          "verdict": "ERROR"
+        },
+        "summary_line": "fixture_probe: timeout"
+      },
+      "ensure_canonical_error_envelope_from_minimal": {
+        "success": false,
+        "error": "The operation timed out after 30 seconds",
+        "error_type": "timeout",
+        "summary_line": "fixture_probe: timeout",
+        "error_category": "timeout",
+        "recovery_hint": "The operation timed out. Try reducing the scope (limit, max_count) or targeting a specific file.",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: timeout",
+          "next_step": "The operation timed out. Try reducing the scope (limit, max_count) or targeting a specific file.",
+          "verdict": "ERROR"
+        }
+      }
+    },
+    {
+      "name": "subprocess",
+      "exception_class": "ValueError",
+      "sanitized_message": "ValueError: Regex parse error: unmatched parenthesis",
+      "classify": {
+        "error_type": "subprocess",
+        "recovery_hint": "The regex pattern is invalid. Use a valid pattern or pass `glob=True` to match literal globs.",
+        "suggested_tool": ""
+      },
+      "build_agent_friendly_error": {
+        "success": false,
+        "error": "ValueError: Regex parse error: unmatched parenthesis",
+        "error_type": "subprocess",
+        "error_category": "subprocess",
+        "recovery_hint": "The regex pattern is invalid. Use a valid pattern or pass `glob=True` to match literal globs.",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: subprocess — ([",
+          "next_step": "The regex pattern is invalid. Use a valid pattern or pass `glob=True` to match literal globs.",
+          "verdict": "ERROR"
+        },
+        "summary_line": "fixture_probe: subprocess — ([",
+        "query": "(["
+      },
+      "ensure_canonical_error_envelope_from_minimal": {
+        "success": false,
+        "error": "Regex parse error: unmatched parenthesis",
+        "error_type": "subprocess",
+        "summary_line": "fixture_probe: subprocess — ([",
+        "error_category": "subprocess",
+        "recovery_hint": "The regex pattern is invalid. Use a valid pattern or pass `glob=True` to match literal globs.",
+        "query": "([",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: subprocess — ([",
+          "next_step": "The regex pattern is invalid. Use a valid pattern or pass `glob=True` to match literal globs.",
+          "verdict": "ERROR"
+        }
+      }
+    },
+    {
+      "name": "index_not_ready",
+      "exception_class": "RuntimeError",
+      "sanitized_message": "RuntimeError: AST cache is empty; build the index first",
+      "classify": {
+        "error_type": "index_not_ready",
+        "recovery_hint": "The index has not been built. Run index action=auto, then retry.",
+        "suggested_tool": "index"
+      },
+      "build_agent_friendly_error": {
+        "success": false,
+        "error": "RuntimeError: AST cache is empty; build the index first",
+        "error_type": "index_not_ready",
+        "error_category": "index_not_ready",
+        "recovery_hint": "The index has not been built. Run index action=auto, then retry.",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: index_not_ready",
+          "next_step": "The index has not been built. Run index action=auto, then retry.",
+          "verdict": "ERROR"
+        },
+        "summary_line": "fixture_probe: index_not_ready",
+        "suggested_tool": "index"
+      },
+      "ensure_canonical_error_envelope_from_minimal": {
+        "success": false,
+        "error": "AST cache is empty; build the index first",
+        "error_type": "index_not_ready",
+        "summary_line": "fixture_probe: index_not_ready",
+        "error_category": "index_not_ready",
+        "recovery_hint": "The index has not been built. Run index action=auto, then retry.",
+        "suggested_tool": "index",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: index_not_ready",
+          "next_step": "The index has not been built. Run index action=auto, then retry.",
+          "verdict": "ERROR"
+        }
+      }
+    },
+    {
+      "name": "permission_denied",
+      "exception_class": "PermissionError",
+      "sanitized_message": "PermissionError: Permission denied: tests/golden/corpus_python.py",
+      "classify": {
+        "error_type": "permission_denied",
+        "recovery_hint": "Permission denied. Check file ownership and that the path is under project_root.",
+        "suggested_tool": ""
+      },
+      "build_agent_friendly_error": {
+        "success": false,
+        "error": "PermissionError: Permission denied: tests/golden/corpus_python.py",
+        "error_type": "permission_denied",
+        "error_category": "permission_denied",
+        "recovery_hint": "Permission denied. Check file ownership and that the path is under project_root.",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: permission_denied — tests/golden/corpus_python.py",
+          "next_step": "Permission denied. Check file ownership and that the path is under project_root.",
+          "verdict": "ERROR"
+        },
+        "summary_line": "fixture_probe: permission_denied — tests/golden/corpus_python.py",
+        "file_path": "tests/golden/corpus_python.py"
+      },
+      "ensure_canonical_error_envelope_from_minimal": {
+        "success": false,
+        "error": "Permission denied: tests/golden/corpus_python.py",
+        "error_type": "permission_denied",
+        "summary_line": "fixture_probe: permission_denied — tests/golden/corpus_python.py",
+        "error_category": "permission_denied",
+        "recovery_hint": "Permission denied. Check file ownership and that the path is under project_root.",
+        "file_path": "tests/golden/corpus_python.py",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: permission_denied — tests/golden/corpus_python.py",
+          "next_step": "Permission denied. Check file ownership and that the path is under project_root.",
+          "verdict": "ERROR"
+        }
+      }
+    },
+    {
+      "name": "internal",
+      "exception_class": "RuntimeError",
+      "sanitized_message": "RuntimeError: Unexpected internal state reached",
+      "classify": {
+        "error_type": "internal",
+        "recovery_hint": "Review the error message and adjust your request.",
+        "suggested_tool": ""
+      },
+      "build_agent_friendly_error": {
+        "success": false,
+        "error": "RuntimeError: Unexpected internal state reached",
+        "error_type": "internal",
+        "error_category": "internal",
+        "recovery_hint": "Review the error message and adjust your request.",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: internal",
+          "next_step": "Review the error message and adjust your request.",
+          "verdict": "ERROR"
+        },
+        "summary_line": "fixture_probe: internal"
+      },
+      "ensure_canonical_error_envelope_from_minimal": {
+        "success": false,
+        "error": "Unexpected internal state reached",
+        "error_type": "internal",
+        "summary_line": "fixture_probe: internal",
+        "error_category": "internal",
+        "recovery_hint": "Review the error message and adjust your request.",
+        "verdict": "ERROR",
+        "agent_summary": {
+          "summary_line": "fixture_probe: internal",
+          "next_step": "Review the error message and adjust your request.",
+          "verdict": "ERROR"
+        }
+      }
+    }
+  ],
+  "error_envelope_preserves_preset_fields": {
+    "success": false,
+    "error": "AST cache is empty; build the index first",
+    "error_type": "index_not_ready",
+    "next_step": "custom: run index action=auto then retry",
+    "summary_line": "fixture_probe: index_not_ready",
+    "error_category": "index_not_ready",
+    "recovery_hint": "custom: run index action=auto then retry",
+    "suggested_tool": "index",
+    "verdict": "ERROR",
+    "agent_summary": {
+      "summary_line": "fixture_probe: index_not_ready",
+      "next_step": "custom: run index action=auto then retry",
+      "verdict": "ERROR"
+    }
+  },
+  "error_envelope_derives_identity": {
+    "success": false,
+    "errors": [
+      {
+        "error": "COMBINED_SCORE_UNAVAILABLE: score missing"
+      }
+    ],
+    "error": "COMBINED_SCORE_UNAVAILABLE: score missing",
+    "error_code": "COMBINED_SCORE_UNAVAILABLE",
+    "summary_line": "fixture_probe: COMBINED_SCORE_UNAVAILABLE",
+    "error_type": "internal",
+    "error_category": "internal",
+    "recovery_hint": "Review the error message and adjust your request.",
+    "verdict": "ERROR",
+    "agent_summary": {
+      "summary_line": "fixture_probe: COMBINED_SCORE_UNAVAILABLE",
+      "next_step": "Review the error message and adjust your request.",
+      "verdict": "ERROR"
+    }
+  },
+  "k12_path_normalization": {
+    "note": "ensure_canonical_success_envelope normalizes echoed file_path ('./a\\b.py' -> 'a/b.py')",
+    "input_envelope": {
+      "success": true,
+      "verdict": "INFO",
+      "file_path": "./a\\b.py",
+      "entries": 2
+    },
+    "output_envelope": {
+      "success": true,
+      "verdict": "INFO",
+      "file_path": "a/b.py",
+      "entries": 2,
+      "language": "python",
+      "summary_line": "k12_probe: a/b.py",
+      "agent_summary": {
+        "summary_line": "k12_probe: a/b.py",
+        "next_step": "",
+        "verdict": "INFO"
+      }
+    },
+    "normalize_path_string_direct": {
+      "input": "./a\\b.py",
+      "output": "a/b.py"
+    }
+  },
+  "m14_language_echo": {
+    "note": "ensure_canonical_success_envelope detects and echoes language for single-file responses",
+    "input_envelope": {
+      "success": true,
+      "file_path": "tests/golden/corpus_python.py",
+      "total_lines": 257
+    },
+    "output_envelope": {
+      "success": true,
+      "file_path": "tests/golden/corpus_python.py",
+      "total_lines": 257,
+      "language": "python",
+      "summary_line": "m14_probe: tests/golden/corpus_python.py",
+      "agent_summary": {
+        "summary_line": "m14_probe: tests/golden/corpus_python.py",
+        "next_step": "",
+        "verdict": "n/a"
+      }
+    }
+  }
+}

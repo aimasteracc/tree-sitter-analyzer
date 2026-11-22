@@ -1,0 +1,2174 @@
+{
+  "meta": {
+    "generator": "rust/fixtures/tools/gen_envelope_cli.py",
+    "tsa_version": "3.1.2",
+    "tsa_module": "/tmp/tsa-v312-venv/lib/python3.12/site-packages/tree_sitter_analyzer/__init__.py",
+    "python_version": "3.12.16",
+    "python_executable": "/tmp/tsa-v312-venv/bin/python",
+    "generated_at_utc": "2026-11-22T06:07:37.808853+00:00",
+    "provenance": "captured from real tree_sitter_analyzer calls; never hand-edited",
+    "cli_binary": "/tmp/tsa-v312-venv/bin/tree-sitter-analyzer"
+  },
+  "cases": [
+    {
+      "name": "structure",
+      "argv": [
+        "tests/golden/corpus_python.py",
+        "--structure",
+        "--output-format",
+        "json"
+      ],
+      "cwd": ". (repository root)",
+      "exit_code": 0,
+      "stdout_parse_ok": true,
+      "stdout_json": {
+        "file_path": "tests/golden/corpus_python.py",
+        "language": "python",
+        "package": null,
+        "classes": [
+          {
+            "name": "Person",
+            "visibility": "public",
+            "line_range": [
+              19,
+              33
+            ]
+          },
+          {
+            "name": "PropertyExample",
+            "visibility": "public",
+            "line_range": [
+              36,
+              60
+            ]
+          },
+          {
+            "name": "Animal",
+            "visibility": "public",
+            "line_range": [
+              156,
+              170
+            ]
+          },
+          {
+            "name": "Dog",
+            "visibility": "public",
+            "line_range": [
+              173,
+              186
+            ]
+          },
+          {
+            "name": "NestedClassExample",
+            "visibility": "public",
+            "line_range": [
+              189,
+              200
+            ]
+          },
+          {
+            "name": "Inner",
+            "visibility": "public",
+            "line_range": [
+              192,
+              196
+            ]
+          },
+          {
+            "name": "ComplexNesting",
+            "visibility": "public",
+            "line_range": [
+              208,
+              226
+            ]
+          },
+          {
+            "name": "Level3Class",
+            "visibility": "public",
+            "line_range": [
+              217,
+              222
+            ]
+          }
+        ],
+        "methods": [
+          {
+            "name": "__post_init__",
+            "visibility": "public",
+            "line_range": [
+              26,
+              29
+            ],
+            "class_name": "Person",
+            "is_method": true
+          },
+          {
+            "name": "greet",
+            "visibility": "public",
+            "line_range": [
+              31,
+              33
+            ],
+            "class_name": "Person",
+            "is_method": true
+          },
+          {
+            "name": "__init__",
+            "visibility": "public",
+            "line_range": [
+              39,
+              40
+            ],
+            "class_name": "PropertyExample",
+            "is_method": true
+          },
+          {
+            "name": "value",
+            "visibility": "public",
+            "line_range": [
+              43,
+              45
+            ],
+            "class_name": "PropertyExample",
+            "is_method": true
+          },
+          {
+            "name": "value",
+            "visibility": "public",
+            "line_range": [
+              48,
+              50
+            ],
+            "class_name": "PropertyExample",
+            "is_method": true
+          },
+          {
+            "name": "static_method",
+            "visibility": "public",
+            "line_range": [
+              53,
+              55
+            ],
+            "class_name": "PropertyExample",
+            "is_method": true
+          },
+          {
+            "name": "class_method",
+            "visibility": "public",
+            "line_range": [
+              58,
+              60
+            ],
+            "class_name": "PropertyExample",
+            "is_method": true
+          },
+          {
+            "name": "timing_decorator",
+            "visibility": "public",
+            "line_range": [
+              63,
+              69
+            ],
+            "class_name": null,
+            "is_method": false
+          },
+          {
+            "name": "wrapper",
+            "visibility": "public",
+            "line_range": [
+              66,
+              67
+            ],
+            "class_name": null,
+            "is_method": false
+          },
+          {
+            "name": "decorated_function",
+            "visibility": "public",
+            "line_range": [
+              73,
+              75
+            ],
+            "class_name": null,
+            "is_method": false
+          },
+          {
+            "name": "regular_function",
+            "visibility": "public",
+            "line_range": [
+              83,
+              85
+            ],
+            "class_name": null,
+            "is_method": false
+          },
+          {
+            "name": "async_function",
+            "visibility": "public",
+            "line_range": [
+              88,
+              90
+            ],
+            "class_name": null,
+            "is_method": false
+          },
+          {
+            "name": "function_with_defaults",
+            "visibility": "public",
+            "line_range": [
+              93,
+              95
+            ],
+            "class_name": null,
+            "is_method": false
+          },
+          {
+            "name": "variadic_function",
+            "visibility": "public",
+            "line_range": [
+              98,
+              100
+            ],
+            "class_name": null,
+            "is_method": false
+          },
+          {
+            "name": "generator_function",
+            "visibility": "public",
+            "line_range": [
+              120,
+              123
+            ],
+            "class_name": null,
+            "is_method": false
+          },
+          {
+            "name": "fibonacci_generator",
+            "visibility": "public",
+            "line_range": [
+              126,
+              131
+            ],
+            "class_name": null,
+            "is_method": false
+          },
+          {
+            "name": "async_generator",
+            "visibility": "public",
+            "line_range": [
+              134,
+              137
+            ],
+            "class_name": null,
+            "is_method": false
+          },
+          {
+            "name": "__init__",
+            "visibility": "public",
+            "line_range": [
+              159,
+              161
+            ],
+            "class_name": "Animal",
+            "is_method": true
+          },
+          {
+            "name": "make_sound",
+            "visibility": "public",
+            "line_range": [
+              164,
+              166
+            ],
+            "class_name": "Animal",
+            "is_method": true
+          },
+          {
+            "name": "describe",
+            "visibility": "public",
+            "line_range": [
+              168,
+              170
+            ],
+            "class_name": "Animal",
+            "is_method": true
+          },
+          {
+            "name": "__init__",
+            "visibility": "public",
+            "line_range": [
+              176,
+              178
+            ],
+            "class_name": "Dog",
+            "is_method": true
+          },
+          {
+            "name": "make_sound",
+            "visibility": "public",
+            "line_range": [
+              180,
+              182
+            ],
+            "class_name": "Dog",
+            "is_method": true
+          },
+          {
+            "name": "fetch",
+            "visibility": "public",
+            "line_range": [
+              184,
+              186
+            ],
+            "class_name": "Dog",
+            "is_method": true
+          },
+          {
+            "name": "inner_method",
+            "visibility": "public",
+            "line_range": [
+              195,
+              196
+            ],
+            "class_name": "Inner",
+            "is_method": true
+          },
+          {
+            "name": "outer_method",
+            "visibility": "public",
+            "line_range": [
+              198,
+              200
+            ],
+            "class_name": "NestedClassExample",
+            "is_method": true
+          },
+          {
+            "name": "level1_method",
+            "visibility": "public",
+            "line_range": [
+              211,
+              226
+            ],
+            "class_name": "ComplexNesting",
+            "is_method": true
+          },
+          {
+            "name": "level2_nested",
+            "visibility": "public",
+            "line_range": [
+              214,
+              224
+            ],
+            "class_name": null,
+            "is_method": false
+          },
+          {
+            "name": "level4_method",
+            "visibility": "public",
+            "line_range": [
+              220,
+              222
+            ],
+            "class_name": "Level3Class",
+            "is_method": true
+          }
+        ],
+        "fields": [
+          {
+            "name": "email",
+            "type": "",
+            "line_range": [
+              24,
+              24
+            ]
+          }
+        ],
+        "imports": [
+          {
+            "name": "ABC, abstractmethod",
+            "is_static": false,
+            "is_wildcard": false,
+            "statement": "",
+            "line_range": [
+              8,
+              8
+            ]
+          },
+          {
+            "name": "Iterator",
+            "is_static": false,
+            "is_wildcard": false,
+            "statement": "",
+            "line_range": [
+              9,
+              9
+            ]
+          },
+          {
+            "name": "dataclass",
+            "is_static": false,
+            "is_wildcard": false,
+            "statement": "",
+            "line_range": [
+              10,
+              10
+            ]
+          },
+          {
+            "name": "Any",
+            "is_static": false,
+            "is_wildcard": false,
+            "statement": "",
+            "line_range": [
+              11,
+              11
+            ]
+          }
+        ],
+        "annotations": [],
+        "statistics": {
+          "class_count": 8,
+          "method_count": 28,
+          "field_count": 1,
+          "import_count": 4,
+          "total_lines": 257,
+          "annotation_count": 0
+        },
+        "analysis_metadata": {
+          "analysis_time": null,
+          "language": "python",
+          "file_path": "tests/golden/corpus_python.py",
+          "analyzer_version": "2.0.0",
+          "timestamp": 1795327658.1783614
+        },
+        "success": true,
+        "summary_line": "tests/golden/corpus_python.py (python) structure: classes=8 methods=28 fields=1 imports=4 lines=257",
+        "verdict": "INFO",
+        "agent_summary": {
+          "summary_line": "tests/golden/corpus_python.py (python) structure: classes=8 methods=28 fields=1 imports=4 lines=257",
+          "next_step": "Use --table for a Markdown breakdown, or extract_code_section (MCP) to read specific elements by line range.",
+          "verdict": "INFO"
+        }
+      },
+      "timing_keys_nulled": [
+        "analysis_time"
+      ],
+      "stderr": "",
+      "stdout_raw_if_unparseable": null
+    },
+    {
+      "name": "table_full",
+      "argv": [
+        "tests/golden/corpus_python.py",
+        "--table",
+        "full",
+        "--output-format",
+        "json"
+      ],
+      "cwd": ". (repository root)",
+      "exit_code": 0,
+      "stdout_parse_ok": true,
+      "stdout_json": {
+        "file_path": "tests/golden/corpus_python.py",
+        "language": "python",
+        "line_count": 257,
+        "package": {
+          "name": ""
+        },
+        "classes": [
+          {
+            "name": "Person",
+            "type": "class",
+            "visibility": "public",
+            "line_range": {
+              "start": 19,
+              "end": 33
+            }
+          },
+          {
+            "name": "PropertyExample",
+            "type": "class",
+            "visibility": "public",
+            "line_range": {
+              "start": 36,
+              "end": 60
+            }
+          },
+          {
+            "name": "Animal",
+            "type": "abstract_class",
+            "visibility": "public",
+            "line_range": {
+              "start": 156,
+              "end": 170
+            }
+          },
+          {
+            "name": "Dog",
+            "type": "class",
+            "visibility": "public",
+            "line_range": {
+              "start": 173,
+              "end": 186
+            }
+          },
+          {
+            "name": "NestedClassExample",
+            "type": "class",
+            "visibility": "public",
+            "line_range": {
+              "start": 189,
+              "end": 200
+            }
+          },
+          {
+            "name": "Inner",
+            "type": "class",
+            "visibility": "public",
+            "line_range": {
+              "start": 192,
+              "end": 196
+            }
+          },
+          {
+            "name": "ComplexNesting",
+            "type": "class",
+            "visibility": "public",
+            "line_range": {
+              "start": 208,
+              "end": 226
+            }
+          },
+          {
+            "name": "Level3Class",
+            "type": "class",
+            "visibility": "public",
+            "line_range": {
+              "start": 217,
+              "end": 222
+            }
+          }
+        ],
+        "methods": [
+          {
+            "name": "__post_init__",
+            "visibility": "public",
+            "return_type": "Any",
+            "parameters": [
+              {
+                "name": "self",
+                "type": "Any"
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 2,
+            "line_range": {
+              "start": 26,
+              "end": 29
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "greet",
+            "visibility": "public",
+            "return_type": "str",
+            "parameters": [
+              {
+                "name": "self",
+                "type": "Any"
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 31,
+              "end": 33
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "__init__",
+            "visibility": "public",
+            "return_type": "Any",
+            "parameters": [
+              {
+                "name": "self",
+                "type": "Any"
+              },
+              {
+                "name": "value",
+                "type": "int"
+              }
+            ],
+            "is_constructor": true,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 39,
+              "end": 40
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "value",
+            "visibility": "public",
+            "return_type": "int",
+            "parameters": [
+              {
+                "name": "self",
+                "type": "Any"
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 43,
+              "end": 45
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "value",
+            "visibility": "public",
+            "return_type": "None",
+            "parameters": [
+              {
+                "name": "self",
+                "type": "Any"
+              },
+              {
+                "name": "val",
+                "type": "int"
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 48,
+              "end": 50
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "static_method",
+            "visibility": "public",
+            "return_type": "str",
+            "parameters": [],
+            "is_constructor": false,
+            "is_static": true,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 53,
+              "end": 55
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "class_method",
+            "visibility": "public",
+            "return_type": "str",
+            "parameters": [
+              {
+                "name": "cls",
+                "type": "Any"
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 58,
+              "end": 60
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "timing_decorator",
+            "visibility": "public",
+            "return_type": "Any",
+            "parameters": [
+              {
+                "name": "func",
+                "type": "Any"
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 63,
+              "end": 69
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "wrapper",
+            "visibility": "public",
+            "return_type": "Any",
+            "parameters": [
+              {
+                "name": "*args",
+                "type": "Any"
+              },
+              {
+                "name": "**kwargs",
+                "type": "Any"
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 66,
+              "end": 67
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "decorated_function",
+            "visibility": "public",
+            "return_type": "int",
+            "parameters": [
+              {
+                "name": "x",
+                "type": "int"
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 73,
+              "end": 75
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "regular_function",
+            "visibility": "public",
+            "return_type": "int",
+            "parameters": [
+              {
+                "name": "a",
+                "type": "int"
+              },
+              {
+                "name": "b",
+                "type": "int"
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 83,
+              "end": 85
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "async_function",
+            "visibility": "public",
+            "return_type": "dict",
+            "parameters": [
+              {
+                "name": "url",
+                "type": "str"
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": true,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 88,
+              "end": 90
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "function_with_defaults",
+            "visibility": "public",
+            "return_type": "str",
+            "parameters": [
+              {
+                "name": "x",
+                "type": "int"
+              },
+              {
+                "name": "y",
+                "type": "int = 10"
+              },
+              {
+                "name": "z",
+                "type": "str = \"default\""
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 93,
+              "end": 95
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "variadic_function",
+            "visibility": "public",
+            "return_type": "tuple",
+            "parameters": [
+              {
+                "name": "*args",
+                "type": "int"
+              },
+              {
+                "name": "**kwargs",
+                "type": "str"
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 98,
+              "end": 100
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "generator_function",
+            "visibility": "public",
+            "return_type": "Iterator[int]",
+            "parameters": [
+              {
+                "name": "n",
+                "type": "int"
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 120,
+              "end": 123
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "fibonacci_generator",
+            "visibility": "public",
+            "return_type": "Iterator[int]",
+            "parameters": [
+              {
+                "name": "limit",
+                "type": "int"
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 2,
+            "line_range": {
+              "start": 126,
+              "end": 131
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "async_generator",
+            "visibility": "public",
+            "return_type": "Any",
+            "parameters": [
+              {
+                "name": "n",
+                "type": "int"
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": true,
+            "is_abstract": false,
+            "complexity_score": 2,
+            "line_range": {
+              "start": 134,
+              "end": 137
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "__init__",
+            "visibility": "public",
+            "return_type": "Any",
+            "parameters": [
+              {
+                "name": "self",
+                "type": "Any"
+              },
+              {
+                "name": "name",
+                "type": "str"
+              },
+              {
+                "name": "species",
+                "type": "str"
+              }
+            ],
+            "is_constructor": true,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 159,
+              "end": 161
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "make_sound",
+            "visibility": "public",
+            "return_type": "str",
+            "parameters": [
+              {
+                "name": "self",
+                "type": "Any"
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 164,
+              "end": 166
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "describe",
+            "visibility": "public",
+            "return_type": "str",
+            "parameters": [
+              {
+                "name": "self",
+                "type": "Any"
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 168,
+              "end": 170
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "__init__",
+            "visibility": "public",
+            "return_type": "Any",
+            "parameters": [
+              {
+                "name": "self",
+                "type": "Any"
+              },
+              {
+                "name": "name",
+                "type": "str"
+              },
+              {
+                "name": "breed",
+                "type": "str"
+              }
+            ],
+            "is_constructor": true,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 176,
+              "end": 178
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "make_sound",
+            "visibility": "public",
+            "return_type": "str",
+            "parameters": [
+              {
+                "name": "self",
+                "type": "Any"
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 180,
+              "end": 182
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "fetch",
+            "visibility": "public",
+            "return_type": "str",
+            "parameters": [
+              {
+                "name": "self",
+                "type": "Any"
+              },
+              {
+                "name": "item",
+                "type": "str"
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 184,
+              "end": 186
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "inner_method",
+            "visibility": "public",
+            "return_type": "str",
+            "parameters": [
+              {
+                "name": "self",
+                "type": "Any"
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 195,
+              "end": 196
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "outer_method",
+            "visibility": "public",
+            "return_type": "str",
+            "parameters": [
+              {
+                "name": "self",
+                "type": "Any"
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 198,
+              "end": 200
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "level1_method",
+            "visibility": "public",
+            "return_type": "Any",
+            "parameters": [
+              {
+                "name": "self",
+                "type": "Any"
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 211,
+              "end": 226
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "level2_nested",
+            "visibility": "public",
+            "return_type": "Any",
+            "parameters": [],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 214,
+              "end": 224
+            },
+            "javadoc": ""
+          },
+          {
+            "name": "level4_method",
+            "visibility": "public",
+            "return_type": "Any",
+            "parameters": [
+              {
+                "name": "self",
+                "type": "Any"
+              }
+            ],
+            "is_constructor": false,
+            "is_static": false,
+            "is_async": false,
+            "is_abstract": false,
+            "complexity_score": 1,
+            "line_range": {
+              "start": 220,
+              "end": 222
+            },
+            "javadoc": ""
+          }
+        ],
+        "fields": [
+          {
+            "name": "email",
+            "type": "str | None",
+            "visibility": "private",
+            "modifiers": [],
+            "is_static": false,
+            "is_readonly": false,
+            "is_final": false,
+            "line_range": {
+              "start": 24,
+              "end": 24
+            },
+            "javadoc": ""
+          }
+        ],
+        "imports": [
+          {
+            "name": "ABC, abstractmethod",
+            "module_name": "abc",
+            "statement": "from abc import ABC, abstractmethod",
+            "is_static": false,
+            "is_wildcard": false,
+            "line_range": [
+              8,
+              8
+            ],
+            "imported_names": [
+              "ABC",
+              "abstractmethod"
+            ],
+            "raw_text": "from abc import ABC, abstractmethod"
+          },
+          {
+            "name": "Iterator",
+            "module_name": "collections.abc",
+            "statement": "from collections.abc import Iterator",
+            "is_static": false,
+            "is_wildcard": false,
+            "line_range": [
+              9,
+              9
+            ],
+            "imported_names": [
+              "Iterator"
+            ],
+            "raw_text": "from collections.abc import Iterator"
+          },
+          {
+            "name": "dataclass",
+            "module_name": "dataclasses",
+            "statement": "from dataclasses import dataclass",
+            "is_static": false,
+            "is_wildcard": false,
+            "line_range": [
+              10,
+              10
+            ],
+            "imported_names": [
+              "dataclass"
+            ],
+            "raw_text": "from dataclasses import dataclass"
+          },
+          {
+            "name": "Any",
+            "module_name": "typing",
+            "statement": "from typing import Any",
+            "is_static": false,
+            "is_wildcard": false,
+            "line_range": [
+              11,
+              11
+            ],
+            "imported_names": [
+              "Any"
+            ],
+            "raw_text": "from typing import Any"
+          }
+        ],
+        "statistics": {
+          "method_count": 28,
+          "field_count": 1,
+          "class_count": 8,
+          "import_count": 4
+        },
+        "effective_table": "json",
+        "requested_table": "full",
+        "success": true,
+        "summary_line": "tests/golden/corpus_python.py (python) table=json: classes=8 methods=28 fields=1 imports=4 lines=257",
+        "verdict": "INFO",
+        "agent_summary": {
+          "summary_line": "tests/golden/corpus_python.py (python) table=json: classes=8 methods=28 fields=1 imports=4 lines=257",
+          "next_step": "Switch to --table full for a Markdown view, or run extract_code_section (MCP) for body extraction by line range.",
+          "verdict": "INFO"
+        }
+      },
+      "timing_keys_nulled": [],
+      "stderr": "Warning: --table=full is ignored when --format=json (effective_table=json)\n",
+      "stdout_raw_if_unparseable": null
+    },
+    {
+      "name": "outline",
+      "argv": [
+        "tests/golden/corpus_python.py",
+        "--outline",
+        "--output-format",
+        "json"
+      ],
+      "cwd": ". (repository root)",
+      "exit_code": 0,
+      "stdout_parse_ok": true,
+      "stdout_json": {
+        "success": true,
+        "file_path": "tests/golden/corpus_python.py",
+        "language": "python",
+        "outline": {
+          "file_path": "tests/golden/corpus_python.py",
+          "language": "python",
+          "total_lines": 257,
+          "package": null,
+          "classes": [
+            {
+              "name": "Person",
+              "type": "class",
+              "line_start": 19,
+              "line_end": 33,
+              "extends": null,
+              "implements": [],
+              "methods": [
+                {
+                  "name": "__post_init__",
+                  "return_type": "Any",
+                  "parameters": [
+                    "self"
+                  ],
+                  "visibility": "public",
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_start": 26,
+                  "line_end": 29
+                },
+                {
+                  "name": "greet",
+                  "return_type": "str",
+                  "parameters": [
+                    "self"
+                  ],
+                  "visibility": "public",
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_start": 31,
+                  "line_end": 33
+                }
+              ]
+            },
+            {
+              "name": "PropertyExample",
+              "type": "class",
+              "line_start": 36,
+              "line_end": 60,
+              "extends": null,
+              "implements": [],
+              "methods": [
+                {
+                  "name": "__init__",
+                  "return_type": "Any",
+                  "parameters": [
+                    "self",
+                    "value: int"
+                  ],
+                  "visibility": "public",
+                  "is_constructor": true,
+                  "is_static": false,
+                  "line_start": 39,
+                  "line_end": 40
+                },
+                {
+                  "name": "value",
+                  "return_type": "int",
+                  "parameters": [
+                    "self"
+                  ],
+                  "visibility": "public",
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_start": 43,
+                  "line_end": 45
+                },
+                {
+                  "name": "value",
+                  "return_type": "None",
+                  "parameters": [
+                    "self",
+                    "val: int"
+                  ],
+                  "visibility": "public",
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_start": 48,
+                  "line_end": 50
+                },
+                {
+                  "name": "static_method",
+                  "return_type": "str",
+                  "parameters": [],
+                  "visibility": "public",
+                  "is_constructor": false,
+                  "is_static": true,
+                  "line_start": 53,
+                  "line_end": 55
+                },
+                {
+                  "name": "class_method",
+                  "return_type": "str",
+                  "parameters": [
+                    "cls"
+                  ],
+                  "visibility": "public",
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_start": 58,
+                  "line_end": 60
+                }
+              ]
+            },
+            {
+              "name": "Animal",
+              "type": "abstract_class",
+              "line_start": 156,
+              "line_end": 170,
+              "extends": "ABC",
+              "implements": [],
+              "methods": [
+                {
+                  "name": "__init__",
+                  "return_type": "Any",
+                  "parameters": [
+                    "self",
+                    "name: str",
+                    "species: str"
+                  ],
+                  "visibility": "public",
+                  "is_constructor": true,
+                  "is_static": false,
+                  "line_start": 159,
+                  "line_end": 161
+                },
+                {
+                  "name": "make_sound",
+                  "return_type": "str",
+                  "parameters": [
+                    "self"
+                  ],
+                  "visibility": "public",
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_start": 164,
+                  "line_end": 166
+                },
+                {
+                  "name": "describe",
+                  "return_type": "str",
+                  "parameters": [
+                    "self"
+                  ],
+                  "visibility": "public",
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_start": 168,
+                  "line_end": 170
+                }
+              ]
+            },
+            {
+              "name": "Dog",
+              "type": "class",
+              "line_start": 173,
+              "line_end": 186,
+              "extends": "Animal",
+              "implements": [],
+              "methods": [
+                {
+                  "name": "__init__",
+                  "return_type": "Any",
+                  "parameters": [
+                    "self",
+                    "name: str",
+                    "breed: str"
+                  ],
+                  "visibility": "public",
+                  "is_constructor": true,
+                  "is_static": false,
+                  "line_start": 176,
+                  "line_end": 178
+                },
+                {
+                  "name": "make_sound",
+                  "return_type": "str",
+                  "parameters": [
+                    "self"
+                  ],
+                  "visibility": "public",
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_start": 180,
+                  "line_end": 182
+                },
+                {
+                  "name": "fetch",
+                  "return_type": "str",
+                  "parameters": [
+                    "self",
+                    "item: str"
+                  ],
+                  "visibility": "public",
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_start": 184,
+                  "line_end": 186
+                }
+              ]
+            },
+            {
+              "name": "NestedClassExample",
+              "type": "class",
+              "line_start": 189,
+              "line_end": 200,
+              "extends": null,
+              "implements": [],
+              "methods": [
+                {
+                  "name": "inner_method",
+                  "return_type": "str",
+                  "parameters": [
+                    "self"
+                  ],
+                  "visibility": "public",
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_start": 195,
+                  "line_end": 196
+                },
+                {
+                  "name": "outer_method",
+                  "return_type": "str",
+                  "parameters": [
+                    "self"
+                  ],
+                  "visibility": "public",
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_start": 198,
+                  "line_end": 200
+                }
+              ]
+            },
+            {
+              "name": "Inner",
+              "type": "class",
+              "line_start": 192,
+              "line_end": 196,
+              "extends": null,
+              "implements": [],
+              "methods": []
+            },
+            {
+              "name": "ComplexNesting",
+              "type": "class",
+              "line_start": 208,
+              "line_end": 226,
+              "extends": null,
+              "implements": [],
+              "methods": [
+                {
+                  "name": "level1_method",
+                  "return_type": "Any",
+                  "parameters": [
+                    "self"
+                  ],
+                  "visibility": "public",
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_start": 211,
+                  "line_end": 226
+                },
+                {
+                  "name": "level2_nested",
+                  "return_type": "Any",
+                  "parameters": [],
+                  "visibility": "public",
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_start": 214,
+                  "line_end": 224
+                },
+                {
+                  "name": "level4_method",
+                  "return_type": "Any",
+                  "parameters": [
+                    "self"
+                  ],
+                  "visibility": "public",
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_start": 220,
+                  "line_end": 222
+                }
+              ]
+            },
+            {
+              "name": "Level3Class",
+              "type": "class",
+              "line_start": 217,
+              "line_end": 222,
+              "extends": null,
+              "implements": [],
+              "methods": []
+            }
+          ],
+          "top_level_functions": [
+            {
+              "name": "timing_decorator",
+              "return_type": "Any",
+              "parameters": [
+                "func"
+              ],
+              "visibility": "public",
+              "is_constructor": false,
+              "is_static": false,
+              "line_start": 63,
+              "line_end": 69
+            },
+            {
+              "name": "decorated_function",
+              "return_type": "int",
+              "parameters": [
+                "x: int"
+              ],
+              "visibility": "public",
+              "is_constructor": false,
+              "is_static": false,
+              "line_start": 73,
+              "line_end": 75
+            },
+            {
+              "name": "regular_function",
+              "return_type": "int",
+              "parameters": [
+                "a: int",
+                "b: int"
+              ],
+              "visibility": "public",
+              "is_constructor": false,
+              "is_static": false,
+              "line_start": 83,
+              "line_end": 85
+            },
+            {
+              "name": "async_function",
+              "return_type": "dict",
+              "parameters": [
+                "url: str"
+              ],
+              "visibility": "public",
+              "is_constructor": false,
+              "is_static": false,
+              "line_start": 88,
+              "line_end": 90
+            },
+            {
+              "name": "function_with_defaults",
+              "return_type": "str",
+              "parameters": [
+                "x: int",
+                "y: int = 10",
+                "z: str = \"default\""
+              ],
+              "visibility": "public",
+              "is_constructor": false,
+              "is_static": false,
+              "line_start": 93,
+              "line_end": 95
+            },
+            {
+              "name": "variadic_function",
+              "return_type": "tuple",
+              "parameters": [
+                "*args: int",
+                "**kwargs: str"
+              ],
+              "visibility": "public",
+              "is_constructor": false,
+              "is_static": false,
+              "line_start": 98,
+              "line_end": 100
+            },
+            {
+              "name": "generator_function",
+              "return_type": "Iterator[int]",
+              "parameters": [
+                "n: int"
+              ],
+              "visibility": "public",
+              "is_constructor": false,
+              "is_static": false,
+              "line_start": 120,
+              "line_end": 123
+            },
+            {
+              "name": "fibonacci_generator",
+              "return_type": "Iterator[int]",
+              "parameters": [
+                "limit: int"
+              ],
+              "visibility": "public",
+              "is_constructor": false,
+              "is_static": false,
+              "line_start": 126,
+              "line_end": 131
+            },
+            {
+              "name": "async_generator",
+              "return_type": "Any",
+              "parameters": [
+                "n: int"
+              ],
+              "visibility": "public",
+              "is_constructor": false,
+              "is_static": false,
+              "line_start": 134,
+              "line_end": 137
+            }
+          ],
+          "statistics": {
+            "class_count": 8,
+            "method_count": 28,
+            "field_count": 1,
+            "import_count": 4
+          }
+        },
+        "total_lines": 257,
+        "package": null,
+        "classes": [
+          {
+            "name": "Person",
+            "type": "class",
+            "line_start": 19,
+            "line_end": 33,
+            "extends": null,
+            "implements": [],
+            "methods": [
+              {
+                "name": "__post_init__",
+                "return_type": "Any",
+                "parameters": [
+                  "self"
+                ],
+                "visibility": "public",
+                "is_constructor": false,
+                "is_static": false,
+                "line_start": 26,
+                "line_end": 29
+              },
+              {
+                "name": "greet",
+                "return_type": "str",
+                "parameters": [
+                  "self"
+                ],
+                "visibility": "public",
+                "is_constructor": false,
+                "is_static": false,
+                "line_start": 31,
+                "line_end": 33
+              }
+            ]
+          },
+          {
+            "name": "PropertyExample",
+            "type": "class",
+            "line_start": 36,
+            "line_end": 60,
+            "extends": null,
+            "implements": [],
+            "methods": [
+              {
+                "name": "__init__",
+                "return_type": "Any",
+                "parameters": [
+                  "self",
+                  "value: int"
+                ],
+                "visibility": "public",
+                "is_constructor": true,
+                "is_static": false,
+                "line_start": 39,
+                "line_end": 40
+              },
+              {
+                "name": "value",
+                "return_type": "int",
+                "parameters": [
+                  "self"
+                ],
+                "visibility": "public",
+                "is_constructor": false,
+                "is_static": false,
+                "line_start": 43,
+                "line_end": 45
+              },
+              {
+                "name": "value",
+                "return_type": "None",
+                "parameters": [
+                  "self",
+                  "val: int"
+                ],
+                "visibility": "public",
+                "is_constructor": false,
+                "is_static": false,
+                "line_start": 48,
+                "line_end": 50
+              },
+              {
+                "name": "static_method",
+                "return_type": "str",
+                "parameters": [],
+                "visibility": "public",
+                "is_constructor": false,
+                "is_static": true,
+                "line_start": 53,
+                "line_end": 55
+              },
+              {
+                "name": "class_method",
+                "return_type": "str",
+                "parameters": [
+                  "cls"
+                ],
+                "visibility": "public",
+                "is_constructor": false,
+                "is_static": false,
+                "line_start": 58,
+                "line_end": 60
+              }
+            ]
+          },
+          {
+            "name": "Animal",
+            "type": "abstract_class",
+            "line_start": 156,
+            "line_end": 170,
+            "extends": "ABC",
+            "implements": [],
+            "methods": [
+              {
+                "name": "__init__",
+                "return_type": "Any",
+                "parameters": [
+                  "self",
+                  "name: str",
+                  "species: str"
+                ],
+                "visibility": "public",
+                "is_constructor": true,
+                "is_static": false,
+                "line_start": 159,
+                "line_end": 161
+              },
+              {
+                "name": "make_sound",
+                "return_type": "str",
+                "parameters": [
+                  "self"
+                ],
+                "visibility": "public",
+                "is_constructor": false,
+                "is_static": false,
+                "line_start": 164,
+                "line_end": 166
+              },
+              {
+                "name": "describe",
+                "return_type": "str",
+                "parameters": [
+                  "self"
+                ],
+                "visibility": "public",
+                "is_constructor": false,
+                "is_static": false,
+                "line_start": 168,
+                "line_end": 170
+              }
+            ]
+          },
+          {
+            "name": "Dog",
+            "type": "class",
+            "line_start": 173,
+            "line_end": 186,
+            "extends": "Animal",
+            "implements": [],
+            "methods": [
+              {
+                "name": "__init__",
+                "return_type": "Any",
+                "parameters": [
+                  "self",
+                  "name: str",
+                  "breed: str"
+                ],
+                "visibility": "public",
+                "is_constructor": true,
+                "is_static": false,
+                "line_start": 176,
+                "line_end": 178
+              },
+              {
+                "name": "make_sound",
+                "return_type": "str",
+                "parameters": [
+                  "self"
+                ],
+                "visibility": "public",
+                "is_constructor": false,
+                "is_static": false,
+                "line_start": 180,
+                "line_end": 182
+              },
+              {
+                "name": "fetch",
+                "return_type": "str",
+                "parameters": [
+                  "self",
+                  "item: str"
+                ],
+                "visibility": "public",
+                "is_constructor": false,
+                "is_static": false,
+                "line_start": 184,
+                "line_end": 186
+              }
+            ]
+          },
+          {
+            "name": "NestedClassExample",
+            "type": "class",
+            "line_start": 189,
+            "line_end": 200,
+            "extends": null,
+            "implements": [],
+            "methods": [
+              {
+                "name": "inner_method",
+                "return_type": "str",
+                "parameters": [
+                  "self"
+                ],
+                "visibility": "public",
+                "is_constructor": false,
+                "is_static": false,
+                "line_start": 195,
+                "line_end": 196
+              },
+              {
+                "name": "outer_method",
+                "return_type": "str",
+                "parameters": [
+                  "self"
+                ],
+                "visibility": "public",
+                "is_constructor": false,
+                "is_static": false,
+                "line_start": 198,
+                "line_end": 200
+              }
+            ]
+          },
+          {
+            "name": "Inner",
+            "type": "class",
+            "line_start": 192,
+            "line_end": 196,
+            "extends": null,
+            "implements": [],
+            "methods": []
+          },
+          {
+            "name": "ComplexNesting",
+            "type": "class",
+            "line_start": 208,
+            "line_end": 226,
+            "extends": null,
+            "implements": [],
+            "methods": [
+              {
+                "name": "level1_method",
+                "return_type": "Any",
+                "parameters": [
+                  "self"
+                ],
+                "visibility": "public",
+                "is_constructor": false,
+                "is_static": false,
+                "line_start": 211,
+                "line_end": 226
+              },
+              {
+                "name": "level2_nested",
+                "return_type": "Any",
+                "parameters": [],
+                "visibility": "public",
+                "is_constructor": false,
+                "is_static": false,
+                "line_start": 214,
+                "line_end": 224
+              },
+              {
+                "name": "level4_method",
+                "return_type": "Any",
+                "parameters": [
+                  "self"
+                ],
+                "visibility": "public",
+                "is_constructor": false,
+                "is_static": false,
+                "line_start": 220,
+                "line_end": 222
+              }
+            ]
+          },
+          {
+            "name": "Level3Class",
+            "type": "class",
+            "line_start": 217,
+            "line_end": 222,
+            "extends": null,
+            "implements": [],
+            "methods": []
+          }
+        ],
+        "top_level_functions": [
+          {
+            "name": "timing_decorator",
+            "return_type": "Any",
+            "parameters": [
+              "func"
+            ],
+            "visibility": "public",
+            "is_constructor": false,
+            "is_static": false,
+            "line_start": 63,
+            "line_end": 69
+          },
+          {
+            "name": "decorated_function",
+            "return_type": "int",
+            "parameters": [
+              "x: int"
+            ],
+            "visibility": "public",
+            "is_constructor": false,
+            "is_static": false,
+            "line_start": 73,
+            "line_end": 75
+          },
+          {
+            "name": "regular_function",
+            "return_type": "int",
+            "parameters": [
+              "a: int",
+              "b: int"
+            ],
+            "visibility": "public",
+            "is_constructor": false,
+            "is_static": false,
+            "line_start": 83,
+            "line_end": 85
+          },
+          {
+            "name": "async_function",
+            "return_type": "dict",
+            "parameters": [
+              "url: str"
+            ],
+            "visibility": "public",
+            "is_constructor": false,
+            "is_static": false,
+            "line_start": 88,
+            "line_end": 90
+          },
+          {
+            "name": "function_with_defaults",
+            "return_type": "str",
+            "parameters": [
+              "x: int",
+              "y: int = 10",
+              "z: str = \"default\""
+            ],
+            "visibility": "public",
+            "is_constructor": false,
+            "is_static": false,
+            "line_start": 93,
+            "line_end": 95
+          },
+          {
+            "name": "variadic_function",
+            "return_type": "tuple",
+            "parameters": [
+              "*args: int",
+              "**kwargs: str"
+            ],
+            "visibility": "public",
+            "is_constructor": false,
+            "is_static": false,
+            "line_start": 98,
+            "line_end": 100
+          },
+          {
+            "name": "generator_function",
+            "return_type": "Iterator[int]",
+            "parameters": [
+              "n: int"
+            ],
+            "visibility": "public",
+            "is_constructor": false,
+            "is_static": false,
+            "line_start": 120,
+            "line_end": 123
+          },
+          {
+            "name": "fibonacci_generator",
+            "return_type": "Iterator[int]",
+            "parameters": [
+              "limit: int"
+            ],
+            "visibility": "public",
+            "is_constructor": false,
+            "is_static": false,
+            "line_start": 126,
+            "line_end": 131
+          },
+          {
+            "name": "async_generator",
+            "return_type": "Any",
+            "parameters": [
+              "n: int"
+            ],
+            "visibility": "public",
+            "is_constructor": false,
+            "is_static": false,
+            "line_start": 134,
+            "line_end": 137
+          }
+        ],
+        "class_count": 8,
+        "method_count": 28,
+        "field_count": 1,
+        "import_count": 4,
+        "classes_total": 8,
+        "classes_listed": 8,
+        "top_level_functions_total": 9,
+        "top_level_functions_listed": 9,
+        "listed_cap": 50,
+        "truncated": false,
+        "summary_line": "tests/golden/corpus_python.py outline: 8 classes, 28 methods, 1 fields",
+        "verdict": "INFO",
+        "agent_summary": {
+          "summary_line": "tests/golden/corpus_python.py outline: 8 classes, 28 methods, 1 fields",
+          "next_step": "extract_code_section for the method you need (use line ranges from outline)",
+          "verdict": "INFO"
+        }
+      },
+      "timing_keys_nulled": [],
+      "stderr": "",
+      "stdout_raw_if_unparseable": null
+    },
+    {
+      "name": "missing_file",
+      "argv": [
+        "tests/golden/does_not_exist_xyz.py",
+        "--structure",
+        "--output-format",
+        "json"
+      ],
+      "cwd": ". (repository root)",
+      "exit_code": 1,
+      "stdout_parse_ok": false,
+      "stdout_json": null,
+      "timing_keys_nulled": [],
+      "stderr": "ERROR: File not found: tests/golden/does_not_exist_xyz.py\nCheck the file path and try again.\n",
+      "stdout_raw_if_unparseable": ""
+    }
+  ]
+}

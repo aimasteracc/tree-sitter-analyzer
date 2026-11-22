@@ -1,0 +1,2478 @@
+{
+  "request": {
+    "call": "anyio.run(plugin.analyze_file, file_path, AnalysisRequest(file_path=...))",
+    "file_path": "tests/golden/corpus_python.py",
+    "cwd": "."
+  },
+  "plugin_metadata": {
+    "language_name": "python",
+    "file_extensions": [
+      ".py",
+      ".pyw",
+      ".pyi"
+    ],
+    "supported_queries_sorted": [
+      "async_function",
+      "class",
+      "comprehension",
+      "context_manager",
+      "decorator",
+      "django_model",
+      "docstring",
+      "exception",
+      "fastapi_endpoint",
+      "flask_route",
+      "function",
+      "import",
+      "lambda",
+      "method",
+      "type_hint",
+      "variable"
+    ],
+    "supported_queries_return_form": "list",
+    "supported_queries_count": 16,
+    "element_categories": {
+      "all_elements": [
+        "function_definition",
+        "class_definition",
+        "import_statement",
+        "import_from_statement",
+        "assignment",
+        "decorator",
+        "raise_statement",
+        "except_clause",
+        "list_comprehension",
+        "set_comprehension",
+        "dictionary_comprehension",
+        "generator_expression",
+        "with_statement",
+        "type",
+        "string",
+        "lambda"
+      ],
+      "async_function": [
+        "function_definition"
+      ],
+      "async_functions": [
+        "function_definition"
+      ],
+      "class": [
+        "class_definition"
+      ],
+      "classes": [
+        "class_definition"
+      ],
+      "comprehension": [
+        "list_comprehension",
+        "set_comprehension",
+        "dictionary_comprehension",
+        "generator_expression"
+      ],
+      "comprehensions": [
+        "list_comprehension",
+        "set_comprehension",
+        "dictionary_comprehension",
+        "generator_expression"
+      ],
+      "context_manager": [
+        "with_statement"
+      ],
+      "context_managers": [
+        "with_statement"
+      ],
+      "decorator": [
+        "decorator"
+      ],
+      "decorators": [
+        "decorator"
+      ],
+      "django_model": [
+        "class_definition"
+      ],
+      "django_models": [
+        "class_definition"
+      ],
+      "docstring": [
+        "string"
+      ],
+      "docstrings": [
+        "string"
+      ],
+      "exception": [
+        "raise_statement",
+        "except_clause"
+      ],
+      "exceptions": [
+        "raise_statement",
+        "except_clause"
+      ],
+      "fastapi_endpoint": [
+        "function_definition"
+      ],
+      "fastapi_endpoints": [
+        "function_definition"
+      ],
+      "flask_route": [
+        "decorator"
+      ],
+      "flask_routes": [
+        "decorator"
+      ],
+      "from_import": [
+        "import_from_statement"
+      ],
+      "from_imports": [
+        "import_from_statement"
+      ],
+      "function": [
+        "function_definition"
+      ],
+      "functions": [
+        "function_definition"
+      ],
+      "import": [
+        "import_statement",
+        "import_from_statement"
+      ],
+      "imports": [
+        "import_statement",
+        "import_from_statement"
+      ],
+      "lambda": [
+        "lambda"
+      ],
+      "lambdas": [
+        "lambda"
+      ],
+      "method": [
+        "function_definition"
+      ],
+      "methods": [
+        "function_definition"
+      ],
+      "type_hint": [
+        "type"
+      ],
+      "type_hints": [
+        "type"
+      ],
+      "variable": [
+        "assignment"
+      ],
+      "variables": [
+        "assignment"
+      ]
+    }
+  },
+  "analysis": {
+    "line_count": 257,
+    "node_count": 1518,
+    "success": true,
+    "error_message": null
+  },
+  "to_dict": {
+    "file_path": "tests/golden/corpus_python.py",
+    "line_count": 257,
+    "package": null,
+    "imports": [
+      {
+        "name": "ABC, abstractmethod",
+        "is_static": false,
+        "is_wildcard": false
+      },
+      {
+        "name": "Iterator",
+        "is_static": false,
+        "is_wildcard": false
+      },
+      {
+        "name": "dataclass",
+        "is_static": false,
+        "is_wildcard": false
+      },
+      {
+        "name": "Any",
+        "is_static": false,
+        "is_wildcard": false
+      }
+    ],
+    "classes": [
+      {
+        "name": "Person",
+        "type": "class",
+        "package": ""
+      },
+      {
+        "name": "PropertyExample",
+        "type": "class",
+        "package": ""
+      },
+      {
+        "name": "Animal",
+        "type": "abstract_class",
+        "package": ""
+      },
+      {
+        "name": "Dog",
+        "type": "class",
+        "package": ""
+      },
+      {
+        "name": "NestedClassExample",
+        "type": "class",
+        "package": ""
+      },
+      {
+        "name": "Inner",
+        "type": "class",
+        "package": ""
+      },
+      {
+        "name": "ComplexNesting",
+        "type": "class",
+        "package": ""
+      },
+      {
+        "name": "Level3Class",
+        "type": "class",
+        "package": ""
+      }
+    ],
+    "methods": [
+      {
+        "name": "__post_init__",
+        "return_type": "Any",
+        "parameters": [
+          "self"
+        ]
+      },
+      {
+        "name": "greet",
+        "return_type": "str",
+        "parameters": [
+          "self"
+        ]
+      },
+      {
+        "name": "__init__",
+        "return_type": "Any",
+        "parameters": [
+          "self",
+          "value: int"
+        ]
+      },
+      {
+        "name": "value",
+        "return_type": "int",
+        "parameters": [
+          "self"
+        ]
+      },
+      {
+        "name": "value",
+        "return_type": "None",
+        "parameters": [
+          "self",
+          "val: int"
+        ]
+      },
+      {
+        "name": "static_method",
+        "return_type": "str",
+        "parameters": []
+      },
+      {
+        "name": "class_method",
+        "return_type": "str",
+        "parameters": [
+          "cls"
+        ]
+      },
+      {
+        "name": "timing_decorator",
+        "return_type": "Any",
+        "parameters": [
+          "func"
+        ]
+      },
+      {
+        "name": "wrapper",
+        "return_type": "Any",
+        "parameters": [
+          "*args",
+          "**kwargs"
+        ]
+      },
+      {
+        "name": "decorated_function",
+        "return_type": "int",
+        "parameters": [
+          "x: int"
+        ]
+      },
+      {
+        "name": "regular_function",
+        "return_type": "int",
+        "parameters": [
+          "a: int",
+          "b: int"
+        ]
+      },
+      {
+        "name": "async_function",
+        "return_type": "dict",
+        "parameters": [
+          "url: str"
+        ]
+      },
+      {
+        "name": "function_with_defaults",
+        "return_type": "str",
+        "parameters": [
+          "x: int",
+          "y: int = 10",
+          "z: str = \"default\""
+        ]
+      },
+      {
+        "name": "variadic_function",
+        "return_type": "tuple",
+        "parameters": [
+          "*args: int",
+          "**kwargs: str"
+        ]
+      },
+      {
+        "name": "generator_function",
+        "return_type": "Iterator[int]",
+        "parameters": [
+          "n: int"
+        ]
+      },
+      {
+        "name": "fibonacci_generator",
+        "return_type": "Iterator[int]",
+        "parameters": [
+          "limit: int"
+        ]
+      },
+      {
+        "name": "async_generator",
+        "return_type": "Any",
+        "parameters": [
+          "n: int"
+        ]
+      },
+      {
+        "name": "__init__",
+        "return_type": "Any",
+        "parameters": [
+          "self",
+          "name: str",
+          "species: str"
+        ]
+      },
+      {
+        "name": "make_sound",
+        "return_type": "str",
+        "parameters": [
+          "self"
+        ]
+      },
+      {
+        "name": "describe",
+        "return_type": "str",
+        "parameters": [
+          "self"
+        ]
+      },
+      {
+        "name": "__init__",
+        "return_type": "Any",
+        "parameters": [
+          "self",
+          "name: str",
+          "breed: str"
+        ]
+      },
+      {
+        "name": "make_sound",
+        "return_type": "str",
+        "parameters": [
+          "self"
+        ]
+      },
+      {
+        "name": "fetch",
+        "return_type": "str",
+        "parameters": [
+          "self",
+          "item: str"
+        ]
+      },
+      {
+        "name": "inner_method",
+        "return_type": "str",
+        "parameters": [
+          "self"
+        ]
+      },
+      {
+        "name": "outer_method",
+        "return_type": "str",
+        "parameters": [
+          "self"
+        ]
+      },
+      {
+        "name": "level1_method",
+        "return_type": "Any",
+        "parameters": [
+          "self"
+        ]
+      },
+      {
+        "name": "level2_nested",
+        "return_type": "Any",
+        "parameters": []
+      },
+      {
+        "name": "level4_method",
+        "return_type": "Any",
+        "parameters": [
+          "self"
+        ]
+      }
+    ],
+    "fields": [
+      {
+        "name": "email",
+        "type": null
+      }
+    ],
+    "annotations": [],
+    "analysis_time": null,
+    "success": true,
+    "error_message": null
+  },
+  "to_mcp_format": {
+    "file_path": "tests/golden/corpus_python.py",
+    "structure": {
+      "package": null,
+      "imports": [
+        {
+          "name": "ABC, abstractmethod",
+          "is_static": false,
+          "is_wildcard": false,
+          "line_range": {
+            "start": 8,
+            "end": 8
+          }
+        },
+        {
+          "name": "Iterator",
+          "is_static": false,
+          "is_wildcard": false,
+          "line_range": {
+            "start": 9,
+            "end": 9
+          }
+        },
+        {
+          "name": "dataclass",
+          "is_static": false,
+          "is_wildcard": false,
+          "line_range": {
+            "start": 10,
+            "end": 10
+          }
+        },
+        {
+          "name": "Any",
+          "is_static": false,
+          "is_wildcard": false,
+          "line_range": {
+            "start": 11,
+            "end": 11
+          }
+        }
+      ],
+      "classes": [
+        {
+          "name": "Person",
+          "type": "class",
+          "package": "",
+          "line_range": {
+            "start": 19,
+            "end": 33
+          }
+        },
+        {
+          "name": "PropertyExample",
+          "type": "class",
+          "package": "",
+          "line_range": {
+            "start": 36,
+            "end": 60
+          }
+        },
+        {
+          "name": "Animal",
+          "type": "abstract_class",
+          "package": "",
+          "line_range": {
+            "start": 156,
+            "end": 170
+          }
+        },
+        {
+          "name": "Dog",
+          "type": "class",
+          "package": "",
+          "line_range": {
+            "start": 173,
+            "end": 186
+          }
+        },
+        {
+          "name": "NestedClassExample",
+          "type": "class",
+          "package": "",
+          "line_range": {
+            "start": 189,
+            "end": 200
+          }
+        },
+        {
+          "name": "Inner",
+          "type": "class",
+          "package": "",
+          "line_range": {
+            "start": 192,
+            "end": 196
+          }
+        },
+        {
+          "name": "ComplexNesting",
+          "type": "class",
+          "package": "",
+          "line_range": {
+            "start": 208,
+            "end": 226
+          }
+        },
+        {
+          "name": "Level3Class",
+          "type": "class",
+          "package": "",
+          "line_range": {
+            "start": 217,
+            "end": 222
+          }
+        }
+      ],
+      "methods": [
+        {
+          "name": "__post_init__",
+          "return_type": "Any",
+          "parameters": [
+            "self"
+          ],
+          "line_range": {
+            "start": 26,
+            "end": 29
+          }
+        },
+        {
+          "name": "greet",
+          "return_type": "str",
+          "parameters": [
+            "self"
+          ],
+          "line_range": {
+            "start": 31,
+            "end": 33
+          }
+        },
+        {
+          "name": "__init__",
+          "return_type": "Any",
+          "parameters": [
+            "self",
+            "value: int"
+          ],
+          "line_range": {
+            "start": 39,
+            "end": 40
+          }
+        },
+        {
+          "name": "value",
+          "return_type": "int",
+          "parameters": [
+            "self"
+          ],
+          "line_range": {
+            "start": 43,
+            "end": 45
+          }
+        },
+        {
+          "name": "value",
+          "return_type": "None",
+          "parameters": [
+            "self",
+            "val: int"
+          ],
+          "line_range": {
+            "start": 48,
+            "end": 50
+          }
+        },
+        {
+          "name": "static_method",
+          "return_type": "str",
+          "parameters": [],
+          "line_range": {
+            "start": 53,
+            "end": 55
+          }
+        },
+        {
+          "name": "class_method",
+          "return_type": "str",
+          "parameters": [
+            "cls"
+          ],
+          "line_range": {
+            "start": 58,
+            "end": 60
+          }
+        },
+        {
+          "name": "timing_decorator",
+          "return_type": "Any",
+          "parameters": [
+            "func"
+          ],
+          "line_range": {
+            "start": 63,
+            "end": 69
+          }
+        },
+        {
+          "name": "wrapper",
+          "return_type": "Any",
+          "parameters": [
+            "*args",
+            "**kwargs"
+          ],
+          "line_range": {
+            "start": 66,
+            "end": 67
+          }
+        },
+        {
+          "name": "decorated_function",
+          "return_type": "int",
+          "parameters": [
+            "x: int"
+          ],
+          "line_range": {
+            "start": 73,
+            "end": 75
+          }
+        },
+        {
+          "name": "regular_function",
+          "return_type": "int",
+          "parameters": [
+            "a: int",
+            "b: int"
+          ],
+          "line_range": {
+            "start": 83,
+            "end": 85
+          }
+        },
+        {
+          "name": "async_function",
+          "return_type": "dict",
+          "parameters": [
+            "url: str"
+          ],
+          "line_range": {
+            "start": 88,
+            "end": 90
+          }
+        },
+        {
+          "name": "function_with_defaults",
+          "return_type": "str",
+          "parameters": [
+            "x: int",
+            "y: int = 10",
+            "z: str = \"default\""
+          ],
+          "line_range": {
+            "start": 93,
+            "end": 95
+          }
+        },
+        {
+          "name": "variadic_function",
+          "return_type": "tuple",
+          "parameters": [
+            "*args: int",
+            "**kwargs: str"
+          ],
+          "line_range": {
+            "start": 98,
+            "end": 100
+          }
+        },
+        {
+          "name": "generator_function",
+          "return_type": "Iterator[int]",
+          "parameters": [
+            "n: int"
+          ],
+          "line_range": {
+            "start": 120,
+            "end": 123
+          }
+        },
+        {
+          "name": "fibonacci_generator",
+          "return_type": "Iterator[int]",
+          "parameters": [
+            "limit: int"
+          ],
+          "line_range": {
+            "start": 126,
+            "end": 131
+          }
+        },
+        {
+          "name": "async_generator",
+          "return_type": "Any",
+          "parameters": [
+            "n: int"
+          ],
+          "line_range": {
+            "start": 134,
+            "end": 137
+          }
+        },
+        {
+          "name": "__init__",
+          "return_type": "Any",
+          "parameters": [
+            "self",
+            "name: str",
+            "species: str"
+          ],
+          "line_range": {
+            "start": 159,
+            "end": 161
+          }
+        },
+        {
+          "name": "make_sound",
+          "return_type": "str",
+          "parameters": [
+            "self"
+          ],
+          "line_range": {
+            "start": 164,
+            "end": 166
+          }
+        },
+        {
+          "name": "describe",
+          "return_type": "str",
+          "parameters": [
+            "self"
+          ],
+          "line_range": {
+            "start": 168,
+            "end": 170
+          }
+        },
+        {
+          "name": "__init__",
+          "return_type": "Any",
+          "parameters": [
+            "self",
+            "name: str",
+            "breed: str"
+          ],
+          "line_range": {
+            "start": 176,
+            "end": 178
+          }
+        },
+        {
+          "name": "make_sound",
+          "return_type": "str",
+          "parameters": [
+            "self"
+          ],
+          "line_range": {
+            "start": 180,
+            "end": 182
+          }
+        },
+        {
+          "name": "fetch",
+          "return_type": "str",
+          "parameters": [
+            "self",
+            "item: str"
+          ],
+          "line_range": {
+            "start": 184,
+            "end": 186
+          }
+        },
+        {
+          "name": "inner_method",
+          "return_type": "str",
+          "parameters": [
+            "self"
+          ],
+          "line_range": {
+            "start": 195,
+            "end": 196
+          }
+        },
+        {
+          "name": "outer_method",
+          "return_type": "str",
+          "parameters": [
+            "self"
+          ],
+          "line_range": {
+            "start": 198,
+            "end": 200
+          }
+        },
+        {
+          "name": "level1_method",
+          "return_type": "Any",
+          "parameters": [
+            "self"
+          ],
+          "line_range": {
+            "start": 211,
+            "end": 226
+          }
+        },
+        {
+          "name": "level2_nested",
+          "return_type": "Any",
+          "parameters": [],
+          "line_range": {
+            "start": 214,
+            "end": 224
+          }
+        },
+        {
+          "name": "level4_method",
+          "return_type": "Any",
+          "parameters": [
+            "self"
+          ],
+          "line_range": {
+            "start": 220,
+            "end": 222
+          }
+        }
+      ],
+      "fields": [
+        {
+          "name": "email",
+          "type": null,
+          "line_range": {
+            "start": 24,
+            "end": 24
+          }
+        }
+      ],
+      "annotations": []
+    },
+    "metadata": {
+      "line_count": 257,
+      "class_count": 8,
+      "method_count": 28,
+      "field_count": 1,
+      "import_count": 4,
+      "annotation_count": 0,
+      "analysis_time": null,
+      "success": true,
+      "error_message": null
+    }
+  },
+  "elements_by_type": {
+    "class": [
+      {
+        "name": "Person",
+        "start_line": 19,
+        "end_line": 33,
+        "raw_text": "class Person:\n    \"\"\"使用 @dataclass 装饰器的类（decorated_definition）\"\"\"\n\n    name: str\n    age: int\n    email: str | None = None\n\n    def __post_init__(self):\n        \"\"\"数据类的初始化后处理\"\"\"\n        if self.age < 0:\n            raise ValueError(\"年龄不能为负\")\n\n    def greet(self) -> str:\n        \"\"\"问候方法\"\"\"\n        return f\"你好，我是 {self.name}\"",
+        "language": "python",
+        "docstring": "使用 @dataclass 装饰器的类（decorated_definition）",
+        "element_type": "class",
+        "node_type": null,
+        "class_type": "class",
+        "full_qualified_name": "Person",
+        "package_name": "",
+        "superclass": null,
+        "interfaces": [],
+        "modifiers": [],
+        "visibility": "public",
+        "methods": [],
+        "annotations": [],
+        "is_nested": false,
+        "parent_class": null,
+        "extends_class": null,
+        "implements_interfaces": [],
+        "is_react_component": false,
+        "framework_type": "",
+        "is_exported": false,
+        "is_dataclass": false,
+        "is_abstract": false,
+        "is_exception": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "PropertyExample",
+        "start_line": 36,
+        "end_line": 60,
+        "raw_text": "class PropertyExample:\n    \"\"\"属性装饰器示例（decorated_definition）\"\"\"\n\n    def __init__(self, value: int):\n        self._value = value\n\n    @property\n    def value(self) -> int:\n        \"\"\"使用 @property 装饰器（decorated_definition）\"\"\"\n        return self._value\n\n    @value.setter\n    def value(self, val: int) -> None:\n        \"\"\"属性 setter（decorated_definition）\"\"\"\n        self._value = val\n\n    @staticmethod\n    def static_method() -> str:\n        \"\"\"静态方法（decorated_definition）\"\"\"\n        return \"静态方法\"\n\n    @classmethod\n    def class_method(cls) -> str:\n        \"\"\"类方法（decorated_definition）\"\"\"\n        return f\"类方法：{cls.__name__}\"",
+        "language": "python",
+        "docstring": "属性装饰器示例（decorated_definition）",
+        "element_type": "class",
+        "node_type": null,
+        "class_type": "class",
+        "full_qualified_name": "PropertyExample",
+        "package_name": "",
+        "superclass": null,
+        "interfaces": [],
+        "modifiers": [
+          "dataclass",
+          "timing_decorator"
+        ],
+        "visibility": "public",
+        "methods": [],
+        "annotations": [],
+        "is_nested": false,
+        "parent_class": null,
+        "extends_class": null,
+        "implements_interfaces": [],
+        "is_react_component": false,
+        "framework_type": "",
+        "is_exported": false,
+        "is_dataclass": true,
+        "is_abstract": false,
+        "is_exception": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "Animal",
+        "start_line": 156,
+        "end_line": 170,
+        "raw_text": "class Animal(ABC):\n    \"\"\"抽象基类\"\"\"\n\n    def __init__(self, name: str, species: str):\n        self.name = name\n        self.species = species\n\n    @abstractmethod\n    def make_sound(self) -> str:\n        \"\"\"抽象方法（必须被子类实现）\"\"\"\n        pass\n\n    def describe(self) -> str:\n        \"\"\"普通方法\"\"\"\n        return f\"{self.name} 是一只 {self.species}\"",
+        "language": "python",
+        "docstring": "抽象基类",
+        "element_type": "class",
+        "node_type": null,
+        "class_type": "abstract_class",
+        "full_qualified_name": "Animal",
+        "package_name": "",
+        "superclass": "ABC",
+        "interfaces": [],
+        "modifiers": [
+          "dataclass",
+          "timing_decorator"
+        ],
+        "visibility": "public",
+        "methods": [],
+        "annotations": [],
+        "is_nested": false,
+        "parent_class": null,
+        "extends_class": null,
+        "implements_interfaces": [],
+        "is_react_component": false,
+        "framework_type": "",
+        "is_exported": false,
+        "is_dataclass": true,
+        "is_abstract": true,
+        "is_exception": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "Dog",
+        "start_line": 173,
+        "end_line": 186,
+        "raw_text": "class Dog(Animal):\n    \"\"\"继承自 Animal 的子类\"\"\"\n\n    def __init__(self, name: str, breed: str):\n        super().__init__(name, \"狗\")\n        self.breed = breed\n\n    def make_sound(self) -> str:\n        \"\"\"实现抽象方法\"\"\"\n        return \"汪汪！\"\n\n    def fetch(self, item: str) -> str:\n        \"\"\"狗的特有方法\"\"\"\n        return f\"{self.name} 捡回了 {item}\"",
+        "language": "python",
+        "docstring": "继承自 Animal 的子类",
+        "element_type": "class",
+        "node_type": null,
+        "class_type": "class",
+        "full_qualified_name": "Dog",
+        "package_name": "",
+        "superclass": "Animal",
+        "interfaces": [],
+        "modifiers": [
+          "dataclass",
+          "timing_decorator"
+        ],
+        "visibility": "public",
+        "methods": [],
+        "annotations": [],
+        "is_nested": false,
+        "parent_class": null,
+        "extends_class": null,
+        "implements_interfaces": [],
+        "is_react_component": false,
+        "framework_type": "",
+        "is_exported": false,
+        "is_dataclass": true,
+        "is_abstract": false,
+        "is_exception": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "NestedClassExample",
+        "start_line": 189,
+        "end_line": 200,
+        "raw_text": "class NestedClassExample:\n    \"\"\"嵌套类示例\"\"\"\n\n    class Inner:\n        \"\"\"内部类\"\"\"\n\n        def inner_method(self) -> str:\n            return \"内部方法\"\n\n    def outer_method(self) -> str:\n        \"\"\"外部方法\"\"\"\n        return \"外部方法\"",
+        "language": "python",
+        "docstring": "嵌套类示例",
+        "element_type": "class",
+        "node_type": null,
+        "class_type": "class",
+        "full_qualified_name": "NestedClassExample",
+        "package_name": "",
+        "superclass": null,
+        "interfaces": [],
+        "modifiers": [
+          "dataclass",
+          "timing_decorator"
+        ],
+        "visibility": "public",
+        "methods": [],
+        "annotations": [],
+        "is_nested": false,
+        "parent_class": null,
+        "extends_class": null,
+        "implements_interfaces": [],
+        "is_react_component": false,
+        "framework_type": "",
+        "is_exported": false,
+        "is_dataclass": true,
+        "is_abstract": false,
+        "is_exception": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "Inner",
+        "start_line": 192,
+        "end_line": 196,
+        "raw_text": "class Inner:\n        \"\"\"内部类\"\"\"\n\n        def inner_method(self) -> str:\n            return \"内部方法\"",
+        "language": "python",
+        "docstring": "内部类",
+        "element_type": "class",
+        "node_type": null,
+        "class_type": "class",
+        "full_qualified_name": "Inner",
+        "package_name": "",
+        "superclass": null,
+        "interfaces": [],
+        "modifiers": [],
+        "visibility": "public",
+        "methods": [],
+        "annotations": [],
+        "is_nested": false,
+        "parent_class": null,
+        "extends_class": null,
+        "implements_interfaces": [],
+        "is_react_component": false,
+        "framework_type": "",
+        "is_exported": false,
+        "is_dataclass": false,
+        "is_abstract": false,
+        "is_exception": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "ComplexNesting",
+        "start_line": 208,
+        "end_line": 226,
+        "raw_text": "class ComplexNesting:\n    \"\"\"复杂嵌套结构（测试深度遍历）\"\"\"\n\n    def level1_method(self):\n        \"\"\"第一层方法\"\"\"\n\n        def level2_nested():\n            \"\"\"嵌套函数（第二层）\"\"\"\n\n            class Level3Class:\n                \"\"\"嵌套类（第三层）\"\"\"\n\n                def level4_method(self):\n                    \"\"\"嵌套类的方法（第四层）\"\"\"\n                    return \"深度嵌套\"\n\n            return Level3Class()\n\n        return level2_nested()",
+        "language": "python",
+        "docstring": "复杂嵌套结构（测试深度遍历）",
+        "element_type": "class",
+        "node_type": null,
+        "class_type": "class",
+        "full_qualified_name": "ComplexNesting",
+        "package_name": "",
+        "superclass": null,
+        "interfaces": [],
+        "modifiers": [
+          "dataclass",
+          "timing_decorator"
+        ],
+        "visibility": "public",
+        "methods": [],
+        "annotations": [],
+        "is_nested": false,
+        "parent_class": null,
+        "extends_class": null,
+        "implements_interfaces": [],
+        "is_react_component": false,
+        "framework_type": "",
+        "is_exported": false,
+        "is_dataclass": true,
+        "is_abstract": false,
+        "is_exception": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "Level3Class",
+        "start_line": 217,
+        "end_line": 222,
+        "raw_text": "class Level3Class:\n                \"\"\"嵌套类（第三层）\"\"\"\n\n                def level4_method(self):\n                    \"\"\"嵌套类的方法（第四层）\"\"\"\n                    return \"深度嵌套\"",
+        "language": "python",
+        "docstring": "嵌套类（第三层）",
+        "element_type": "class",
+        "node_type": null,
+        "class_type": "class",
+        "full_qualified_name": "Level3Class",
+        "package_name": "",
+        "superclass": null,
+        "interfaces": [],
+        "modifiers": [],
+        "visibility": "public",
+        "methods": [],
+        "annotations": [],
+        "is_nested": false,
+        "parent_class": null,
+        "extends_class": null,
+        "implements_interfaces": [],
+        "is_react_component": false,
+        "framework_type": "",
+        "is_exported": false,
+        "is_dataclass": false,
+        "is_abstract": false,
+        "is_exception": false,
+        "decorator_start_line": null,
+        "decorators": []
+      }
+    ],
+    "function": [
+      {
+        "name": "__post_init__",
+        "start_line": 26,
+        "end_line": 29,
+        "raw_text": "    def __post_init__(self):\n        \"\"\"数据类的初始化后处理\"\"\"\n        if self.age < 0:\n            raise ValueError(\"年龄不能为负\")",
+        "language": "python",
+        "docstring": "数据类的初始化后处理",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "self"
+        ],
+        "parameter_defaults": {},
+        "return_type": "Any",
+        "modifiers": [],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": false,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 2,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": true,
+        "parent_class": "Person",
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "greet",
+        "start_line": 31,
+        "end_line": 33,
+        "raw_text": "    def greet(self) -> str:\n        \"\"\"问候方法\"\"\"\n        return f\"你好，我是 {self.name}\"",
+        "language": "python",
+        "docstring": "问候方法",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "self"
+        ],
+        "parameter_defaults": {},
+        "return_type": "str",
+        "modifiers": [],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": true,
+        "parent_class": "Person",
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "__init__",
+        "start_line": 39,
+        "end_line": 40,
+        "raw_text": "    def __init__(self, value: int):\n        self._value = value",
+        "language": "python",
+        "docstring": "使用 @property 装饰器（decorated_definition）",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "self",
+          "value: int"
+        ],
+        "parameter_defaults": {},
+        "return_type": "Any",
+        "modifiers": [],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": false,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": true,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": true,
+        "parent_class": "PropertyExample",
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "value",
+        "start_line": 43,
+        "end_line": 45,
+        "raw_text": "    def value(self) -> int:\n        \"\"\"使用 @property 装饰器（decorated_definition）\"\"\"\n        return self._value",
+        "language": "python",
+        "docstring": "使用 @property 装饰器（decorated_definition）",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "self"
+        ],
+        "parameter_defaults": {},
+        "return_type": "int",
+        "modifiers": [
+          "property"
+        ],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": true,
+        "parent_class": "PropertyExample",
+        "framework_type": "",
+        "is_property": true,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": [
+          "property"
+        ]
+      },
+      {
+        "name": "value",
+        "start_line": 48,
+        "end_line": 50,
+        "raw_text": "    def value(self, val: int) -> None:\n        \"\"\"属性 setter（decorated_definition）\"\"\"\n        self._value = val",
+        "language": "python",
+        "docstring": "属性 setter（decorated_definition）",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "self",
+          "val: int"
+        ],
+        "parameter_defaults": {},
+        "return_type": "None",
+        "modifiers": [
+          "value.setter"
+        ],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": true,
+        "parent_class": "PropertyExample",
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": [
+          "value.setter"
+        ]
+      },
+      {
+        "name": "static_method",
+        "start_line": 53,
+        "end_line": 55,
+        "raw_text": "    def static_method() -> str:\n        \"\"\"静态方法（decorated_definition）\"\"\"\n        return \"静态方法\"",
+        "language": "python",
+        "docstring": "静态方法（decorated_definition）",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [],
+        "parameter_defaults": {},
+        "return_type": "str",
+        "modifiers": [
+          "staticmethod"
+        ],
+        "is_async": false,
+        "is_static": true,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": true,
+        "parent_class": "PropertyExample",
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": true,
+        "decorator_start_line": null,
+        "decorators": [
+          "staticmethod"
+        ]
+      },
+      {
+        "name": "class_method",
+        "start_line": 58,
+        "end_line": 60,
+        "raw_text": "    def class_method(cls) -> str:\n        \"\"\"类方法（decorated_definition）\"\"\"\n        return f\"类方法：{cls.__name__}\"",
+        "language": "python",
+        "docstring": "类方法（decorated_definition）",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "cls"
+        ],
+        "parameter_defaults": {},
+        "return_type": "str",
+        "modifiers": [
+          "classmethod"
+        ],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": true,
+        "parent_class": "PropertyExample",
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": true,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": [
+          "classmethod"
+        ]
+      },
+      {
+        "name": "timing_decorator",
+        "start_line": 63,
+        "end_line": 69,
+        "raw_text": "def timing_decorator(func):\n    \"\"\"自定义装饰器\"\"\"\n\n    def wrapper(*args, **kwargs):\n        return func(*args, **kwargs)\n\n    return wrapper",
+        "language": "python",
+        "docstring": "自定义装饰器",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "func"
+        ],
+        "parameter_defaults": {},
+        "return_type": "Any",
+        "modifiers": [],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": false,
+        "parent_class": null,
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "wrapper",
+        "start_line": 66,
+        "end_line": 67,
+        "raw_text": "    def wrapper(*args, **kwargs):\n        return func(*args, **kwargs)",
+        "language": "python",
+        "docstring": null,
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "*args",
+          "**kwargs"
+        ],
+        "parameter_defaults": {},
+        "return_type": "Any",
+        "modifiers": [],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": false,
+        "parent_class": null,
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "decorated_function",
+        "start_line": 73,
+        "end_line": 75,
+        "raw_text": "def decorated_function(x: int) -> int:\n    \"\"\"使用自定义装饰器的函数（decorated_definition）\"\"\"\n    return x * 2",
+        "language": "python",
+        "docstring": "使用自定义装饰器的函数（decorated_definition）",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "x: int"
+        ],
+        "parameter_defaults": {},
+        "return_type": "int",
+        "modifiers": [
+          "timing_decorator"
+        ],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": false,
+        "parent_class": null,
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": [
+          "timing_decorator"
+        ]
+      },
+      {
+        "name": "regular_function",
+        "start_line": 83,
+        "end_line": 85,
+        "raw_text": "def regular_function(a: int, b: int) -> int:\n    \"\"\"常规函数定义\"\"\"\n    return a + b",
+        "language": "python",
+        "docstring": "常规函数定义",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "a: int",
+          "b: int"
+        ],
+        "parameter_defaults": {},
+        "return_type": "int",
+        "modifiers": [],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": false,
+        "parent_class": null,
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "async_function",
+        "start_line": 88,
+        "end_line": 90,
+        "raw_text": "async def async_function(url: str) -> dict:\n    \"\"\"异步函数定义\"\"\"\n    return {\"url\": url, \"data\": \"fetched\"}",
+        "language": "python",
+        "docstring": "异步函数定义",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "url: str"
+        ],
+        "parameter_defaults": {},
+        "return_type": "dict",
+        "modifiers": [],
+        "is_async": true,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": false,
+        "parent_class": null,
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "function_with_defaults",
+        "start_line": 93,
+        "end_line": 95,
+        "raw_text": "def function_with_defaults(x: int, y: int = 10, z: str = \"default\") -> str:\n    \"\"\"带默认参数的函数\"\"\"\n    return f\"{x}, {y}, {z}\"",
+        "language": "python",
+        "docstring": "带默认参数的函数",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "x: int",
+          "y: int = 10",
+          "z: str = \"default\""
+        ],
+        "parameter_defaults": {},
+        "return_type": "str",
+        "modifiers": [],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": false,
+        "parent_class": null,
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "variadic_function",
+        "start_line": 98,
+        "end_line": 100,
+        "raw_text": "def variadic_function(*args: int, **kwargs: str) -> tuple:\n    \"\"\"可变参数函数\"\"\"\n    return args, kwargs",
+        "language": "python",
+        "docstring": "可变参数函数",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "*args: int",
+          "**kwargs: str"
+        ],
+        "parameter_defaults": {},
+        "return_type": "tuple",
+        "modifiers": [],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": false,
+        "parent_class": null,
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "generator_function",
+        "start_line": 120,
+        "end_line": 123,
+        "raw_text": "def generator_function(n: int) -> Iterator[int]:\n    \"\"\"生成器函数（yield）\"\"\"\n    # Intentional yield loop (UP028 - testing yield syntax, not yield from)\n    yield from range(n)",
+        "language": "python",
+        "docstring": "生成器函数（yield）",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "n: int"
+        ],
+        "parameter_defaults": {},
+        "return_type": "Iterator[int]",
+        "modifiers": [],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": true,
+        "is_arrow": false,
+        "is_method": false,
+        "parent_class": null,
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "fibonacci_generator",
+        "start_line": 126,
+        "end_line": 131,
+        "raw_text": "def fibonacci_generator(limit: int) -> Iterator[int]:\n    \"\"\"斐波那契生成器（yield）\"\"\"\n    a, b = 0, 1\n    while a < limit:\n        yield a\n        a, b = b, a + b",
+        "language": "python",
+        "docstring": "斐波那契生成器（yield）",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "limit: int"
+        ],
+        "parameter_defaults": {},
+        "return_type": "Iterator[int]",
+        "modifiers": [],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 2,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": true,
+        "is_arrow": false,
+        "is_method": false,
+        "parent_class": null,
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "async_generator",
+        "start_line": 134,
+        "end_line": 137,
+        "raw_text": "async def async_generator(n: int) -> Any:\n    \"\"\"异步生成器（yield）\"\"\"\n    for i in range(n):\n        yield i",
+        "language": "python",
+        "docstring": "异步生成器（yield）",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "n: int"
+        ],
+        "parameter_defaults": {},
+        "return_type": "Any",
+        "modifiers": [],
+        "is_async": true,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 2,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": true,
+        "is_arrow": false,
+        "is_method": false,
+        "parent_class": null,
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "__init__",
+        "start_line": 159,
+        "end_line": 161,
+        "raw_text": "    def __init__(self, name: str, species: str):\n        self.name = name\n        self.species = species",
+        "language": "python",
+        "docstring": null,
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "self",
+          "name: str",
+          "species: str"
+        ],
+        "parameter_defaults": {},
+        "return_type": "Any",
+        "modifiers": [],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": false,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": true,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": true,
+        "parent_class": "Animal",
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "make_sound",
+        "start_line": 164,
+        "end_line": 166,
+        "raw_text": "    def make_sound(self) -> str:\n        \"\"\"抽象方法（必须被子类实现）\"\"\"\n        pass",
+        "language": "python",
+        "docstring": "抽象方法（必须被子类实现）",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "self"
+        ],
+        "parameter_defaults": {},
+        "return_type": "str",
+        "modifiers": [
+          "abstractmethod"
+        ],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": true,
+        "parent_class": "Animal",
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": [
+          "abstractmethod"
+        ]
+      },
+      {
+        "name": "describe",
+        "start_line": 168,
+        "end_line": 170,
+        "raw_text": "    def describe(self) -> str:\n        \"\"\"普通方法\"\"\"\n        return f\"{self.name} 是一只 {self.species}\"",
+        "language": "python",
+        "docstring": "普通方法",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "self"
+        ],
+        "parameter_defaults": {},
+        "return_type": "str",
+        "modifiers": [],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": true,
+        "parent_class": "Animal",
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "__init__",
+        "start_line": 176,
+        "end_line": 178,
+        "raw_text": "    def __init__(self, name: str, breed: str):\n        super().__init__(name, \"狗\")\n        self.breed = breed",
+        "language": "python",
+        "docstring": "实现抽象方法",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "self",
+          "name: str",
+          "breed: str"
+        ],
+        "parameter_defaults": {},
+        "return_type": "Any",
+        "modifiers": [],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": false,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": true,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": true,
+        "parent_class": "Dog",
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "make_sound",
+        "start_line": 180,
+        "end_line": 182,
+        "raw_text": "    def make_sound(self) -> str:\n        \"\"\"实现抽象方法\"\"\"\n        return \"汪汪！\"",
+        "language": "python",
+        "docstring": "实现抽象方法",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "self"
+        ],
+        "parameter_defaults": {},
+        "return_type": "str",
+        "modifiers": [],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": true,
+        "parent_class": "Dog",
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "fetch",
+        "start_line": 184,
+        "end_line": 186,
+        "raw_text": "    def fetch(self, item: str) -> str:\n        \"\"\"狗的特有方法\"\"\"\n        return f\"{self.name} 捡回了 {item}\"",
+        "language": "python",
+        "docstring": "狗的特有方法",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "self",
+          "item: str"
+        ],
+        "parameter_defaults": {},
+        "return_type": "str",
+        "modifiers": [],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": true,
+        "parent_class": "Dog",
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "inner_method",
+        "start_line": 195,
+        "end_line": 196,
+        "raw_text": "        def inner_method(self) -> str:\n            return \"内部方法\"",
+        "language": "python",
+        "docstring": "外部方法",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "self"
+        ],
+        "parameter_defaults": {},
+        "return_type": "str",
+        "modifiers": [],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": true,
+        "parent_class": "Inner",
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "outer_method",
+        "start_line": 198,
+        "end_line": 200,
+        "raw_text": "    def outer_method(self) -> str:\n        \"\"\"外部方法\"\"\"\n        return \"外部方法\"",
+        "language": "python",
+        "docstring": "外部方法",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "self"
+        ],
+        "parameter_defaults": {},
+        "return_type": "str",
+        "modifiers": [],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": true,
+        "parent_class": "NestedClassExample",
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "level1_method",
+        "start_line": 211,
+        "end_line": 226,
+        "raw_text": "    def level1_method(self):\n        \"\"\"第一层方法\"\"\"\n\n        def level2_nested():\n            \"\"\"嵌套函数（第二层）\"\"\"\n\n            class Level3Class:\n                \"\"\"嵌套类（第三层）\"\"\"\n\n                def level4_method(self):\n                    \"\"\"嵌套类的方法（第四层）\"\"\"\n                    return \"深度嵌套\"\n\n            return Level3Class()\n\n        return level2_nested()",
+        "language": "python",
+        "docstring": "第一层方法",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "self"
+        ],
+        "parameter_defaults": {},
+        "return_type": "Any",
+        "modifiers": [],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": true,
+        "parent_class": "ComplexNesting",
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "level2_nested",
+        "start_line": 214,
+        "end_line": 224,
+        "raw_text": "        def level2_nested():\n            \"\"\"嵌套函数（第二层）\"\"\"\n\n            class Level3Class:\n                \"\"\"嵌套类（第三层）\"\"\"\n\n                def level4_method(self):\n                    \"\"\"嵌套类的方法（第四层）\"\"\"\n                    return \"深度嵌套\"\n\n            return Level3Class()",
+        "language": "python",
+        "docstring": "嵌套函数（第二层）",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [],
+        "parameter_defaults": {},
+        "return_type": "Any",
+        "modifiers": [],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": false,
+        "parent_class": null,
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": []
+      },
+      {
+        "name": "level4_method",
+        "start_line": 220,
+        "end_line": 222,
+        "raw_text": "                def level4_method(self):\n                    \"\"\"嵌套类的方法（第四层）\"\"\"\n                    return \"深度嵌套\"",
+        "language": "python",
+        "docstring": "嵌套类的方法（第四层）",
+        "element_type": "function",
+        "node_type": null,
+        "parameters": [
+          "self"
+        ],
+        "parameter_defaults": {},
+        "return_type": "Any",
+        "modifiers": [],
+        "is_async": false,
+        "is_static": false,
+        "is_private": false,
+        "is_public": true,
+        "is_constant": false,
+        "visibility": "public",
+        "is_suspend": null,
+        "receiver": null,
+        "receiver_type": null,
+        "is_constructor": false,
+        "annotations": [],
+        "throws": [],
+        "complexity_score": 1,
+        "is_abstract": false,
+        "is_final": false,
+        "is_generator": false,
+        "is_arrow": false,
+        "is_method": true,
+        "parent_class": "Level3Class",
+        "framework_type": "",
+        "is_property": false,
+        "is_classmethod": false,
+        "is_staticmethod": false,
+        "decorator_start_line": null,
+        "decorators": []
+      }
+    ],
+    "import": [
+      {
+        "name": "ABC, abstractmethod",
+        "start_line": 8,
+        "end_line": 8,
+        "raw_text": "from abc import ABC, abstractmethod",
+        "language": "python",
+        "docstring": null,
+        "element_type": "import",
+        "node_type": null,
+        "module_name": "abc",
+        "module_path": "",
+        "imported_names": [
+          "ABC",
+          "abstractmethod"
+        ],
+        "is_wildcard": false,
+        "is_static": false,
+        "alias": null,
+        "imported_name": "",
+        "import_statement": "",
+        "line_number": 0
+      },
+      {
+        "name": "Iterator",
+        "start_line": 9,
+        "end_line": 9,
+        "raw_text": "from collections.abc import Iterator",
+        "language": "python",
+        "docstring": null,
+        "element_type": "import",
+        "node_type": null,
+        "module_name": "collections.abc",
+        "module_path": "",
+        "imported_names": [
+          "Iterator"
+        ],
+        "is_wildcard": false,
+        "is_static": false,
+        "alias": null,
+        "imported_name": "",
+        "import_statement": "",
+        "line_number": 0
+      },
+      {
+        "name": "dataclass",
+        "start_line": 10,
+        "end_line": 10,
+        "raw_text": "from dataclasses import dataclass",
+        "language": "python",
+        "docstring": null,
+        "element_type": "import",
+        "node_type": null,
+        "module_name": "dataclasses",
+        "module_path": "",
+        "imported_names": [
+          "dataclass"
+        ],
+        "is_wildcard": false,
+        "is_static": false,
+        "alias": null,
+        "imported_name": "",
+        "import_statement": "",
+        "line_number": 0
+      },
+      {
+        "name": "Any",
+        "start_line": 11,
+        "end_line": 11,
+        "raw_text": "from typing import Any",
+        "language": "python",
+        "docstring": null,
+        "element_type": "import",
+        "node_type": null,
+        "module_name": "typing",
+        "module_path": "",
+        "imported_names": [
+          "Any"
+        ],
+        "is_wildcard": false,
+        "is_static": false,
+        "alias": null,
+        "imported_name": "",
+        "import_statement": "",
+        "line_number": 0
+      }
+    ],
+    "variable": [
+      {
+        "name": "email",
+        "start_line": 24,
+        "end_line": 24,
+        "raw_text": "email: str | None = None",
+        "language": "python",
+        "docstring": null,
+        "element_type": "variable",
+        "node_type": null,
+        "variable_type": "str | None",
+        "modifiers": [],
+        "is_constant": false,
+        "is_static": false,
+        "visibility": "private",
+        "is_val": null,
+        "is_var": null,
+        "initializer": null,
+        "annotations": [],
+        "is_final": false,
+        "is_readonly": false,
+        "field_type": null,
+        "receiver_type": null,
+        "decorators": []
+      }
+    ]
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "meta": {
+    "generator": "rust/fixtures/tools/gen_envelope_cli.py",
+    "tsa_version": "3.1.2",
+    "tsa_module": "/tmp/tsa-v312-venv/lib/python3.12/site-packages/tree_sitter_analyzer/__init__.py",
+    "python_version": "3.12.16",
+    "python_executable": "/tmp/tsa-v312-venv/bin/python",
+    "generated_at_utc": "2026-11-22T06:07:37.808853+00:00",
+    "provenance": "captured from real tree_sitter_analyzer calls; never hand-edited"
+  },
+  "invalid_verdicts": [
+    {
+      "input": "OK",
+      "exc_type": "InvalidVerdictError",
+      "is_value_error": true,
+      "message": "verdict='OK' not in canonical set ['CAUTION', 'ERROR', 'INFO', 'NOT_FOUND', 'REVIEW', 'SAFE', 'UNSAFE', 'WARN']. Use build_error() for error responses."
+    },
+    {
+      "input": "safe",
+      "exc_type": "InvalidVerdictError",
+      "is_value_error": true,
+      "message": "verdict='safe' not in canonical set ['CAUTION', 'ERROR', 'INFO', 'NOT_FOUND', 'REVIEW', 'SAFE', 'UNSAFE', 'WARN']. Use build_error() for error responses."
+    },
+    {
+      "input": "Safe",
+      "exc_type": "InvalidVerdictError",
+      "is_value_error": true,
+      "message": "verdict='Safe' not in canonical set ['CAUTION', 'ERROR', 'INFO', 'NOT_FOUND', 'REVIEW', 'SAFE', 'UNSAFE', 'WARN']. Use build_error() for error responses."
+    },
+    {
+      "input": "CLEAN",
+      "exc_type": "InvalidVerdictError",
+      "is_value_error": true,
+      "message": "verdict='CLEAN' not in canonical set ['CAUTION', 'ERROR', 'INFO', 'NOT_FOUND', 'REVIEW', 'SAFE', 'UNSAFE', 'WARN']. Use build_error() for error responses."
+    },
+    {
+      "input": "NEEDS_REVIEW",
+      "exc_type": "InvalidVerdictError",
+      "is_value_error": true,
+      "message": "verdict='NEEDS_REVIEW' not in canonical set ['CAUTION', 'ERROR', 'INFO', 'NOT_FOUND', 'REVIEW', 'SAFE', 'UNSAFE', 'WARN']. Use build_error() for error responses."
+    },
+    {
+      "input": "LOOKS_GOOD",
+      "exc_type": "InvalidVerdictError",
+      "is_value_error": true,
+      "message": "verdict='LOOKS_GOOD' not in canonical set ['CAUTION', 'ERROR', 'INFO', 'NOT_FOUND', 'REVIEW', 'SAFE', 'UNSAFE', 'WARN']. Use build_error() for error responses."
+    },
+    {
+      "input": "READY",
+      "exc_type": "InvalidVerdictError",
+      "is_value_error": true,
+      "message": "verdict='READY' not in canonical set ['CAUTION', 'ERROR', 'INFO', 'NOT_FOUND', 'REVIEW', 'SAFE', 'UNSAFE', 'WARN']. Use build_error() for error responses."
+    },
+    {
+      "input": "",
+      "exc_type": "InvalidVerdictError",
+      "is_value_error": true,
+      "message": "verdict='' not in canonical set ['CAUTION', 'ERROR', 'INFO', 'NOT_FOUND', 'REVIEW', 'SAFE', 'UNSAFE', 'WARN']. Use build_error() for error responses."
+    },
+    {
+      "input": "info",
+      "exc_type": "InvalidVerdictError",
+      "is_value_error": true,
+      "message": "verdict='info' not in canonical set ['CAUTION', 'ERROR', 'INFO', 'NOT_FOUND', 'REVIEW', 'SAFE', 'UNSAFE', 'WARN']. Use build_error() for error responses."
+    }
+  ]
+}

@@ -1,0 +1,512 @@
+{
+  "meta": {
+    "generator": "rust/fixtures/tools/gen_envelope_cli.py",
+    "tsa_version": "3.1.2",
+    "tsa_module": "/tmp/tsa-v312-venv/lib/python3.12/site-packages/tree_sitter_analyzer/__init__.py",
+    "python_version": "3.12.16",
+    "python_executable": "/tmp/tsa-v312-venv/bin/python",
+    "generated_at_utc": "2026-11-22T06:07:37.808853+00:00",
+    "provenance": "captured from real tree_sitter_analyzer calls; never hand-edited"
+  },
+  "canonical_verdicts": [
+    "CAUTION",
+    "ERROR",
+    "INFO",
+    "NOT_FOUND",
+    "REVIEW",
+    "SAFE",
+    "UNSAFE",
+    "WARN"
+  ],
+  "envelope_rules": [
+    "agent-summary-shape",
+    "base",
+    "completeness-reason-code",
+    "completeness-reasons",
+    "completeness-status",
+    "error-code",
+    "failure-verdict",
+    "success-verdict",
+    "truncation",
+    "verdict-canonical",
+    "verdict-mirror"
+  ],
+  "rules_actually_fired": [
+    "agent-summary-shape",
+    "base",
+    "completeness-reason-code",
+    "completeness-reasons",
+    "completeness-status",
+    "error-code",
+    "failure-verdict",
+    "success-verdict",
+    "truncation",
+    "verdict-canonical",
+    "verdict-mirror"
+  ],
+  "known_completeness_reasons_count": 42,
+  "known_completeness_reasons_sample": [
+    "ACCESSOR_NOT_CALL_EDGES",
+    "ACCESSOR_UNCHECKED",
+    "CALLEES_COVERAGE_UNREPORTED",
+    "CALLEE_UNRESOLVED",
+    "CURSOR_GENERATION_UNVERIFIED",
+    "DECORATOR_MAY_REGISTER",
+    "EMPTY_EVIDENCE_BASE",
+    "INDEX_BUILD_IN_PROGRESS",
+    "INDEX_NOT_CERTIFIED",
+    "INDEX_SCOPE_INCOMPLETE"
+  ],
+  "valid": [
+    {
+      "name": "success_info_payload",
+      "envelope": {
+        "success": true,
+        "verdict": "INFO",
+        "mode": "fixture",
+        "total_count": 2
+      },
+      "validate_tool_response": {
+        "raised": false,
+        "assertion_error": null
+      },
+      "envelope_violations": []
+    },
+    {
+      "name": "failure_error_full",
+      "envelope": {
+        "success": false,
+        "verdict": "ERROR",
+        "error": "bad symbol",
+        "tool": "query",
+        "error_code": "BAD_SYMBOL"
+      },
+      "validate_tool_response": {
+        "raised": false,
+        "assertion_error": null
+      },
+      "envelope_violations": []
+    },
+    {
+      "name": "failure_not_found",
+      "envelope": {
+        "success": false,
+        "error": "gone",
+        "error_type": "file_not_found",
+        "verdict": "NOT_FOUND"
+      },
+      "validate_tool_response": {
+        "raised": false,
+        "assertion_error": null
+      },
+      "envelope_violations": []
+    },
+    {
+      "name": "warn_with_summary_completeness_truncation",
+      "envelope": {
+        "success": true,
+        "verdict": "WARN",
+        "agent_summary": {
+          "summary_line": "q: partial",
+          "verdict": "WARN"
+        },
+        "completeness": "incomplete",
+        "completeness_reasons": [
+          "ACCESSOR_NOT_CALL_EDGES"
+        ],
+        "truncated": true,
+        "total_count": 5,
+        "returned_count": 3
+      },
+      "validate_tool_response": {
+        "raised": false,
+        "assertion_error": null
+      },
+      "envelope_violations": []
+    },
+    {
+      "name": "agent_summary_only",
+      "envelope": {
+        "success": true,
+        "verdict": "SAFE",
+        "message": "no findings"
+      },
+      "validate_tool_response": {
+        "raised": false,
+        "assertion_error": null
+      },
+      "envelope_violations": []
+    }
+  ],
+  "invalid": [
+    {
+      "name": "not_a_dict",
+      "target_rule": "base",
+      "envelope": [
+        "success"
+      ],
+      "validate_tool_response": {
+        "raised": true,
+        "assertion_error": "not_a_dict: ToolResponse must be a dict, got list"
+      },
+      "envelope_violations": [
+        [
+          "base",
+          "not_a_dict: ToolResponse must be a dict, got list"
+        ]
+      ],
+      "rules_fired": [
+        "base"
+      ]
+    },
+    {
+      "name": "missing_success_key",
+      "target_rule": "base",
+      "envelope": {
+        "verdict": "INFO"
+      },
+      "validate_tool_response": {
+        "raised": true,
+        "assertion_error": "missing_success_key: ToolResponse must include a 'success' key"
+      },
+      "envelope_violations": [
+        [
+          "base",
+          "missing_success_key: ToolResponse must include a 'success' key"
+        ]
+      ],
+      "rules_fired": [
+        "base"
+      ]
+    },
+    {
+      "name": "success_not_bool",
+      "target_rule": "base",
+      "envelope": {
+        "success": "yes"
+      },
+      "validate_tool_response": {
+        "raised": true,
+        "assertion_error": "success_not_bool: ToolResponse['success'] must be bool, got str"
+      },
+      "envelope_violations": [
+        [
+          "base",
+          "success_not_bool: ToolResponse['success'] must be bool, got str"
+        ]
+      ],
+      "rules_fired": [
+        "base"
+      ]
+    },
+    {
+      "name": "failure_without_error",
+      "target_rule": "base",
+      "envelope": {
+        "success": false
+      },
+      "validate_tool_response": {
+        "raised": true,
+        "assertion_error": "failure_without_error: ToolResponse with success=False must include 'error'"
+      },
+      "envelope_violations": [
+        [
+          "base",
+          "failure_without_error: ToolResponse with success=False must include 'error'"
+        ]
+      ],
+      "rules_fired": [
+        "base"
+      ]
+    },
+    {
+      "name": "agent_summary_not_dict",
+      "target_rule": "agent-summary-shape",
+      "envelope": {
+        "success": true,
+        "agent_summary": "broken"
+      },
+      "validate_tool_response": {
+        "raised": false,
+        "assertion_error": null
+      },
+      "envelope_violations": [
+        [
+          "agent-summary-shape",
+          "agent_summary must be a dict, got str"
+        ]
+      ],
+      "rules_fired": [
+        "agent-summary-shape"
+      ]
+    },
+    {
+      "name": "agent_summary_verdict_noncanonical",
+      "target_rule": "verdict-canonical",
+      "envelope": {
+        "success": true,
+        "agent_summary": {
+          "verdict": "CLEAN"
+        }
+      },
+      "validate_tool_response": {
+        "raised": false,
+        "assertion_error": null
+      },
+      "envelope_violations": [
+        [
+          "verdict-canonical",
+          "agent_summary.verdict='CLEAN' is not canonical"
+        ]
+      ],
+      "rules_fired": [
+        "verdict-canonical"
+      ]
+    },
+    {
+      "name": "verdict_mirror_mismatch",
+      "target_rule": "verdict-mirror",
+      "envelope": {
+        "success": true,
+        "verdict": "WARN",
+        "agent_summary": {
+          "verdict": "INFO"
+        }
+      },
+      "validate_tool_response": {
+        "raised": false,
+        "assertion_error": null
+      },
+      "envelope_violations": [
+        [
+          "verdict-mirror",
+          "verdict='WARN' but agent_summary.verdict='INFO'"
+        ]
+      ],
+      "rules_fired": [
+        "verdict-mirror"
+      ]
+    },
+    {
+      "name": "failure_with_success_verdict",
+      "target_rule": "failure-verdict",
+      "envelope": {
+        "success": false,
+        "error": "x",
+        "error_type": "internal",
+        "verdict": "WARN"
+      },
+      "validate_tool_response": {
+        "raised": false,
+        "assertion_error": null
+      },
+      "envelope_violations": [
+        [
+          "failure-verdict",
+          "success=False with verdict='WARN'; expected one of ['ERROR', 'NOT_FOUND']"
+        ]
+      ],
+      "rules_fired": [
+        "failure-verdict"
+      ]
+    },
+    {
+      "name": "success_with_error_verdict",
+      "target_rule": "success-verdict",
+      "envelope": {
+        "success": true,
+        "verdict": "ERROR"
+      },
+      "validate_tool_response": {
+        "raised": false,
+        "assertion_error": null
+      },
+      "envelope_violations": [
+        [
+          "success-verdict",
+          "success=True with verdict='ERROR'"
+        ]
+      ],
+      "rules_fired": [
+        "success-verdict"
+      ]
+    },
+    {
+      "name": "failure_without_machine_code",
+      "target_rule": "error-code",
+      "envelope": {
+        "success": false,
+        "error": "boom"
+      },
+      "validate_tool_response": {
+        "raised": false,
+        "assertion_error": null
+      },
+      "envelope_violations": [
+        [
+          "error-code",
+          "success=False without a machine-readable error_code/error_type"
+        ]
+      ],
+      "rules_fired": [
+        "error-code"
+      ]
+    },
+    {
+      "name": "completeness_bad_status",
+      "target_rule": "completeness-status",
+      "envelope": {
+        "success": true,
+        "completeness": "partial"
+      },
+      "validate_tool_response": {
+        "raised": false,
+        "assertion_error": null
+      },
+      "envelope_violations": [
+        [
+          "completeness-status",
+          "completeness='partial' is not one of ['complete', 'incomplete', 'unknown']"
+        ]
+      ],
+      "rules_fired": [
+        "completeness-status"
+      ]
+    },
+    {
+      "name": "incomplete_without_reasons",
+      "target_rule": "completeness-reasons",
+      "envelope": {
+        "success": true,
+        "completeness": "incomplete"
+      },
+      "validate_tool_response": {
+        "raised": false,
+        "assertion_error": null
+      },
+      "envelope_violations": [
+        [
+          "completeness-reasons",
+          "completeness='incomplete' names no reason code"
+        ]
+      ],
+      "rules_fired": [
+        "completeness-reasons"
+      ]
+    },
+    {
+      "name": "complete_with_reasons",
+      "target_rule": "completeness-reasons",
+      "envelope": {
+        "success": true,
+        "completeness": "complete",
+        "completeness_reasons": [
+          "ACCESSOR_NOT_CALL_EDGES"
+        ]
+      },
+      "validate_tool_response": {
+        "raised": false,
+        "assertion_error": null
+      },
+      "envelope_violations": [
+        [
+          "completeness-reasons",
+          "completeness='complete' carries reasons ['ACCESSOR_NOT_CALL_EDGES']"
+        ]
+      ],
+      "rules_fired": [
+        "completeness-reasons"
+      ]
+    },
+    {
+      "name": "unknown_reason_code",
+      "target_rule": "completeness-reason-code",
+      "envelope": {
+        "success": true,
+        "completeness": "incomplete",
+        "completeness_reasons": [
+          "TOTALLY_UNKNOWN_CODE"
+        ]
+      },
+      "validate_tool_response": {
+        "raised": false,
+        "assertion_error": null
+      },
+      "envelope_violations": [
+        [
+          "completeness-reason-code",
+          "unknown completeness reason codes ['TOTALLY_UNKNOWN_CODE']"
+        ]
+      ],
+      "rules_fired": [
+        "completeness-reason-code"
+      ]
+    },
+    {
+      "name": "truncated_false_but_counts_disagree",
+      "target_rule": "truncation",
+      "envelope": {
+        "success": true,
+        "total_count": 10,
+        "returned_count": 3,
+        "truncated": false
+      },
+      "validate_tool_response": {
+        "raised": false,
+        "assertion_error": null
+      },
+      "envelope_violations": [
+        [
+          "truncation",
+          "truncated=False but returned_count=3 < total_count=10"
+        ]
+      ],
+      "rules_fired": [
+        "truncation"
+      ]
+    },
+    {
+      "name": "truncated_not_bool",
+      "target_rule": "truncation",
+      "envelope": {
+        "success": true,
+        "truncated": "no"
+      },
+      "validate_tool_response": {
+        "raised": false,
+        "assertion_error": null
+      },
+      "envelope_violations": [
+        [
+          "truncation",
+          "truncated must be bool, got str"
+        ]
+      ],
+      "rules_fired": [
+        "truncation"
+      ]
+    },
+    {
+      "name": "listed_exceeds_total",
+      "target_rule": "truncation",
+      "envelope": {
+        "success": true,
+        "total_matches": 2,
+        "returned_matches": 7
+      },
+      "validate_tool_response": {
+        "raised": false,
+        "assertion_error": null
+      },
+      "envelope_violations": [
+        [
+          "truncation",
+          "returned_matches=7 exceeds total_matches=2"
+        ]
+      ],
+      "rules_fired": [
+        "truncation"
+      ]
+    }
+  ]
+}

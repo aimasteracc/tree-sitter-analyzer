@@ -1,0 +1,3030 @@
+{
+  "cases": [
+    {
+      "case": "structure_missing_action",
+      "input": {},
+      "result": {
+        "agent_summary": {
+          "next_step": "Set action to one of: analyze, ast_path, class_detail, class_tree, explore, outline, read, signatures, sitemap.",
+          "summary_line": "structure: missing required parameter 'action'",
+          "verdict": "ERROR"
+        },
+        "available_actions": [
+          "analyze",
+          "ast_path",
+          "class_detail",
+          "class_tree",
+          "explore",
+          "outline",
+          "read",
+          "signatures",
+          "sitemap"
+        ],
+        "error": "missing required parameter 'action'",
+        "error_type": "validation",
+        "facade": "structure",
+        "success": false,
+        "suggestion": null,
+        "summary_line": "structure: missing required parameter 'action'",
+        "verdict": "ERROR"
+      }
+    },
+    {
+      "case": "structure_unknown_action_with_suggestion",
+      "input": {
+        "action": "outlin"
+      },
+      "result": {
+        "agent_summary": {
+          "next_step": "Did you mean action 'outline'? Else set action to one of: analyze, ast_path, class_detail, class_tree, explore, outline, read, signatures, sitemap.",
+          "summary_line": "structure: did you mean: outline? unknown action 'outlin'; valid actions are: analyze, ast_path, class_detail, class_tree, explore, outline, read, signatures, sitemap",
+          "verdict": "ERROR"
+        },
+        "available_actions": [
+          "analyze",
+          "ast_path",
+          "class_detail",
+          "class_tree",
+          "explore",
+          "outline",
+          "read",
+          "signatures",
+          "sitemap"
+        ],
+        "error": "did you mean: outline? unknown action 'outlin'; valid actions are: analyze, ast_path, class_detail, class_tree, explore, outline, read, signatures, sitemap",
+        "error_type": "validation",
+        "facade": "structure",
+        "success": false,
+        "suggestion": "outline",
+        "summary_line": "structure: did you mean: outline? unknown action 'outlin'; valid actions are: analyze, ast_path, class_detail, class_tree, explore, outline, read, signatures, sitemap",
+        "verdict": "ERROR"
+      }
+    },
+    {
+      "case": "structure_unknown_action_without_suggestion",
+      "input": {
+        "action": "zzzzzz"
+      },
+      "result": {
+        "agent_summary": {
+          "next_step": "Set action to one of: analyze, ast_path, class_detail, class_tree, explore, outline, read, signatures, sitemap.",
+          "summary_line": "structure: unknown action 'zzzzzz'; valid actions are: analyze, ast_path, class_detail, class_tree, explore, outline, read, signatures, sitemap",
+          "verdict": "ERROR"
+        },
+        "available_actions": [
+          "analyze",
+          "ast_path",
+          "class_detail",
+          "class_tree",
+          "explore",
+          "outline",
+          "read",
+          "signatures",
+          "sitemap"
+        ],
+        "error": "unknown action 'zzzzzz'; valid actions are: analyze, ast_path, class_detail, class_tree, explore, outline, read, signatures, sitemap",
+        "error_type": "validation",
+        "facade": "structure",
+        "success": false,
+        "suggestion": null,
+        "summary_line": "structure: unknown action 'zzzzzz'; valid actions are: analyze, ast_path, class_detail, class_tree, explore, outline, read, signatures, sitemap",
+        "verdict": "ERROR"
+      }
+    },
+    {
+      "case": "structure_help_no_target",
+      "input": {
+        "action": "help"
+      },
+      "result": {
+        "action": "help",
+        "actions": [
+          "analyze",
+          "ast_path",
+          "class_detail",
+          "class_tree",
+          "explore",
+          "outline",
+          "read",
+          "signatures",
+          "sitemap"
+        ],
+        "agent_summary": {
+          "next_step": "Set target_action to one of actions to fetch its exact input schema.",
+          "summary_line": "structure: 9 actions available",
+          "verdict": "INFO"
+        },
+        "core_profile": {
+          "steps": [
+            {
+              "action": "symbol",
+              "facade": "search",
+              "position": 1
+            },
+            {
+              "action": "outline",
+              "facade": "structure",
+              "position": 2
+            },
+            {
+              "action": "pulse",
+              "facade": "nav",
+              "position": 3
+            },
+            {
+              "action": "impact",
+              "facade": "edit",
+              "position": 4
+            },
+            {
+              "action": "verify",
+              "facade": "edit",
+              "position": 5
+            }
+          ],
+          "version": "agent-core/v1"
+        },
+        "description": "Code-intelligence (codegraph-compatible) structural analysis facade. Covers codegraph_explore (multi-symbol source), codegraph_class_hierarchy, codegraph_class_inspect, codegraph_sitemap, codegraph_ast_path, and code-outline/complexity in one tool. Pick a capability via `action`:\n- action=outline — AST-based symbol outline for a file or directory. Params: file_path, language, depth.\n- action=analyze — complexity + structure analysis (cyclomatic, nesting, cohesion). Params: file_path, language.\n- action=signatures — LIGHTWEIGHT method-directory (~25 %% of full tokens). Lists every method as 'name →returnType(Np) startLine-endLine' grouped by class. Use FIRST for large files (>500 lines) to pick methods by name, then action=read to fetch bodies. Supports Python, Java, and other languages. Params: file_path[, language] (language auto-detected from file extension when omitted).\n- action=ast_path — AST path from a specific node up to the file root (navigate the parse tree, codegraph_ast_path equivalent). Params: file_path, line, column.\n- action=sitemap — high-level symbol sitemap of a directory or the whole project (what is defined where, codegraph_sitemap equivalent). Params: mode (full|api|module|flat), directory (relative path, optional), language, max_files. NOTE: takes a directory, not file_path — omit directory for the whole project.\n- action=class_tree — class inheritance/subclass hierarchy (codegraph_class_hierarchy equivalent). Params: class_name, mode (subclasses|superclasses|supers|tree|impact|all|summary). 'supers' is an alias for 'superclasses'.\n- action=class_detail — detailed class inspection: fields, methods, visibility, inherited members (codegraph_class_inspect equivalent). Params: class_name (or query as alias), language.\n- action=explore — multi-symbol source explorer: show source of several related symbols grouped in one capped response (codegraph_explore equivalent). Params: symbols (list) or symbol/query (string), maxSymbols, maxFiles.\n- action=read — extract a file section (single) or multiple sections (batch). Single: file_path + start_line [+ end_line + column bounds]. Batch: requests=[{file_path, sections:[{start_line, end_line}]}].",
+        "facade": "structure",
+        "hint": "Set target_action to one of actions to fetch its exact input schema.",
+        "schema_request": {
+          "action": "help",
+          "target_action": "<action>"
+        },
+        "schema_status": "not_requested",
+        "success": true,
+        "summary_line": "structure: 9 actions available",
+        "target_action": null,
+        "verdict": "INFO"
+      }
+    },
+    {
+      "case": "structure_help_target_outline",
+      "input": {
+        "action": "help",
+        "target_action": "outline"
+      },
+      "result": {
+        "action": "help",
+        "action_schema": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "outline",
+              "description": "Facade action selector.",
+              "type": "string"
+            },
+            "file_path": {
+              "description": "Path to the source file to outline. Must be within project boundaries.",
+              "type": "string"
+            },
+            "include_fields": {
+              "default": false,
+              "description": "Include class fields/attributes in the outline. Default false to keep outline compact.",
+              "type": "boolean"
+            },
+            "include_imports": {
+              "default": false,
+              "description": "Include import statements summary in the outline. Default false.",
+              "type": "boolean"
+            },
+            "language": {
+              "description": "Programming language (optional, auto-detected from file extension). Example: 'java', 'python', 'go'",
+              "type": "string"
+            },
+            "listed_cap": {
+              "default": 50,
+              "description": "Maximum number of classes (and top-level functions) to list in the response.  Default 50.  Raise for larger files; pre-cap totals (classes_total, top_level_functions_total) are always present so you know how many elements exist.  NEVER mark this required — runtime-resolved param.",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "output_format": {
+              "default": "json",
+              "description": "Output format: JSON.",
+              "enum": [
+                "json"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "file_path"
+          ],
+          "type": "object"
+        },
+        "actions": [
+          "analyze",
+          "ast_path",
+          "class_detail",
+          "class_tree",
+          "explore",
+          "outline",
+          "read",
+          "signatures",
+          "sitemap"
+        ],
+        "agent_summary": {
+          "next_step": "Call structure with arguments matching action_schema.",
+          "summary_line": "structure.outline: action schema available",
+          "verdict": "INFO"
+        },
+        "core_profile": {
+          "steps": [
+            {
+              "action": "symbol",
+              "facade": "search",
+              "position": 1
+            },
+            {
+              "action": "outline",
+              "facade": "structure",
+              "position": 2
+            },
+            {
+              "action": "pulse",
+              "facade": "nav",
+              "position": 3
+            },
+            {
+              "action": "impact",
+              "facade": "edit",
+              "position": 4
+            },
+            {
+              "action": "verify",
+              "facade": "edit",
+              "position": 5
+            }
+          ],
+          "version": "agent-core/v1"
+        },
+        "facade": "structure",
+        "hint": "Call structure with arguments matching action_schema.",
+        "schema_request": {
+          "action": "help",
+          "target_action": "<action>"
+        },
+        "schema_status": "available",
+        "success": true,
+        "summary_line": "structure.outline: action schema available",
+        "target_action": "outline",
+        "verdict": "INFO"
+      }
+    },
+    {
+      "case": "structure_invalid_output_format",
+      "input": {
+        "action": "outline",
+        "output_format": "yaml"
+      },
+      "result": {
+        "action": "outline",
+        "agent_summary": {
+          "next_step": "Set 'output_format' to one of: 'json'.",
+          "summary_line": "structure.outline: invalid value for 'output_format': 'yaml'",
+          "verdict": "ERROR"
+        },
+        "allowed_arguments": [
+          "action",
+          "file_path",
+          "include_fields",
+          "include_imports",
+          "language",
+          "listed_cap",
+          "output_format"
+        ],
+        "allowed_values": {
+          "output_format": [
+            "json"
+          ]
+        },
+        "error": "structure.outline: invalid value for 'output_format': 'yaml'",
+        "error_code": "INVALID_ARGUMENT",
+        "error_type": "validation",
+        "facade": "structure",
+        "invalid_arguments": [
+          "output_format"
+        ],
+        "invalid_values": {
+          "output_format": "yaml"
+        },
+        "success": false,
+        "suggestions": {},
+        "summary_line": "structure.outline: invalid value for 'output_format': 'yaml'",
+        "verdict": "ERROR"
+      }
+    },
+    {
+      "case": "structure_invalid_argument",
+      "input": {
+        "action": "outline",
+        "bogus_param": 123
+      },
+      "result": {
+        "action": "outline",
+        "agent_summary": {
+          "next_step": "Use only arguments supported by action 'outline': action, file_path, include_fields, include_imports, language, listed_cap, output_format.",
+          "summary_line": "structure.outline: unsupported arguments: bogus_param",
+          "verdict": "ERROR"
+        },
+        "allowed_arguments": [
+          "action",
+          "file_path",
+          "include_fields",
+          "include_imports",
+          "language",
+          "listed_cap",
+          "output_format"
+        ],
+        "error": "structure.outline: unsupported arguments: bogus_param",
+        "error_code": "INVALID_ARGUMENT",
+        "error_type": "validation",
+        "facade": "structure",
+        "invalid_arguments": [
+          "bogus_param"
+        ],
+        "success": false,
+        "suggestions": {},
+        "summary_line": "structure.outline: unsupported arguments: bogus_param",
+        "verdict": "ERROR"
+      }
+    },
+    {
+      "case": "structure_read_fractional_line_bound",
+      "exception_message": "read action: line/column bounds must be integers, got 1.5",
+      "exception_type": "ValueError",
+      "input": {
+        "action": "read",
+        "file_path": "tests/golden/corpus_python.py",
+        "start_line": 1.5
+      }
+    },
+    {
+      "case": "structure_analyze",
+      "input": {
+        "action": "analyze",
+        "file_path": "tests/golden/corpus_python.py"
+      },
+      "result": {
+        "agent_summary": {
+          "next_step": "query_code(query_key='methods') to get detailed method list with filters",
+          "summary_line": "tests/golden/corpus_python.py python 257 lines classes=8 methods=28 fields=1",
+          "verdict": "INFO"
+        },
+        "classes": [
+          {
+            "annotations": [],
+            "extends": null,
+            "implements": [],
+            "line_range": {
+              "end": 33,
+              "start": 19
+            },
+            "name": "Person",
+            "type": "class",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "extends": null,
+            "implements": [],
+            "line_range": {
+              "end": 60,
+              "start": 36
+            },
+            "name": "PropertyExample",
+            "type": "class",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "extends": "ABC",
+            "implements": [],
+            "line_range": {
+              "end": 170,
+              "start": 156
+            },
+            "name": "Animal",
+            "type": "abstract_class",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "extends": "Animal",
+            "implements": [],
+            "line_range": {
+              "end": 186,
+              "start": 173
+            },
+            "name": "Dog",
+            "type": "class",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "extends": null,
+            "implements": [],
+            "line_range": {
+              "end": 200,
+              "start": 189
+            },
+            "name": "NestedClassExample",
+            "type": "class",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "extends": null,
+            "implements": [],
+            "line_range": {
+              "end": 196,
+              "start": 192
+            },
+            "name": "Inner",
+            "type": "class",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "extends": null,
+            "implements": [],
+            "line_range": {
+              "end": 226,
+              "start": 208
+            },
+            "name": "ComplexNesting",
+            "type": "class",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "extends": null,
+            "implements": [],
+            "line_range": {
+              "end": 222,
+              "start": 217
+            },
+            "name": "Level3Class",
+            "type": "class",
+            "visibility": "public"
+          }
+        ],
+        "fields": [
+          {
+            "annotations": [],
+            "line_range": {
+              "end": 24,
+              "start": 24
+            },
+            "modifiers": [
+              "private"
+            ],
+            "name": "email",
+            "type": null,
+            "visibility": "private"
+          }
+        ],
+        "file_path": "tests/golden/corpus_python.py",
+        "format_type": "full",
+        "imports": [
+          {
+            "is_static": false,
+            "is_wildcard": false,
+            "module_name": "abc",
+            "name": "ABC, abstractmethod",
+            "raw_text": "from abc import ABC, abstractmethod",
+            "statement": ""
+          },
+          {
+            "is_static": false,
+            "is_wildcard": false,
+            "module_name": "collections.abc",
+            "name": "Iterator",
+            "raw_text": "from collections.abc import Iterator",
+            "statement": ""
+          },
+          {
+            "is_static": false,
+            "is_wildcard": false,
+            "module_name": "dataclasses",
+            "name": "dataclass",
+            "raw_text": "from dataclasses import dataclass",
+            "statement": ""
+          },
+          {
+            "is_static": false,
+            "is_wildcard": false,
+            "module_name": "typing",
+            "name": "Any",
+            "raw_text": "from typing import Any",
+            "statement": ""
+          }
+        ],
+        "language": "python",
+        "metadata": {
+          "classes_count": 8,
+          "fields_count": 1,
+          "methods_count": 28,
+          "total_lines": 257
+        },
+        "methods": [
+          {
+            "annotations": [],
+            "complexity_score": 2,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 29,
+              "start": 26
+            },
+            "modifiers": [],
+            "name": "__post_init__",
+            "parameters": [
+              {
+                "name": "param",
+                "type": "self"
+              }
+            ],
+            "return_type": "Any",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 33,
+              "start": 31
+            },
+            "modifiers": [],
+            "name": "greet",
+            "parameters": [
+              {
+                "name": "param",
+                "type": "self"
+              }
+            ],
+            "return_type": "str",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": true,
+            "is_static": false,
+            "line_range": {
+              "end": 40,
+              "start": 39
+            },
+            "modifiers": [],
+            "name": "__init__",
+            "parameters": [
+              {
+                "name": "param",
+                "type": "self"
+              },
+              {
+                "name": "value",
+                "type": "int"
+              }
+            ],
+            "return_type": "Any",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 45,
+              "start": 43
+            },
+            "modifiers": [],
+            "name": "value",
+            "parameters": [
+              {
+                "name": "param",
+                "type": "self"
+              }
+            ],
+            "return_type": "int",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 50,
+              "start": 48
+            },
+            "modifiers": [],
+            "name": "value",
+            "parameters": [
+              {
+                "name": "param",
+                "type": "self"
+              },
+              {
+                "name": "val",
+                "type": "int"
+              }
+            ],
+            "return_type": "None",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": false,
+            "is_static": true,
+            "line_range": {
+              "end": 55,
+              "start": 53
+            },
+            "modifiers": [
+              "static"
+            ],
+            "name": "static_method",
+            "parameters": [],
+            "return_type": "str",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 60,
+              "start": 58
+            },
+            "modifiers": [],
+            "name": "class_method",
+            "parameters": [
+              {
+                "name": "param",
+                "type": "cls"
+              }
+            ],
+            "return_type": "str",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 69,
+              "start": 63
+            },
+            "modifiers": [],
+            "name": "timing_decorator",
+            "parameters": [
+              {
+                "name": "param",
+                "type": "func"
+              }
+            ],
+            "return_type": "Any",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 67,
+              "start": 66
+            },
+            "modifiers": [],
+            "name": "wrapper",
+            "parameters": [
+              {
+                "name": "param",
+                "type": "*args"
+              },
+              {
+                "name": "param",
+                "type": "**kwargs"
+              }
+            ],
+            "return_type": "Any",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 75,
+              "start": 73
+            },
+            "modifiers": [],
+            "name": "decorated_function",
+            "parameters": [
+              {
+                "name": "x",
+                "type": "int"
+              }
+            ],
+            "return_type": "int",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 85,
+              "start": 83
+            },
+            "modifiers": [],
+            "name": "regular_function",
+            "parameters": [
+              {
+                "name": "a",
+                "type": "int"
+              },
+              {
+                "name": "b",
+                "type": "int"
+              }
+            ],
+            "return_type": "int",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 90,
+              "start": 88
+            },
+            "modifiers": [],
+            "name": "async_function",
+            "parameters": [
+              {
+                "name": "url",
+                "type": "str"
+              }
+            ],
+            "return_type": "dict",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 95,
+              "start": 93
+            },
+            "modifiers": [],
+            "name": "function_with_defaults",
+            "parameters": [
+              {
+                "name": "x",
+                "type": "int"
+              },
+              {
+                "default": "10",
+                "name": "y",
+                "type": "int"
+              },
+              {
+                "default": "\"default\"",
+                "name": "z",
+                "type": "str"
+              }
+            ],
+            "return_type": "str",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 100,
+              "start": 98
+            },
+            "modifiers": [],
+            "name": "variadic_function",
+            "parameters": [
+              {
+                "name": "*args",
+                "type": "int"
+              },
+              {
+                "name": "**kwargs",
+                "type": "str"
+              }
+            ],
+            "return_type": "tuple",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 123,
+              "start": 120
+            },
+            "modifiers": [],
+            "name": "generator_function",
+            "parameters": [
+              {
+                "name": "n",
+                "type": "int"
+              }
+            ],
+            "return_type": "Iterator[int]",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 2,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 131,
+              "start": 126
+            },
+            "modifiers": [],
+            "name": "fibonacci_generator",
+            "parameters": [
+              {
+                "name": "limit",
+                "type": "int"
+              }
+            ],
+            "return_type": "Iterator[int]",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 2,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 137,
+              "start": 134
+            },
+            "modifiers": [],
+            "name": "async_generator",
+            "parameters": [
+              {
+                "name": "n",
+                "type": "int"
+              }
+            ],
+            "return_type": "Any",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": true,
+            "is_static": false,
+            "line_range": {
+              "end": 161,
+              "start": 159
+            },
+            "modifiers": [],
+            "name": "__init__",
+            "parameters": [
+              {
+                "name": "param",
+                "type": "self"
+              },
+              {
+                "name": "name",
+                "type": "str"
+              },
+              {
+                "name": "species",
+                "type": "str"
+              }
+            ],
+            "return_type": "Any",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 166,
+              "start": 164
+            },
+            "modifiers": [],
+            "name": "make_sound",
+            "parameters": [
+              {
+                "name": "param",
+                "type": "self"
+              }
+            ],
+            "return_type": "str",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 170,
+              "start": 168
+            },
+            "modifiers": [],
+            "name": "describe",
+            "parameters": [
+              {
+                "name": "param",
+                "type": "self"
+              }
+            ],
+            "return_type": "str",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": true,
+            "is_static": false,
+            "line_range": {
+              "end": 178,
+              "start": 176
+            },
+            "modifiers": [],
+            "name": "__init__",
+            "parameters": [
+              {
+                "name": "param",
+                "type": "self"
+              },
+              {
+                "name": "name",
+                "type": "str"
+              },
+              {
+                "name": "breed",
+                "type": "str"
+              }
+            ],
+            "return_type": "Any",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 182,
+              "start": 180
+            },
+            "modifiers": [],
+            "name": "make_sound",
+            "parameters": [
+              {
+                "name": "param",
+                "type": "self"
+              }
+            ],
+            "return_type": "str",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 186,
+              "start": 184
+            },
+            "modifiers": [],
+            "name": "fetch",
+            "parameters": [
+              {
+                "name": "param",
+                "type": "self"
+              },
+              {
+                "name": "item",
+                "type": "str"
+              }
+            ],
+            "return_type": "str",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 196,
+              "start": 195
+            },
+            "modifiers": [],
+            "name": "inner_method",
+            "parameters": [
+              {
+                "name": "param",
+                "type": "self"
+              }
+            ],
+            "return_type": "str",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 200,
+              "start": 198
+            },
+            "modifiers": [],
+            "name": "outer_method",
+            "parameters": [
+              {
+                "name": "param",
+                "type": "self"
+              }
+            ],
+            "return_type": "str",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 226,
+              "start": 211
+            },
+            "modifiers": [],
+            "name": "level1_method",
+            "parameters": [
+              {
+                "name": "param",
+                "type": "self"
+              }
+            ],
+            "return_type": "Any",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 224,
+              "start": 214
+            },
+            "modifiers": [],
+            "name": "level2_nested",
+            "parameters": [],
+            "return_type": "Any",
+            "visibility": "public"
+          },
+          {
+            "annotations": [],
+            "complexity_score": 1,
+            "is_constructor": false,
+            "is_static": false,
+            "line_range": {
+              "end": 222,
+              "start": 220
+            },
+            "modifiers": [],
+            "name": "level4_method",
+            "parameters": [
+              {
+                "name": "param",
+                "type": "self"
+              }
+            ],
+            "return_type": "Any",
+            "visibility": "public"
+          }
+        ],
+        "next_steps": [
+          "query_code(query_key='methods') to get detailed method list with filters",
+          "query_code(query_key='classes') to examine class relationships"
+        ],
+        "output_format": "json",
+        "statistics": {
+          "class_count": 8,
+          "field_count": 1,
+          "import_count": 4,
+          "method_count": 28,
+          "total_lines": 257
+        },
+        "success": true,
+        "summary_line": "tests/golden/corpus_python.py python 257 lines classes=8 methods=28 fields=1",
+        "table_format": "full",
+        "table_output": "# Module: corpus_python\n\n## Imports\n```python\nfrom abc import ABC, abstractmethod\nfrom collections.abc import Iterator\nfrom dataclasses import dataclass\nfrom typing import Any\n```\n\n## Classes Overview\n| Class | Type | Visibility | Lines | Methods | Fields |\n|-------|------|------------|-------|---------|--------|\n| Person | class | public | 19-33 | 2 | 1 |\n| PropertyExample | class | public | 36-60 | 5 | 0 |\n| Animal | abstract_class | public | 156-170 | 3 | 0 |\n| Dog | class | public | 173-186 | 3 | 0 |\n| NestedClassExample | class | public | 189-200 | 2 | 0 |\n| Inner | class | public | 192-196 | 1 | 0 |\n| ComplexNesting | class | public | 208-226 | 3 | 0 |\n| Level3Class | class | public | 217-222 | 1 | 0 |\n\n## Person (19-33)\n### Public Methods\n| Method | Signature | Vis | Lines | Cx | Doc |\n|--------|-----------|-----|-------|----|----| \n| __post_init__ | (param:self):Any | + | 26-29 | 2 | - |\n| greet | (param:self):str | + | 31-33 | 1 | - |\n\n## PropertyExample (36-60)\n### Public Methods\n| Method | Signature | Vis | Lines | Cx | Doc |\n|--------|-----------|-----|-------|----|----| \n| __init__ | (param:self, value:int):Any | + | 39-40 | 1 | - |\n| value | (param:self):int | + | 43-45 | 1 | - |\n| value | (param:self, val:int):None | + | 48-50 | 1 | - |\n| static_method | ():str [static] | + | 53-55 | 1 | - |\n| class_method | (param:cls):str | + | 58-60 | 1 | - |\n\n## Animal (156-170)\n### Public Methods\n| Method | Signature | Vis | Lines | Cx | Doc |\n|--------|-----------|-----|-------|----|----| \n| __init__ | (param:self, name:str, species:str):Any | + | 159-161 | 1 | - |\n| make_sound | (param:self):str | + | 164-166 | 1 | - |\n| describe | (param:self):str | + | 168-170 | 1 | - |\n\n## Dog (173-186)\n### Public Methods\n| Method | Signature | Vis | Lines | Cx | Doc |\n|--------|-----------|-----|-------|----|----| \n| __init__ | (param:self, name:str, breed:str):Any | + | 176-178 | 1 | - |\n| make_sound | (param:self):str | + | 180-182 | 1 | - |\n| fetch | (param:self, item:str):str | + | 184-186 | 1 | - |\n\n## NestedClassExample (189-200)\n### Public Methods\n| Method | Signature | Vis | Lines | Cx | Doc |\n|--------|-----------|-----|-------|----|----| \n| inner_method | (param:self):str | + | 195-196 | 1 | - |\n| outer_method | (param:self):str | + | 198-200 | 1 | - |\n\n## Inner (192-196)\n### Public Methods\n| Method | Signature | Vis | Lines | Cx | Doc |\n|--------|-----------|-----|-------|----|----| \n| inner_method | (param:self):str | + | 195-196 | 1 | - |\n\n## ComplexNesting (208-226)\n### Public Methods\n| Method | Signature | Vis | Lines | Cx | Doc |\n|--------|-----------|-----|-------|----|----| \n| level1_method | (param:self):Any | + | 211-226 | 1 | - |\n| level2_nested | ():Any | + | 214-224 | 1 | - |\n| level4_method | (param:self):Any | + | 220-222 | 1 | - |\n\n## Level3Class (217-222)\n### Public Methods\n| Method | Signature | Vis | Lines | Cx | Doc |\n|--------|-----------|-----|-------|----|----| \n| level4_method | (param:self):Any | + | 220-222 | 1 | - |\n\n## Module Functions\n| Method | Signature | Vis | Lines | Cx | Doc |\n|--------|-----------|-----|-------|----|----| \n| timing_decorator | (param:func):Any | + | 63-69 | 1 | - |\n| wrapper | (param:*args, param:**kwargs):Any | + | 66-67 | 1 | - |\n| decorated_function | (x:int):int | + | 73-75 | 1 | - |\n| regular_function | (a:int, b:int):int | + | 83-85 | 1 | - |\n| async_function | (url:str):dict | + | 88-90 | 1 | - |\n| function_with_defaults | (x:int, y:int, z:str):str | + | 93-95 | 1 | - |\n| variadic_function | (*args:int, **kwargs:str):tuple | + | 98-100 | 1 | - |\n| generator_function | (n:int):Iterator[int] | + | 120-123 | 1 | - |\n| fibonacci_generator | (limit:int):Iterator[int] | + | 126-131 | 2 | - |\n| async_generator | (n:int):Any | + | 134-137 | 2 | - |",
+        "verdict": "INFO"
+      }
+    },
+    {
+      "case": "structure_outline",
+      "input": {
+        "action": "outline",
+        "file_path": "tests/golden/corpus_python.py"
+      },
+      "result": {
+        "agent_summary": {
+          "next_step": "extract_code_section for the method you need (use line ranges from outline)",
+          "summary_line": "tests/golden/corpus_python.py outline: 8 classes, 28 methods, 1 fields",
+          "verdict": "INFO"
+        },
+        "class_count": 8,
+        "classes": [
+          {
+            "extends": null,
+            "implements": [],
+            "line_end": 33,
+            "line_start": 19,
+            "methods": [
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 29,
+                "line_start": 26,
+                "name": "__post_init__",
+                "parameters": [
+                  "self"
+                ],
+                "return_type": "Any",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 33,
+                "line_start": 31,
+                "name": "greet",
+                "parameters": [
+                  "self"
+                ],
+                "return_type": "str",
+                "visibility": "public"
+              }
+            ],
+            "name": "Person",
+            "type": "class"
+          },
+          {
+            "extends": null,
+            "implements": [],
+            "line_end": 60,
+            "line_start": 36,
+            "methods": [
+              {
+                "is_constructor": true,
+                "is_static": false,
+                "line_end": 40,
+                "line_start": 39,
+                "name": "__init__",
+                "parameters": [
+                  "self",
+                  "value: int"
+                ],
+                "return_type": "Any",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 45,
+                "line_start": 43,
+                "name": "value",
+                "parameters": [
+                  "self"
+                ],
+                "return_type": "int",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 50,
+                "line_start": 48,
+                "name": "value",
+                "parameters": [
+                  "self",
+                  "val: int"
+                ],
+                "return_type": "None",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": true,
+                "line_end": 55,
+                "line_start": 53,
+                "name": "static_method",
+                "parameters": [],
+                "return_type": "str",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 60,
+                "line_start": 58,
+                "name": "class_method",
+                "parameters": [
+                  "cls"
+                ],
+                "return_type": "str",
+                "visibility": "public"
+              }
+            ],
+            "name": "PropertyExample",
+            "type": "class"
+          },
+          {
+            "extends": "ABC",
+            "implements": [],
+            "line_end": 170,
+            "line_start": 156,
+            "methods": [
+              {
+                "is_constructor": true,
+                "is_static": false,
+                "line_end": 161,
+                "line_start": 159,
+                "name": "__init__",
+                "parameters": [
+                  "self",
+                  "name: str",
+                  "species: str"
+                ],
+                "return_type": "Any",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 166,
+                "line_start": 164,
+                "name": "make_sound",
+                "parameters": [
+                  "self"
+                ],
+                "return_type": "str",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 170,
+                "line_start": 168,
+                "name": "describe",
+                "parameters": [
+                  "self"
+                ],
+                "return_type": "str",
+                "visibility": "public"
+              }
+            ],
+            "name": "Animal",
+            "type": "abstract_class"
+          },
+          {
+            "extends": "Animal",
+            "implements": [],
+            "line_end": 186,
+            "line_start": 173,
+            "methods": [
+              {
+                "is_constructor": true,
+                "is_static": false,
+                "line_end": 178,
+                "line_start": 176,
+                "name": "__init__",
+                "parameters": [
+                  "self",
+                  "name: str",
+                  "breed: str"
+                ],
+                "return_type": "Any",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 182,
+                "line_start": 180,
+                "name": "make_sound",
+                "parameters": [
+                  "self"
+                ],
+                "return_type": "str",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 186,
+                "line_start": 184,
+                "name": "fetch",
+                "parameters": [
+                  "self",
+                  "item: str"
+                ],
+                "return_type": "str",
+                "visibility": "public"
+              }
+            ],
+            "name": "Dog",
+            "type": "class"
+          },
+          {
+            "extends": null,
+            "implements": [],
+            "line_end": 200,
+            "line_start": 189,
+            "methods": [
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 196,
+                "line_start": 195,
+                "name": "inner_method",
+                "parameters": [
+                  "self"
+                ],
+                "return_type": "str",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 200,
+                "line_start": 198,
+                "name": "outer_method",
+                "parameters": [
+                  "self"
+                ],
+                "return_type": "str",
+                "visibility": "public"
+              }
+            ],
+            "name": "NestedClassExample",
+            "type": "class"
+          },
+          {
+            "extends": null,
+            "implements": [],
+            "line_end": 196,
+            "line_start": 192,
+            "methods": [],
+            "name": "Inner",
+            "type": "class"
+          },
+          {
+            "extends": null,
+            "implements": [],
+            "line_end": 226,
+            "line_start": 208,
+            "methods": [
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 226,
+                "line_start": 211,
+                "name": "level1_method",
+                "parameters": [
+                  "self"
+                ],
+                "return_type": "Any",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 224,
+                "line_start": 214,
+                "name": "level2_nested",
+                "parameters": [],
+                "return_type": "Any",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 222,
+                "line_start": 220,
+                "name": "level4_method",
+                "parameters": [
+                  "self"
+                ],
+                "return_type": "Any",
+                "visibility": "public"
+              }
+            ],
+            "name": "ComplexNesting",
+            "type": "class"
+          },
+          {
+            "extends": null,
+            "implements": [],
+            "line_end": 222,
+            "line_start": 217,
+            "methods": [],
+            "name": "Level3Class",
+            "type": "class"
+          }
+        ],
+        "classes_listed": 8,
+        "classes_total": 8,
+        "field_count": 1,
+        "file_path": "tests/golden/corpus_python.py",
+        "import_count": 4,
+        "language": "python",
+        "listed_cap": 50,
+        "method_count": 28,
+        "outline": {
+          "classes": [
+            {
+              "extends": null,
+              "implements": [],
+              "line_end": 33,
+              "line_start": 19,
+              "methods": [
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 29,
+                  "line_start": 26,
+                  "name": "__post_init__",
+                  "parameters": [
+                    "self"
+                  ],
+                  "return_type": "Any",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 33,
+                  "line_start": 31,
+                  "name": "greet",
+                  "parameters": [
+                    "self"
+                  ],
+                  "return_type": "str",
+                  "visibility": "public"
+                }
+              ],
+              "name": "Person",
+              "type": "class"
+            },
+            {
+              "extends": null,
+              "implements": [],
+              "line_end": 60,
+              "line_start": 36,
+              "methods": [
+                {
+                  "is_constructor": true,
+                  "is_static": false,
+                  "line_end": 40,
+                  "line_start": 39,
+                  "name": "__init__",
+                  "parameters": [
+                    "self",
+                    "value: int"
+                  ],
+                  "return_type": "Any",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 45,
+                  "line_start": 43,
+                  "name": "value",
+                  "parameters": [
+                    "self"
+                  ],
+                  "return_type": "int",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 50,
+                  "line_start": 48,
+                  "name": "value",
+                  "parameters": [
+                    "self",
+                    "val: int"
+                  ],
+                  "return_type": "None",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": true,
+                  "line_end": 55,
+                  "line_start": 53,
+                  "name": "static_method",
+                  "parameters": [],
+                  "return_type": "str",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 60,
+                  "line_start": 58,
+                  "name": "class_method",
+                  "parameters": [
+                    "cls"
+                  ],
+                  "return_type": "str",
+                  "visibility": "public"
+                }
+              ],
+              "name": "PropertyExample",
+              "type": "class"
+            },
+            {
+              "extends": "ABC",
+              "implements": [],
+              "line_end": 170,
+              "line_start": 156,
+              "methods": [
+                {
+                  "is_constructor": true,
+                  "is_static": false,
+                  "line_end": 161,
+                  "line_start": 159,
+                  "name": "__init__",
+                  "parameters": [
+                    "self",
+                    "name: str",
+                    "species: str"
+                  ],
+                  "return_type": "Any",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 166,
+                  "line_start": 164,
+                  "name": "make_sound",
+                  "parameters": [
+                    "self"
+                  ],
+                  "return_type": "str",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 170,
+                  "line_start": 168,
+                  "name": "describe",
+                  "parameters": [
+                    "self"
+                  ],
+                  "return_type": "str",
+                  "visibility": "public"
+                }
+              ],
+              "name": "Animal",
+              "type": "abstract_class"
+            },
+            {
+              "extends": "Animal",
+              "implements": [],
+              "line_end": 186,
+              "line_start": 173,
+              "methods": [
+                {
+                  "is_constructor": true,
+                  "is_static": false,
+                  "line_end": 178,
+                  "line_start": 176,
+                  "name": "__init__",
+                  "parameters": [
+                    "self",
+                    "name: str",
+                    "breed: str"
+                  ],
+                  "return_type": "Any",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 182,
+                  "line_start": 180,
+                  "name": "make_sound",
+                  "parameters": [
+                    "self"
+                  ],
+                  "return_type": "str",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 186,
+                  "line_start": 184,
+                  "name": "fetch",
+                  "parameters": [
+                    "self",
+                    "item: str"
+                  ],
+                  "return_type": "str",
+                  "visibility": "public"
+                }
+              ],
+              "name": "Dog",
+              "type": "class"
+            },
+            {
+              "extends": null,
+              "implements": [],
+              "line_end": 200,
+              "line_start": 189,
+              "methods": [
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 196,
+                  "line_start": 195,
+                  "name": "inner_method",
+                  "parameters": [
+                    "self"
+                  ],
+                  "return_type": "str",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 200,
+                  "line_start": 198,
+                  "name": "outer_method",
+                  "parameters": [
+                    "self"
+                  ],
+                  "return_type": "str",
+                  "visibility": "public"
+                }
+              ],
+              "name": "NestedClassExample",
+              "type": "class"
+            },
+            {
+              "extends": null,
+              "implements": [],
+              "line_end": 196,
+              "line_start": 192,
+              "methods": [],
+              "name": "Inner",
+              "type": "class"
+            },
+            {
+              "extends": null,
+              "implements": [],
+              "line_end": 226,
+              "line_start": 208,
+              "methods": [
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 226,
+                  "line_start": 211,
+                  "name": "level1_method",
+                  "parameters": [
+                    "self"
+                  ],
+                  "return_type": "Any",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 224,
+                  "line_start": 214,
+                  "name": "level2_nested",
+                  "parameters": [],
+                  "return_type": "Any",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 222,
+                  "line_start": 220,
+                  "name": "level4_method",
+                  "parameters": [
+                    "self"
+                  ],
+                  "return_type": "Any",
+                  "visibility": "public"
+                }
+              ],
+              "name": "ComplexNesting",
+              "type": "class"
+            },
+            {
+              "extends": null,
+              "implements": [],
+              "line_end": 222,
+              "line_start": 217,
+              "methods": [],
+              "name": "Level3Class",
+              "type": "class"
+            }
+          ],
+          "file_path": "tests/golden/corpus_python.py",
+          "language": "python",
+          "package": null,
+          "statistics": {
+            "class_count": 8,
+            "field_count": 1,
+            "import_count": 4,
+            "method_count": 28
+          },
+          "top_level_functions": [
+            {
+              "is_constructor": false,
+              "is_static": false,
+              "line_end": 69,
+              "line_start": 63,
+              "name": "timing_decorator",
+              "parameters": [
+                "func"
+              ],
+              "return_type": "Any",
+              "visibility": "public"
+            },
+            {
+              "is_constructor": false,
+              "is_static": false,
+              "line_end": 75,
+              "line_start": 73,
+              "name": "decorated_function",
+              "parameters": [
+                "x: int"
+              ],
+              "return_type": "int",
+              "visibility": "public"
+            },
+            {
+              "is_constructor": false,
+              "is_static": false,
+              "line_end": 85,
+              "line_start": 83,
+              "name": "regular_function",
+              "parameters": [
+                "a: int",
+                "b: int"
+              ],
+              "return_type": "int",
+              "visibility": "public"
+            },
+            {
+              "is_constructor": false,
+              "is_static": false,
+              "line_end": 90,
+              "line_start": 88,
+              "name": "async_function",
+              "parameters": [
+                "url: str"
+              ],
+              "return_type": "dict",
+              "visibility": "public"
+            },
+            {
+              "is_constructor": false,
+              "is_static": false,
+              "line_end": 95,
+              "line_start": 93,
+              "name": "function_with_defaults",
+              "parameters": [
+                "x: int",
+                "y: int = 10",
+                "z: str = \"default\""
+              ],
+              "return_type": "str",
+              "visibility": "public"
+            },
+            {
+              "is_constructor": false,
+              "is_static": false,
+              "line_end": 100,
+              "line_start": 98,
+              "name": "variadic_function",
+              "parameters": [
+                "*args: int",
+                "**kwargs: str"
+              ],
+              "return_type": "tuple",
+              "visibility": "public"
+            },
+            {
+              "is_constructor": false,
+              "is_static": false,
+              "line_end": 123,
+              "line_start": 120,
+              "name": "generator_function",
+              "parameters": [
+                "n: int"
+              ],
+              "return_type": "Iterator[int]",
+              "visibility": "public"
+            },
+            {
+              "is_constructor": false,
+              "is_static": false,
+              "line_end": 131,
+              "line_start": 126,
+              "name": "fibonacci_generator",
+              "parameters": [
+                "limit: int"
+              ],
+              "return_type": "Iterator[int]",
+              "visibility": "public"
+            },
+            {
+              "is_constructor": false,
+              "is_static": false,
+              "line_end": 137,
+              "line_start": 134,
+              "name": "async_generator",
+              "parameters": [
+                "n: int"
+              ],
+              "return_type": "Any",
+              "visibility": "public"
+            }
+          ],
+          "total_lines": 257
+        },
+        "package": null,
+        "success": true,
+        "summary_line": "tests/golden/corpus_python.py outline: 8 classes, 28 methods, 1 fields",
+        "top_level_functions": [
+          {
+            "is_constructor": false,
+            "is_static": false,
+            "line_end": 69,
+            "line_start": 63,
+            "name": "timing_decorator",
+            "parameters": [
+              "func"
+            ],
+            "return_type": "Any",
+            "visibility": "public"
+          },
+          {
+            "is_constructor": false,
+            "is_static": false,
+            "line_end": 75,
+            "line_start": 73,
+            "name": "decorated_function",
+            "parameters": [
+              "x: int"
+            ],
+            "return_type": "int",
+            "visibility": "public"
+          },
+          {
+            "is_constructor": false,
+            "is_static": false,
+            "line_end": 85,
+            "line_start": 83,
+            "name": "regular_function",
+            "parameters": [
+              "a: int",
+              "b: int"
+            ],
+            "return_type": "int",
+            "visibility": "public"
+          },
+          {
+            "is_constructor": false,
+            "is_static": false,
+            "line_end": 90,
+            "line_start": 88,
+            "name": "async_function",
+            "parameters": [
+              "url: str"
+            ],
+            "return_type": "dict",
+            "visibility": "public"
+          },
+          {
+            "is_constructor": false,
+            "is_static": false,
+            "line_end": 95,
+            "line_start": 93,
+            "name": "function_with_defaults",
+            "parameters": [
+              "x: int",
+              "y: int = 10",
+              "z: str = \"default\""
+            ],
+            "return_type": "str",
+            "visibility": "public"
+          },
+          {
+            "is_constructor": false,
+            "is_static": false,
+            "line_end": 100,
+            "line_start": 98,
+            "name": "variadic_function",
+            "parameters": [
+              "*args: int",
+              "**kwargs: str"
+            ],
+            "return_type": "tuple",
+            "visibility": "public"
+          },
+          {
+            "is_constructor": false,
+            "is_static": false,
+            "line_end": 123,
+            "line_start": 120,
+            "name": "generator_function",
+            "parameters": [
+              "n: int"
+            ],
+            "return_type": "Iterator[int]",
+            "visibility": "public"
+          },
+          {
+            "is_constructor": false,
+            "is_static": false,
+            "line_end": 131,
+            "line_start": 126,
+            "name": "fibonacci_generator",
+            "parameters": [
+              "limit: int"
+            ],
+            "return_type": "Iterator[int]",
+            "visibility": "public"
+          },
+          {
+            "is_constructor": false,
+            "is_static": false,
+            "line_end": 137,
+            "line_start": 134,
+            "name": "async_generator",
+            "parameters": [
+              "n: int"
+            ],
+            "return_type": "Any",
+            "visibility": "public"
+          }
+        ],
+        "top_level_functions_listed": 9,
+        "top_level_functions_total": 9,
+        "total_lines": 257,
+        "truncated": false,
+        "verdict": "INFO"
+      }
+    },
+    {
+      "case": "structure_read_lines_1_to_15",
+      "input": {
+        "action": "read",
+        "end_line": 15,
+        "file_path": "tests/golden/corpus_python.py",
+        "start_line": 1
+      },
+      "result": {
+        "agent_summary": {
+          "content_format": "text",
+          "content_length": 524,
+          "file_lines": 257,
+          "file_path": "tests/golden/corpus_python.py",
+          "lines_extracted": 15,
+          "next_step": "Inspect the content, then use query_code or CC Grep tool for related code.",
+          "output_saved": false,
+          "range": {
+            "end_column": null,
+            "end_line": 15,
+            "start_column": null,
+            "start_line": 1
+          },
+          "risk": "low",
+          "stop_condition": "The extracted range contains the complete symbol or block needed.",
+          "suggested_tool": "query_code",
+          "summary_line": "partial_read range=1-15 lines_extracted=15 chars=524",
+          "suppress_output": false,
+          "verdict": "INFO"
+        },
+        "content": "\"\"\"\nPython Golden Corpus - Grammar Coverage MECE 测试\n\n此文件包含所有 Python 关键 node types，用于验证 tree-sitter-python 语法覆盖完整性。\n特别关注 Issue #112 的回归测试：decorated_definition 必须被正确提取。\n\"\"\"\n\nfrom abc import ABC, abstractmethod\nfrom collections.abc import Iterator\nfrom dataclasses import dataclass\nfrom typing import Any\n\n# ============================================================================\n# DECORATED_DEFINITION - Issue #112 Regression Test (CRITICAL)\n# ============================================================================\n",
+        "content_length": 524,
+        "file_lines": 257,
+        "file_path": "tests/golden/corpus_python.py",
+        "lines_extracted": 15,
+        "next_steps": [
+          "query_code to find related elements in this file",
+          "Use CC Grep tool to find callers or usages of this code"
+        ],
+        "partial_content_result": "--- Partial Read Result ---\nFile: tests/golden/corpus_python.py\nRange: Line 1-15\nCharacters read: 524\n{\n  \"file_path\": \"tests/golden/corpus_python.py\",\n  \"range\": {\n    \"start_line\": 1,\n    \"end_line\": 15,\n    \"start_column\": null,\n    \"end_column\": null\n  },\n  \"content\": \"\\\"\\\"\\\"\\nPython Golden Corpus - Grammar Coverage MECE 测试\\n\\n此文件包含所有 Python 关键 node types，用于验证 tree-sitter-python 语法覆盖完整性。\\n特别关注 Issue #112 的回归测试：decorated_definition 必须被正确提取。\\n\\\"\\\"\\\"\\n\\nfrom abc import ABC, abstractmethod\\nfrom collections.abc import Iterator\\nfrom dataclasses import dataclass\\nfrom typing import Any\\n\\n# ============================================================================\\n# DECORATED_DEFINITION - Issue #112 Regression Test (CRITICAL)\\n# ============================================================================\\n\",\n  \"content_length\": 524\n}",
+        "range": {
+          "end_column": null,
+          "end_line": 15,
+          "start_column": null,
+          "start_line": 1
+        },
+        "success": true,
+        "summary_line": "partial_read range=1-15 lines_extracted=15 chars=524",
+        "verdict": "INFO"
+      }
+    },
+    {
+      "case": "legacy_get_code_outline",
+      "input": {
+        "file_path": "tests/golden/corpus_python.py"
+      },
+      "result": {
+        "agent_summary": {
+          "next_step": "extract_code_section for the method you need (use line ranges from outline)",
+          "summary_line": "tests/golden/corpus_python.py outline: 8 classes, 28 methods, 1 fields",
+          "verdict": "INFO"
+        },
+        "class_count": 8,
+        "classes": [
+          {
+            "extends": null,
+            "implements": [],
+            "line_end": 33,
+            "line_start": 19,
+            "methods": [
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 29,
+                "line_start": 26,
+                "name": "__post_init__",
+                "parameters": [
+                  "self"
+                ],
+                "return_type": "Any",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 33,
+                "line_start": 31,
+                "name": "greet",
+                "parameters": [
+                  "self"
+                ],
+                "return_type": "str",
+                "visibility": "public"
+              }
+            ],
+            "name": "Person",
+            "type": "class"
+          },
+          {
+            "extends": null,
+            "implements": [],
+            "line_end": 60,
+            "line_start": 36,
+            "methods": [
+              {
+                "is_constructor": true,
+                "is_static": false,
+                "line_end": 40,
+                "line_start": 39,
+                "name": "__init__",
+                "parameters": [
+                  "self",
+                  "value: int"
+                ],
+                "return_type": "Any",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 45,
+                "line_start": 43,
+                "name": "value",
+                "parameters": [
+                  "self"
+                ],
+                "return_type": "int",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 50,
+                "line_start": 48,
+                "name": "value",
+                "parameters": [
+                  "self",
+                  "val: int"
+                ],
+                "return_type": "None",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": true,
+                "line_end": 55,
+                "line_start": 53,
+                "name": "static_method",
+                "parameters": [],
+                "return_type": "str",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 60,
+                "line_start": 58,
+                "name": "class_method",
+                "parameters": [
+                  "cls"
+                ],
+                "return_type": "str",
+                "visibility": "public"
+              }
+            ],
+            "name": "PropertyExample",
+            "type": "class"
+          },
+          {
+            "extends": "ABC",
+            "implements": [],
+            "line_end": 170,
+            "line_start": 156,
+            "methods": [
+              {
+                "is_constructor": true,
+                "is_static": false,
+                "line_end": 161,
+                "line_start": 159,
+                "name": "__init__",
+                "parameters": [
+                  "self",
+                  "name: str",
+                  "species: str"
+                ],
+                "return_type": "Any",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 166,
+                "line_start": 164,
+                "name": "make_sound",
+                "parameters": [
+                  "self"
+                ],
+                "return_type": "str",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 170,
+                "line_start": 168,
+                "name": "describe",
+                "parameters": [
+                  "self"
+                ],
+                "return_type": "str",
+                "visibility": "public"
+              }
+            ],
+            "name": "Animal",
+            "type": "abstract_class"
+          },
+          {
+            "extends": "Animal",
+            "implements": [],
+            "line_end": 186,
+            "line_start": 173,
+            "methods": [
+              {
+                "is_constructor": true,
+                "is_static": false,
+                "line_end": 178,
+                "line_start": 176,
+                "name": "__init__",
+                "parameters": [
+                  "self",
+                  "name: str",
+                  "breed: str"
+                ],
+                "return_type": "Any",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 182,
+                "line_start": 180,
+                "name": "make_sound",
+                "parameters": [
+                  "self"
+                ],
+                "return_type": "str",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 186,
+                "line_start": 184,
+                "name": "fetch",
+                "parameters": [
+                  "self",
+                  "item: str"
+                ],
+                "return_type": "str",
+                "visibility": "public"
+              }
+            ],
+            "name": "Dog",
+            "type": "class"
+          },
+          {
+            "extends": null,
+            "implements": [],
+            "line_end": 200,
+            "line_start": 189,
+            "methods": [
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 196,
+                "line_start": 195,
+                "name": "inner_method",
+                "parameters": [
+                  "self"
+                ],
+                "return_type": "str",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 200,
+                "line_start": 198,
+                "name": "outer_method",
+                "parameters": [
+                  "self"
+                ],
+                "return_type": "str",
+                "visibility": "public"
+              }
+            ],
+            "name": "NestedClassExample",
+            "type": "class"
+          },
+          {
+            "extends": null,
+            "implements": [],
+            "line_end": 196,
+            "line_start": 192,
+            "methods": [],
+            "name": "Inner",
+            "type": "class"
+          },
+          {
+            "extends": null,
+            "implements": [],
+            "line_end": 226,
+            "line_start": 208,
+            "methods": [
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 226,
+                "line_start": 211,
+                "name": "level1_method",
+                "parameters": [
+                  "self"
+                ],
+                "return_type": "Any",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 224,
+                "line_start": 214,
+                "name": "level2_nested",
+                "parameters": [],
+                "return_type": "Any",
+                "visibility": "public"
+              },
+              {
+                "is_constructor": false,
+                "is_static": false,
+                "line_end": 222,
+                "line_start": 220,
+                "name": "level4_method",
+                "parameters": [
+                  "self"
+                ],
+                "return_type": "Any",
+                "visibility": "public"
+              }
+            ],
+            "name": "ComplexNesting",
+            "type": "class"
+          },
+          {
+            "extends": null,
+            "implements": [],
+            "line_end": 222,
+            "line_start": 217,
+            "methods": [],
+            "name": "Level3Class",
+            "type": "class"
+          }
+        ],
+        "classes_listed": 8,
+        "classes_total": 8,
+        "deprecation": {
+          "action": "outline",
+          "deprecated": true,
+          "facade": "structure",
+          "message": "'get_code_outline' is deprecated; call 'structure' with action='outline'. The legacy name works for one release cycle.",
+          "old_name": "get_code_outline"
+        },
+        "field_count": 1,
+        "file_path": "tests/golden/corpus_python.py",
+        "import_count": 4,
+        "language": "python",
+        "listed_cap": 50,
+        "method_count": 28,
+        "outline": {
+          "classes": [
+            {
+              "extends": null,
+              "implements": [],
+              "line_end": 33,
+              "line_start": 19,
+              "methods": [
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 29,
+                  "line_start": 26,
+                  "name": "__post_init__",
+                  "parameters": [
+                    "self"
+                  ],
+                  "return_type": "Any",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 33,
+                  "line_start": 31,
+                  "name": "greet",
+                  "parameters": [
+                    "self"
+                  ],
+                  "return_type": "str",
+                  "visibility": "public"
+                }
+              ],
+              "name": "Person",
+              "type": "class"
+            },
+            {
+              "extends": null,
+              "implements": [],
+              "line_end": 60,
+              "line_start": 36,
+              "methods": [
+                {
+                  "is_constructor": true,
+                  "is_static": false,
+                  "line_end": 40,
+                  "line_start": 39,
+                  "name": "__init__",
+                  "parameters": [
+                    "self",
+                    "value: int"
+                  ],
+                  "return_type": "Any",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 45,
+                  "line_start": 43,
+                  "name": "value",
+                  "parameters": [
+                    "self"
+                  ],
+                  "return_type": "int",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 50,
+                  "line_start": 48,
+                  "name": "value",
+                  "parameters": [
+                    "self",
+                    "val: int"
+                  ],
+                  "return_type": "None",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": true,
+                  "line_end": 55,
+                  "line_start": 53,
+                  "name": "static_method",
+                  "parameters": [],
+                  "return_type": "str",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 60,
+                  "line_start": 58,
+                  "name": "class_method",
+                  "parameters": [
+                    "cls"
+                  ],
+                  "return_type": "str",
+                  "visibility": "public"
+                }
+              ],
+              "name": "PropertyExample",
+              "type": "class"
+            },
+            {
+              "extends": "ABC",
+              "implements": [],
+              "line_end": 170,
+              "line_start": 156,
+              "methods": [
+                {
+                  "is_constructor": true,
+                  "is_static": false,
+                  "line_end": 161,
+                  "line_start": 159,
+                  "name": "__init__",
+                  "parameters": [
+                    "self",
+                    "name: str",
+                    "species: str"
+                  ],
+                  "return_type": "Any",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 166,
+                  "line_start": 164,
+                  "name": "make_sound",
+                  "parameters": [
+                    "self"
+                  ],
+                  "return_type": "str",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 170,
+                  "line_start": 168,
+                  "name": "describe",
+                  "parameters": [
+                    "self"
+                  ],
+                  "return_type": "str",
+                  "visibility": "public"
+                }
+              ],
+              "name": "Animal",
+              "type": "abstract_class"
+            },
+            {
+              "extends": "Animal",
+              "implements": [],
+              "line_end": 186,
+              "line_start": 173,
+              "methods": [
+                {
+                  "is_constructor": true,
+                  "is_static": false,
+                  "line_end": 178,
+                  "line_start": 176,
+                  "name": "__init__",
+                  "parameters": [
+                    "self",
+                    "name: str",
+                    "breed: str"
+                  ],
+                  "return_type": "Any",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 182,
+                  "line_start": 180,
+                  "name": "make_sound",
+                  "parameters": [
+                    "self"
+                  ],
+                  "return_type": "str",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 186,
+                  "line_start": 184,
+                  "name": "fetch",
+                  "parameters": [
+                    "self",
+                    "item: str"
+                  ],
+                  "return_type": "str",
+                  "visibility": "public"
+                }
+              ],
+              "name": "Dog",
+              "type": "class"
+            },
+            {
+              "extends": null,
+              "implements": [],
+              "line_end": 200,
+              "line_start": 189,
+              "methods": [
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 196,
+                  "line_start": 195,
+                  "name": "inner_method",
+                  "parameters": [
+                    "self"
+                  ],
+                  "return_type": "str",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 200,
+                  "line_start": 198,
+                  "name": "outer_method",
+                  "parameters": [
+                    "self"
+                  ],
+                  "return_type": "str",
+                  "visibility": "public"
+                }
+              ],
+              "name": "NestedClassExample",
+              "type": "class"
+            },
+            {
+              "extends": null,
+              "implements": [],
+              "line_end": 196,
+              "line_start": 192,
+              "methods": [],
+              "name": "Inner",
+              "type": "class"
+            },
+            {
+              "extends": null,
+              "implements": [],
+              "line_end": 226,
+              "line_start": 208,
+              "methods": [
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 226,
+                  "line_start": 211,
+                  "name": "level1_method",
+                  "parameters": [
+                    "self"
+                  ],
+                  "return_type": "Any",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 224,
+                  "line_start": 214,
+                  "name": "level2_nested",
+                  "parameters": [],
+                  "return_type": "Any",
+                  "visibility": "public"
+                },
+                {
+                  "is_constructor": false,
+                  "is_static": false,
+                  "line_end": 222,
+                  "line_start": 220,
+                  "name": "level4_method",
+                  "parameters": [
+                    "self"
+                  ],
+                  "return_type": "Any",
+                  "visibility": "public"
+                }
+              ],
+              "name": "ComplexNesting",
+              "type": "class"
+            },
+            {
+              "extends": null,
+              "implements": [],
+              "line_end": 222,
+              "line_start": 217,
+              "methods": [],
+              "name": "Level3Class",
+              "type": "class"
+            }
+          ],
+          "file_path": "tests/golden/corpus_python.py",
+          "language": "python",
+          "package": null,
+          "statistics": {
+            "class_count": 8,
+            "field_count": 1,
+            "import_count": 4,
+            "method_count": 28
+          },
+          "top_level_functions": [
+            {
+              "is_constructor": false,
+              "is_static": false,
+              "line_end": 69,
+              "line_start": 63,
+              "name": "timing_decorator",
+              "parameters": [
+                "func"
+              ],
+              "return_type": "Any",
+              "visibility": "public"
+            },
+            {
+              "is_constructor": false,
+              "is_static": false,
+              "line_end": 75,
+              "line_start": 73,
+              "name": "decorated_function",
+              "parameters": [
+                "x: int"
+              ],
+              "return_type": "int",
+              "visibility": "public"
+            },
+            {
+              "is_constructor": false,
+              "is_static": false,
+              "line_end": 85,
+              "line_start": 83,
+              "name": "regular_function",
+              "parameters": [
+                "a: int",
+                "b: int"
+              ],
+              "return_type": "int",
+              "visibility": "public"
+            },
+            {
+              "is_constructor": false,
+              "is_static": false,
+              "line_end": 90,
+              "line_start": 88,
+              "name": "async_function",
+              "parameters": [
+                "url: str"
+              ],
+              "return_type": "dict",
+              "visibility": "public"
+            },
+            {
+              "is_constructor": false,
+              "is_static": false,
+              "line_end": 95,
+              "line_start": 93,
+              "name": "function_with_defaults",
+              "parameters": [
+                "x: int",
+                "y: int = 10",
+                "z: str = \"default\""
+              ],
+              "return_type": "str",
+              "visibility": "public"
+            },
+            {
+              "is_constructor": false,
+              "is_static": false,
+              "line_end": 100,
+              "line_start": 98,
+              "name": "variadic_function",
+              "parameters": [
+                "*args: int",
+                "**kwargs: str"
+              ],
+              "return_type": "tuple",
+              "visibility": "public"
+            },
+            {
+              "is_constructor": false,
+              "is_static": false,
+              "line_end": 123,
+              "line_start": 120,
+              "name": "generator_function",
+              "parameters": [
+                "n: int"
+              ],
+              "return_type": "Iterator[int]",
+              "visibility": "public"
+            },
+            {
+              "is_constructor": false,
+              "is_static": false,
+              "line_end": 131,
+              "line_start": 126,
+              "name": "fibonacci_generator",
+              "parameters": [
+                "limit: int"
+              ],
+              "return_type": "Iterator[int]",
+              "visibility": "public"
+            },
+            {
+              "is_constructor": false,
+              "is_static": false,
+              "line_end": 137,
+              "line_start": 134,
+              "name": "async_generator",
+              "parameters": [
+                "n: int"
+              ],
+              "return_type": "Any",
+              "visibility": "public"
+            }
+          ],
+          "total_lines": 257
+        },
+        "package": null,
+        "success": true,
+        "summary_line": "tests/golden/corpus_python.py outline: 8 classes, 28 methods, 1 fields",
+        "top_level_functions": [
+          {
+            "is_constructor": false,
+            "is_static": false,
+            "line_end": 69,
+            "line_start": 63,
+            "name": "timing_decorator",
+            "parameters": [
+              "func"
+            ],
+            "return_type": "Any",
+            "visibility": "public"
+          },
+          {
+            "is_constructor": false,
+            "is_static": false,
+            "line_end": 75,
+            "line_start": 73,
+            "name": "decorated_function",
+            "parameters": [
+              "x: int"
+            ],
+            "return_type": "int",
+            "visibility": "public"
+          },
+          {
+            "is_constructor": false,
+            "is_static": false,
+            "line_end": 85,
+            "line_start": 83,
+            "name": "regular_function",
+            "parameters": [
+              "a: int",
+              "b: int"
+            ],
+            "return_type": "int",
+            "visibility": "public"
+          },
+          {
+            "is_constructor": false,
+            "is_static": false,
+            "line_end": 90,
+            "line_start": 88,
+            "name": "async_function",
+            "parameters": [
+              "url: str"
+            ],
+            "return_type": "dict",
+            "visibility": "public"
+          },
+          {
+            "is_constructor": false,
+            "is_static": false,
+            "line_end": 95,
+            "line_start": 93,
+            "name": "function_with_defaults",
+            "parameters": [
+              "x: int",
+              "y: int = 10",
+              "z: str = \"default\""
+            ],
+            "return_type": "str",
+            "visibility": "public"
+          },
+          {
+            "is_constructor": false,
+            "is_static": false,
+            "line_end": 100,
+            "line_start": 98,
+            "name": "variadic_function",
+            "parameters": [
+              "*args: int",
+              "**kwargs: str"
+            ],
+            "return_type": "tuple",
+            "visibility": "public"
+          },
+          {
+            "is_constructor": false,
+            "is_static": false,
+            "line_end": 123,
+            "line_start": 120,
+            "name": "generator_function",
+            "parameters": [
+              "n: int"
+            ],
+            "return_type": "Iterator[int]",
+            "visibility": "public"
+          },
+          {
+            "is_constructor": false,
+            "is_static": false,
+            "line_end": 131,
+            "line_start": 126,
+            "name": "fibonacci_generator",
+            "parameters": [
+              "limit: int"
+            ],
+            "return_type": "Iterator[int]",
+            "visibility": "public"
+          },
+          {
+            "is_constructor": false,
+            "is_static": false,
+            "line_end": 137,
+            "line_start": 134,
+            "name": "async_generator",
+            "parameters": [
+              "n: int"
+            ],
+            "return_type": "Any",
+            "visibility": "public"
+          }
+        ],
+        "top_level_functions_listed": 9,
+        "top_level_functions_total": 9,
+        "total_lines": 257,
+        "truncated": false,
+        "verdict": "INFO"
+      }
+    },
+    {
+      "case": "legacy_codegraph_call_graph",
+      "deprecation": {
+        "action": "callers",
+        "deprecated": true,
+        "facade": "nav",
+        "message": "'codegraph_call_graph' is deprecated; call 'nav' with action='callers'. The legacy name works for one release cycle.",
+        "old_name": "codegraph_call_graph"
+      },
+      "forwarded_to_nav": {
+        "action": "callers",
+        "file_path": "tests/golden/corpus_python.py",
+        "function_name": "regular_function",
+        "scope": "graph"
+      },
+      "input": {
+        "file_path": "tests/golden/corpus_python.py",
+        "function_name": "regular_function"
+      },
+      "result": {
+        "agent_summary": {
+          "next_step": "Drill into a specific function with mode='callers' or 'callees'.",
+          "summary_line": "call_graph callers function=regular_function caller_count=0",
+          "verdict": "INFO"
+        },
+        "cache_age_s": "<normalized>",
+        "cache_invalidated_reason": "cold",
+        "caller_count": 0,
+        "callers": [],
+        "deprecation": {
+          "action": "callers",
+          "deprecated": true,
+          "facade": "nav",
+          "message": "'codegraph_call_graph' is deprecated; call 'nav' with action='callers'. The legacy name works for one release cycle.",
+          "old_name": "codegraph_call_graph"
+        },
+        "elapsed_ms": "<normalized>",
+        "function": "regular_function",
+        "function_indexed": true,
+        "mode": "callers",
+        "success": true,
+        "summary_line": "call_graph callers function=regular_function caller_count=0",
+        "verdict": "INFO"
+      }
+    },
+    {
+      "case": "legacy_to_facade_query_code",
+      "input": {
+        "legacy_name": "query_code"
+      },
+      "result": [
+        "search",
+        "query"
+      ]
+    },
+    {
+      "case": "legacy_to_facade_codegraph_symbol_search",
+      "input": {
+        "legacy_name": "codegraph_symbol_search"
+      },
+      "result": [
+        "search",
+        "symbol"
+      ]
+    }
+  ],
+  "corpus": "tests/golden/corpus_python.py",
+  "generator": "rust/fixtures/tools/gen_facade.py",
+  "package_version": "3.1.2",
+  "project_root": "/workspace/tree-sitter-analyzer",
+  "registry_order": [
+    "search",
+    "nav",
+    "structure",
+    "health",
+    "edit",
+    "project",
+    "index",
+    "viz"
+  ],
+  "runner": "anyio.run"
+}
