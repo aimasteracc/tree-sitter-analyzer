@@ -52,6 +52,12 @@ _SAFE_SPANS = (
     re.compile(r"\buv\s*[><=]+\s*\d+(?:\.\d+){1,2}\b", re.IGNORECASE),
     re.compile(r"≥\s*\d+(?:\.(?:\d+|x)){1,2}\b", re.IGNORECASE),
     re.compile(r"`python3 --version`", re.IGNORECASE),
+    # 这一条 GitHub 用户附件地址里的十六进制会被当成数字。它是播放器
+    # 嵌入，不是定量声明；只放行这一条，同一行旁边的声明仍然要失败。
+    re.compile(
+        r"https://github\.com/user-attachments/assets/"
+        r"0b1c0a85-2f70-47ab-b09e-acc68d253cac"
+    ),
 )
 _PYTHON_VERSION_SPAN = re.compile(
     r"\bPython(?:\s+version)?\s+v?\d+(?:\.\d+){1,2}(?:\+|\s*(?:or|and)\s+(?:newer|later))?",
