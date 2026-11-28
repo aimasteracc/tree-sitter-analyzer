@@ -1,0 +1,32 @@
+1
+00:00:00,220 --> 00:00:04,864
+2,758 files, 77,854 symbols.
+
+2
+00:00:05,250 --> 00:00:09,800
+Search for Error: a structured result. Just six lines of body.
+
+3
+00:00:11,100 --> 00:00:12,580
+Twelve callers, all Python.
+
+4
+00:00:12,640 --> 00:00:14,018
+24 functions impacted.
+
+5
+00:00:14,078 --> 00:00:16,957
+A same-name Go call is blocked, not linked.
+
+6
+00:00:17,650 --> 00:00:22,912
+Would mis-link 2,879 edges. This misses three. 960 times cleaner.
+
+7
+00:00:23,120 --> 00:00:24,387
+tree-sitter-analyzer.
+
+8
+00:00:24,500 --> 00:00:28,275
+Eight MCP tools. Cross-language-safe code intelligence.
+
