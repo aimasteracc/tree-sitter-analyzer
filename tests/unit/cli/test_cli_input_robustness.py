@@ -79,5 +79,68 @@ class TestAgentWorkflowDirectoryRejection:
         assert "directory" in payload["error"].lower()
 
 
+class TestDispatchFailureStreamDiscipline:
+    """CLAUDE.md §3 — 诊断信息必须走 stderr，stdout 只放机器可读载荷。
+
+    dogfood 2026-11-09（docs/dev/dogfood-trust-2026-11-09.md P2-1）：命令分派失败时
+    ``cli_main._execute_selected_command`` 在 ``output_error`` 之后又调用
+    ``parser.print_help()``，把整份 usage（371 个 flag，约 90 KB）打到 stdout。
+    ``--format json | jq`` 因此解析失败，不检查退出码的脚本会把 usage 当数据。
+    """
+
+    def test_dispatch_failure_usage_does_not_reach_stdout(self) -> None:
+        proc = _run_cli("--trace-from", "x.py", "--format", "json")
+        _assert_no_traceback(proc)
+        assert proc.returncode == 1
+        assert proc.stdout == ""
+        assert "usage:" in proc.stderr
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
+
+
+class TestProjectRootValidation:
+    """P0-1（dogfood 2026-11-09）：坏 --project-root 不能被当成「没有人调用」。
+
+    修复前：不存在的工作区仍返回 ``success: true`` + ``NOT_FOUND`` +
+    ``caller_count: 0``，next_step 还让人去建索引——路径打错会和「确实没有
+    调用方」看起来一模一样。
+    """
+
+    def test_unknown_project_root_is_rejected_before_analysis(self) -> None:
+        proc = _run_cli(
+            "--project-root",
+            "/no/such/dir/zzz",
+            "--callers",
+            "main",
+            "--format",
+            "json",
+        )
+        _assert_no_traceback(proc)
+        assert proc.returncode == 1
+        payload = json.loads(proc.stdout)
+        assert (
+            payload["success"],
+            payload["verdict"],
+            payload["error_code"],
+        ) == (False, "ERROR", "INVALID_PROJECT_ROOT")
+        assert "caller_count" not in payload
+        assert (
+            "index" not in payload["hint"].lower()
+            or "directory" in payload["hint"].lower()
+        )
+
+    def test_invalid_project_root_text_mode_stays_off_stdout(self) -> None:
+        proc = _run_cli(
+            "--output-format",
+            "text",
+            "--project-root",
+            "/no/such/dir/zzz",
+            "--callers",
+            "main",
+        )
+        _assert_no_traceback(proc)
+        assert proc.returncode == 1
+        assert proc.stdout == ""
+        assert "not a directory" in proc.stderr

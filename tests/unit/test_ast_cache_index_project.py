@@ -461,3 +461,359 @@ class TestIncrementalRefreshPurgesDeletedFiles:
             None,
             FORCE_REFRESH_STEP,
         )
+
+
+def test_certified_converged_noop_index_skips_the_backfills(engine):
+    """认证通过 + 已收敛 + 无变化：回填重算的是同样的边，直接跳过。"""
+    from tree_sitter_analyzer.cache.indexer import post_index_backfill
+
+    engine.index_project(workers=0)
+    stats: dict = {"indexed": 0, "cached": 2}
+
+    post_index_backfill(engine, stats)
+
+    assert (stats["backfill_skipped"], stats["backfill_errors"]) == (
+        "CERTIFIED_CONVERGED",
+        0,
+    )
+    assert "synapse_backfill" not in stats
+
+
+def test_a_changed_file_still_runs_the_backfills(engine):
+    """有文件变化时照旧回填：这是调用图自愈的唯一入口。"""
+    from tree_sitter_analyzer.cache.indexer import post_index_backfill
+
+    engine.index_project(workers=0)
+    stats: dict = {"indexed": 1}
+
+    post_index_backfill(engine, stats)
+
+    assert "backfill_skipped" not in stats
+    assert "backfill_errors" in stats
+
+
+def test_a_converged_stable_failure_record_skips_the_backfills(engine, monkeypatch):
+    """只差已记录稳定失败（#1671/#1735）时同样可跳过：内容确实收敛过。"""
+    import tree_sitter_analyzer.cache.stable_failures as stable_failures
+    from tree_sitter_analyzer.cache.indexer import post_index_backfill
+
+    monkeypatch.setattr(
+        stable_failures,
+        "converged_except_stable_failures",
+        lambda conn, parent=None: True,
+    )
+    # 夹具本身是可认证的；把认证分支关掉，专门验证第二条证据。
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.cache.indexer._resolution_is_certified",
+        lambda cache, conn: False,
+    )
+    engine.index_project(workers=0)
+    stats: dict = {"indexed": 0}
+
+    post_index_backfill(engine, stats)
+
+    assert (stats["backfill_skipped"], stats["backfill_errors"]) == (
+        "CONVERGED_STABLE_FAILURES",
+        0,
+    )
+
+
+def test_without_any_convergence_evidence_the_backfills_run(engine, monkeypatch):
+    """既没认证也没收敛记录时照旧回填（#1253 自愈路径）。"""
+    import tree_sitter_analyzer.cache.stable_failures as stable_failures
+    from tree_sitter_analyzer.cache.indexer import post_index_backfill
+
+    monkeypatch.setattr(
+        stable_failures,
+        "converged_except_stable_failures",
+        lambda conn, parent=None: False,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.cache.indexer._resolution_is_certified",
+        lambda cache, conn: False,
+    )
+    engine.index_project(workers=0)
+    stats: dict = {"indexed": 0}
+
+    post_index_backfill(engine, stats)
+
+    assert "backfill_skipped" not in stats
+    assert "backfill_errors" in stats
+
+
+def test_zero_change_fast_path_hint_points_at_one_force_run():
+    """缺记录的零变化运行 → 提示一次 force 即可进入快路径。"""
+    from tree_sitter_analyzer.cache.zero_change_hint import (
+        zero_change_fast_path_hint,
+    )
+
+    hint = zero_change_fast_path_hint({"indexed": 0, "errors": 3})
+
+    assert hint is not None
+    assert "--ast-cache-force" in hint
+    assert "9.08 s" in hint and "0.72-0.86 s" in hint
+
+
+def test_zero_change_fast_path_hint_stays_silent_when_it_does_not_apply():
+    from tree_sitter_analyzer.cache.zero_change_hint import (
+        zero_change_fast_path_hint,
+    )
+
+    assert (
+        zero_change_fast_path_hint(
+            {"indexed": 0, "errors": 3, "backfill_skipped": "CERTIFIED_CONVERGED"}
+        ),
+        zero_change_fast_path_hint({"indexed": 5, "errors": 3}),
+        zero_change_fast_path_hint({"indexed": 0, "errors": 0}),
+        zero_change_fast_path_hint(
+            {"indexed": 0, "errors": 3, "stable_failures_recorded": 3}
+        ),
+    ) == (None, None, None, None)
+
+
+def test_a_ladybug_invalidation_failure_does_not_block_a_full_rebuild(
+    engine, monkeypatch
+):
+    """镜像失效失败只记日志：强制重建照常完成。"""
+
+    def _explode(*args, **kwargs):
+        raise RuntimeError("mirror unavailable")
+
+    # 该名字在 runner 内部以局部 import 使用，patch 到 indexer 才是真正生效的位置。
+    import tree_sitter_analyzer.cache.indexer as indexer_module
+
+    monkeypatch.setattr(indexer_module, "_invalidate_ladybug", _explode)
+
+    result = engine.index_project(force=True, workers=0)
+
+    assert (result["indexed"], result["errors"]) == (2, 0)
+
+
+def test_an_unreadable_convergence_record_means_the_backfills_run(engine, monkeypatch):
+    """读收敛记录抛异常时按「判断不了」处理：照旧回填，不让异常冒到索引。"""
+    import tree_sitter_analyzer.cache.stable_failures as stable_failures
+    from tree_sitter_analyzer.cache.indexer import _noop_skip_reason
+
+    def _explode(*args, **kwargs):
+        raise RuntimeError("record unreadable")
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.cache.indexer._resolution_is_certified",
+        lambda cache, conn: False,
+    )
+    monkeypatch.setattr(stable_failures, "converged_except_stable_failures", _explode)
+
+    assert _noop_skip_reason(engine, engine._get_conn()) is None
+
+
+def test_an_unreadable_call_graph_marker_means_not_certified(engine, monkeypatch):
+    """读取调用图标记抛异常 → 视为未认证（照旧回填），不冒泡。"""
+    from tree_sitter_analyzer.cache import indexer as indexer_module
+
+    def _explode(*args, **kwargs):
+        raise RuntimeError("marker unreadable")
+
+    monkeypatch.setattr(engine, "call_graph_built", _explode)
+
+    assert indexer_module._resolution_is_certified(engine, engine._get_conn()) is False
+
+
+def _record_db(path):
+    import sqlite3
+
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE ast_cache_metadata (key TEXT PRIMARY KEY, value TEXT)")
+    return conn
+
+
+def test_a_zero_change_generation_inherits_the_parent_record(tmp_path):
+    """零变化世代继承父版本记录：内容没变，记录的 (文件,摘要,原因) 仍成立。"""
+    from tree_sitter_analyzer.cache import stable_failures
+
+    root = str(tmp_path)
+    parent_conn = _record_db(tmp_path / "parent.db")
+    assert stable_failures.issue_record(
+        parent_conn,
+        project_root=root,
+        scope="full",
+        extractor_version=stable_failures.current_extractor_version(),
+        failures=(
+            stable_failures.StableFailure(
+                "a.lua", "a" * 64, "LUA grammar not installed"
+            ),
+        ),
+    )
+    child_conn = _record_db(tmp_path / "child.db")
+
+    inherited = stable_failures.inherit_record(
+        child_conn,
+        tmp_path / "parent.db",
+        project_root=root,
+        scope="full",
+        extractor_version=stable_failures.current_extractor_version(),
+    )
+
+    record = stable_failures.read_record(child_conn)
+    assert (len(inherited or ()), record is not None) == (1, True)
+    assert [failure.file for failure in record.failures] == ["a.lua"]
+
+
+def test_inheritance_needs_a_converged_parent_record(tmp_path):
+    """父版本没有记录 / 版本不符时绝不继承。"""
+    from tree_sitter_analyzer.cache import stable_failures
+
+    root = str(tmp_path)
+    empty_parent = _record_db(tmp_path / "empty.db")
+    child = _record_db(tmp_path / "child.db")
+
+    inherited = stable_failures.inherit_record(
+        child,
+        tmp_path / "empty.db",
+        project_root=root,
+        scope="full",
+        extractor_version=stable_failures.current_extractor_version(),
+    )
+
+    assert (inherited, stable_failures.read_record(child)) == (None, None)
+    assert stable_failures.read_record(empty_parent) is None
+
+
+def test_only_a_zero_change_run_may_inherit_the_record():
+    from tree_sitter_analyzer.cache.index_project_runner import _is_zero_change_run
+
+    assert (
+        _is_zero_change_run({"indexed": 0, "removed": 0, "backfill_errors": 0}),
+        _is_zero_change_run({"indexed": 1}),
+        _is_zero_change_run({"indexed": 0, "removed": 2}),
+        _is_zero_change_run({"indexed": 0, "changed_during_run": 1}),
+        _is_zero_change_run({"indexed": 0, "backfill_errors": 1}),
+    ) == (True, False, False, False, False)
+
+
+def test_the_runner_records_how_many_failures_it_inherited(monkeypatch, tmp_path):
+    """零变化运行继承成功时，统计里要能看到继承条数。"""
+    import sqlite3
+
+    import tree_sitter_analyzer.cache.index_project_runner as runner
+    import tree_sitter_analyzer.cache.stable_failures as stable_failures
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_cache_metadata (key TEXT PRIMARY KEY, value TEXT)")
+    cache = type("C", (), {"project_root": str(tmp_path)})()
+    monkeypatch.setattr(stable_failures, "issue_after_run", lambda *a, **k: False)
+    monkeypatch.setattr(
+        stable_failures,
+        "inherit_record",
+        lambda *a, **k: (stable_failures.StableFailure("a.lua", "a" * 64, "lua"),),
+    )
+    stats: dict = {"indexed": 0, "removed": 0, "backfill_errors": 0}
+
+    runner._issue_stable_failure_record(
+        cache,
+        conn,
+        stats,
+        None,
+        "full",
+        converged=True,
+        stamped=False,
+    )
+
+    assert stats["stable_failures_inherited"] == 1
+
+
+def test_the_runner_surfaces_the_zero_change_hint(monkeypatch, tmp_path):
+    """没有记录、也没有可继承的记录时，响应里要出现那条可执行提示。"""
+    import sqlite3
+
+    import tree_sitter_analyzer.cache.index_project_runner as runner
+    import tree_sitter_analyzer.cache.stable_failures as stable_failures
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE ast_cache_metadata (key TEXT PRIMARY KEY, value TEXT)")
+    cache = type("C", (), {"project_root": str(tmp_path)})()
+    monkeypatch.setattr(stable_failures, "issue_after_run", lambda *a, **k: False)
+    monkeypatch.setattr(stable_failures, "inherit_record", lambda *a, **k: None)
+    stats: dict = {"indexed": 0, "removed": 0, "backfill_errors": 0, "errors": 3}
+
+    runner._issue_stable_failure_record(
+        cache, conn, stats, None, "full", converged=True, stamped=False
+    )
+
+    assert "--ast-cache-force" in stats["zero_change_hint"]
+
+
+def test_inheritance_refuses_a_record_from_another_root_or_scope(tmp_path):
+    """父记录绑定项目根与 scope：不一致时绝不继承。"""
+    from tree_sitter_analyzer.cache import stable_failures
+
+    parent_conn = _record_db(tmp_path / "parent.db")
+    assert stable_failures.issue_record(
+        parent_conn,
+        project_root=str(tmp_path),
+        scope="full",
+        extractor_version=stable_failures.current_extractor_version(),
+        failures=(stable_failures.StableFailure("a.lua", "a" * 64, "lua"),),
+    )
+    child = _record_db(tmp_path / "child.db")
+
+    inherited = stable_failures.inherit_record(
+        child,
+        tmp_path / "parent.db",
+        project_root=str(tmp_path),
+        scope="language:python",
+        extractor_version=stable_failures.current_extractor_version(),
+    )
+
+    assert (inherited, stable_failures.read_record(child)) == (None, None)
+
+
+def test_inheritance_refuses_a_record_from_another_extractor_version(tmp_path):
+    """extractor 版本不一致时绝不继承：旧记录不能代表新提取器的结果。"""
+    from tree_sitter_analyzer.cache import stable_failures
+
+    parent_conn = _record_db(tmp_path / "parent.db")
+    assert stable_failures.issue_record(
+        parent_conn,
+        project_root=str(tmp_path),
+        scope="full",
+        extractor_version=stable_failures.current_extractor_version() - 1,
+        failures=(stable_failures.StableFailure("a.lua", "a" * 64, "lua"),),
+    )
+    child = _record_db(tmp_path / "child.db")
+
+    inherited = stable_failures.inherit_record(
+        child,
+        tmp_path / "parent.db",
+        project_root=str(tmp_path),
+        scope="full",
+        extractor_version=stable_failures.current_extractor_version(),
+    )
+
+    assert (inherited, stable_failures.read_record(child)) == (None, None)
+
+
+def test_inheritance_needs_a_metadata_table_to_write_into(tmp_path):
+    """子库没有控制表时无法签发：返回 None，而不是假装继承成功。"""
+    import sqlite3
+
+    from tree_sitter_analyzer.cache import stable_failures
+
+    parent_conn = _record_db(tmp_path / "parent.db")
+    assert stable_failures.issue_record(
+        parent_conn,
+        project_root=str(tmp_path),
+        scope="full",
+        extractor_version=stable_failures.current_extractor_version(),
+        failures=(stable_failures.StableFailure("a.lua", "a" * 64, "lua"),),
+    )
+    bare = sqlite3.connect(":memory:")
+
+    inherited = stable_failures.inherit_record(
+        bare,
+        tmp_path / "parent.db",
+        project_root=str(tmp_path),
+        scope="full",
+        extractor_version=stable_failures.current_extractor_version(),
+    )
+
+    assert inherited is None

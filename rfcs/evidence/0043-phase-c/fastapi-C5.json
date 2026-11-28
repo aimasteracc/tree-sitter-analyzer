@@ -1,0 +1,73 @@
+{
+ "repo": "fastapi",
+ "rows": 558,
+ "rss_start_mb": 52.2,
+ "first_query_s": 7.594,
+ "rss_after_first_mb": 136.3,
+ "rounds": [
+  {
+   "round": 1,
+   "all": {
+    "n": 558,
+    "median_ms": 316.3,
+    "p90_ms": 751.4,
+    "max_ms": 7431.6,
+    "mean_ms": 461.1
+   },
+   "by_kind": {
+    "edge_only": {
+     "n": 75,
+     "median_ms": 40.2,
+     "p90_ms": 108.2,
+     "max_ms": 3281.7,
+     "mean_ms": 102.6
+    },
+    "review": {
+     "n": 483,
+     "median_ms": 328.1,
+     "p90_ms": 774.0,
+     "max_ms": 7431.6,
+     "mean_ms": 516.8
+    }
+   },
+   "stages_ms_per_query": {
+    "G.review.assess_completeness": 196.69,
+    "G.review._reference_scan": 135.98,
+    "F.check.relation_source_evidence(freshness)": 45.5,
+    "A.certified_index_read.enter": 38.08,
+    "G.review._reference_lines": 10.31,
+    "F.check.drop_external_producers": 10.15,
+    "J.infra.is_index_rebuilding": 4.26,
+    "B.graph_build_or_adopt": 3.67,
+    "F.check.declaring_file_unresolved": 2.7,
+    "F.check.declaring_file_excluded": 1.84,
+    "E.edges.sql_native_callers": 1.63,
+    "G.review._is_accessor": 1.55,
+    "B.graph_object": 1.33,
+    "F.check.narrow_to_target": 1.18,
+    "D.guard.call_graph_built": 0.45,
+    "F.check.read_unresolved_inbound": 0.39,
+    "F.check.unattributed_sites": 0.3,
+    "A.certified_index_read.exit": 0.3,
+    "F.check.rank_sites": 0.18,
+    "E.edges.name_bound_targets": 0.18,
+    "G.review.prove": 0.14,
+    "F.check.call_edge_lines": 0.14,
+    "F.check.relation_files": 0.13,
+    "F.check.name_only_sites": 0.07,
+    "I.serialize.query_cost": 0.06
+   },
+   "unwrapped_ms_per_query": 3.68
+  }
+ ],
+ "rss_end_mb": 191.8,
+ "n_diff_rows": 0,
+ "diffs": [],
+ "stored": {
+  "tree": "ccb67d8955954fdbe640d346a876831e20c4a62c",
+  "index_key": "7d4d66d47d4c641aa843509b",
+  "repo": "fastapi",
+  "repo_sha": "b2ce629ace6bdd152d577e5f5e256a079ac1e4fd",
+  "query_key": "9a8687ef095a1caaebdc5f11"
+ }
+}

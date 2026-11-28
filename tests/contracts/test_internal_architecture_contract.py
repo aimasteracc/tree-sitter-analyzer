@@ -295,6 +295,9 @@ print(json.dumps({"code": code, "modules": sorted(sys.modules)}))
 _CLI_VERSION_TSA_MODULES = {
     "tree_sitter_analyzer",
     "tree_sitter_analyzer.cli",
+    # Import-light (argparse/difflib/os/sys only): the short help and the
+    # program name shared by the fast path and the full parser.
+    "tree_sitter_analyzer.cli.agent_help",
     "tree_sitter_analyzer.cli.argument_validator",
     "tree_sitter_analyzer.cli_main",
     "tree_sitter_analyzer.output_manager",

@@ -49,6 +49,27 @@ def name_only_sites(
     return sites
 
 
+def name_only_lines_exact(
+    possible_callers: list[dict[str, Any]],
+    call_lines: dict[str, frozenset[int]] | None,
+) -> bool:
+    """PR-4：每个同名入边调用方都有取自调用边的调用行（没有退回定义行）。
+
+    只有这样 ``name_only_sites`` 才是调用点的穷尽列表（``open_sites``）。
+    """
+    if not possible_callers:
+        return True
+    if call_lines is None:
+        return False
+    for caller in possible_callers:
+        start = int(caller.get("line") or 0)
+        end = int(caller.get("end_line") or start)
+        lines = call_lines.get(str(caller.get("file") or ""), ())
+        if not any(start <= line <= end for line in lines):
+            return False
+    return True
+
+
 def name_only_fields(count: int, sites: list[dict[str, Any]]) -> dict[str, Any]:
     """响应字段：同名入边计数，及有上限的调用点与诚实总数。"""
     return {

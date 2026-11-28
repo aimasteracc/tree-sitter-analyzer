@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -219,12 +220,24 @@ def test_joined_vocabulary_agrees_with_per_file_containment(
 # --------------------------------------------------------------------------- #
 
 
-def _counting_stat(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    calls: list[str] = []
+def _counting_stat(monkeypatch: pytest.MonkeyPatch, root: Path) -> Counter[str]:
+    """Count ``os.stat`` calls for paths under ``root`` only.
+
+    ``qs.os`` is the process-wide ``os`` module, so the patch also sees stats
+    made by anything else in the worker. On Python 3.13 an unclosed
+    ``sqlite3.Connection`` left by an earlier test emits a ResourceWarning when
+    the garbage collector reclaims it mid-test; pytest's unraisable hook formats
+    its traceback through ``linecache``, which stats the frame's source file.
+    That foreign stat made the exact total flaky (72 == 71), so only the
+    test's own files are counted.
+    """
+    calls: Counter[str] = Counter()
     real = os.stat
+    prefix = os.path.join(str(root), "")
 
     def counting(path, *args, **kwargs):
-        calls.append(str(path))
+        if str(path).startswith(prefix):
+            calls[str(path)] += 1
         return real(path, *args, **kwargs)
 
     monkeypatch.setattr(qs.os, "stat", counting)
@@ -240,11 +253,11 @@ def test_scoped_stats_stat_each_path_once_per_scope(
         path.write_text("x")
         paths.append(str(path))
     missing = str(tmp_path / "missing.py")
-    calls = _counting_stat(monkeypatch)
+    calls = _counting_stat(monkeypatch, tmp_path)
     with qs.query_scope():
         first = qs.scoped_stats([*paths, missing])
         again = qs.scoped_stats([missing, paths[0]])
-    assert len(calls) == len(paths) + 1
+    assert calls == Counter([*paths, missing])
     assert (first[-1], again[0], again[1].st_size) == (None, None, 1)
 
 
@@ -253,11 +266,11 @@ def test_unscoped_stats_are_live(
 ) -> None:
     path = tmp_path / "f.py"
     path.write_text("x")
-    calls = _counting_stat(monkeypatch)
+    calls = _counting_stat(monkeypatch, tmp_path)
     qs.scoped_stats([str(path)])
     path.write_text("xyz")
     sizes = [info.st_size for info in qs.scoped_stats([str(path)])]
-    assert (len(calls), sizes) == (2, [3])
+    assert (calls, sizes) == (Counter({str(path): 2}), [3])
 
 
 # --------------------------------------------------------------------------- #

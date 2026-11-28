@@ -14,7 +14,7 @@ jobs:
       matrix:
         include:
           - {axis: linux, runner: ubuntu-24.04}
-          - {axis: macos, runner: macos-14}
+          - {axis: macos, runner: macos-15}
           - {axis: windows, runner: windows-2022}
     steps:
       - name: Create failure-retained placeholder

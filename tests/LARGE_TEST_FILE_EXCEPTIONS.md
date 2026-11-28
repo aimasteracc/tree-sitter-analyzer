@@ -47,15 +47,18 @@ match reality or CI fails). The threshold is 800 lines.
 | 932 | `tests/unit/mcp/tools/test_nav_facade_test_map.py` | |
 | 901 | `tests/unit/languages/test_html_plugin_advanced.py` | |
 | 893 | `tests/unit/test_health_scorer.py` | |
+| 891 | `tests/unit/mcp/tools/test_callers_reason_evidence.py` | tracked: #1939 (etag/delta/absence coverage) |
 | 873 | `tests/unit/mcp/test_query_symbol_search_scenarios.py` | |
 | 866 | `tests/unit/languages/test_css_plugin.py` | |
 | 848 | `tests/unit/test_edge_store.py` | |
 | 847 | `tests/unit/test_ast_diff_scenarios.py` | |
+| 843 | `tests/unit/test_index_symbol_projection.py` | 
 | 833 | `tests/unit/test_codegraph_impact_tool.py` | |
 | 823 | `tests/unit/mcp/tools/test_pulse_tool.py` | tracked: #1414 — two warm-index admission regressions stay with the existing Pulse suite (T-1); temporary growth from 791 lines. Follow-up must split by behavior under the controlled migration contract, preserving all cases and mutation evidence. |
 | 830 | `tests/unit/test_symbol_search_tool.py` | tracked: #1561 - the certification-bound degrade regression stays with the existing search-symbol suite (T-1); temporary growth from 798 lines. Follow-up must split by behavior under the controlled migration contract. |
 | 822 | `tests/unit/cli/test_install_skills.py` | |
 | 821 | `tests/unit/test_wire_owner_contract.py` | |
+| 819 | `tests/unit/test_ast_cache_index_project.py` | tracked: #1939 (record lifecycle + inheritance coverage) |
 | 814 | `tests/unit/languages/test_java_formatter.py` | |
 | 814 | `tests/unit/languages/test_csharp_plugin_elements.py` | |
 

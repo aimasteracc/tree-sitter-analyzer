@@ -78,7 +78,10 @@ async def test_callback_absence_hint_names_the_reference_site(widget_root) -> No
     # #1593：提示必须点名非调用引用的位置，而不是“没有调用边到达它”。
     result = await _callers(widget_root, "Widget._style")
 
-    assert result["next_step"] == (
+    # PR-4: the exhaustive open-site bound leads; the gate hint follows.
+    assert result["open_sites"]["enumerated"] is True
+    assert result["next_step"].startswith("The bound is exhaustive (`open_sites`)")
+    assert result["next_step"].endswith(
         "No resolved caller for 'Widget._style', but 1 non-call reference(s) "
         "(attribute access, bare name, or string name) could reach it: "
         "widget.py:27. Read those sites before treating this as absence."

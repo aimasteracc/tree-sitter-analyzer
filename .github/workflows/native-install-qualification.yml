@@ -106,7 +106,7 @@ jobs:
           - axis: linux
             runner: ubuntu-24.04
           - axis: macos
-            runner: macos-14
+            runner: macos-15
           - axis: windows
             runner: windows-2022
     steps:

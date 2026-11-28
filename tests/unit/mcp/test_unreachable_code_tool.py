@@ -16,6 +16,7 @@ from tree_sitter_analyzer.unreachable_code import (
     UnreachableBlock,
     UnreachableCodeResult,
 )
+from tree_sitter_analyzer.unreachable_code_scan import ProjectUnreachableScan
 
 
 def _make_block(
@@ -127,7 +128,10 @@ class TestBuildProjectResponse:
     def test_json_format_returns_counts(self, tool: UnreachableCodeTool) -> None:
         block = _make_block()
         r = _make_result(blocks=[block], functions_analyzed=3)
-        resp = tool._build_project_response([r], "json")
+        scan = ProjectUnreachableScan(
+            results=[r], files_analyzed=1, functions_analyzed=3
+        )
+        resp = tool._build_project_response(scan, "json")
         assert resp["files_with_issues"] == 1
         assert resp["total_functions_analyzed"] == 3
         assert resp["total_unreachable_blocks"] == 1
@@ -198,8 +202,10 @@ class TestExecute:
     @pytest.mark.asyncio
     async def test_project_mode_success(self, tool: UnreachableCodeTool) -> None:
         with patch(
-            "tree_sitter_analyzer.mcp.tools.unreachable_code_tool.analyze_project_unreachable",
-            return_value=[_make_result()],
+            "tree_sitter_analyzer.mcp.tools.unreachable_code_tool.scan_project_unreachable",
+            return_value=ProjectUnreachableScan(
+                results=[_make_result()], files_analyzed=1, functions_analyzed=5
+            ),
         ):
             resp = await tool.execute({"mode": "project", "output_format": "json"})
         assert "files_with_issues" in resp
@@ -209,7 +215,7 @@ class TestExecute:
         self, tool: UnreachableCodeTool
     ) -> None:
         with patch(
-            "tree_sitter_analyzer.mcp.tools.unreachable_code_tool.analyze_project_unreachable",
+            "tree_sitter_analyzer.mcp.tools.unreachable_code_tool.scan_project_unreachable",
             side_effect=RuntimeError("project scan error"),
         ):
             resp = await tool.execute({"mode": "project"})
@@ -220,10 +226,14 @@ class TestExecute:
 def test_response_success_distinguishes_findings_from_parse_errors(parse_errors):
     """发现不可达语句不代表执行失败，解析错误则必须标记失败。"""
     result = UnreachableCodeResult(
-        file_path="sample.py", language="python", errors=parse_errors
+        file_path="sample.py",
+        language="python",
+        errors=parse_errors,
+        functions_analyzed=1,
+    )
+    scan = ProjectUnreachableScan(
+        results=[result], files_analyzed=1, functions_analyzed=1
     )
     tool = UnreachableCodeTool()
     assert tool._build_file_response(result, "json")["success"] is (parse_errors == 0)
-    assert tool._build_project_response([result], "json")["success"] is (
-        parse_errors == 0
-    )
+    assert tool._build_project_response(scan, "json")["success"] is (parse_errors == 0)

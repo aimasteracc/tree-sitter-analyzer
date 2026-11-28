@@ -7,6 +7,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any, cast
 
+from .cache.connection_owners import ThreadConnectionToken, close_with
 from .cache.schema import (
     EXPECTED_SCHEMA_VERSIONS as _EXPECTED_SCHEMA_VERSIONS,
 )
@@ -137,6 +138,24 @@ def _release_thread_pin(local: Any) -> None:
         pin.release()
 
 
+def _bind_thread_connection(local: Any, conn: sqlite3.Connection) -> None:
+    """登记本线程连接；线程退出（本地槽清空）时在该线程内关闭它（#1904）。
+
+    只关闭调用线程连接的 ``close()`` 管不到其他线程：那些连接原本在线程退出后
+    只被引用环持有，一直打开到下次垃圾回收，WAL 模式下期间持有 SHARED 锁。
+    """
+    token = ThreadConnectionToken()
+    close_with(token, conn)
+    local.conn = conn
+    local.conn_token = token
+
+
+def _clear_thread_connection(local: Any) -> None:
+    """本线程连接已显式关闭：清空槽位（令牌的终结器随之失效为空操作）。"""
+    local.conn = None
+    local.conn_token = None
+
+
 class ASTCacheDatabaseMixin(ASTCacheSurface):
     """Thread-local connections, migrations, and schema verification."""
 
@@ -158,7 +177,7 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
             and getattr(self._local, "db_path", database_path) != database_path
         ):
             conn.close()
-            self._local.conn = None
+            _clear_thread_connection(self._local)
             conn = None
             _release_thread_pin(self._local)
         unindexed_uri = getattr(self, "_unindexed_uri", None)
@@ -197,7 +216,7 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
             conn.execute("PRAGMA mmap_size=268435456")
             conn.execute("PRAGMA temp_store=MEMORY")
             conn.row_factory = sqlite3.Row
-            self._local.conn = conn
+            _bind_thread_connection(self._local, conn)
             self._local.db_path = database_path
         return conn
 
@@ -303,7 +322,7 @@ class ASTCacheDatabaseMixin(ASTCacheSurface):
         conn = getattr(self._local, "conn", None)
         if conn is not None:
             conn.close()
-            self._local.conn = None
+            _clear_thread_connection(self._local)
         _release_thread_pin(self._local)
 
     def close(self) -> None:

@@ -82,6 +82,14 @@ class UqlTool(BaseMCPTool):
                         "response reports page.total and page.next_cursor."
                     ),
                 },
+                "if_none_match": {
+                    "type": "string",
+                    "description": (
+                        "Prior answer_etag from this query. When the index "
+                        "generation and answer content are unchanged, respond with "
+                        "a minimal {unchanged: true} payload instead of the rows."
+                    ),
+                },
                 "cursor": {
                     "type": "string",
                     "description": "page.next_cursor from the previous page of the same query.",
@@ -117,5 +125,24 @@ class UqlTool(BaseMCPTool):
             return error_payload(
                 QueryError(INDEX_UNAVAILABLE, str(exc)), arguments.get("query")
             )
-        args = {k: v for k, v in arguments.items() if k != "output_format"}
-        return await answer(args, backends)
+        args = {
+            k: v
+            for k, v in arguments.items()
+            if k not in ("output_format", "if_none_match")
+        }
+        result = await answer(args, backends)
+        from ...uql.output import answer_etag
+
+        generation = backends.generation()
+        result["answer_etag"] = answer_etag(result, generation)
+        requested = str(arguments.get("if_none_match") or "").strip()
+        if requested and requested == result["answer_etag"]:
+            # 世代已参与指纹：能命中就说明同一世代下答案内容一致。
+            return {
+                "success": True,
+                "unchanged": True,
+                "answer_etag": requested,
+                "query": arguments.get("query"),
+                "index_generation": generation,
+            }
+        return result

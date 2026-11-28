@@ -42,6 +42,34 @@ def _issue_stable_failure_record(
     )
     if issued and stats.get("errors"):
         stats["stable_failures_recorded"] = int(stats.get("errors", 0) or 0)
+    from .zero_change_hint import zero_change_fast_path_hint
+
+    if not issued and _is_zero_change_run(stats):
+        from .backfill_scope import published_parent
+        from .stable_failures import inherit_record
+
+        inherited = inherit_record(
+            conn,
+            published_parent(cache),
+            project_root=cache.project_root,
+            scope=scope_json,
+            extractor_version=current_extractor_version(),
+        )
+        if inherited is not None:
+            stats["stable_failures_inherited"] = len(inherited)
+    hint = zero_change_fast_path_hint(stats)
+    if hint is not None:
+        stats["zero_change_hint"] = hint
+
+
+def _is_zero_change_run(stats: dict[str, Any]) -> bool:
+    """零变化：没有写入、没有删除、运行中无变化、回填零错误。"""
+    return (
+        int(stats.get("indexed", 0) or 0) == 0
+        and int(stats.get("removed", 0) or 0) == 0
+        and not stats.get("changed_during_run")
+        and int(stats.get("backfill_errors", 0) or 0) == 0
+    )
 
 
 def run_index_project(
@@ -250,6 +278,30 @@ def run_index_project(
             require_fts=cache.fts5_available,
             deadline=_time.monotonic() + _WRITER_PROJECTION_SECONDS,
         )
+        if projection_repair and not force:
+            # dogfood 2026-11-09：旧缓存迁移会留下三类内部残余（陈旧行 /
+            # 缺投影状态 / 孤儿 FTS 条目）。它们只需有界收敛，不必把每个文件
+            # 重新提取一遍；收敛后交给既有认证器补发 marker，认证不过则照旧
+            # 走全量投影修复。
+            if converge_symbol_projection(conn, require_fts=bool(cache.fts5_available)):
+                from ..index_snapshot_symbols import ensure_symbol_rows_backfilled
+
+                try:
+                    if ensure_symbol_rows_backfilled(
+                        conn, require_fts=cache.fts5_available
+                    ):
+                        projection_repair = not symbol_projection_is_exact(
+                            conn,
+                            require_fts=cache.fts5_available,
+                            deadline=_time.monotonic() + _WRITER_PROJECTION_SECONDS,
+                        )
+                except Exception:  # noqa: BLE001 — 认证失败就退回全量修复
+                    logger.debug(
+                        "projection convergence certification failed",
+                        exc_info=True,
+                    )
+                # 收敛写了行/状态/FTS：提交后再进入后续的 BEGIN 事务边界。
+                conn.commit()
         if projection_repair and not rebuild_signaled:
             # Repair rewrites ordinary rows in committed batches just like a full
             # rebuild. Publish incomplete evidence before the first batch so no
@@ -431,6 +483,9 @@ def run_index_project(
             # state, and FTS validation; an oversized repair remains incomplete.
             from ..index_snapshot_symbols import ensure_symbol_rows_backfilled
 
+            # 重写全部行之后仍需收敛陈旧行 / 缺失状态 / 孤儿 FTS，否则认证
+            # 器发不出 marker，下一次索引又会退回全量修复（dogfood 2026-11-09）。
+            converge_symbol_projection(conn, require_fts=bool(cache.fts5_available))
             if not ensure_symbol_rows_backfilled(
                 conn,
                 require_fts=cache.fts5_available,

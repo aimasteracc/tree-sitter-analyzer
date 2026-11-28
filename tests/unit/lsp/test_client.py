@@ -404,7 +404,10 @@ async def test_reader_failure_is_not_a_successful_empty_result(
 
     client = LspClient("python", str(tmp_path))
     client._proc = _ProtocolPeer(tmp_path / "target.py", mode=mode)
-    monkeypatch.setattr(module, "_LSP_TIMEOUT", 0.02)
+    # The timer is already due when the reader settles the future in the same
+    # loop iteration, which is the race a loaded runner hits with any short
+    # timeout. The available reader outcome must win over the timeout.
+    monkeypatch.setattr(module, "_LSP_TIMEOUT", 1e-9)
     client._reader_task = asyncio.create_task(client._reader_loop())
     try:
         with pytest.raises(RuntimeError, match=error):
@@ -412,6 +415,36 @@ async def test_reader_failure_is_not_a_successful_empty_result(
         assert client._pending == {}
     finally:
         await client._stop()
+
+
+@pytest.mark.parametrize("outcome", ["result", "error", "unsettled"])
+async def test_timeout_yields_to_an_outcome_already_settled(
+    tmp_path, monkeypatch, outcome
+):
+    # Python 3.11's wait_for resolves this race itself; force the 3.12+ shape
+    # (timeout raised although the future is settled) on every version.
+    import tree_sitter_analyzer.lsp.client as module
+
+    async def racing_wait_for(fut, timeout):
+        if outcome == "result":
+            fut.set_result({"uri": "file:///a.py"})
+        elif outcome == "error":
+            fut.set_exception(module.LspProtocolError("peer refused"))
+        raise asyncio.TimeoutError
+
+    client = LspClient("python", str(tmp_path))
+    client._proc = _ProtocolPeer(tmp_path / "target.py", mode="silent")
+    monkeypatch.setattr(module.asyncio, "wait_for", racing_wait_for)
+    if outcome == "result":
+        answer = await client._request("textDocument/definition", {})
+        assert answer == {"uri": "file:///a.py"}
+    elif outcome == "error":
+        with pytest.raises(module.LspProtocolError, match="peer refused"):
+            await client._request("textDocument/definition", {})
+    else:
+        with pytest.raises(module.LspTimeoutError, match="timed out"):
+            await client._request("textDocument/definition", {})
+    assert client._pending == {}
 
 
 async def test_send_failure_does_not_leak_pending_request(tmp_path):

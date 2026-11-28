@@ -34,12 +34,15 @@ from .generation_pins import GenerationPin, pin_generation
 from .generation_reader_release import release_idle_readers
 from .generation_retirement import retire_generations, retire_unpublished
 from .generation_routing import read_selector
-from .generation_seal import leave_wal
+from .generation_seal import SEAL_BUSY, SealBusy, leave_wal
 from .generation_selector import (
     GenerationSelector,
     InvalidGenerationSelector,
     decode_generation_selector,
 )
+from .seal_copy import reseal_by_copy, reseal_supported
+from .seal_creators import creators as seal_creators
+from .seal_creators import install as install_seal_creators
 from .source_hash_budget import (
     SOURCE_HASH_BYTE_BUDGET,
     SourceHashBudgetExceeded,
@@ -60,7 +63,11 @@ _PATH_ONLY_SOURCE = os.name != "posix"
 # 实测（#1664，Windows，2,865 个文件）：发布临界区要复核全部源码，持有 3.4–6.6 秒，
 # 5 秒上限会把普通竞争报成忙。租约一释放等待即结束，30 秒只是上限而非常态延迟。
 LEASE_TIMEOUT_S = 30.0
+#: #1902：封存时等待残留句柄释放的上限（秒）；之后改为封存字节副本（POSIX）。
+SEAL_HOLDER_WAIT_S = 1.0
 logger = logging.getLogger(__name__)
+# #1904：私有构建库上的连接记下创建栈，封存忙时据此指出创建者。
+install_seal_creators()
 
 
 def _lease_busy(exc: sqlite3.OperationalError) -> bool:
@@ -489,15 +496,47 @@ class GenerationStore:
         database = self.database(selector)
         self._verify_database(selector)
         connection = sqlite3.connect(database.as_uri() + "?mode=rw", uri=True)
+        held: SealBusy | None = None
         try:
             checkpoint = connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             if checkpoint.fetchone()[0] != 0:
                 raise RuntimeError("INDEX_GENERATION_CHECKPOINT_BUSY")
             # 只读 WAL 库的读者会另建可写 -wal/-shm；切回回滚日志使版本只剩主库。
             # #1821：这一步 SQLite 不调用忙处理器，由 leave_wal 按忙等待期限重试。
-            journal = leave_wal(connection, database=database)
+            # #1902：能改封存副本时只短暂等待，之后不再依赖残留句柄自行释放。
+            # #1909：能改封存副本时期满不做堆扫描取证；创建栈与首次证据在下方记录。
+            copyable = reseal_supported()
+            try:
+                journal = leave_wal(
+                    connection,
+                    database=database,
+                    timeout=SEAL_HOLDER_WAIT_S if copyable else None,
+                    fallback=copyable,
+                )
+            except SealBusy as busy:
+                if not copyable:
+                    raise
+                held, journal = busy, ""
         finally:
             connection.close()
+        if held is not None:
+            # 复制之前取证：副本替换路径后，残留连接不再指向私有库路径。
+            held_by = seal_creators(database)
+            reseal_by_copy(database, cause=held)
+            info = database.lstat()
+            self._database_identities[selector.generation_id] = (
+                info.st_dev,
+                info.st_ino,
+            )
+            journal = "delete"
+            logger.warning(
+                "%s: build database still held after %.1f s; sealed a byte copy; "
+                "first busy %s; creators %s",
+                SEAL_BUSY,
+                SEAL_HOLDER_WAIT_S,
+                held.first_busy,
+                held_by,
+            )
         if journal != "delete" or any(
             os.path.lexists(f"{database}{suffix}")
             for suffix in ("-wal", "-shm", "-journal")

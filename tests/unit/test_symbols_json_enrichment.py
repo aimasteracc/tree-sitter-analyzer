@@ -174,8 +174,9 @@ class TestExtractorVersionBump:
         # v52：TS 调用经 ES 模块导入 / 再导出解析（#1764）。
         # v53：TS 类的 extends 基类与类表达式（#1765）。
         # v54：Python `@overload` 存根标记（#1773）。
-        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 54
-        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 54
+        # v55：Kotlin 裸调用的隐式接收者范围 kotlin_scope（#1926）。
+        assert ast_cache._AST_CACHE_EXTRACTOR_VERSION == 55
+        assert _ast_cache_indexer._AST_CACHE_EXTRACTOR_VERSION == 55
 
 
 def test_python_star_imported_loader_fails_closed() -> None:

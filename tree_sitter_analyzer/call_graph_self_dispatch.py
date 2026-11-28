@@ -203,8 +203,11 @@ def override_candidates(
 
 
 #: #1765：``extends`` 目标以 ``class:Name`` 占位、按类名记入继承关系的语言。
+#: #1916：Kotlin 的超类型同样不经第二遍解析，跨文件的基类只有占位。
 _PLACEHOLDER_PARENT_SUFFIXES = (
     ".java",
+    ".kt",
+    ".kts",
     ".js",
     ".jsx",
     ".mjs",
@@ -217,7 +220,7 @@ _PLACEHOLDER_PARENT_SUFFIXES = (
 
 
 def _is_java_node(node_id: Any) -> bool:
-    """Java（#1743）与 JS/TS（#1765）：第二遍解析不处理它们的 ``extends`` 占位。"""
+    """Java（#1743）、JS/TS（#1765）与 Kotlin（#1916）：第二遍解析不处理它们的 ``extends`` 占位。"""
     return str(node_id).rsplit(":", 2)[0].endswith(_PLACEHOLDER_PARENT_SUFFIXES)
 
 

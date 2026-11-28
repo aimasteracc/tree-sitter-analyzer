@@ -1,0 +1,16 @@
+{
+ "repo": "rich",
+ "files": 213,
+ "symbols": 3509,
+ "call_edge_rows": 11910,
+ "build_s_under_tracemalloc": 0.62,
+ "memo_estimate_mb": 17.0,
+ "built": true,
+ "nodes": 1810,
+ "certain_edges": 2954,
+ "possible_edges": 3312,
+ "nodes_plus_edges": 8076,
+ "retained_mb": 6.6,
+ "peak_mb": 17.1,
+ "bytes_per_node_edge": 814
+}

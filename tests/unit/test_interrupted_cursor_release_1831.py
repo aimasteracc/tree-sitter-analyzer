@@ -21,6 +21,13 @@ _SOURCES = {
 }
 
 
+def _without_reseal(monkeypatch) -> None:
+    """#1902: keep the typed busy path under test; POSIX would seal a byte copy."""
+    from tree_sitter_analyzer.cache import generation_store
+
+    monkeypatch.setattr(generation_store, "reseal_supported", lambda: False)
+
+
 def _deadline_after_first_row(monkeypatch) -> None:
     """让清单读取在第一行之后、读完之前到期（与负载下的真实期限中断相同的位置）。"""
     from tree_sitter_analyzer import _recorded_source_rows as rows
@@ -45,6 +52,7 @@ async def test_certification_deadline_mid_read_still_publishes(tmp_path, monkeyp
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
     monkeypatch.setattr(generation_seal, "SEAL_BUSY_TIMEOUT_S", 0.2)
+    _without_reseal(monkeypatch)
     _deadline_after_first_row(monkeypatch)
 
     result = await CodeGraphFullIndexTool(str(tmp_path)).execute({"mode": "full"})

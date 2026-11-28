@@ -4,6 +4,7 @@
 import argparse
 import asyncio
 import sys
+import time
 from pathlib import Path as PathClass
 from typing import Any
 
@@ -78,12 +79,35 @@ logger = setup_logger(__name__)
 _UNKNOWN_URI_PREFIX = "Unknown resource URI: "
 _MSG_SERVER_ERROR = "Server error: %s"
 _MSG_SHUTTING_DOWN = "MCP server shutting down"
+#: #1855: the facade built once the resident load has finished (the hot one).
+_WARM_FACADE = "nav"
+#: How long the warm-up waits for the load, and how often it looks (seconds).
+_FACADE_WARM_WAIT_SECONDS = 600.0
+_FACADE_WARM_POLL_SECONDS = 0.1
 
 
 def _resolve_relative_path(base_root: str, file_path: str) -> str:
     """Resolve a relative file_path against base_root and return the absolute string."""
     _p = PathClass(base_root) / file_path
     return str(_p.resolve())
+
+
+def _register_resident_start(server: Any, instance: Any) -> None:
+    """RFC-0042 P1: start the resident loader on ``notifications/initialized``.
+
+    The client sends it after it received the ``initialize`` answer, so the
+    loader can never delay the handshake. SDKs without a notification handler
+    table (MCP 2.x adapters) start it on the first ``tools/list`` / ``tools/call``.
+    """
+    handlers = getattr(server, "notification_handlers", None)
+    if not isinstance(handlers, dict):
+        return
+    from mcp import types
+
+    async def on_initialized(_notification: Any) -> None:
+        instance.start_resident()
+
+    handlers[types.InitializedNotification] = on_initialized
 
 
 def _create_tool_registry(
@@ -118,6 +142,9 @@ class TreeSitterAnalyzerMCPServer:
         self._tools: dict[str, Any] | None = None
         # #1675：tools/call 只构建被调用的门面；之后的完整注册表复用这些实例。
         self._facades: dict[str, Any] = {}
+        #: #1855: set by ``register_tools`` when the server validates arguments itself.
+        self.input_validator: Any | None = None
+        self._facade_warm_task: asyncio.Task[None] | None = None
         from .subscription_lifecycle import SubscriptionLifecycleManager
 
         self.subscription_lifecycle = SubscriptionLifecycleManager(project_root)
@@ -306,9 +333,67 @@ class TreeSitterAnalyzerMCPServer:
         # Register SMART workflow prompts so AI agents can self-discover usage patterns
         register_prompts(server)
 
+        _register_resident_start(server, self)
+
         self.server = server
         _log_safely(logger.info, "MCP server created successfully")
         return server
+
+    def start_resident(self) -> None:
+        """RFC-0042 P1: start the background load for this root; never blocks or raises.
+
+        Called after the MCP ``initialize`` answer (``notifications/initialized``)
+        and, idempotently, on ``tools/list`` / ``tools/call`` for SDKs without
+        notification handlers. Only a server whose ``main()`` enabled the loader
+        ever loads. Each call also counts as activity, which keeps the P1b lease
+        renewal going (and resumes it after an idle period).
+        """
+        try:
+            from ..resident import loader
+
+            loader.touch(self._project_root)
+            if loader.start(self._project_root):
+                self._schedule_facade_warm(self._project_root)
+        except Exception as e:  # noqa: BLE001 — requests then take today's path
+            _log_safely(logger.warning, "resident loader did not start: %s", e)
+
+    def _schedule_facade_warm(self, project_root: str | None) -> None:
+        """#1855: build the ``nav`` facade once the resident load has finished.
+
+        A cold server's first ``nav`` call built the facade (about 0.2 s of
+        imports and tool construction, #1675). This task waits on the event
+        loop, without blocking it, for the loader's load to end, then builds
+        the facade on the event-loop thread, the thread every request runs on:
+        the imports stay off the loader thread (P1), and the build is
+        serialized with requests like any request's own build. By then the
+        client has long had its ``tools/list`` answer; a request that arrives
+        during the build waits for at most what it would have paid itself.
+        """
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return  # no event loop (direct calls in tests): nothing to warm
+        self._facade_warm_task = loop.create_task(
+            self._warm_facade_after_load(project_root)
+        )
+
+    async def _warm_facade_after_load(self, project_root: str | None) -> None:
+        from ..resident import loader
+
+        deadline = time.monotonic() + _FACADE_WARM_WAIT_SECONDS
+        while not loader.wait(project_root, 0):
+            if time.monotonic() >= deadline:
+                return
+            await asyncio.sleep(_FACADE_WARM_POLL_SECONDS)
+        if project_root != self._project_root:
+            return  # the root changed meanwhile; its own start warms it
+        try:
+            self.facade(_WARM_FACADE)
+            validator = self.__dict__.get("input_validator")
+            if validator is not None:
+                validator.prepare(_WARM_FACADE)
+        except Exception as e:  # noqa: BLE001 — the first call builds it instead
+            _log_safely(logger.warning, "facade warm-up failed: %s", e)
 
     def set_project_path(self, project_path: str) -> None:
         """Set the project path for all components."""
@@ -333,6 +418,7 @@ class TreeSitterAnalyzerMCPServer:
 
         self.analysis_engine = get_analysis_engine(project_path)
         self.security_validator = SecurityValidator(project_path)
+        self.start_resident()
 
         _log_safely(logger.info, "Set project path to: %s", project_path)
 
@@ -471,6 +557,13 @@ class TreeSitterAnalyzerMCPServer:
                 shutdown_error = e
                 _log_safely(_log_err, "MCP watcher shutdown failed: %s", e)
             try:
+                # RFC-0042：不再启动常驻加载，并在限定时间内等待在途加载。
+                from ..resident.loader import shutdown as shutdown_resident
+
+                shutdown_resident()
+            except Exception as e:  # 常驻加载收尾失败不阻断停止
+                _log_safely(_log_err, "resident loader shutdown failed: %s", e)
+            try:
                 # #1708：不再调度新的后台预构图，并在限定时间内等待在途构建。
                 from ..call_graph_warm import shutdown as shutdown_graph_warm
 
@@ -533,6 +626,10 @@ async def main() -> None:
         from ..call_graph_warm import enable as enable_graph_warm
 
         enable_graph_warm()
+        # RFC-0042 P1：长驻服务器在 initialize 答复之后于后台加载常驻状态。
+        from ..resident.loader import enable as enable_resident
+
+        enable_resident()
         server = TreeSitterAnalyzerMCPServer(project_root)
         await server.run()
 

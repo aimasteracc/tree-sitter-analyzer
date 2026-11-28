@@ -282,7 +282,7 @@ class TestCLIAdditionalCoverage:
                 "--query-key",
                 "class",
                 "--project-root",
-                "/tmp",
+                tempfile.gettempdir(),
             ],
         )
         mock_stderr = StringIO()

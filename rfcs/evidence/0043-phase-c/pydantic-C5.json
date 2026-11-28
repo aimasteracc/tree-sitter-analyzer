@@ -1,0 +1,75 @@
+{
+ "repo": "pydantic",
+ "rows": 648,
+ "rss_start_mb": 54.2,
+ "first_query_s": 12.26,
+ "rss_after_first_mb": 289.7,
+ "rounds": [
+  {
+   "round": 1,
+   "all": {
+    "n": 648,
+    "median_ms": 283.7,
+    "p90_ms": 1337.7,
+    "max_ms": 37261.2,
+    "mean_ms": 784.0
+   },
+   "by_kind": {
+    "edge_only": {
+     "n": 121,
+     "median_ms": 50.9,
+     "p90_ms": 269.5,
+     "max_ms": 3624.1,
+     "mean_ms": 173.0
+    },
+    "review": {
+     "n": 527,
+     "median_ms": 389.3,
+     "p90_ms": 1450.3,
+     "max_ms": 37261.2,
+     "mean_ms": 924.3
+    }
+   },
+   "stages_ms_per_query": {
+    "G.review.assess_completeness": 380.55,
+    "G.review._reference_scan": 116.63,
+    "F.check.drop_external_producers": 76.49,
+    "A.certified_index_read.enter": 66.03,
+    "F.check.relation_source_evidence(freshness)": 27.39,
+    "G.review._reference_lines": 21.08,
+    "B.graph_build_or_adopt": 20.97,
+    "F.check.declaring_file_unresolved": 6.58,
+    "F.check.declaring_file_excluded": 6.31,
+    "J.infra.is_index_rebuilding": 4.83,
+    "D.guard.call_graph_built": 2.34,
+    "F.check.narrow_to_target": 2.14,
+    "E.edges.sql_native_callers": 1.72,
+    "G.review._is_accessor": 1.7,
+    "F.check.unattributed_sites": 1.7,
+    "B.graph_object": 1.66,
+    "A.certified_index_read.exit": 0.85,
+    "F.check.read_unresolved_inbound": 0.51,
+    "J.infra.try_get_cache": 0.43,
+    "F.check.rank_sites": 0.19,
+    "F.check.call_edge_lines": 0.19,
+    "F.check.relation_files": 0.19,
+    "G.review.prove": 0.15,
+    "E.edges.name_bound_targets": 0.09,
+    "C.resolve.single_method_name": 0.08,
+    "J.infra.cert_timeouts": 0.08,
+    "I.serialize.query_cost": 0.05
+   },
+   "unwrapped_ms_per_query": 42.84
+  }
+ ],
+ "rss_end_mb": 436.2,
+ "n_diff_rows": 0,
+ "diffs": [],
+ "stored": {
+  "tree": "ccb67d8955954fdbe640d346a876831e20c4a62c",
+  "index_key": "fd1ac9d919380de563597b05",
+  "repo": "pydantic",
+  "repo_sha": "e3b6f55a8c778a143f3ae3ddb0f7bc4d67795dc3",
+  "query_key": "ad4a3e5539b1c9c9725efb1a"
+ }
+}

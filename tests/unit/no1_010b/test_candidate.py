@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -253,6 +254,50 @@ def test_group_member_ignoring_sigterm_is_killed_after_grace(
     finally:
         kill_quietly(pid)
     assert (result, alive) == (CommandResult("exited", 0), False)
+
+
+class _ReapedLeader:
+    """组长已被回收（poll() 返回退出码）的进程替身。"""
+
+    pid = 4242
+
+    def poll(self) -> int:
+        return 0
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX-only: the Windows terminate_group has no grace loop",
+)
+def test_group_grace_is_an_upper_bound_whatever_the_poll_step(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # #1908：测试把 _POLL_S 放大到 30 s，组仍可发信号时宽限循环曾睡满 30 s，
+    # 超出 30 s 的单测超时。每一步都按剩余宽限截断，总等待等于宽限期。
+    now = [100.0]
+    sleeps: list[float] = []
+    signals: list[int] = []
+
+    def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        now[0] += seconds
+
+    def group_still_signalable(_pgid: int, signum: int) -> bool:
+        signals.append(signum)
+        return True
+
+    monkeypatch.setattr(candidate, "_POLL_S", 30.0)
+    # 只替换 candidate 模块看到的 time，不动全局时钟。
+    monkeypatch.setattr(
+        candidate, "time", SimpleNamespace(monotonic=lambda: now[0], sleep=fake_sleep)
+    )
+    monkeypatch.setattr(candidate, "_killpg", group_still_signalable)
+    candidate.terminate_group(_ReapedLeader())  # type: ignore[arg-type]
+    assert (sleeps, now[0]) == (
+        [candidate.GROUP_GRACE_S],
+        100.0 + candidate.GROUP_GRACE_S,
+    )
+    assert (signals[0], signals[-1]) == (signal.SIGTERM, signal.SIGKILL)
 
 
 class _Unkillable:

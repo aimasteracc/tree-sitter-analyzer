@@ -30,6 +30,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,8 @@ _WORKERINPUT_KEY = "tsa_hang_dump_dir"
 _PLUGIN_NAME = "tsa-hang-watchdog"
 # faulthandler.dump_traceback_later writes this prefix before the stacks.
 _DUMP_MARKER = b"Timeout ("
+_READ_ATTEMPTS = 5
+_READ_RETRY_DELAY_S = 0.2
 
 
 def add_options(parser: pytest.Parser) -> None:
@@ -106,6 +109,7 @@ class HangWatchdog:
         self._dump_dir: Path | None = None
         self._fd: int | None = None
         self.dumps: list[str] = []
+        self.unreadable: list[str] = []
 
     def start(self) -> None:
         if self._is_worker:
@@ -127,12 +131,35 @@ class HangWatchdog:
         if self._dump_dir is not None:
             node.workerinput[_WORKERINPUT_KEY] = str(self._dump_dir)
 
+    def _read_dump(self, path: Path) -> bytes:
+        """Read one dump, retrying briefly: on Windows a file a worker still
+        holds open can fail with ``OSError`` (EINVAL) until the worker exits."""
+        for attempt in range(_READ_ATTEMPTS):
+            try:
+                return path.read_bytes()
+            except OSError:
+                if attempt == _READ_ATTEMPTS - 1:
+                    raise
+                time.sleep(_READ_RETRY_DELAY_S)
+        raise AssertionError("unreachable")  # pragma: no cover
+
     def _collect_dumps(self) -> list[str]:
+        self.unreadable = []
         if self._dump_dir is None or not self._dump_dir.is_dir():
             return []
         dumps = []
-        for path in sorted(self._dump_dir.iterdir()):
-            data = path.read_bytes()
+        try:
+            paths = sorted(self._dump_dir.iterdir())
+        except OSError as exc:
+            self.unreadable.append(f"{self._dump_dir}: {exc!r}")
+            return []
+        for path in paths:
+            try:
+                data = self._read_dump(path)
+            except OSError as exc:
+                # Never crash the session over an unreadable dump; report it.
+                self.unreadable.append(f"{path.name}: {exc!r}")
+                continue
             if _DUMP_MARKER in data:
                 dumps.append(data.decode("utf-8", errors="replace"))
         return dumps
@@ -146,6 +173,10 @@ class HangWatchdog:
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
     def pytest_terminal_summary(self, terminalreporter: Any) -> None:
+        for problem in self.unreadable:
+            terminalreporter.write_line(
+                f"hang watchdog: could not read dump {problem}", yellow=True
+            )
         for dump in self.dumps:
             terminalreporter.write_sep(
                 "!", "hang watchdog: test exceeded hard deadline"

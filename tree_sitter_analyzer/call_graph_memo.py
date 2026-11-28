@@ -26,6 +26,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import marshal
+import os
 import pickle  # nosec B403 — 只序列化本进程读出的数据用于摘要，从不反序列化。
 import threading
 from collections import OrderedDict
@@ -37,12 +38,76 @@ _MARSHAL_VERSION = 0
 _CHUNK_ROWS = 8192
 #: 记忆保存的项目根个数上限（每个根只保留最近一次构图）。
 _MAX_ROOTS = 4
+#: RFC-0043 §4：所有项目根的图状态合计的估算字节上限（MiB），环境变量覆盖。
+GRAPH_MB_ENV = "TSA_RESIDENT_GRAPH_MB"
+DEFAULT_GRAPH_MB = 256
+#: 估算用：图状态中每个元素（容器条目）的字节数。7 个基准仓库实测保留内存为
+#: 每元素 54–155 字节（RFC-0043 §4），取上界之上的 200，估算只会偏大。
+BYTES_PER_ELEMENT = 200
 
 _LOCK = threading.Lock()
 #: 项目根 -> (输入摘要, 构建完成的图状态)。
 _MEMO: OrderedDict[str, tuple[str, dict[str, Any]]] = OrderedDict()
 #: #1723：项目根 -> 当前状态的其他键（增量结果先按版本键存入，再补登输入摘要）。
 _EXTRA_KEYS: dict[str, set[str]] = {}
+#: RFC-0043 §4：项目根 -> 其图状态的估算字节数。
+_SIZES: dict[str, int] = {}
+
+
+def budget_bytes() -> int:
+    """图状态合计的字节上限；``TSA_RESIDENT_GRAPH_MB`` 不是正整数时取默认值。"""
+    raw = os.environ.get(GRAPH_MB_ENV, "").strip()
+    try:
+        megabytes = int(raw) if raw else DEFAULT_GRAPH_MB
+    except ValueError:
+        megabytes = DEFAULT_GRAPH_MB
+    if megabytes <= 0:
+        megabytes = DEFAULT_GRAPH_MB
+    return megabytes * 1024 * 1024
+
+
+def estimate_state_bytes(state: dict[str, Any]) -> int:
+    """图状态的估算字节数：容器条目数（嵌套一层）乘以 :data:`BYTES_PER_ELEMENT`。
+
+    构图状态由按名分组的字典与列表组成；条目数与保留内存近似成正比。只数到
+    第二层，估算本身为线性时间且不复制数据。
+    """
+    elements = 0
+    for value in state.values():
+        elements += 1
+        if isinstance(value, dict):
+            elements += len(value)
+            for inner in value.values():
+                if isinstance(inner, list | tuple | set | frozenset | dict):
+                    elements += len(inner)
+        elif isinstance(value, list | tuple | set | frozenset):
+            elements += len(value)
+    return elements * BYTES_PER_ELEMENT
+
+
+def stats() -> dict[str, Any]:
+    """各项目根的估算字节数、合计与上限（诊断与测试）。"""
+    with _LOCK:
+        sizes = {root: _SIZES.get(root, 0) for root in _MEMO}
+    return {"roots": sizes, "bytes": sum(sizes.values()), "budget": budget_bytes()}
+
+
+def _evict_over_budget(keep: str) -> None:
+    """在锁内调用：按最久未用的顺序逐出其他项目根，直到数量与字节都在上限内。
+
+    刚存入的根（``keep``）从不逐出：单个根即使超出上限也照旧保留，内存上限仍
+    约为一张图（与引入预算前相同）；预算只约束多个根同时驻留。正在使用某个
+    状态的请求持有它的引用，逐出只是让记忆不再命中，从不影响进行中的答案。
+    """
+    budget = budget_bytes()
+    while len(_MEMO) > 1:
+        total = sum(_SIZES.get(root, 0) for root in _MEMO)
+        if len(_MEMO) <= _MAX_ROOTS and total <= budget:
+            return
+        victim = next(root for root in _MEMO if root != keep)
+        _MEMO.pop(victim)
+        _EXTRA_KEYS.pop(victim, None)
+        _SIZES.pop(victim, None)
 
 
 def stable_form(value: Any) -> Any:
@@ -145,13 +210,13 @@ def latest(root: str) -> dict[str, Any] | None:
 
 def store(root: str, digest: str, state: dict[str, Any]) -> None:
     """记录 ``root`` 最近一次构图；同根的旧状态被替换。"""
+    size = estimate_state_bytes(state)
     with _LOCK:
         _MEMO[root] = (digest, state)
+        _SIZES[root] = size
         _EXTRA_KEYS.pop(root, None)
         _MEMO.move_to_end(root)
-        while len(_MEMO) > _MAX_ROOTS:
-            evicted, _entry = _MEMO.popitem(last=False)
-            _EXTRA_KEYS.pop(evicted, None)
+        _evict_over_budget(root)
 
 
 #: #1708：正在构建的图：(项目根, 输入摘要) -> 构建完成时置位的事件。
@@ -199,6 +264,7 @@ def discard(root: str) -> None:
     with _LOCK:
         _MEMO.pop(root, None)
         _EXTRA_KEYS.pop(root, None)
+        _SIZES.pop(root, None)
 
 
 def clear() -> None:
@@ -206,3 +272,4 @@ def clear() -> None:
     with _LOCK:
         _MEMO.clear()
         _EXTRA_KEYS.clear()
+        _SIZES.clear()

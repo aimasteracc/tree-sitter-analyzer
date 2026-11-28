@@ -356,23 +356,38 @@ def inline_path_bodies(
 
 
 def _neighbor_list(rows: list[dict[str, Any]], name_key: str) -> list[dict[str, Any]]:
-    """Compact, de-duplicated neighbour list (name + file + line)."""
+    """Compact, de-duplicated neighbour list.
+
+    #1942: ``file`` / ``line`` are one coordinate. A caller is its definition
+    (``caller_file`` + ``caller_line``); a callee is named by the file it is
+    defined in and by its call site (``call_site_file`` + ``call_site_line``) --
+    the row's ``callee_line`` is the call site in the *caller's* file, so pairing
+    it with the callee's file named a line of another file.
+    """
     out: list[dict[str, Any]] = []
-    seen: set[tuple[str, str]] = set()
+    seen: set[tuple[str, str, Any]] = set()
     for row in rows:
         nm = row.get(name_key, "")
         if not nm:
             continue
-        file_key = (
-            "caller_file" if name_key == "caller_name" else "callee_resolved_file"
-        )
-        fl = row.get(file_key) or row.get("callee_file") or row.get("caller_file") or ""
-        key = (nm, fl)
+        if name_key == "caller_name":
+            entry: dict[str, Any] = {
+                "name": nm,
+                "file": row.get("caller_file") or "",
+                "line": row.get("caller_line", 0),
+            }
+        else:
+            entry = {
+                "name": nm,
+                "file": row.get("callee_resolved_file") or "",
+                "call_site_file": row.get("caller_file") or "",
+                "call_site_line": row.get("callee_line", 0),
+            }
+        key = (nm, str(entry["file"]), entry.get("call_site_line"))
         if key in seen:
             continue
         seen.add(key)
-        line_key = "caller_line" if name_key == "caller_name" else "callee_line"
-        out.append({"name": nm, "file": fl, "line": row.get(line_key, 0)})
+        out.append(entry)
         if len(out) >= MAX_NEIGHBORS:
             break
     return out

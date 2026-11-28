@@ -43,8 +43,10 @@ CACHE_DIR_ENV = "TSA_INDEX_FINGERPRINT_CACHE_DIR"
 ENV_VAR = "TSA_EVIDENCE_STORE"
 #: 每个文件保留的记录数（每个库版本占指纹与投影判定两条）。
 MAX_ENTRIES = 32
-#: 目录中保留的项目文件数（最近写入者优先）。
-MAX_FILES = 64
+#: 目录中保留的项目文件数（最近写入者优先）。#1835：原为 64，一台机器上的
+#: 工作树与多仓库代理很快写满（实测已满 64 个），被挤出的项目在下一个冷进程里
+#: 重算全表指纹，首个查询因此超出 10 s 捕获期限。每个文件约 0.6–10 KB。
+MAX_FILES = 512
 _MARSHAL_VERSION = 4
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 #: 指纹为 ``sha256:`` 加 64 位十六进制摘要，RFC-0039 认证根为 ``merkle:`` 加 64 位；投影判定为 "0" / "1"。其他值不落盘。

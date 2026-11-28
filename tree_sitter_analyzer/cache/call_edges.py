@@ -80,4 +80,8 @@ def _edge_for_call(
     if hint is not None:
         # RFC-0038：注解给出的接收者类型线索，随边写入 metadata。
         edge["receiver_hint"] = hint
+    scope = call.get("kotlin_scope")
+    if scope is not None:
+        # #1926：Kotlin 裸调用 / this 调用可用的隐式接收者，随边写入 metadata。
+        edge["kotlin_scope"] = scope
     return edge

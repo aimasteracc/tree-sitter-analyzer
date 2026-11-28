@@ -263,3 +263,125 @@ def test_evidence_handles_are_capped_at_three() -> None:
     fb = FakeBackends({"t": [sym("t")]}, callers)
     out = _answer({"query": "symbol('t').callers().callers()"}, fb)
     assert len(out["evidence"]) == 3
+
+
+def test_symbol_absence_names_the_fix_instead_of_a_census() -> None:
+    """dogfood 2026-11-09（P1-2）：不存在符号必须是 unknown + 可执行 next_step。
+
+    修复前：``NOT_FOUND`` + ``complete`` + ``next_step="Answer is complete for
+    every stage."``，agent 会据此收工。
+    """
+    out = _answer({"query": "symbol('missing_name').callers()"}, FakeBackends())
+    assert (out["success"], out["verdict"], out["completeness"]) == (
+        True,
+        "NOT_FOUND",
+        "unknown",
+    )
+    assert out["completeness_reasons"] == ["symbol:SYMBOL_NOT_DEFINED"]
+    assert out["agent_summary"]["next_step"] == (
+        "No indexed definition for missing_name: check spelling or qualify as "
+        "Class.method; refresh the index (index action=cache mode=index) if the "
+        "source changed, then retry."
+    )
+
+
+def test_an_empty_callers_stage_adds_an_absence_hint() -> None:
+    """空 callers + stage 覆盖完整 → 提示（possible），并指向能签发证书的命令。"""
+    fb = FakeBackends({"t": [sym("t")]}, {"t": callers_payload()})
+
+    payload = _answer({"query": Q}, fb)
+
+    hint = payload["absence_hint"]
+    assert (hint["kind"], hint["confidence"]) == ("possibly_unreferenced", "possible")
+    assert "callers=0" in hint["detail"]
+    assert "nav action=callers" in hint["next_step"]
+
+
+def test_an_incomplete_callers_stage_gets_no_absence_hint() -> None:
+    """stage 覆盖不完整时不给提示：空结果可能只是没查到。"""
+    fb = FakeBackends(
+        {"t": [sym("t")]},
+        {"t": callers_payload(completeness="unknown", reasons=("UNRESOLVED_INBOUND",))},
+    )
+
+    payload = _answer({"query": Q}, fb)
+
+    assert "absence_hint" not in payload
+
+
+def test_a_trailing_non_relation_stage_gets_no_absence_hint() -> None:
+    """末尾是 take/sort 时不提示：缺席问的是关系 stage 本身。"""
+    fb = FakeBackends({"t": [sym("t")]}, {"t": callers_payload()})
+
+    payload = _answer({"query": "symbol('t').callers().take(3)"}, fb)
+
+    assert "absence_hint" not in payload
+
+
+def test_answer_etag_is_stable_across_volatile_fields() -> None:
+    """§12.1 的 UQL 半边：指纹只认内容与世代，不认耗时等易变字段。"""
+    from tree_sitter_analyzer.uql.output import answer_etag
+
+    base = {
+        "query": "symbol('a').callers()",
+        "groups": [{"stage": "callers", "rows": [{"name": "b"}], "count": 1}],
+        "gaps": [],
+        "page": {"total": 1},
+    }
+    noisy = {**base, "elapsed_ms": 12}
+
+    assert (
+        answer_etag(base, "gen-1") == answer_etag(noisy, "gen-1"),
+        answer_etag(base, "gen-1") != answer_etag(base, "gen-2"),
+    ) == (True, True)
+
+
+def test_uql_if_none_match_returns_a_minimal_unchanged_answer(tmp_path) -> None:
+    """命中同一指纹时只回最小载荷；过期指纹回完整答案（临时项目，世代稳定）。"""
+    import asyncio
+
+    from tree_sitter_analyzer.mcp.tools.full_index_tool import CodeGraphFullIndexTool
+    from tree_sitter_analyzer.mcp.tools.uql_tool import UqlTool
+
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "mod.py").write_text(
+        "def a():\n    return 1\n\n\ndef b():\n    return a()\n", encoding="utf-8"
+    )
+    asyncio.run(
+        CodeGraphFullIndexTool(str(tmp_path)).execute({"mode": "full", "max_files": 20})
+    )
+
+    async def run():
+        tool = UqlTool(str(tmp_path))
+        query = "symbol('a').callers()"
+        first = await tool.execute({"query": query, "output_format": "json"})
+        hit = await tool.execute(
+            {
+                "query": query,
+                "output_format": "json",
+                "if_none_match": first["answer_etag"],
+            }
+        )
+        stale = await tool.execute(
+            {
+                "query": query,
+                "output_format": "json",
+                "if_none_match": "sha256:deadbeef",
+            }
+        )
+        return first, hit, stale
+
+    first, hit, stale = asyncio.run(run())
+
+    assert (first["answer_etag"].startswith("sha256:"), hit["unchanged"]) == (
+        True,
+        True,
+    )
+    assert set(hit) == {
+        "success",
+        "unchanged",
+        "answer_etag",
+        "query",
+        "index_generation",
+    }
+    assert "unchanged" not in stale

@@ -352,9 +352,12 @@ else:
         deadline = time.monotonic() + GROUP_GRACE_S
         # poll() 回收已退出的组长，避免其僵尸身份让整组看似仍然存活。
         while proc.poll() is None or _killpg(proc.pid, 0):
-            if time.monotonic() >= deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
                 break
-            time.sleep(_POLL_S)
+            # #1908：宽限期是上界。按剩余时间截断每一步，轮询步再长也不会越过它
+            # （测试把 _POLL_S 放大到 30 s 时曾在这里睡满 30 s）。
+            time.sleep(min(_POLL_S, remaining))
         _killpg(proc.pid, signal.SIGKILL)
 
 

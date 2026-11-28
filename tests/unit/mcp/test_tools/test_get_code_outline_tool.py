@@ -669,9 +669,9 @@ class TestGetCodeOutlineToolExecute:
         assert "outline" in response
         outline = response["outline"]
         assert outline["language"] == "java"
-        assert len(outline["classes"]) == 1
-        assert outline["classes"][0]["name"] == "MyService"
-        # Top-level hoisted fields stay in sync with the outline.
+        # #1956: classes are sent once, at the top level only.
+        assert "classes" not in outline
+        assert "classes" in outline["moved_to_top_level"]
         assert response["language"] == "java"
         assert response["class_count"] == 1
         assert response["classes"][0]["name"] == "MyService"
@@ -750,7 +750,7 @@ class TestGetCodeOutlineToolExecute:
 
     @pytest.mark.asyncio
     async def test_execute_with_include_fields(self):
-        """include_fields=True 时 outline.classes[*] 含 fields 键。"""
+        """include_fields=True 时 classes[*] 含 fields 键（#1956: 仅顶层）。"""
 
         field = MagicMock()
         field.element_type = "variable"
@@ -803,8 +803,8 @@ class TestGetCodeOutlineToolExecute:
 
         # JSON output is now a plain dict (post-1.12 dogfood cleanup).
         assert isinstance(response, dict)
-        assert "fields" in response["outline"]["classes"][0]
-        assert response["outline"]["classes"][0]["fields"][0]["name"] == "count"
+        assert "fields" in response["classes"][0]
+        assert response["classes"][0]["fields"][0]["name"] == "count"
 
     @pytest.mark.asyncio
     async def test_wrong_language_file_flags_parse_errors(self, tmp_path):

@@ -331,6 +331,7 @@ def _is_tracked(repo_root: str, abs_path: str) -> bool:
         rel = _rel_to_repo(repo_root, abs_path)
         result = subprocess.run(
             ["git", "-C", repo_root, "ls-files", "--error-unmatch", "--", rel],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -370,6 +371,7 @@ def _run_git_log(
     try:
         proc = subprocess.run(
             args,
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             encoding="utf-8",

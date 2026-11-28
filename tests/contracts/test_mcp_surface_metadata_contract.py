@@ -284,3 +284,47 @@ def test_tsa_explore_prototype_is_retired_with_zero_references() -> None:
             if pattern.search(path.read_text(encoding="utf-8")):
                 offenders.append(str(path.relative_to(PROJECT_ROOT)))
     assert offenders == [], f"retired tsa_explore still referenced: {offenders}"
+
+
+_FACADE_ACTION_ROW_RE = re.compile(r"^\|\s*`([a-z_]+)`\s*\|\s*([^|]+?)\s*\|")
+
+
+def test_every_facade_action_has_codemap_parity() -> None:
+    """每个 facade 的 action 集合必须与 codemap 的 action 列表精确相等。
+
+    dogfood 2026-11-09（P2-6）：`mcp-tools.md` 只比 tool 名，action 层漂移一直
+    是绿的——当时漏了 8 个 facade 的 ``help`` 以及 ``index knowledge`` /
+    ``index schema`` / ``viz knowledge``。``action=help`` 是 facade 唯一的
+    自描述入口，漏记它等于让 agent 无法在运行时发现能力。
+    """
+    from tree_sitter_analyzer.mcp._tool_registry import create_tool_registry
+    from tree_sitter_analyzer.mcp.facade_map import FACADE_NAMES
+
+    codemap = PROJECT_ROOT / "docs" / "CODEMAPS" / "mcp-tools.md"
+    documented: dict[str, set[str]] = {}
+    for line in codemap.read_text(encoding="utf-8").splitlines():
+        match = _FACADE_ACTION_ROW_RE.match(line)
+        if match is None or match.group(1) not in FACADE_NAMES:
+            continue
+        documented[match.group(1)] = {
+            part.strip().strip("`")
+            for part in match.group(2).split("/")
+            if part.strip()
+        }
+
+    registry = dict(create_tool_registry(str(PROJECT_ROOT))[0])
+    mismatched = {}
+    for name in FACADE_NAMES:
+        schema = registry[name].get_tool_definition()
+        actual = set(
+            (schema.get("inputSchema") or schema)["properties"]["action"]["enum"]
+        )
+        if documented.get(name) != actual:
+            mismatched[name] = {
+                "missing_from_codemap": sorted(actual - documented.get(name, set())),
+                "stale_in_codemap": sorted(documented.get(name, set()) - actual),
+            }
+    assert mismatched == {}, (
+        "docs/CODEMAPS/mcp-tools.md 的 facade action 列表与注册表不一致；"
+        f"按 action 与 schema 的差异修正：{mismatched}"
+    )

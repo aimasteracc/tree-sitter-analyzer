@@ -228,6 +228,19 @@ def test_old_project_files_are_pruned(tmp_path: Path, monkeypatch) -> None:
     assert [store.lookup(r, (r, "k")) for r in roots] == [None, None, _FP, _FP]
 
 
+def test_a_multi_repo_machine_keeps_every_project_record(tmp_path: Path) -> None:
+    # #1835: with 64 slots a machine running agents on many worktrees evicted
+    # live projects, and their next fresh process recomputed the full-table
+    # fingerprint (cold first query past the 10 s capture deadline).
+    roots = []
+    for index in range(70):  # more than the old cap of 64
+        project = str(tmp_path / f"p{index}")
+        roots.append(project)
+        store.store(project, (project, "k"), _FP)
+
+    assert all(store.lookup(r, (r, "k")) == _FP for r in roots)
+
+
 def test_a_write_failure_is_silent(root: str, monkeypatch) -> None:
     def refuse(*_args, **_kwargs):
         raise OSError("disk full")

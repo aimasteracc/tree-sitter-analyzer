@@ -1,0 +1,104 @@
+{
+ "repo": "gson",
+ "rows": 215,
+ "rss_start_mb": 51.8,
+ "first_query_s": 4.132,
+ "rss_after_first_mb": 136.3,
+ "rounds": [
+  {
+   "round": 1,
+   "all": {
+    "n": 215,
+    "median_ms": 42.32,
+    "p90_ms": 161.16,
+    "max_ms": 3425.0,
+    "mean_ms": 97.28
+   },
+   "by_kind": {
+    "edge_only": {
+     "n": 47,
+     "median_ms": 6.34,
+     "p90_ms": 14.78,
+     "max_ms": 41.5,
+     "mean_ms": 9.63
+    },
+    "review": {
+     "n": 168,
+     "median_ms": 51.84,
+     "p90_ms": 179.89,
+     "max_ms": 3425.0,
+     "mean_ms": 121.8
+    }
+   },
+   "stages_ms_per_query": {
+    "G.review.assess_completeness": 69.68,
+    "G.review._reference_scan": 16.27,
+    "F.check.relation_source_evidence(freshness)": 3.17,
+    "J.infra.is_index_rebuilding": 1.9,
+    "G.review._reference_lines": 1.04,
+    "A.certified_index_read.enter": 0.96,
+    "G.review._is_accessor": 0.48,
+    "F.check.declaring_file_unresolved": 0.46,
+    "B.graph_object": 0.45,
+    "F.check.narrow_to_target": 0.44,
+    "F.check.declaring_file_excluded": 0.3,
+    "F.check.unattributed_sites": 0.23,
+    "F.check.read_unresolved_inbound": 0.11,
+    "F.check.rank_sites": 0.08,
+    "G.review.prove": 0.06,
+    "B.graph_build_or_adopt": 0.05
+   },
+   "unwrapped_ms_per_query": 1.33
+  },
+  {
+   "round": 2,
+   "all": {
+    "n": 215,
+    "median_ms": 45.88,
+    "p90_ms": 137.4,
+    "max_ms": 4382.3,
+    "mean_ms": 111.22
+   },
+   "by_kind": {
+    "edge_only": {
+     "n": 47,
+     "median_ms": 6.82,
+     "p90_ms": 16.19,
+     "max_ms": 23.5,
+     "mean_ms": 9.29
+    },
+    "review": {
+     "n": 168,
+     "median_ms": 51.97,
+     "p90_ms": 154.62,
+     "max_ms": 4382.3,
+     "mean_ms": 139.74
+    }
+   },
+   "stages_ms_per_query": {
+    "G.review.assess_completeness": 81.83,
+    "G.review._reference_scan": 14.86,
+    "A.certified_index_read.enter": 3.49,
+    "F.check.relation_source_evidence(freshness)": 3.2,
+    "J.infra.is_index_rebuilding": 1.9,
+    "G.review._reference_lines": 1.04,
+    "B.graph_build_or_adopt": 0.64,
+    "B.graph_object": 0.5,
+    "G.review._is_accessor": 0.44,
+    "F.check.narrow_to_target": 0.44,
+    "F.check.declaring_file_unresolved": 0.43,
+    "F.check.declaring_file_excluded": 0.24,
+    "F.check.unattributed_sites": 0.16,
+    "F.check.rank_sites": 0.09,
+    "A.certified_index_read.exit": 0.09,
+    "F.check.read_unresolved_inbound": 0.08,
+    "D.guard.call_graph_built": 0.07,
+    "G.review.prove": 0.06
+   },
+   "unwrapped_ms_per_query": 1.43
+  }
+ ],
+ "rss_end_mb": 143.1,
+ "n_diff_rows": 0,
+ "diffs": []
+}

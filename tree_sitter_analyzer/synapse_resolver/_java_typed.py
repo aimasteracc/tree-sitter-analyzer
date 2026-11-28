@@ -45,6 +45,8 @@ class JavaTypeIndex:
     methods: dict[ClassKey, dict[str, list[tuple[int, int]]]] = field(
         default_factory=dict
     )
+    #: (文件, 类) -> ``extends`` 的类名（#1880：只有类有；旧索引没有此证据）。
+    superclasses: dict[ClassKey, str] = field(default_factory=dict)
 
 
 def java_type_index(ctx: ResolverContext) -> JavaTypeIndex:
@@ -82,6 +84,8 @@ def _load(conn: Any, index: JavaTypeIndex) -> None:
                 index.classes.setdefault(file_path, {})[name] = [
                     str(parent) for parent in symbol.get("parents") or []
                 ]
+                if symbol.get("superclass"):
+                    index.superclasses[(file_path, name)] = str(symbol["superclass"])
             elif kind in ("method", "function") and name and symbol.get("class"):
                 line = int(symbol.get("line") or 0)
                 sym_id = by_position.get((file_path, name, line))
@@ -150,10 +154,16 @@ def find_method(
             return None  # 重载：调用的是哪一个取决于实参类型
         line, sym_id = own[0]
         return (cls[0], sym_id, cls[1], line)
+    # #1880：超类链上的类声明了该方法时，它胜过任何接口方法（Java 的 class wins），
+    # 项目外的接口也不会带来项目方法，因此不必因它放弃；项目内的接口仍照常比对。
+    in_chain = _superclass_hit(cls, method, jctx, index, depth) is not None
+    superclass = index.superclasses.get(cls)
     found: set[tuple[str, int, str, int]] = set()
     for parent in index.classes.get(cls[0], {}).get(cls[1], []):
         resolved = resolve_type(parent, cls[0], jctx, index)
         if resolved is None:
+            if in_chain and parent != superclass:
+                continue  # 项目外的接口：超类链上的方法胜出
             return None  # 基类型在项目外：方法可能来自它
         hit = find_method(resolved, method, jctx, index, depth + 1)
         if hit is not None:
@@ -161,6 +171,30 @@ def find_method(
         elif _declares_anywhere(resolved, method, jctx, index, depth + 1):
             return None  # 祖先里有该名字但无法唯一确定（重载 / 外部基类型）
     return found.pop() if len(found) == 1 else None
+
+
+def _superclass_hit(
+    cls: ClassKey,
+    method: str,
+    jctx: JavaResolverContext,
+    index: JavaTypeIndex,
+    depth: int,
+) -> tuple[str, int] | None:
+    """#1880：沿 ``extends`` 类链（不含接口）找到的唯一 ``method`` 定义；否则 None。"""
+    current = cls
+    while depth <= _MAX_DEPTH:
+        superclass = index.superclasses.get(current)
+        if superclass is None:
+            return None
+        resolved = resolve_type(superclass, current[0], jctx, index)
+        if resolved is None:
+            return None
+        own = index.methods.get(resolved, {}).get(method)
+        if own is not None:
+            return (resolved[0], own[0][1]) if len(own) == 1 else None
+        current = resolved
+        depth += 1
+    return None
 
 
 def _declares_anywhere(

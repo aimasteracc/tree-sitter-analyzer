@@ -131,24 +131,155 @@ def _javascript_parents(node: Any, source: str) -> list[str]:
     ]
 
 
+#: Java clauses that list a type's interfaces (``implements`` of a class / enum /
+#: record, ``extends`` of an interface).
+_JAVA_INTERFACE_CLAUSES = frozenset({"super_interfaces", "extends_interfaces"})
+_JAVA_ANNOTATIONS = frozenset({"marker_annotation", "annotation"})
+
+
 def _java_parents(node: Any, source: str) -> list[str]:
-    superclass = [
-        _node_text(parent, source)
-        for child in node.children
-        if child.type == "superclass"
-        for parent in child.children
-        if parent.type == "type_identifier"
+    """Direct supertypes as written, without type arguments or type annotations.
+
+    #1880: ``extends A<String>`` (``generic_type``), ``extends pkg.A``
+    (``scoped_type_identifier``), ``extends @Ann A`` (``annotated_type``) and an
+    interface's ``extends`` (``extends_interfaces``) all used to be dropped, so
+    the index had no supertype edge for them. ``pkg.A<T>`` is recorded as
+    ``pkg.A``; a node that is not a type name is skipped.
+    """
+    supertypes: list[Any] = []
+    for child in node.children:
+        if child.type == "superclass":
+            supertypes.extend(child.named_children)
+        elif child.type in _JAVA_INTERFACE_CLAUSES:
+            for type_list in child.named_children:
+                if type_list.type == "type_list":
+                    supertypes.extend(type_list.named_children)
+    names = (_java_type_name(supertype, source) for supertype in supertypes)
+    return [name for name in names if name]
+
+
+def java_superclass(node: Any, source: str) -> str | None:
+    """The ``extends`` type of a Java class (as in :func:`_java_parents`), if any.
+
+    #1880: ``parents`` lists the superclass and the interfaces alike; the typed
+    resolver needs to know which one is the superclass (a class method wins over
+    an interface method).
+    """
+    clause = next((c for c in node.children if c.type == "superclass"), None)
+    if clause is None:
+        return None
+    return next(
+        (
+            name
+            for child in clause.named_children
+            if (name := _java_type_name(child, source))
+        ),
+        None,
+    )
+
+
+def _java_type_name(node: Any, source: str) -> str | None:
+    """``A`` / ``pkg.A`` for a Java class type node; None for anything else."""
+    if node.type == "annotated_type":
+        node = next(
+            (c for c in node.named_children if c.type not in _JAVA_ANNOTATIONS), None
+        )
+        return None if node is None else _java_type_name(node, source)
+    if node.type == "generic_type":
+        node = node.named_children[0] if node.named_children else None
+        return None if node is None else _java_type_name(node, source)
+    if node.type == "type_identifier":
+        return _node_text(node, source) or None
+    if node.type == "scoped_type_identifier":
+        parts = [
+            _java_type_name(part, source)
+            for part in node.named_children
+            if part.type in ("type_identifier", "scoped_type_identifier")
+        ]
+        if not parts or not all(parts):
+            return None
+        return ".".join(str(part) for part in parts)
+    return None
+
+
+def _kotlin_parents(node: Any, source: str) -> list[str]:
+    """Direct supertypes of a Kotlin class / interface / named companion object.
+
+    #1916: Kotlin had no parent extractor, so no Kotlin class had a supertype
+    edge. ``class A : pkg.B<T>(1), @Ann I, J by d`` gives ``["pkg.B", "I", "J"]``:
+    type arguments, annotations, the constructor call and the delegate are
+    removed. A function type (``(Int) -> Int``) names no class and is skipped.
+    """
+    names = (
+        _kotlin_type_name(type_node, source)
+        for _call, type_node in _kotlin_supertypes(node)
+    )
+    return [name for name in names if name]
+
+
+def kotlin_superclass(node: Any, source: str) -> str | None:
+    """The superclass of a Kotlin class when the syntax identifies it, else None.
+
+    #1916: only a class can be called as a constructor (``: B()``), so that entry
+    is the superclass. An entry without the call may be an interface or a class
+    initialised by a secondary constructor (``class S : B { constructor() :
+    super() }``), so nothing is recorded for it. An interface has no superclass.
+    """
+    if any(child.type == "interface" for child in node.children):
+        return None
+    return next(
+        (
+            name
+            for is_call, type_node in _kotlin_supertypes(node)
+            if is_call and (name := _kotlin_type_name(type_node, source))
+        ),
+        None,
+    )
+
+
+#: ``delegation_specifier`` children that carry a supertype (``: B``, ``: B()``,
+#: ``: I by d``); annotations and function types are not supertypes by name.
+_KOTLIN_SUPERTYPE = frozenset(
+    {"user_type", "constructor_invocation", "explicit_delegation"}
+)
+
+
+def _kotlin_supertypes(node: Any) -> list[tuple[bool, Any]]:
+    """``(called as a constructor, type node)`` per ``delegation_specifier``."""
+    found: list[tuple[bool, Any]] = []
+    for clause in node.children:
+        if clause.type != "delegation_specifiers":
+            continue
+        for specifier in clause.named_children:
+            entry = next(
+                (c for c in specifier.named_children if c.type in _KOTLIN_SUPERTYPE),
+                None,
+            )
+            if entry is None:
+                continue
+            if entry.type == "user_type":
+                found.append((False, entry))
+                continue
+            type_node = next(
+                (c for c in entry.named_children if c.type == "user_type"), None
+            )
+            if type_node is not None:
+                found.append((entry.type == "constructor_invocation", type_node))
+    return found
+
+
+def _kotlin_type_name(node: Any, source: str) -> str | None:
+    """``B`` / ``pkg.B`` for a Kotlin ``user_type``; None for anything else."""
+    if node.type != "user_type":
+        return None
+    parts = [
+        _node_text(child, source)
+        for child in node.named_children
+        if child.type == "identifier"
     ]
-    interfaces = [
-        _node_text(parent, source)
-        for child in node.children
-        if child.type == "super_interfaces"
-        for type_list in child.children
-        if type_list.type == "type_list"
-        for parent in type_list.children
-        if parent.type == "type_identifier"
-    ]
-    return superclass + interfaces
+    if not parts or not all(parts):
+        return None
+    return ".".join(parts)
 
 
 def _cpp_parents(node: Any, source: str) -> list[str]:
@@ -166,6 +297,7 @@ _PARENT_EXTRACTORS = {
     "javascript": _javascript_parents,
     "typescript": _javascript_parents,
     "java": _java_parents,
+    "kotlin": _kotlin_parents,
     "c": _cpp_parents,
     "cpp": _cpp_parents,
 }

@@ -30,6 +30,7 @@ def handle_special_commands(
 ) -> int | None:
     """Handle CLI commands that bypass the normal file-analysis command path."""
     handlers: tuple[Callable[[], int | None], ...] = (
+        lambda: _handle_setup(args, context),
         lambda: _handle_install_skills(args, context),
         lambda: _handle_agent_skills(args, context),
         lambda: _handle_agent_workflow(args, context),
@@ -67,6 +68,31 @@ def handle_special_commands(
         if result is not None:
             return result
     return None
+
+
+def _handle_setup(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int | None:
+    """Run ``--setup`` (one-command onboarding, #1856)."""
+    if not getattr(args, "setup", False):
+        return None
+    from pathlib import Path
+
+    from .onboarding import parse_agents, run_setup
+
+    try:
+        agents = parse_agents(getattr(args, "setup_agents", None))
+    except ValueError as exc:
+        context.output_error(str(exc))
+        return 1
+    root = Path(getattr(args, "project_root", None) or os.getcwd()).resolve()
+    return run_setup(
+        root,
+        agents=agents,
+        assume_yes=bool(getattr(args, "setup_yes", False)),
+        skip_index=bool(getattr(args, "setup_no_index", False)),
+    )
 
 
 def _handle_install_skills(

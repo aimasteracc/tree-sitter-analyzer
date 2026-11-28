@@ -66,9 +66,10 @@ def _run_index(
     return elapsed
 
 
-# Seven full index runs; the module comment budgets 180 s, the slow-test
-# step passes --timeout=120, so the marker states the real budget.
-@pytest.mark.timeout(180)
+# Seven full index runs; the module comment budgets 180 s, the perf step is
+# non-gating (#1852) with a 12 min step timeout, so the marker states the
+# real budget.
+@pytest.mark.timeout(600)
 @pytest.mark.integration
 @pytest.mark.performance
 @pytest.mark.slow

@@ -59,9 +59,15 @@ jobs:
           - os: windows-latest
             python-version: "3.11"
             coverage: false
+          # macos-latest lanes run as 2 shards (#1910): see the no-coverage step.
           - os: macos-latest
             python-version: "3.11"
             coverage: false
+            shard: 1
+          - os: macos-latest
+            python-version: "3.11"
+            coverage: false
+            shard: 2
 
     env:
       PYTHONIOENCODING: utf-8
@@ -154,7 +160,14 @@ jobs:
       timeout-minutes: 20
       run: |
         set +e
+        # macos-latest hands out 3- and 5-vCPU machines of one image. The
+        # 3-vCPU ones need 590-910 s for this session (one hit the 900 s
+        # pytest.ini budget at 89 % done), the 5-vCPU ones 350-410 s; 1080 s
+        # still leaves the 20-minute step time to report. macOS therefore runs
+        # the suite as 2 deterministic shards (--shard=I/2, tests/pytest_shard.py,
+        # split by node id) so each 3-vCPU lane carries about half of it (#1910).
         uv run pytest tests/ -n auto -q --tb=short --maxfail=200 \
+          ${{ runner.os == 'macOS' && format('--shard={0}/2 --session-timeout=1080', matrix.shard) || '' }} \
           --ignore=tests/e2e \
           -m "not slow and not e2e and not network and not benchmark and not full_language" \
           2>&1 | tee pytest-output.txt
@@ -187,14 +200,26 @@ jobs:
       timeout-minutes: 15
       run: |
         uv run pytest tests/ -n auto -q --maxfail=200 --timeout=120 \
-          -m "slow and not network and not e2e and not benchmark and not full_language"
+          -m "slow and not performance and not network and not e2e and not benchmark and not full_language"
+      shell: bash
+
+    # Wall-clock perf checks must never gate an irreversible publish (#1852):
+    # runner slowness alone hit the 180 s per-test timeout and blocked PyPI.
+    # The check still runs and surfaces a warning annotation on regression.
+    - name: Perf regression signal (non-gating)
+      if: matrix.coverage
+      continue-on-error: true
+      timeout-minutes: 12
+      run: |
+        uv run pytest tests/ -q --maxfail=5 -m "performance and not network and not e2e and not benchmark" \
+          || echo "::warning title=Perf regression signal::performance-marked tests failed or timed out; non-gating (see #1852)"
       shell: bash
 
     - name: Upload failed test diagnostics
       if: failure() && hashFiles('pytest-output.txt') != ''
       uses: actions/upload-artifact@v7.0.2
       with:
-        name: pytest-failure-${{ inputs.matrix-profile }}-${{ matrix.os }}-py${{ matrix.python-version }}-attempt${{ github.run_attempt }}
+        name: pytest-failure-${{ inputs.matrix-profile }}-${{ matrix.os }}-py${{ matrix.python-version }}-shard${{ matrix.shard || 1 }}-attempt${{ github.run_attempt }}
         path: pytest-output.txt
         retention-days: 7
 
@@ -226,12 +251,19 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.10", "3.11", "3.12", "3.13"]
+        # Only macOS splits its session in two (#1910); ubuntu/windows run the
+        # whole suite as shard 1 and ignore the value.
+        shard: [1, 2]
         exclude:
           # Reduce matrix size for faster CI
           - os: windows-latest
             python-version: "3.10"
           - os: macos-latest
             python-version: "3.10"
+          - os: ubuntu-latest
+            shard: 2
+          - os: windows-latest
+            shard: 2
 
     env:
       PYTHONIOENCODING: utf-8
@@ -314,7 +346,9 @@ jobs:
       timeout-minutes: 20
       run: |
         set +e
+        # macOS session budget: see the same step in test-matrix-pr.
         uv run pytest tests/ -n auto -v --tb=short --maxfail=200 \
+          ${{ runner.os == 'macOS' && format('--shard={0}/2 --session-timeout=1080', matrix.shard) || '' }} \
           --ignore=tests/e2e \
           -m "not slow and not e2e and not network and not benchmark and not full_language" \
           2>&1 | tee pytest-output.txt
@@ -346,14 +380,26 @@ jobs:
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == inputs.python-version
       run: |
         uv run pytest tests/ -n auto -q --maxfail=200 --timeout=120 \
-          -m "slow and not network and not e2e and not benchmark and not full_language"
+          -m "slow and not performance and not network and not e2e and not benchmark and not full_language"
+      shell: bash
+
+    # Wall-clock perf checks must never gate an irreversible publish (#1852):
+    # runner slowness alone hit the 180 s per-test timeout and blocked PyPI.
+    # The check still runs and surfaces a warning annotation on regression.
+    - name: Perf regression signal (non-gating)
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == inputs.python-version
+      continue-on-error: true
+      timeout-minutes: 12
+      run: |
+        uv run pytest tests/ -q --maxfail=5 -m "performance and not network and not e2e and not benchmark" \
+          || echo "::warning title=Perf regression signal::performance-marked tests failed or timed out; non-gating (see #1852)"
       shell: bash
 
     - name: Upload failed test diagnostics
       if: failure() && hashFiles('pytest-output.txt') != ''
       uses: actions/upload-artifact@v7.0.2
       with:
-        name: pytest-failure-${{ inputs.matrix-profile }}-${{ matrix.os }}-py${{ matrix.python-version }}-attempt${{ github.run_attempt }}
+        name: pytest-failure-${{ inputs.matrix-profile }}-${{ matrix.os }}-py${{ matrix.python-version }}-shard${{ matrix.shard || 1 }}-attempt${{ github.run_attempt }}
         path: pytest-output.txt
         retention-days: 7
 

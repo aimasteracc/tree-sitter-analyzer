@@ -1,0 +1,1507 @@
+[
+{
+"mode": "bare",
+"file": "proto/src/main/java/com/google/gson/protobuf/LegacyProtoTypeAdapterFactory.java",
+"qual": "Adapter.computeValue",
+"name": "computeValue",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "metrics/src/main/java/com/google/gson/metrics/CollectionsDeserializationBenchmark.java",
+"qual": "CollectionsDeserializationBenchmark.timeCollectionsReflectionStreaming",
+"name": "CollectionsDeserializationBenchmark.timeCollectionsReflectionStreaming",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "metrics/src/main/java/com/google/gson/metrics/BagOfPrimitivesDeserializationBenchmark.java",
+"qual": "BagOfPrimitivesDeserializationBenchmark.timeBagOfPrimitivesStreaming",
+"name": "BagOfPrimitivesDeserializationBenchmark.timeBagOfPrimitivesStreaming",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/LazilyParsedNumber.java",
+"qual": "LazilyParsedNumber.floatValue",
+"name": "LazilyParsedNumber.floatValue",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "metrics/src/main/java/com/google/gson/metrics/ParseBenchmark.java",
+"qual": "ParseBenchmark.getResourceFile",
+"name": "Api.getResourceFile",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.setNumberToNumberStrategy",
+"name": "GsonBuilder.setNumberToNumberStrategy",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/Excluder.java",
+"qual": "Excluder.isExcludedByStrategy",
+"name": "Excluder.isExcludedByStrategy",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/bind/JavaTimeTypeAdapters.java",
+"qual": "integerValues",
+"name": "integerValues",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/bind/JsonElementTypeAdapter.java",
+"qual": "JsonElementTypeAdapter.readTerminal",
+"name": "JsonElementTypeAdapter.readTerminal",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/FieldAttributes.java",
+"qual": "FieldAttributes.getDeclaredClass",
+"name": "FieldAttributes.getDeclaredClass",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/reflect/ReflectionHelper.java",
+"qual": "getRecordComponentNames",
+"name": "ReflectionHelper.getRecordComponentNames",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "proto/src/main/java/com/google/gson/protobuf/ProtoTypeAdapter.java",
+"qual": "ProtoTypeAdapter.getEnumValue",
+"name": "ProtoTypeAdapter.getEnumValue",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/LinkedTreeMap.java",
+"qual": "LinkedTreeMap.containsKey",
+"name": "LinkedTreeMap.containsKey",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.registerTypeAdapterFactory",
+"name": "GsonBuilder.registerTypeAdapterFactory",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.setFieldNamingStrategy",
+"name": "GsonBuilder.setFieldNamingStrategy",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/JsonArray.java",
+"qual": "JsonArray.getAsDouble",
+"name": "JsonArray.getAsDouble",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+"qual": "GsonTypes.canonicalize",
+"name": "GsonTypes.canonicalize",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/stream/JsonWriter.java",
+"qual": "JsonWriter.beforeValue",
+"name": "JsonWriter.beforeValue",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "proto/src/main/java/com/google/gson/protobuf/LegacyProtoTypeAdapterFactory.java",
+"qual": "Adapter.computeValue",
+"name": "Adapter.computeValue",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "metrics/src/main/java/com/google/gson/metrics/CollectionsDeserializationBenchmark.java",
+"qual": "CollectionsDeserializationBenchmark.timeCollectionsReflectionStreaming",
+"name": "CollectionsDeserializationBenchmark.timeCollectionsReflectionStreaming",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "metrics/src/main/java/com/google/gson/metrics/BagOfPrimitivesDeserializationBenchmark.java",
+"qual": "BagOfPrimitivesDeserializationBenchmark.timeBagOfPrimitivesStreaming",
+"name": "BagOfPrimitivesDeserializationBenchmark.timeBagOfPrimitivesStreaming",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/LazilyParsedNumber.java",
+"qual": "LazilyParsedNumber.floatValue",
+"name": "LazilyParsedNumber.floatValue",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "metrics/src/main/java/com/google/gson/metrics/ParseBenchmark.java",
+"qual": "Api.getResourceFile",
+"name": "Api.getResourceFile",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.setNumberToNumberStrategy",
+"name": "GsonBuilder.setNumberToNumberStrategy",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/Excluder.java",
+"qual": "Excluder.isExcludedByStrategy",
+"name": "Excluder.isExcludedByStrategy",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/bind/JavaTimeTypeAdapters.java",
+"qual": "integerValues",
+"name": "integerValues",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/bind/JsonElementTypeAdapter.java",
+"qual": "JsonElementTypeAdapter.readTerminal",
+"name": "JsonElementTypeAdapter.readTerminal",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/FieldAttributes.java",
+"qual": "FieldAttributes.getDeclaredClass",
+"name": "FieldAttributes.getDeclaredClass",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/reflect/ReflectionHelper.java",
+"qual": "ReflectionHelper.getRecordComponentNames",
+"name": "ReflectionHelper.getRecordComponentNames",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "proto/src/main/java/com/google/gson/protobuf/ProtoTypeAdapter.java",
+"qual": "Builder.getEnumValue",
+"name": "Builder.getEnumValue",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/LinkedTreeMap.java",
+"qual": "LinkedTreeMap.containsKey",
+"name": "LinkedTreeMap.containsKey",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.registerTypeAdapterFactory",
+"name": "GsonBuilder.registerTypeAdapterFactory",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.setFieldNamingStrategy",
+"name": "GsonBuilder.setFieldNamingStrategy",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/JsonArray.java",
+"qual": "JsonArray.getAsDouble",
+"name": "JsonArray.getAsDouble",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+"qual": "GsonTypes.canonicalize",
+"name": "GsonTypes.canonicalize",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/stream/JsonWriter.java",
+"qual": "JsonWriter.beforeValue",
+"name": "JsonWriter.beforeValue",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "metrics/src/main/java/com/google/gson/metrics/ParseBenchmark.java",
+"qual": "Api.getResourceFile",
+"name": "getResourceFile",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/bind/JavaTimeTypeAdapters.java",
+"qual": "JavaTimeTypeAdapters.integerValues",
+"name": "JavaTimeTypeAdapters.integerValues",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/bind/JavaTimeTypeAdapters.java",
+"qual": "JavaTimeTypeAdapters.integerValues",
+"name": "integerValues",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/reflect/ReflectionHelper.java",
+"qual": "ReflectionHelper.getRecordComponentNames",
+"name": "getRecordComponentNames",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "proto/src/main/java/com/google/gson/protobuf/ProtoTypeAdapter.java",
+"qual": "Builder.getEnumValue",
+"name": "getEnumValue",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+"qual": "JsonReader.unexpectedTokenError",
+"name": "unexpectedTokenError",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+"qual": "JsonReader.unexpectedTokenError",
+"name": "JsonReader.unexpectedTokenError",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+"qual": "GsonTypes.supertypeOf",
+"name": "supertypeOf",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+"qual": "GsonTypes.supertypeOf",
+"name": "GsonTypes.supertypeOf",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/LinkedTreeMap.java",
+"qual": "Node.getKey",
+"name": "getKey",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/LinkedTreeMap.java",
+"qual": "Node.getKey",
+"name": "Node.getKey",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/JsonElement.java",
+"qual": "JsonElement.isJsonObject",
+"name": "isJsonObject",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/JsonElement.java",
+"qual": "JsonElement.isJsonObject",
+"name": "JsonElement.isJsonObject",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.serializeSpecialFloatingPointValues",
+"name": "serializeSpecialFloatingPointValues",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.serializeSpecialFloatingPointValues",
+"name": "GsonBuilder.serializeSpecialFloatingPointValues",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+"qual": "GsonTypes.getGenericSupertype",
+"name": "getGenericSupertype",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+"qual": "GsonTypes.getGenericSupertype",
+"name": "GsonTypes.getGenericSupertype",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/Excluder.java",
+"qual": "Excluder.withVersion",
+"name": "withVersion",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/Excluder.java",
+"qual": "Excluder.withVersion",
+"name": "Excluder.withVersion",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+"qual": "GsonTypes.getSupertype",
+"name": "getSupertype",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+"qual": "GsonTypes.getSupertype",
+"name": "GsonTypes.getSupertype",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/Gson.java",
+"qual": "Gson.newJsonWriter",
+"name": "newJsonWriter",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/Gson.java",
+"qual": "Gson.newJsonWriter",
+"name": "Gson.newJsonWriter",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/TypeAdapter.java",
+"qual": "TypeAdapter.nullSafe",
+"name": "nullSafe",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/TypeAdapter.java",
+"qual": "TypeAdapter.nullSafe",
+"name": "TypeAdapter.nullSafe",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/JavaVersion.java",
+"qual": "JavaVersion.isJava9OrLater",
+"name": "isJava9OrLater",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/JavaVersion.java",
+"qual": "JavaVersion.isJava9OrLater",
+"name": "JavaVersion.isJava9OrLater",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/FieldAttributes.java",
+"qual": "FieldAttributes.getAnnotations",
+"name": "getAnnotations",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/FieldAttributes.java",
+"qual": "FieldAttributes.getAnnotations",
+"name": "FieldAttributes.getAnnotations",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/NonNullElementWrapperList.java",
+"qual": "NonNullElementWrapperList.spliterator",
+"name": "spliterator",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/NonNullElementWrapperList.java",
+"qual": "NonNullElementWrapperList.spliterator",
+"name": "NonNullElementWrapperList.spliterator",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/Excluder.java",
+"qual": "Excluder.clone",
+"name": "clone",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/Excluder.java",
+"qual": "Excluder.clone",
+"name": "Excluder.clone",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/FormattingStyle.java",
+"qual": "FormattingStyle.getIndent",
+"name": "getIndent",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/FormattingStyle.java",
+"qual": "FormattingStyle.getIndent",
+"name": "FormattingStyle.getIndent",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/LinkedTreeMap.java",
+"qual": "Node.setValue",
+"name": "setValue",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/LinkedTreeMap.java",
+"qual": "Node.setValue",
+"name": "Node.setValue",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+"qual": "GsonTypes.getCollectionElementType",
+"name": "getCollectionElementType",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+"qual": "GsonTypes.getCollectionElementType",
+"name": "GsonTypes.getCollectionElementType",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+"qual": "ParameterizedTypeImpl.getOwnerType",
+"name": "getOwnerType",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+"qual": "ParameterizedTypeImpl.getOwnerType",
+"name": "ParameterizedTypeImpl.getOwnerType",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/LazilyParsedNumber.java",
+"qual": "LazilyParsedNumber.doubleValue",
+"name": "doubleValue",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/LazilyParsedNumber.java",
+"qual": "LazilyParsedNumber.doubleValue",
+"name": "LazilyParsedNumber.doubleValue",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+"qual": "TypeAdapters.atomicLongArrayAdapter",
+"name": "atomicLongArrayAdapter",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+"qual": "TypeAdapters.atomicLongArrayAdapter",
+"name": "TypeAdapters.atomicLongArrayAdapter",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/Primitives.java",
+"qual": "Primitives.wrap",
+"name": "wrap",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/Primitives.java",
+"qual": "Primitives.wrap",
+"name": "Primitives.wrap",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/JsonPrimitive.java",
+"qual": "JsonPrimitive.isNumber",
+"name": "isNumber",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/JsonPrimitive.java",
+"qual": "JsonPrimitive.isNumber",
+"name": "JsonPrimitive.isNumber",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/TypeAdapter.java",
+"qual": "TypeAdapter.fromJsonTree",
+"name": "fromJsonTree",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/TypeAdapter.java",
+"qual": "TypeAdapter.fromJsonTree",
+"name": "TypeAdapter.fromJsonTree",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+"qual": "WildcardTypeImpl.getUpperBounds",
+"name": "getUpperBounds",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+"qual": "WildcardTypeImpl.getUpperBounds",
+"name": "WildcardTypeImpl.getUpperBounds",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/test/java/com/google/gson/functional/InheritanceTest.java",
+"qual": "ClassWithSubInterfacesOfCollection.queueContains",
+"name": "queueContains",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/test/java/com/google/gson/functional/InheritanceTest.java",
+"qual": "ClassWithSubInterfacesOfCollection.queueContains",
+"name": "ClassWithSubInterfacesOfCollection.queueContains",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/test/java/com/google/gson/functional/CollectionTest.java",
+"qual": "ObjectWithWildcardCollection.getCollection",
+"name": "getCollection",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/test/java/com/google/gson/functional/CollectionTest.java",
+"qual": "ObjectWithWildcardCollection.getCollection",
+"name": "ObjectWithWildcardCollection.getCollection",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/PreJava9DateFormatProvider.java",
+"qual": "PreJava9DateFormatProvider.getUsDateTimeFormat",
+"name": "getUsDateTimeFormat",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/PreJava9DateFormatProvider.java",
+"qual": "PreJava9DateFormatProvider.getUsDateTimeFormat",
+"name": "PreJava9DateFormatProvider.getUsDateTimeFormat",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.setPrettyPrinting",
+"name": "setPrettyPrinting",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.setPrettyPrinting",
+"name": "GsonBuilder.setPrettyPrinting",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/NonNullElementWrapperList.java",
+"qual": "NonNullElementWrapperList.sort",
+"name": "sort",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/NonNullElementWrapperList.java",
+"qual": "NonNullElementWrapperList.sort",
+"name": "NonNullElementWrapperList.sort",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/NonNullElementWrapperList.java",
+"qual": "NonNullElementWrapperList.removeIf",
+"name": "removeIf",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/NonNullElementWrapperList.java",
+"qual": "NonNullElementWrapperList.removeIf",
+"name": "NonNullElementWrapperList.removeIf",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+"qual": "ParameterizedTypeImpl.getActualTypeArguments",
+"name": "getActualTypeArguments",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+"qual": "ParameterizedTypeImpl.getActualTypeArguments",
+"name": "ParameterizedTypeImpl.getActualTypeArguments",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+"qual": "TypeAdapters.atomicLongAdapter",
+"name": "atomicLongAdapter",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+"qual": "TypeAdapters.atomicLongAdapter",
+"name": "TypeAdapters.atomicLongAdapter",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/Gson.java",
+"qual": "Gson.getDelegateAdapter",
+"name": "getDelegateAdapter",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/Gson.java",
+"qual": "Gson.getDelegateAdapter",
+"name": "Gson.getDelegateAdapter",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/Streams.java",
+"qual": "CurrentWrite.charAt",
+"name": "charAt",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/Streams.java",
+"qual": "CurrentWrite.charAt",
+"name": "CurrentWrite.charAt",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.addSerializationExclusionStrategy",
+"name": "addSerializationExclusionStrategy",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.addSerializationExclusionStrategy",
+"name": "GsonBuilder.addSerializationExclusionStrategy",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.generateNonExecutableJson",
+"name": "generateNonExecutableJson",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.generateNonExecutableJson",
+"name": "GsonBuilder.generateNonExecutableJson",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.setLongSerializationPolicy",
+"name": "setLongSerializationPolicy",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.setLongSerializationPolicy",
+"name": "GsonBuilder.setLongSerializationPolicy",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/test/java/com/google/gson/functional/TreeTypeAdaptersTest.java",
+"qual": "Course.getStudents",
+"name": "getStudents",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/test/java/com/google/gson/functional/TreeTypeAdaptersTest.java",
+"qual": "Course.getStudents",
+"name": "Course.getStudents",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/JsonParser.java",
+"qual": "JsonParser.parseString",
+"name": "parseString",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/JsonParser.java",
+"qual": "JsonParser.parseString",
+"name": "JsonParser.parseString",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+"qual": "JsonReader.doPeek",
+"name": "doPeek",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+"qual": "JsonReader.doPeek",
+"name": "JsonReader.doPeek",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/bind/JsonTreeReader.java",
+"qual": "JsonTreeReader.nextJsonElement",
+"name": "nextJsonElement",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/bind/JsonTreeReader.java",
+"qual": "JsonTreeReader.nextJsonElement",
+"name": "JsonTreeReader.nextJsonElement",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.enableComplexMapKeySerialization",
+"name": "enableComplexMapKeySerialization",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.enableComplexMapKeySerialization",
+"name": "GsonBuilder.enableComplexMapKeySerialization",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.addReflectionAccessFilter",
+"name": "addReflectionAccessFilter",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.addReflectionAccessFilter",
+"name": "GsonBuilder.addReflectionAccessFilter",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/test/java/com/google/gson/functional/MapTest.java",
+"qual": "MapClass.addSub",
+"name": "addSub",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/test/java/com/google/gson/functional/MapTest.java",
+"qual": "MapClass.addSub",
+"name": "MapClass.addSub",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/JsonElement.java",
+"qual": "JsonElement.isJsonArray",
+"name": "isJsonArray",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/JsonElement.java",
+"qual": "JsonElement.isJsonArray",
+"name": "JsonElement.isJsonArray",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/Primitives.java",
+"qual": "Primitives.isPrimitive",
+"name": "isPrimitive",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/Primitives.java",
+"qual": "Primitives.isPrimitive",
+"name": "Primitives.isPrimitive",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/LazilyParsedNumber.java",
+"qual": "LazilyParsedNumber.intValue",
+"name": "intValue",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/LazilyParsedNumber.java",
+"qual": "LazilyParsedNumber.intValue",
+"name": "LazilyParsedNumber.intValue",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+"qual": "GsonTypes.requiresOwnerType",
+"name": "requiresOwnerType",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+"qual": "GsonTypes.requiresOwnerType",
+"name": "GsonTypes.requiresOwnerType",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.disableJdkUnsafe",
+"name": "disableJdkUnsafe",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.disableJdkUnsafe",
+"name": "GsonBuilder.disableJdkUnsafe",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/reflect/ReflectionHelper.java",
+"qual": "ReflectionHelper.makeAccessible",
+"name": "makeAccessible",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/reflect/ReflectionHelper.java",
+"qual": "ReflectionHelper.makeAccessible",
+"name": "ReflectionHelper.makeAccessible",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/test/java/com/google/gson/common/TestTypes.java",
+"qual": "ClassWithCustomTypeConverter.getBag",
+"name": "getBag",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/test/java/com/google/gson/common/TestTypes.java",
+"qual": "ClassWithCustomTypeConverter.getBag",
+"name": "ClassWithCustomTypeConverter.getBag",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/Gson.java",
+"qual": "Gson.newJsonReader",
+"name": "newJsonReader",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/Gson.java",
+"qual": "Gson.newJsonReader",
+"name": "Gson.newJsonReader",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/test/java/com/google/gson/functional/CustomDeserializerTest.java",
+"qual": "DataHolderWrapper.getWrappedData",
+"name": "getWrappedData",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/test/java/com/google/gson/functional/CustomDeserializerTest.java",
+"qual": "DataHolderWrapper.getWrappedData",
+"name": "DataHolderWrapper.getWrappedData",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/test/java/com/google/gson/functional/InheritanceTest.java",
+"qual": "ClassWithSubInterfacesOfCollection.listContains",
+"name": "listContains",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/test/java/com/google/gson/functional/InheritanceTest.java",
+"qual": "ClassWithSubInterfacesOfCollection.listContains",
+"name": "ClassWithSubInterfacesOfCollection.listContains",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/test/java/com/google/gson/functional/CustomDeserializerTest.java",
+"qual": "SubTypes.getSubclass",
+"name": "getSubclass",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/test/java/com/google/gson/functional/CustomDeserializerTest.java",
+"qual": "SubTypes.getSubclass",
+"name": "SubTypes.getSubclass",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/Excluder.java",
+"qual": "Excluder.excludeField",
+"name": "excludeField",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/Excluder.java",
+"qual": "Excluder.excludeField",
+"name": "Excluder.excludeField",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/JsonObject.java",
+"qual": "JsonObject.asMap",
+"name": "asMap",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/JsonObject.java",
+"qual": "JsonObject.asMap",
+"name": "JsonObject.asMap",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+"qual": "GsonTypes.getArrayComponentType",
+"name": "getArrayComponentType",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+"qual": "GsonTypes.getArrayComponentType",
+"name": "GsonTypes.getArrayComponentType",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/bind/JsonTreeReader.java",
+"qual": "JsonTreeReader.isAllAscii",
+"name": "isAllAscii",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/bind/JsonTreeReader.java",
+"qual": "JsonTreeReader.isAllAscii",
+"name": "JsonTreeReader.isAllAscii",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.registerTypeHierarchyAdapter",
+"name": "registerTypeHierarchyAdapter",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.registerTypeHierarchyAdapter",
+"name": "GsonBuilder.registerTypeHierarchyAdapter",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/LinkedTreeMap.java",
+"qual": "LinkedTreeMap.find",
+"name": "find",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/LinkedTreeMap.java",
+"qual": "LinkedTreeMap.find",
+"name": "LinkedTreeMap.find",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/JsonPrimitive.java",
+"qual": "JsonPrimitive.isString",
+"name": "isString",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/JsonPrimitive.java",
+"qual": "JsonPrimitive.isString",
+"name": "JsonPrimitive.isString",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/LinkedTreeMap.java",
+"qual": "Node.last",
+"name": "last",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/LinkedTreeMap.java",
+"qual": "Node.last",
+"name": "Node.last",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/stream/JsonWriter.java",
+"qual": "JsonWriter.getFormattingStyle",
+"name": "getFormattingStyle",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/stream/JsonWriter.java",
+"qual": "JsonWriter.getFormattingStyle",
+"name": "JsonWriter.getFormattingStyle",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/Gson.java",
+"qual": "FutureTypeAdapter.setDelegate",
+"name": "setDelegate",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/Gson.java",
+"qual": "FutureTypeAdapter.setDelegate",
+"name": "FutureTypeAdapter.setDelegate",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.setExclusionStrategies",
+"name": "setExclusionStrategies",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+"qual": "GsonBuilder.setExclusionStrategies",
+"name": "GsonBuilder.setExclusionStrategies",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/reflect/ReflectionHelper.java",
+"qual": "ReflectionHelper.tryMakeAccessible",
+"name": "tryMakeAccessible",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/reflect/ReflectionHelper.java",
+"qual": "ReflectionHelper.tryMakeAccessible",
+"name": "ReflectionHelper.tryMakeAccessible",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/JsonPrimitive.java",
+"qual": "JsonPrimitive.isBoolean",
+"name": "isBoolean",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/JsonPrimitive.java",
+"qual": "JsonPrimitive.isBoolean",
+"name": "JsonPrimitive.isBoolean",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/Primitives.java",
+"qual": "Primitives.unwrap",
+"name": "unwrap",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/Primitives.java",
+"qual": "Primitives.unwrap",
+"name": "Primitives.unwrap",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/reflect/ReflectionHelper.java",
+"qual": "ReflectionHelper.createExceptionForUnexpectedIllegalAccess",
+"name": "createExceptionForUnexpectedIllegalAccess",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/reflect/ReflectionHelper.java",
+"qual": "ReflectionHelper.createExceptionForUnexpectedIllegalAccess",
+"name": "ReflectionHelper.createExceptionForUnexpectedIllegalAccess",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+"qual": "ClassWithUrlField.assertEqualsTime",
+"name": "assertEqualsTime",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+"qual": "ClassWithUrlField.assertEqualsTime",
+"name": "ClassWithUrlField.assertEqualsTime",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/FormattingStyle.java",
+"qual": "FormattingStyle.usesSpaceAfterSeparators",
+"name": "usesSpaceAfterSeparators",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/FormattingStyle.java",
+"qual": "FormattingStyle.usesSpaceAfterSeparators",
+"name": "FormattingStyle.usesSpaceAfterSeparators",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/stream/JsonWriter.java",
+"qual": "JsonWriter.getSerializeNulls",
+"name": "getSerializeNulls",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/stream/JsonWriter.java",
+"qual": "JsonWriter.getSerializeNulls",
+"name": "JsonWriter.getSerializeNulls",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/Gson.java",
+"qual": "Gson.htmlSafe",
+"name": "htmlSafe",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/Gson.java",
+"qual": "Gson.htmlSafe",
+"name": "Gson.htmlSafe",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/NumberLimits.java",
+"qual": "NumberLimits.parseBigDecimal",
+"name": "parseBigDecimal",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/NumberLimits.java",
+"qual": "NumberLimits.parseBigDecimal",
+"name": "NumberLimits.parseBigDecimal",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/NonNullElementWrapperList.java",
+"qual": "NonNullElementWrapperList.lastIndexOf",
+"name": "lastIndexOf",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/NonNullElementWrapperList.java",
+"qual": "NonNullElementWrapperList.lastIndexOf",
+"name": "NonNullElementWrapperList.lastIndexOf",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "proto/src/main/java/com/google/gson/protobuf/ProtoTypeAdapter.java",
+"qual": "Builder.addSerializedNameExtension",
+"name": "addSerializedNameExtension",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "proto/src/main/java/com/google/gson/protobuf/ProtoTypeAdapter.java",
+"qual": "Builder.addSerializedNameExtension",
+"name": "Builder.addSerializedNameExtension",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+"qual": "DateTypeAdapter.Date",
+"name": "Date",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+"qual": "DateTypeAdapter.Date",
+"name": "DateTypeAdapter.Date",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/Excluder.java",
+"qual": "Excluder.excludeClass",
+"name": "excludeClass",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/Excluder.java",
+"qual": "Excluder.excludeClass",
+"name": "Excluder.excludeClass",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/FieldNamingPolicy.java",
+"qual": "FieldNamingPolicy.upperCaseFirstLetter",
+"name": "upperCaseFirstLetter",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/FieldNamingPolicy.java",
+"qual": "FieldNamingPolicy.upperCaseFirstLetter",
+"name": "FieldNamingPolicy.upperCaseFirstLetter",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/ReflectionAccessFilterHelper.java",
+"qual": "ReflectionAccessFilterHelper.getFilterResult",
+"name": "getFilterResult",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/ReflectionAccessFilterHelper.java",
+"qual": "ReflectionAccessFilterHelper.getFilterResult",
+"name": "ReflectionAccessFilterHelper.getFilterResult",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/bind/JsonAdapterAnnotationTypeAdapterFactory.java",
+"qual": "DummyTypeAdapterFactory.isClassJsonAdapterFactory",
+"name": "isClassJsonAdapterFactory",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/bind/JsonAdapterAnnotationTypeAdapterFactory.java",
+"qual": "DummyTypeAdapterFactory.isClassJsonAdapterFactory",
+"name": "DummyTypeAdapterFactory.isClassJsonAdapterFactory",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/Excluder.java",
+"qual": "Excluder.withModifiers",
+"name": "withModifiers",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/Excluder.java",
+"qual": "Excluder.withModifiers",
+"name": "Excluder.withModifiers",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/ReflectionAccessFilterHelper.java",
+"qual": "ReflectionAccessFilterHelper.isAnyPlatformType",
+"name": "isAnyPlatformType",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/ReflectionAccessFilterHelper.java",
+"qual": "ReflectionAccessFilterHelper.isAnyPlatformType",
+"name": "ReflectionAccessFilterHelper.isAnyPlatformType",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/reflect/ReflectionHelper.java",
+"qual": "ReflectionHelper.isAnonymousOrNonStaticLocal",
+"name": "isAnonymousOrNonStaticLocal",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/reflect/ReflectionHelper.java",
+"qual": "ReflectionHelper.isAnonymousOrNonStaticLocal",
+"name": "ReflectionHelper.isAnonymousOrNonStaticLocal",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "proto/src/main/java/com/google/gson/protobuf/StructTypeAdapter.java",
+"qual": "StructTypeAdapter.fromStruct",
+"name": "fromStruct",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "proto/src/main/java/com/google/gson/protobuf/StructTypeAdapter.java",
+"qual": "StructTypeAdapter.fromStruct",
+"name": "StructTypeAdapter.fromStruct",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "gson/src/main/java/com/google/gson/internal/bind/TreeTypeAdapter.java",
+"qual": "TreeTypeAdapter.newFactoryWithMatchRawType",
+"name": "newFactoryWithMatchRawType",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "gson/src/main/java/com/google/gson/internal/bind/TreeTypeAdapter.java",
+"qual": "TreeTypeAdapter.newFactoryWithMatchRawType",
+"name": "TreeTypeAdapter.newFactoryWithMatchRawType",
+"r15": "complete"
+}
+]

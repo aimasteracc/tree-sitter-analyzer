@@ -18,7 +18,6 @@ and the core parser for import/variable extraction.
 from __future__ import annotations
 
 import os
-import re
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
@@ -29,6 +28,12 @@ from .call_graph import CachedCallGraph, CallGraph, FunctionRef
 from .call_graph_binding import ref_identity
 from .constants import EXCLUDE_DIRS
 from .core.parser import Parser
+from .dead_code_entries import (  # noqa: F401 -- re-exported for callers/tests
+    _is_implicit_entry,
+    _is_known_entry,
+    _is_test_file,
+    is_entry_point,
+)
 from .dead_code_references import (
     ReferenceIndex,
     build_reference_index,
@@ -72,34 +77,6 @@ def _iter_candidate_files(root: Path) -> Iterator[Path]:
             yield Path(dirpath) / filename
 
 
-_KNOWN_ENTRY_PATTERNS = {
-    "python": re.compile(
-        r"^(main|__main__|setup|run|app|create_app|wsgi|asgi"
-        r"|pytest_configure|unittest_main)$"
-    ),
-    "javascript": re.compile(r"^(main|start|bootstrap|run|handler|exports\.default)$"),
-    "typescript": re.compile(r"^(main|start|bootstrap|run|handler)$"),
-    "java": re.compile(r"^(main|init|destroy|doGet|doPost|service)$"),
-    "go": re.compile(r"^(main|init|TestMain)$"),
-    "c": re.compile(r"^(main|WinMain)$"),
-    "cpp": re.compile(r"^(main|WinMain)$"),
-    # Added alongside call_graph.py's language-parity fix (Codex P1 #1157):
-    # rust/csharp/kotlin/swift all have one unambiguous entry-point
-    # convention. ruby/php/lua are intentionally NOT added here — they
-    # execute top-level script code directly rather than via a single named
-    # entry function, so a regex guess would be as likely to be wrong as
-    # right; dead-code detection for those three remains a known follow-up.
-    "rust": re.compile(r"^(main)$"),
-    "csharp": re.compile(r"^(Main)$"),
-    "kotlin": re.compile(r"^(main)$"),
-    "swift": re.compile(r"^(main)$"),
-}
-
-_TEST_FILE_PATTERNS = re.compile(
-    r"(?:^test_|_test\.|\.test\.|\.spec\.|_spec\.|tests?/|Test\.py$)",
-    re.IGNORECASE,
-)
-
 _VARIABLE_ASSIGN_TYPES = {
     "python": {"assignment"},
     "javascript": {"variable_declaration", "lexical_declaration"},
@@ -124,11 +101,6 @@ CONFIDENCE_LOW = "low"
 #: 文件的点分模块路径无法导入（如 ``agent-tasks/``），
 #: 指向它的跨文件调用 / 引用连不上（#1790）。
 LOW_CONFIDENCE_UNRESOLVED_MODULE = "module_path_unresolvable"
-
-_PY_DUNDER = re.compile(r"^__\w+__$")
-# 框架按命名约定分派的方法（``ast.NodeVisitor`` / docutils 访问器、``http.server``
-# 处理器）：源码里从不按名字调用。
-_PY_CONVENTION_CALLBACK = re.compile(r"^(?:visit_\w+|depart_\w+|do_[A-Z]+)$")
 
 
 @dataclass
@@ -165,17 +137,6 @@ class DeadCodeResult:
     stats: dict[str, int] = field(default_factory=dict)
 
 
-def _is_test_file(file_path: str) -> bool:
-    return bool(_TEST_FILE_PATTERNS.search(file_path.replace("\\", "/")))
-
-
-def _is_known_entry(name: str, language: str) -> bool:
-    pattern = _KNOWN_ENTRY_PATTERNS.get(language)
-    if pattern:
-        return bool(pattern.match(name))
-    return False
-
-
 def find_transitive_dead_code(
     graph: CallGraph,
     *,
@@ -202,9 +163,7 @@ def find_transitive_dead_code(
     roots = {
         func
         for func in all_funcs
-        if (not include_test_files and _is_test_file(func.file_path))
-        or _is_known_entry(func.name, func.language)
-        or _is_implicit_entry(func)
+        if is_entry_point(func, include_test_files=include_test_files)
     }
     # #1790：模块作用域（导入时执行）的调用点调用到的函数也是根。
     roots.update(_module_scope_callees(graph) & all_funcs)
@@ -323,18 +282,6 @@ def _reference_seeds(
                 depth[target] = level + 1
                 seeds.append(target)
     return seeds
-
-
-def _is_implicit_entry(func: FunctionRef) -> bool:
-    """#1790：由运行时隐式调用的方法（``__init__`` / ``__call__`` /
-    ``__post_init__`` / JS ``constructor`` ...）没有显式调用点，但不是死代码。"""
-    if func.language == "python":
-        return bool(
-            _PY_DUNDER.match(func.name) or _PY_CONVENTION_CALLBACK.match(func.name)
-        )
-    if func.language in ("javascript", "typescript"):
-        return func.name == "constructor"
-    return False
 
 
 def _module_scope_callees(graph: CallGraph) -> set[FunctionRef]:
