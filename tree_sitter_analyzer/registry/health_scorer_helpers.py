@@ -144,6 +144,7 @@ def find_git_root(start_dir: Path) -> Path | None:
     """Return the git repository root for start_dir."""
     result = subprocess.run(  # nosec
         ["git", "rev-parse", "--show-toplevel"],
+        stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -163,6 +164,7 @@ def is_complete_history(repo_root: Path) -> bool:
     """
     history = subprocess.run(  # nosec
         ["git", "rev-parse", "--is-shallow-repository"],
+        stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -208,6 +210,7 @@ def count_recent_commits(
             "--",
             pathspec,
         ],
+        stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         encoding="utf-8",

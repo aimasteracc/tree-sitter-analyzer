@@ -1,0 +1,99 @@
+{
+ "repo": "axios",
+ "rows": 214,
+ "rss_start_mb": 52.7,
+ "first_query_s": 5.876,
+ "rss_after_first_mb": 102.0,
+ "rounds": [
+  {
+   "round": 1,
+   "all": {
+    "n": 214,
+    "median_ms": 33.43,
+    "p90_ms": 106.65,
+    "max_ms": 722.3,
+    "mean_ms": 52.34
+   },
+   "by_kind": {
+    "edge_only": {
+     "n": 74,
+     "median_ms": 7.98,
+     "p90_ms": 22.03,
+     "max_ms": 108.2,
+     "mean_ms": 13.9
+    },
+    "review": {
+     "n": 140,
+     "median_ms": 40.62,
+     "p90_ms": 131.65,
+     "max_ms": 722.3,
+     "mean_ms": 72.65
+    }
+   },
+   "stages_ms_per_query": {
+    "G.review._reference_scan": 18.19,
+    "G.review.assess_completeness": 18.13,
+    "F.check.relation_source_evidence(freshness)": 3.01,
+    "J.infra.is_index_rebuilding": 1.77,
+    "G.review._reference_lines": 1.45,
+    "F.check.narrow_to_target": 1.32,
+    "F.check.declaring_file_unresolved": 1.06,
+    "A.certified_index_read.enter": 0.87,
+    "E.edges.sql_native_callers": 0.69,
+    "F.check.declaring_file_excluded": 0.64,
+    "F.check.read_unresolved_inbound": 0.57,
+    "G.review._is_accessor": 0.54,
+    "B.graph_object": 0.44,
+    "F.check.drop_external_producers": 0.32,
+    "G.review.prove": 0.05,
+    "B.graph_build_or_adopt": 0.05
+   },
+   "unwrapped_ms_per_query": 2.88
+  },
+  {
+   "round": 2,
+   "all": {
+    "n": 214,
+    "median_ms": 30.61,
+    "p90_ms": 84.96,
+    "max_ms": 432.1,
+    "mean_ms": 42.27
+   },
+   "by_kind": {
+    "edge_only": {
+     "n": 74,
+     "median_ms": 6.15,
+     "p90_ms": 14.7,
+     "max_ms": 54.2,
+     "mean_ms": 8.88
+    },
+    "review": {
+     "n": 140,
+     "median_ms": 37.3,
+     "p90_ms": 115.76,
+     "max_ms": 432.1,
+     "mean_ms": 59.92
+    }
+   },
+   "stages_ms_per_query": {
+    "G.review.assess_completeness": 16.12,
+    "G.review._reference_scan": 14.36,
+    "F.check.relation_source_evidence(freshness)": 2.67,
+    "J.infra.is_index_rebuilding": 1.66,
+    "F.check.narrow_to_target": 1.25,
+    "G.review._reference_lines": 1.24,
+    "A.certified_index_read.enter": 0.82,
+    "G.review._is_accessor": 0.48,
+    "B.graph_object": 0.42,
+    "E.edges.sql_native_callers": 0.4,
+    "F.check.declaring_file_unresolved": 0.38,
+    "F.check.drop_external_producers": 0.31,
+    "G.review.prove": 0.05
+   },
+   "unwrapped_ms_per_query": 1.76
+  }
+ ],
+ "rss_end_mb": 153.1,
+ "n_diff_rows": 0,
+ "diffs": []
+}

@@ -161,6 +161,11 @@ class LspClient:
             )
             return await asyncio.wait_for(fut, timeout=_LSP_TIMEOUT)
         except asyncio.TimeoutError:
+            # The reader can settle the future in the same loop iteration in
+            # which the timer fires; wait_for then reports a timeout although
+            # the answer (or the peer's error) is already there. Prefer it.
+            if fut.done() and not fut.cancelled():
+                return fut.result()
             raise LspTimeoutError(
                 f"LSP request '{method}' timed out after {_LSP_TIMEOUT}s"
             ) from None

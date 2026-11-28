@@ -17,7 +17,6 @@ Uses Tree-sitter AST analysis for cross-language support.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -694,38 +693,17 @@ def analyze_project_unreachable(
     include_test_files: bool = False,
     max_files: int = 500,
 ) -> list[UnreachableCodeResult]:
-    """Scan a project for unreachable code paths."""
-    import re
+    """Scan a project; return only the files with findings or errors.
 
-    _test_pattern = re.compile(
-        r"(?:^test_|_test\.|\.test\.|\.spec\.|_spec\.|tests?/|Test\.py$)",
-        re.IGNORECASE,
-    )
+    The returned list cannot tell a clean project from an empty scan. Use
+    :func:`~tree_sitter_analyzer.unreachable_code_scan.scan_project_unreachable`
+    when the answer needs the analyzed file and function counts (#1955).
+    """
+    from .unreachable_code_scan import scan_project_unreachable
 
-    results: list[UnreachableCodeResult] = []
-    count = 0
-
-    for dirpath, dirnames, filenames in os.walk(project_root):
-        dirnames[:] = [
-            d for d in dirnames if d not in _EXCLUDE_DIRS and not d.startswith(".")
-        ]
-        for fname in sorted(filenames):
-            if count >= max_files:
-                break
-            full = os.path.join(dirpath, fname)
-            lang = _language_from_ext(full)
-            if lang is None:
-                continue
-            rel = os.path.relpath(full, project_root)
-            rel_posix = rel.replace(os.sep, "/")  # normalize for cross-platform regex
-            if not include_test_files and _test_pattern.search(rel_posix):
-                continue
-            result = analyze_file_unreachable(full, language=lang)
-            if result.unreachable_blocks or result.errors:
-                results.append(result)
-            count += 1
-
-    return results
+    return scan_project_unreachable(
+        project_root, include_test_files=include_test_files, max_files=max_files
+    ).results
 
 
 # ---------------------------------------------------------------------------

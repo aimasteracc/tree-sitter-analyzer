@@ -1,0 +1,4538 @@
+[
+{
+"mode": "bare",
+"file": "pydantic/main.py",
+"qual": "BaseModel.model_dump_json",
+"name": "model_dump_json",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.generate_definitions",
+"name": "generate_definitions",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/main.py",
+"qual": "BaseModel.model_rebuild",
+"name": "model_rebuild",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "docs/plugins/conversion_table.py",
+"qual": "ConversionTable.sorted",
+"name": "sorted",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/utils.py",
+"qual": "GetterDict.keys",
+"name": "keys",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/type_adapter.py",
+"qual": "TypeAdapter.validate_strings",
+"name": "validate_strings",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/fields.py",
+"qual": "FieldInfo.from_annotation",
+"name": "from_annotation",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/main.py",
+"qual": "BaseModel.model_validate_json",
+"name": "model_validate_json",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/networks.py",
+"qual": "_BaseMultiHostUrl.hosts",
+"name": "hosts",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.len",
+"name": "len",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/main.py",
+"qual": "BaseModel.model_copy",
+"name": "model_copy",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/type_adapter.py",
+"qual": "TypeAdapter.dump_python",
+"name": "dump_python",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/utils.py",
+"qual": "GetterDict.items",
+"name": "items",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/fields.py",
+"qual": "ModelField._create_sub_type",
+"name": "_create_sub_type",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/main.py",
+"qual": "BaseModel.model_validate_strings",
+"name": "model_validate_strings",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/main.py",
+"qual": "BaseModel.model_dump",
+"name": "model_dump",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.update_with_validations",
+"name": "update_with_validations",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/type_adapter.py",
+"qual": "TypeAdapter.dump_json",
+"name": "dump_json",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/fields.py",
+"qual": "FieldInfo.asdict",
+"name": "asdict",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/fields.py",
+"qual": "FieldInfo.is_required",
+"name": "is_required",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.build_decimal_pattern",
+"name": "build_decimal_pattern",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/networks.py",
+"qual": "AnyUrl.validate_host",
+"name": "validate_host",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/config.py",
+"qual": "BaseConfig.get_field_info",
+"name": "get_field_info",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/networks.py",
+"qual": "AnyUrl._validate_port",
+"name": "_validate_port",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_docs_extraction.py",
+"qual": "DocstringVisitor.visit_Expr",
+"name": "visit_Expr",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "docs/plugins/main.py",
+"qual": "on_pre_build",
+"name": "on_pre_build",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.str_upper",
+"name": "str_upper",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/_hypothesis_plugin.py",
+"qual": "resolve_condate",
+"name": "resolve_condate",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/_hypothesis_plugin.py",
+"qual": "resolve_conint",
+"name": "resolve_conint",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/mypy.py",
+"qual": "ChangeExplicitTypeOfAny.visit_any",
+"name": "visit_any",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.str_title",
+"name": "str_title",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "release/push.py",
+"qual": "create_github_release",
+"name": "create_github_release",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_docs_extraction.py",
+"qual": "DocstringVisitor.visit_AnnAssign",
+"name": "visit_AnnAssign",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/_hypothesis_plugin.py",
+"qual": "resolve_conbytes",
+"name": "resolve_conbytes",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/mypy.py",
+"qual": "PydanticPlugin.get_function_hook",
+"name": "get_function_hook",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.typed_dict_field_schema",
+"name": "typed_dict_field_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "docs/plugins/algolia.py",
+"qual": "on_post_build",
+"name": "on_post_build",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/_hypothesis_plugin.py",
+"qual": "resolve_confloat",
+"name": "resolve_confloat",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.named_tuple_field_schema",
+"name": "named_tuple_field_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/mypy/modules/plugin_fail.py",
+"qual": "ModelWithAnnotatedValidator.noop_validator_with_annotations",
+"name": "noop_validator_with_annotations",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_validate_call.py",
+"qual": "ClassWithSlots.some_class_method",
+"name": "some_class_method",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_typing_extra.py",
+"qual": "eval_type",
+"name": "eval_type",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_fields.py",
+"qual": "takes_validated_data_argument",
+"name": "takes_validated_data_argument",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.dataclass_field_schema",
+"name": "dataclass_field_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/mypy/outputs/mypy-default_ini/plugin_success.py",
+"qual": "MyModel.validate_before",
+"name": "validate_before",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/benchmarks/test_validators_build.py",
+"qual": "SubS.prop_6",
+"name": "prop_6",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs/plugins/main.py",
+"qual": "build_schema_mappings",
+"name": "build_schema_mappings",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/test_migration.py",
+"qual": "import_from",
+"name": "import_from",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/networks.py",
+"qual": "AnyUrl.build",
+"name": "build",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/main.py",
+"qual": "BaseModel.copy",
+"name": "copy",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.float_schema",
+"name": "float_schema",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_validators.py",
+"qual": "ip_v6_address_validator",
+"name": "ip_v6_address_validator",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/env_settings.py",
+"qual": "EnvSettingsSource.explode_env_vars",
+"name": "explode_env_vars",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic-core/tests/serializers/test_union.py",
+"qual": "union_of_unions_schema",
+"name": "union_of_unions_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_decorators.py",
+"qual": "unwrap_wrapped_function",
+"name": "unwrap_wrapped_function",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic-core/tests/serializers/test_serialize_as_any.py",
+"qual": "MyModel.a_model_serializer",
+"name": "a_model_serializer",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/dataclasses.py",
+"qual": "rebuild_dataclass",
+"name": "rebuild_dataclass",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_computed_fields.py",
+"qual": "User.fullname",
+"name": "fullname",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/plugin/__init__.py",
+"qual": "PydanticPluginProtocol.new_schema_validator",
+"name": "new_schema_validator",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic-core/tests/benchmarks/test_micro_benchmarks.py",
+"qual": "validate_yield",
+"name": "validate_yield",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/test_lazy_imports.py",
+"qual": "import_lazy_modules",
+"name": "import_lazy_modules",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/utils.py",
+"qual": "dataclass_decorators",
+"name": "dataclass_decorators",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic-core/tests/serializers/test_list_tuple.py",
+"qual": "as_tuple",
+"name": "as_tuple",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/main.py",
+"qual": "generate_hash_function",
+"name": "generate_hash_function",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generics.py",
+"qual": "_early_cache_key",
+"name": "_early_cache_key",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/mypy.py",
+"qual": "PydanticModelField.serialize",
+"name": "serialize",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "_DefinitionsRemapping.remap_defs_ref",
+"name": "remap_defs_ref",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/typing.py",
+"qual": "is_typeddict",
+"name": "is_typeddict",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic-core/tests/conftest.py",
+"qual": "py_and_json",
+"name": "py_and_json",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_computed_fields.py",
+"qual": "make_dataclass",
+"name": "make_dataclass",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.model_field_schema",
+"name": "model_field_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/mypy.py",
+"qual": "PydanticModelTransformer.add_initializer",
+"name": "add_initializer",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/test_construction.py",
+"qual": "model_two_fixture",
+"name": "model_two_fixture",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "_Definitions._resolve_definition",
+"name": "_resolve_definition",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/utils.py",
+"qual": "import_string",
+"name": "import_string",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "docs/plugins/main.py",
+"qual": "on_page_markdown",
+"name": "on_page_markdown",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_discriminated_union.py",
+"qual": "_ApplyInferredDiscriminator._infer_discriminator_values_for_inner_schema",
+"name": "_infer_discriminator_values_for_inner_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_apply_step",
+"name": "_apply_step",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/main.py",
+"qual": "BaseModel._init_private_attributes",
+"name": "_init_private_attributes",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/validators.py",
+"qual": "deque_validator",
+"name": "deque_validator",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/validators.py",
+"qual": "path_validator",
+"name": "path_validator",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_utils.py",
+"qual": "is_valid_identifier",
+"name": "is_valid_identifier",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/typing.py",
+"qual": "update_model_forward_refs",
+"name": "update_model_forward_refs",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/mypy/modules/create_model_var.py",
+"qual": "ClassmethodModel.composite",
+"name": "composite",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/mypy/outputs/pyproject-plugin-strict_toml/plugin_fail.py",
+"qual": "ModelWithAnnotatedValidator.instance_method",
+"name": "instance_method",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/tools.py",
+"qual": "_get_parsing_type",
+"name": "_get_parsing_type",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/networks.py",
+"qual": "multi_host_url_regex",
+"name": "multi_host_url_regex",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic-core/python/pydantic_core/core_schema.py",
+"qual": "arguments_v3_schema",
+"name": "arguments_v3_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_assert_in_validators.py",
+"qual": "_assert_eq",
+"name": "_assert_eq",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic-core/tests/benchmarks/complete_schema.py",
+"qual": "wrap_schema_in_root_model",
+"name": "wrap_schema_in_root_model",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/benchmarks/generate_north_star_data.py",
+"qual": "date_string",
+"name": "date_string",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_utils.py",
+"qual": "ValueItems.is_true",
+"name": "is_true",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/env_settings.py",
+"qual": "Config.parse_env_var",
+"name": "parse_env_var",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_namespace_utils.py",
+"qual": "get_module_ns_of",
+"name": "get_module_ns_of",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/mypy/modules/plugin_success.py",
+"qual": "get_my_custom_validator",
+"name": "get_my_custom_validator",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/types.py",
+"qual": "ConstrainedSet.set_length_validator",
+"name": "set_length_validator",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.then",
+"name": "then",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/typechecking/decorators.py",
+"qual": "PlainModelSerializer.valid_plain_serializer_info_default",
+"name": "valid_plain_serializer_info_default",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_typing_extra.py",
+"qual": "get_model_type_hints",
+"name": "get_model_type_hints",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._get_first_arg_or_any",
+"name": "_get_first_arg_or_any",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._path_schema",
+"name": "_path_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_discriminated_union.py",
+"qual": "_ApplyInferredDiscriminator._infer_discriminator_values_for_choice",
+"name": "_infer_discriminator_values_for_choice",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/utils.py",
+"qual": "GetterDict.values",
+"name": "values",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.validate_as",
+"name": "validate_as",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "_Definitions.create_definition_reference_schema",
+"name": "create_definition_reference_schema",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/main.py",
+"qual": "BaseModel.model_validate",
+"name": "model_validate",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.generate_inner",
+"name": "generate_inner",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.function_before_schema",
+"name": "function_before_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "docs/plugins/algolia.py",
+"qual": "on_page_content",
+"name": "on_page_content",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/_hypothesis_plugin.py",
+"qual": "resolve_condecimal",
+"name": "resolve_condecimal",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.computed_field_schema",
+"name": "computed_field_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.datetime_with_tz",
+"name": "datetime_with_tz",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/mypy.py",
+"qual": "PydanticPlugin.get_dynamic_class_hook",
+"name": "get_dynamic_class_hook",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/_hypothesis_plugin.py",
+"qual": "resolve_constr",
+"name": "resolve_constr",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_discriminated_union.py",
+"qual": "_ApplyInferredDiscriminator._infer_discriminator_values_for_field",
+"name": "_infer_discriminator_values_for_field",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/mypy/outputs/mypy-plugin_ini/create_model_var.py",
+"qual": "dyn_model",
+"name": "dyn_model",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_namespace_utils.py",
+"qual": "LazyLocalNamespace.data",
+"name": "data",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/main.py",
+"qual": "BaseModel.schema",
+"name": "schema",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/color.py",
+"qual": "parse_color_value",
+"name": "parse_color_value",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/functional_validators.py",
+"qual": "AfterValidator._from_decorator",
+"name": "_from_decorator",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_type_refs.py",
+"qual": "class_type_ref",
+"name": "class_type_ref",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/plugin/__init__.py",
+"qual": "BaseValidateHandlerProtocol.on_exception",
+"name": "on_exception",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/typechecking/decorators.py",
+"qual": "WrapModelSerializer.valid_no_info",
+"name": "valid_no_info",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_model_validator.py",
+"qual": "Model1.validator",
+"name": "validator",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/main.py",
+"qual": "BaseModel.model_fields",
+"name": "model_fields",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/dataclasses.py",
+"qual": "make_dataclass_validator",
+"name": "make_dataclass_validator",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic-core/python/pydantic_core/core_schema.py",
+"qual": "general_wrap_validator_function",
+"name": "general_wrap_validator_function",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/schema.py",
+"qual": "add_field_type_to_schema",
+"name": "add_field_type_to_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic-core/python/pydantic_core/core_schema.py",
+"qual": "plain_serializer_function_ser_schema",
+"name": "plain_serializer_function_ser_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/networks.py",
+"qual": "_BaseMultiHostUrl.path",
+"name": "path",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/networks.py",
+"qual": "RedisDsn.host",
+"name": "host",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_discriminated_union.py",
+"qual": "apply_discriminator",
+"name": "apply_discriminator",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/fields.py",
+"qual": "FieldInfo.deprecation_message",
+"name": "deprecation_message",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/utils.py",
+"qual": "almost_equal_floats",
+"name": "almost_equal_floats",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/types.py",
+"qual": "_serialize_secret",
+"name": "_serialize_secret",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_computed_fields.py",
+"qual": "B.double_x",
+"name": "double_x",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._generate_parameter_schema",
+"name": "_generate_parameter_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/class_validators.py",
+"qual": "ValidatorGroup.get_validators",
+"name": "get_validators",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/benchmarks/test_model_schema_generation.py",
+"qual": "ModelWithValidator.validate_model_after",
+"name": "validate_model_after",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/networks.py",
+"qual": "_build_type_adapter",
+"name": "_build_type_adapter",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic-core/tests/test_errors.py",
+"qual": "CustomValidator.validate",
+"name": "validate",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.is_instance_schema",
+"name": "is_instance_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_json.py",
+"qual": "User.serialize_phone",
+"name": "serialize_phone",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_decorators.py",
+"qual": "DecoratorInfos._validate",
+"name": "_validate",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/validators.py",
+"qual": "enum_member_validator",
+"name": "enum_member_validator",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/json.py",
+"qual": "pydantic_encoder",
+"name": "pydantic_encoder",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_deprecated.py",
+"qual": "InvalidValidator.has_wrong_arguments",
+"name": "has_wrong_arguments",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/mypy/test_mypy.py",
+"qual": "merge_python_and_mypy_output",
+"name": "merge_python_and_mypy_output",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/types.py",
+"qual": "constr",
+"name": "constr",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/mypy.py",
+"qual": "plugin",
+"name": "plugin",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/typing.py",
+"qual": "get_class",
+"name": "get_class",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/benchmarks/test_validators_build.py",
+"qual": "Sub1.prop_4",
+"name": "prop_4",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_rich_repr.py",
+"qual": "user_fixture",
+"name": "user_fixture",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/typechecking/decorators.py",
+"qual": "PlainModelSerializer.valid_plain_serializer_info",
+"name": "valid_plain_serializer_info",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/benchmarks/generate_north_star_data.py",
+"qual": "time_string",
+"name": "time_string",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_generics.py",
+"qual": "Response.validate_value_nonzero",
+"name": "validate_value_nonzero",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": ".github/actions/people/people.py",
+"qual": "get_top_users",
+"name": "get_top_users",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/version.py",
+"qual": "parse_mypy_version",
+"name": "parse_mypy_version",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic-core/tests/test_typing.py",
+"qual": "validator_deprecated",
+"name": "validator_deprecated",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/validators.py",
+"qual": "tuple_validator",
+"name": "tuple_validator",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_decorators.py",
+"qual": "inspect_annotated_serializer",
+"name": "inspect_annotated_serializer",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/mypy/outputs/mypy-plugin-strict_ini/plugin_fail.py",
+"qual": "ModelWithAnnotatedValidator.instance_method",
+"name": "instance_method",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/fields.py",
+"qual": "FieldInfo.update_from_config",
+"name": "update_from_config",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_decorators.py",
+"qual": "get_callable_return_type",
+"name": "get_callable_return_type",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_main.py",
+"qual": "type_type_model_fixture",
+"name": "type_type_model_fixture",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/typechecking/decorators.py",
+"qual": "WrapModelValidator.valid_info",
+"name": "valid_info",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/networks.py",
+"qual": "IPvAnyInterface.validate",
+"name": "validate",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/types.py",
+"qual": "Base64Encoder.decode",
+"name": "decode",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "_inlining_behavior",
+"name": "_inlining_behavior",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/types.py",
+"qual": "SecretBytes._display",
+"name": "_display",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/type_adapter.py",
+"qual": "TypeAdapter._defer_build",
+"name": "_defer_build",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._common_field_schema",
+"name": "_common_field_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generics.py",
+"qual": "_generic_cache_get",
+"name": "_generic_cache_get",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/mypy/outputs/pyproject-plugin-strict_toml/plugin_success_baseConfig.py",
+"qual": "SelfReferencingModel.prop",
+"name": "prop",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/type_adapter.py",
+"qual": "TypeAdapter.dump_json",
+"name": "TypeAdapter.dump_json",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._get_first_arg_or_any",
+"name": "GenerateSchema._get_first_arg_or_any",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._path_schema",
+"name": "GenerateSchema._path_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.generate_definitions",
+"name": "GenerateJsonSchema.generate_definitions",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_discriminated_union.py",
+"qual": "_ApplyInferredDiscriminator._infer_discriminator_values_for_choice",
+"name": "_ApplyInferredDiscriminator._infer_discriminator_values_for_choice",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/networks.py",
+"qual": "_BaseMultiHostUrl.hosts",
+"name": "_BaseMultiHostUrl.hosts",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/type_adapter.py",
+"qual": "TypeAdapter.validate_strings",
+"name": "TypeAdapter.validate_strings",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/utils.py",
+"qual": "GetterDict.values",
+"name": "GetterDict.values",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/main.py",
+"qual": "BaseModel.model_validate_json",
+"name": "BaseModel.model_validate_json",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.len",
+"name": "_Pipeline.len",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.validate_as",
+"name": "_Pipeline.validate_as",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/fields.py",
+"qual": "FieldInfo.from_annotation",
+"name": "FieldInfo.from_annotation",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "_Definitions.create_definition_reference_schema",
+"name": "_Definitions.create_definition_reference_schema",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/main.py",
+"qual": "BaseModel.model_dump_json",
+"name": "BaseModel.model_dump_json",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.update_with_validations",
+"name": "GenerateJsonSchema.update_with_validations",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/main.py",
+"qual": "BaseModel.model_validate",
+"name": "BaseModel.model_validate",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.generate_inner",
+"name": "GenerateJsonSchema.generate_inner",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/main.py",
+"qual": "BaseModel.model_validate_strings",
+"name": "BaseModel.model_validate_strings",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/type_adapter.py",
+"qual": "TypeAdapter.dump_python",
+"name": "TypeAdapter.dump_python",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/utils.py",
+"qual": "GetterDict.keys",
+"name": "GetterDict.keys",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.build_decimal_pattern",
+"name": "GenerateJsonSchema.build_decimal_pattern",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/config.py",
+"qual": "BaseConfig.get_field_info",
+"name": "BaseConfig.get_field_info",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/networks.py",
+"qual": "AnyUrl.validate_host",
+"name": "AnyUrl.validate_host",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/networks.py",
+"qual": "AnyUrl._validate_port",
+"name": "AnyUrl._validate_port",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/_hypothesis_plugin.py",
+"qual": "resolve_condate",
+"name": "resolve_condate",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs/plugins/main.py",
+"qual": "on_pre_build",
+"name": "on_pre_build",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.function_before_schema",
+"name": "GenerateJsonSchema.function_before_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "docs/plugins/algolia.py",
+"qual": "on_page_content",
+"name": "on_page_content",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_docs_extraction.py",
+"qual": "DocstringVisitor.visit_Expr",
+"name": "DocstringVisitor.visit_Expr",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/mypy.py",
+"qual": "ChangeExplicitTypeOfAny.visit_any",
+"name": "ChangeExplicitTypeOfAny.visit_any",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/_hypothesis_plugin.py",
+"qual": "resolve_condecimal",
+"name": "resolve_condecimal",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/mypy.py",
+"qual": "PydanticPlugin.get_function_hook",
+"name": "PydanticPlugin.get_function_hook",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.typed_dict_field_schema",
+"name": "GenerateJsonSchema.typed_dict_field_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.computed_field_schema",
+"name": "GenerateJsonSchema.computed_field_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.datetime_with_tz",
+"name": "_Pipeline.datetime_with_tz",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/_hypothesis_plugin.py",
+"qual": "resolve_conint",
+"name": "resolve_conint",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.str_upper",
+"name": "_Pipeline.str_upper",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/mypy.py",
+"qual": "PydanticPlugin.get_dynamic_class_hook",
+"name": "PydanticPlugin.get_dynamic_class_hook",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/_hypothesis_plugin.py",
+"qual": "resolve_constr",
+"name": "resolve_constr",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_discriminated_union.py",
+"qual": "_ApplyInferredDiscriminator._infer_discriminator_values_for_field",
+"name": "_ApplyInferredDiscriminator._infer_discriminator_values_for_field",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/mypy/outputs/mypy-plugin_ini/create_model_var.py",
+"qual": "dyn_model",
+"name": "dyn_model",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_namespace_utils.py",
+"qual": "LazyLocalNamespace.data",
+"name": "LazyLocalNamespace.data",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/main.py",
+"qual": "BaseModel.schema",
+"name": "BaseModel.schema",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/color.py",
+"qual": "parse_color_value",
+"name": "parse_color_value",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/functional_validators.py",
+"qual": "AfterValidator._from_decorator",
+"name": "AfterValidator._from_decorator",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_type_refs.py",
+"qual": "class_type_ref",
+"name": "class_type_ref",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/plugin/__init__.py",
+"qual": "BaseValidateHandlerProtocol.on_exception",
+"name": "BaseValidateHandlerProtocol.on_exception",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/typechecking/decorators.py",
+"qual": "WrapModelSerializer.valid_no_info",
+"name": "WrapModelSerializer.valid_no_info",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_model_validator.py",
+"qual": "Model1.validator",
+"name": "Model1.validator",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/main.py",
+"qual": "BaseModel.model_fields",
+"name": "BaseModel.model_fields",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/dataclasses.py",
+"qual": "make_dataclass_validator",
+"name": "make_dataclass_validator",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic-core/python/pydantic_core/core_schema.py",
+"qual": "general_wrap_validator_function",
+"name": "general_wrap_validator_function",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/schema.py",
+"qual": "add_field_type_to_schema",
+"name": "add_field_type_to_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic-core/python/pydantic_core/core_schema.py",
+"qual": "plain_serializer_function_ser_schema",
+"name": "plain_serializer_function_ser_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/networks.py",
+"qual": "_BaseMultiHostUrl.path",
+"name": "_BaseMultiHostUrl.path",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/networks.py",
+"qual": "RedisDsn.host",
+"name": "RedisDsn.host",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_discriminated_union.py",
+"qual": "apply_discriminator",
+"name": "apply_discriminator",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/fields.py",
+"qual": "FieldInfo.deprecation_message",
+"name": "FieldInfo.deprecation_message",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/utils.py",
+"qual": "almost_equal_floats",
+"name": "almost_equal_floats",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/types.py",
+"qual": "_serialize_secret",
+"name": "_serialize_secret",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_computed_fields.py",
+"qual": "B.double_x",
+"name": "B.double_x",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._generate_parameter_schema",
+"name": "GenerateSchema._generate_parameter_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/class_validators.py",
+"qual": "ValidatorGroup.get_validators",
+"name": "ValidatorGroup.get_validators",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/benchmarks/test_model_schema_generation.py",
+"qual": "ModelWithValidator.validate_model_after",
+"name": "ModelWithValidator.validate_model_after",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/networks.py",
+"qual": "_build_type_adapter",
+"name": "_build_type_adapter",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic-core/tests/test_errors.py",
+"qual": "CustomValidator.validate",
+"name": "CustomValidator.validate",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.is_instance_schema",
+"name": "GenerateJsonSchema.is_instance_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_json.py",
+"qual": "User.serialize_phone",
+"name": "User.serialize_phone",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_decorators.py",
+"qual": "DecoratorInfos._validate",
+"name": "DecoratorInfos._validate",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/validators.py",
+"qual": "enum_member_validator",
+"name": "enum_member_validator",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/json.py",
+"qual": "pydantic_encoder",
+"name": "pydantic_encoder",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_deprecated.py",
+"qual": "InvalidValidator.has_wrong_arguments",
+"name": "InvalidValidator.has_wrong_arguments",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/mypy/test_mypy.py",
+"qual": "merge_python_and_mypy_output",
+"name": "merge_python_and_mypy_output",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/types.py",
+"qual": "constr",
+"name": "constr",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/mypy.py",
+"qual": "plugin",
+"name": "plugin",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/typing.py",
+"qual": "get_class",
+"name": "get_class",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/benchmarks/test_validators_build.py",
+"qual": "Sub1.prop_4",
+"name": "Sub1.prop_4",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_rich_repr.py",
+"qual": "user_fixture",
+"name": "user_fixture",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/typechecking/decorators.py",
+"qual": "PlainModelSerializer.valid_plain_serializer_info",
+"name": "PlainModelSerializer.valid_plain_serializer_info",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/benchmarks/generate_north_star_data.py",
+"qual": "time_string",
+"name": "time_string",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_generics.py",
+"qual": "Response.validate_value_nonzero",
+"name": "Response.validate_value_nonzero",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": ".github/actions/people/people.py",
+"qual": "get_top_users",
+"name": "get_top_users",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/version.py",
+"qual": "parse_mypy_version",
+"name": "parse_mypy_version",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic-core/tests/test_typing.py",
+"qual": "validator_deprecated",
+"name": "validator_deprecated",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/validators.py",
+"qual": "tuple_validator",
+"name": "tuple_validator",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_decorators.py",
+"qual": "inspect_annotated_serializer",
+"name": "inspect_annotated_serializer",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/mypy/outputs/mypy-plugin-strict_ini/plugin_fail.py",
+"qual": "ModelWithAnnotatedValidator.instance_method",
+"name": "ModelWithAnnotatedValidator.instance_method",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/fields.py",
+"qual": "FieldInfo.update_from_config",
+"name": "FieldInfo.update_from_config",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_decorators.py",
+"qual": "get_callable_return_type",
+"name": "get_callable_return_type",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_main.py",
+"qual": "type_type_model_fixture",
+"name": "type_type_model_fixture",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/typechecking/decorators.py",
+"qual": "WrapModelValidator.valid_info",
+"name": "WrapModelValidator.valid_info",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/networks.py",
+"qual": "IPvAnyInterface.validate",
+"name": "IPvAnyInterface.validate",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/types.py",
+"qual": "Base64Encoder.decode",
+"name": "Base64Encoder.decode",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "_inlining_behavior",
+"name": "_inlining_behavior",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/types.py",
+"qual": "SecretBytes._display",
+"name": "SecretBytes._display",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/type_adapter.py",
+"qual": "TypeAdapter._defer_build",
+"name": "TypeAdapter._defer_build",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._common_field_schema",
+"name": "GenerateSchema._common_field_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generics.py",
+"qual": "_generic_cache_get",
+"name": "_generic_cache_get",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/mypy/outputs/pyproject-plugin-strict_toml/plugin_success_baseConfig.py",
+"qual": "SelfReferencingModel.prop",
+"name": "SelfReferencingModel.prop",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.constrain",
+"name": "constrain",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/errors.py",
+"qual": "PydanticUndefinedAnnotation.from_name_error",
+"name": "from_name_error",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/mypy.py",
+"qual": "PydanticPlugin.get_class_decorator_hook",
+"name": "get_class_decorator_hook",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.function_plain_schema",
+"name": "function_plain_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.function_wrap_schema",
+"name": "function_wrap_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.function_after_schema",
+"name": "function_after_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.definition_ref_schema",
+"name": "definition_ref_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/main.py",
+"qual": "BaseModel._copy_and_set_values",
+"name": "_copy_and_set_values",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/types.py",
+"qual": "FilePath.validate",
+"name": "validate",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/functional_validators.py",
+"qual": "BeforeValidator._from_decorator",
+"name": "_from_decorator",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._computed_field_schema",
+"name": "_computed_field_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/deprecated/decorator.py",
+"qual": "DecoratorBaseModel.check_kwargs",
+"name": "check_kwargs",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/types.py",
+"qual": "confloat",
+"name": "confloat",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic-core/tests/validators/test_function.py",
+"qual": "deepcopy_info",
+"name": "deepcopy_info",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/color.py",
+"qual": "Color.as_hex",
+"name": "as_hex",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/types/unions/test_discriminated_union.py",
+"qual": "DogModel.replace_name",
+"name": "replace_name",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.json_or_python_schema",
+"name": "json_or_python_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/types.py",
+"qual": "confloat",
+"name": "confloat",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/typechecking/decorators.py",
+"qual": "BeforeModelValidator.valid_method_info_default",
+"name": "valid_method_info_default",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.str_starts_with",
+"name": "str_starts_with",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/validators.py",
+"qual": "ip_v6_address_validator",
+"name": "ip_v6_address_validator",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/utils.py",
+"qual": "lenient_issubclass",
+"name": "lenient_issubclass",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "_int_range_pattern",
+"name": "_int_range_pattern",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/test_parse.py",
+"qual": "NestedModel.populate_root",
+"name": "populate_root",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._dict_schema",
+"name": "_dict_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "_validators_require_validate_default",
+"name": "_validators_require_validate_default",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/color.py",
+"qual": "parse_tuple",
+"name": "parse_tuple",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._apply_annotations",
+"name": "_apply_annotations",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/test_plugins.py",
+"qual": "Plugin1.new_schema_validator",
+"name": "new_schema_validator",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_validate_call.py",
+"qual": "extract_function_name",
+"name": "extract_function_name",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/utils.py",
+"qual": "get_discriminator_alias_and_values",
+"name": "get_discriminator_alias_and_values",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/main.py",
+"qual": "BaseModel.dict",
+"name": "dict",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_model_validator.py",
+"qual": "Human.run_model_validator",
+"name": "run_model_validator",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/main.py",
+"qual": "BaseModel.validate",
+"name": "validate",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_generics.py",
+"qual": "memray_limit_memory",
+"name": "memray_limit_memory",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_model_construction.py",
+"qual": "ModelMetaclass.register",
+"name": "register",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_plugins.py",
+"qual": "Python.on_success",
+"name": "on_success",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_datetime.py",
+"qual": "future_datetime_type",
+"name": "future_datetime_type",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/fields.py",
+"qual": "ModelField._validate_tuple",
+"name": "_validate_tuple",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/mypy.py",
+"qual": "error_from_orm",
+"name": "error_from_orm",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic-core/tests/validators/test_url.py",
+"qual": "strict_multi_host_url_validator_fixture",
+"name": "strict_multi_host_url_validator_fixture",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_validators.py",
+"qual": "validate_str_is_valid_iana_tz",
+"name": "validate_str_is_valid_iana_tz",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_validators.py",
+"qual": "A.pre_root",
+"name": "pre_root",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/type_adapter.py",
+"qual": "TypeAdapter._init_core_attrs",
+"name": "_init_core_attrs",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic-core/python/pydantic_core/core_schema.py",
+"qual": "frozenset_schema",
+"name": "frozenset_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_import_utils.py",
+"qual": "import_cached_field_info",
+"name": "import_cached_field_info",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/deprecated/tools.py",
+"qual": "schema_json_of",
+"name": "schema_json_of",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic-core/tests/validators/test_arguments.py",
+"qual": "validate",
+"name": "validate",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/types.py",
+"qual": "ConstrainedStr._get_pattern",
+"name": "_get_pattern",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/test_edge_cases.py",
+"qual": "AbstractSquare.my_model_validator",
+"name": "my_model_validator",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic-core/tests/benchmarks/test_micro_benchmarks.py",
+"qual": "TestBenchmarkDateX.validator",
+"name": "validator",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/env_settings.py",
+"qual": "Config.prepare_field",
+"name": "prepare_field",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/mypy/outputs/mypy-plugin-strict_ini/plugin_fail_baseConfig.py",
+"qual": "CoverageTester.from_orm",
+"name": "from_orm",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/typechecking/decorators.py",
+"qual": "validate_before_func",
+"name": "validate_before_func",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_main.py",
+"qual": "ultra_simple_model_fixture",
+"name": "ultra_simple_model_fixture",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/validators.py",
+"qual": "number_multiple_validator",
+"name": "number_multiple_validator",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/mypy/outputs/pyproject-plugin_toml/plugin_fail.py",
+"qual": "Model.method",
+"name": "method",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/plugin/example_plugin.py",
+"qual": "ValidatePythonHandler.on_enter",
+"name": "on_enter",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/typechecking/decorators.py",
+"qual": "BeforeFieldValidator.valid_with_info",
+"name": "valid_with_info",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/main.py",
+"qual": "BaseModel.schema_json",
+"name": "schema_json",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.str_strip",
+"name": "str_strip",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/env_settings.py",
+"qual": "read_env_file",
+"name": "read_env_file",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._sequence_schema",
+"name": "_sequence_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/utils.py",
+"qual": "GetterDict.items",
+"name": "GetterDict.items",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.constrain",
+"name": "_Pipeline.constrain",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/errors.py",
+"qual": "PydanticUndefinedAnnotation.from_name_error",
+"name": "PydanticUndefinedAnnotation.from_name_error",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/fields.py",
+"qual": "ModelField._create_sub_type",
+"name": "ModelField._create_sub_type",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/fields.py",
+"qual": "FieldInfo.asdict",
+"name": "FieldInfo.asdict",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/main.py",
+"qual": "BaseModel.model_rebuild",
+"name": "BaseModel.model_rebuild",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/mypy.py",
+"qual": "PydanticPlugin.get_class_decorator_hook",
+"name": "PydanticPlugin.get_class_decorator_hook",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.named_tuple_field_schema",
+"name": "GenerateJsonSchema.named_tuple_field_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.model_field_schema",
+"name": "GenerateJsonSchema.model_field_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "release/push.py",
+"qual": "create_github_release",
+"name": "create_github_release",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.function_plain_schema",
+"name": "GenerateJsonSchema.function_plain_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.dataclass_field_schema",
+"name": "GenerateJsonSchema.dataclass_field_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.function_wrap_schema",
+"name": "GenerateJsonSchema.function_wrap_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.function_after_schema",
+"name": "GenerateJsonSchema.function_after_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.str_title",
+"name": "_Pipeline.str_title",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.definition_ref_schema",
+"name": "GenerateJsonSchema.definition_ref_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "docs/plugins/algolia.py",
+"qual": "on_post_build",
+"name": "on_post_build",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/main.py",
+"qual": "BaseModel._copy_and_set_values",
+"name": "BaseModel._copy_and_set_values",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/types.py",
+"qual": "FilePath.validate",
+"name": "FilePath.validate",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/functional_validators.py",
+"qual": "BeforeValidator._from_decorator",
+"name": "BeforeValidator._from_decorator",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._computed_field_schema",
+"name": "GenerateSchema._computed_field_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/deprecated/decorator.py",
+"qual": "DecoratorBaseModel.check_kwargs",
+"name": "DecoratorBaseModel.check_kwargs",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/types.py",
+"qual": "confloat",
+"name": "confloat",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic-core/tests/validators/test_function.py",
+"qual": "deepcopy_info",
+"name": "deepcopy_info",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/color.py",
+"qual": "Color.as_hex",
+"name": "Color.as_hex",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/types/unions/test_discriminated_union.py",
+"qual": "DogModel.replace_name",
+"name": "DogModel.replace_name",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.json_or_python_schema",
+"name": "GenerateJsonSchema.json_or_python_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/types.py",
+"qual": "confloat",
+"name": "confloat",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/typechecking/decorators.py",
+"qual": "BeforeModelValidator.valid_method_info_default",
+"name": "BeforeModelValidator.valid_method_info_default",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.str_starts_with",
+"name": "_Pipeline.str_starts_with",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/validators.py",
+"qual": "ip_v6_address_validator",
+"name": "ip_v6_address_validator",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/utils.py",
+"qual": "lenient_issubclass",
+"name": "lenient_issubclass",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "_int_range_pattern",
+"name": "_int_range_pattern",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_parse.py",
+"qual": "NestedModel.populate_root",
+"name": "NestedModel.populate_root",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._dict_schema",
+"name": "GenerateSchema._dict_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "_validators_require_validate_default",
+"name": "_validators_require_validate_default",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/color.py",
+"qual": "parse_tuple",
+"name": "parse_tuple",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._apply_annotations",
+"name": "GenerateSchema._apply_annotations",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_plugins.py",
+"qual": "Plugin1.new_schema_validator",
+"name": "Plugin1.new_schema_validator",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_validate_call.py",
+"qual": "extract_function_name",
+"name": "extract_function_name",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/utils.py",
+"qual": "get_discriminator_alias_and_values",
+"name": "get_discriminator_alias_and_values",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/main.py",
+"qual": "BaseModel.dict",
+"name": "BaseModel.dict",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_model_validator.py",
+"qual": "Human.run_model_validator",
+"name": "Human.run_model_validator",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/main.py",
+"qual": "BaseModel.validate",
+"name": "BaseModel.validate",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_generics.py",
+"qual": "memray_limit_memory",
+"name": "memray_limit_memory",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_model_construction.py",
+"qual": "ModelMetaclass.register",
+"name": "ModelMetaclass.register",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_plugins.py",
+"qual": "Python.on_success",
+"name": "Python.on_success",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_datetime.py",
+"qual": "future_datetime_type",
+"name": "future_datetime_type",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/fields.py",
+"qual": "ModelField._validate_tuple",
+"name": "ModelField._validate_tuple",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/mypy.py",
+"qual": "error_from_orm",
+"name": "error_from_orm",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic-core/tests/validators/test_url.py",
+"qual": "strict_multi_host_url_validator_fixture",
+"name": "strict_multi_host_url_validator_fixture",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_validate_call.py",
+"qual": "ClassWithSlots.some_class_method",
+"name": "ClassWithSlots.some_class_method",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_validators.py",
+"qual": "validate_str_is_valid_iana_tz",
+"name": "validate_str_is_valid_iana_tz",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_validators.py",
+"qual": "A.pre_root",
+"name": "A.pre_root",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/type_adapter.py",
+"qual": "TypeAdapter._init_core_attrs",
+"name": "TypeAdapter._init_core_attrs",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic-core/python/pydantic_core/core_schema.py",
+"qual": "frozenset_schema",
+"name": "frozenset_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_import_utils.py",
+"qual": "import_cached_field_info",
+"name": "import_cached_field_info",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/deprecated/tools.py",
+"qual": "schema_json_of",
+"name": "schema_json_of",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic-core/tests/validators/test_arguments.py",
+"qual": "validate",
+"name": "validate",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/types.py",
+"qual": "ConstrainedStr._get_pattern",
+"name": "ConstrainedStr._get_pattern",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_edge_cases.py",
+"qual": "AbstractSquare.my_model_validator",
+"name": "AbstractSquare.my_model_validator",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic-core/tests/benchmarks/test_micro_benchmarks.py",
+"qual": "TestBenchmarkDateX.validator",
+"name": "TestBenchmarkDateX.validator",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/env_settings.py",
+"qual": "Config.prepare_field",
+"name": "Config.prepare_field",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/mypy/outputs/mypy-plugin-strict_ini/plugin_fail_baseConfig.py",
+"qual": "CoverageTester.from_orm",
+"name": "CoverageTester.from_orm",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/typechecking/decorators.py",
+"qual": "validate_before_func",
+"name": "validate_before_func",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_main.py",
+"qual": "ultra_simple_model_fixture",
+"name": "ultra_simple_model_fixture",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/validators.py",
+"qual": "number_multiple_validator",
+"name": "number_multiple_validator",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/mypy/outputs/pyproject-plugin_toml/plugin_fail.py",
+"qual": "Model.method",
+"name": "Model.method",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/plugin/example_plugin.py",
+"qual": "ValidatePythonHandler.on_enter",
+"name": "ValidatePythonHandler.on_enter",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/typechecking/decorators.py",
+"qual": "BeforeFieldValidator.valid_with_info",
+"name": "BeforeFieldValidator.valid_with_info",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/main.py",
+"qual": "BaseModel.schema_json",
+"name": "BaseModel.schema_json",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.str_strip",
+"name": "_Pipeline.str_strip",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/env_settings.py",
+"qual": "read_env_file",
+"name": "read_env_file",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._sequence_schema",
+"name": "GenerateSchema._sequence_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs/plugins/conversion_table.py",
+"qual": "ConversionTable.sorted",
+"name": "ConversionTable.sorted",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/main.py",
+"qual": "BaseModel.model_copy",
+"name": "BaseModel.model_copy",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/main.py",
+"qual": "BaseModel.model_dump",
+"name": "BaseModel.model_dump",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/fields.py",
+"qual": "FieldInfo.is_required",
+"name": "FieldInfo.is_required",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_docs_extraction.py",
+"qual": "DocstringVisitor.visit_AnnAssign",
+"name": "DocstringVisitor.visit_AnnAssign",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/_hypothesis_plugin.py",
+"qual": "resolve_conbytes",
+"name": "resolve_conbytes",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/_hypothesis_plugin.py",
+"qual": "resolve_confloat",
+"name": "resolve_confloat",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/mypy/modules/plugin_fail.py",
+"qual": "ModelWithAnnotatedValidator.noop_validator_with_annotations",
+"name": "ModelWithAnnotatedValidator.noop_validator_with_annotations",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_typing_extra.py",
+"qual": "eval_type",
+"name": "eval_type",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_fields.py",
+"qual": "takes_validated_data_argument",
+"name": "takes_validated_data_argument",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/mypy/outputs/mypy-default_ini/plugin_success.py",
+"qual": "MyModel.validate_before",
+"name": "MyModel.validate_before",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/benchmarks/test_validators_build.py",
+"qual": "SubS.prop_6",
+"name": "SubS.prop_6",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs/plugins/main.py",
+"qual": "build_schema_mappings",
+"name": "build_schema_mappings",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_migration.py",
+"qual": "import_from",
+"name": "import_from",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/networks.py",
+"qual": "AnyUrl.build",
+"name": "AnyUrl.build",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/main.py",
+"qual": "BaseModel.copy",
+"name": "BaseModel.copy",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.float_schema",
+"name": "GenerateJsonSchema.float_schema",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_validators.py",
+"qual": "ip_v6_address_validator",
+"name": "ip_v6_address_validator",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/env_settings.py",
+"qual": "EnvSettingsSource.explode_env_vars",
+"name": "EnvSettingsSource.explode_env_vars",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic-core/tests/serializers/test_union.py",
+"qual": "union_of_unions_schema",
+"name": "union_of_unions_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_decorators.py",
+"qual": "unwrap_wrapped_function",
+"name": "unwrap_wrapped_function",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic-core/tests/serializers/test_serialize_as_any.py",
+"qual": "MyModel.a_model_serializer",
+"name": "MyModel.a_model_serializer",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/dataclasses.py",
+"qual": "rebuild_dataclass",
+"name": "rebuild_dataclass",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_computed_fields.py",
+"qual": "User.fullname",
+"name": "User.fullname",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/plugin/__init__.py",
+"qual": "PydanticPluginProtocol.new_schema_validator",
+"name": "PydanticPluginProtocol.new_schema_validator",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic-core/tests/benchmarks/test_micro_benchmarks.py",
+"qual": "validate_yield",
+"name": "validate_yield",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_lazy_imports.py",
+"qual": "import_lazy_modules",
+"name": "import_lazy_modules",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/utils.py",
+"qual": "dataclass_decorators",
+"name": "dataclass_decorators",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic-core/tests/serializers/test_list_tuple.py",
+"qual": "as_tuple",
+"name": "as_tuple",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/main.py",
+"qual": "generate_hash_function",
+"name": "generate_hash_function",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generics.py",
+"qual": "_early_cache_key",
+"name": "_early_cache_key",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/mypy.py",
+"qual": "PydanticModelField.serialize",
+"name": "PydanticModelField.serialize",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "_DefinitionsRemapping.remap_defs_ref",
+"name": "_DefinitionsRemapping.remap_defs_ref",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/typing.py",
+"qual": "is_typeddict",
+"name": "is_typeddict",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic-core/tests/conftest.py",
+"qual": "py_and_json",
+"name": "py_and_json",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_computed_fields.py",
+"qual": "make_dataclass",
+"name": "make_dataclass",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/mypy.py",
+"qual": "PydanticModelTransformer.add_initializer",
+"name": "PydanticModelTransformer.add_initializer",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_construction.py",
+"qual": "model_two_fixture",
+"name": "model_two_fixture",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "_Definitions._resolve_definition",
+"name": "_Definitions._resolve_definition",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/utils.py",
+"qual": "import_string",
+"name": "import_string",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "docs/plugins/main.py",
+"qual": "on_page_markdown",
+"name": "on_page_markdown",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_discriminated_union.py",
+"qual": "_ApplyInferredDiscriminator._infer_discriminator_values_for_inner_schema",
+"name": "_ApplyInferredDiscriminator._infer_discriminator_values_for_inner_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_apply_step",
+"name": "_apply_step",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/main.py",
+"qual": "BaseModel._init_private_attributes",
+"name": "BaseModel._init_private_attributes",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/validators.py",
+"qual": "deque_validator",
+"name": "deque_validator",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/validators.py",
+"qual": "path_validator",
+"name": "path_validator",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_utils.py",
+"qual": "is_valid_identifier",
+"name": "is_valid_identifier",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/typing.py",
+"qual": "update_model_forward_refs",
+"name": "update_model_forward_refs",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/mypy/modules/create_model_var.py",
+"qual": "ClassmethodModel.composite",
+"name": "ClassmethodModel.composite",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/mypy/outputs/pyproject-plugin-strict_toml/plugin_fail.py",
+"qual": "ModelWithAnnotatedValidator.instance_method",
+"name": "ModelWithAnnotatedValidator.instance_method",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/tools.py",
+"qual": "_get_parsing_type",
+"name": "_get_parsing_type",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/networks.py",
+"qual": "multi_host_url_regex",
+"name": "multi_host_url_regex",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic-core/python/pydantic_core/core_schema.py",
+"qual": "arguments_v3_schema",
+"name": "arguments_v3_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_assert_in_validators.py",
+"qual": "_assert_eq",
+"name": "_assert_eq",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic-core/tests/benchmarks/complete_schema.py",
+"qual": "wrap_schema_in_root_model",
+"name": "wrap_schema_in_root_model",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/benchmarks/generate_north_star_data.py",
+"qual": "date_string",
+"name": "date_string",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_utils.py",
+"qual": "ValueItems.is_true",
+"name": "ValueItems.is_true",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/env_settings.py",
+"qual": "Config.parse_env_var",
+"name": "Config.parse_env_var",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_namespace_utils.py",
+"qual": "get_module_ns_of",
+"name": "get_module_ns_of",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/mypy/modules/plugin_success.py",
+"qual": "get_my_custom_validator",
+"name": "get_my_custom_validator",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/types.py",
+"qual": "ConstrainedSet.set_length_validator",
+"name": "ConstrainedSet.set_length_validator",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.then",
+"name": "_Pipeline.then",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/typechecking/decorators.py",
+"qual": "PlainModelSerializer.valid_plain_serializer_info_default",
+"name": "PlainModelSerializer.valid_plain_serializer_info_default",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_typing_extra.py",
+"qual": "get_model_type_hints",
+"name": "get_model_type_hints",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/utils.py",
+"qual": "GetterDict.extra_keys",
+"name": "extra_keys",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/utils.py",
+"qual": "GetterDict.extra_keys",
+"name": "GetterDict.extra_keys",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.tuple_variable_schema",
+"name": "tuple_variable_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.tuple_variable_schema",
+"name": "GenerateJsonSchema.tuple_variable_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.sort",
+"name": "sort",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.sort",
+"name": "GenerateJsonSchema.sort",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_validate_call.py",
+"qual": "ClassWithSlots.some_static_method",
+"name": "some_static_method",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_validate_call.py",
+"qual": "ClassWithSlots.some_static_method",
+"name": "ClassWithSlots.some_static_method",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/fields.py",
+"qual": "FieldInfo._collect_metadata",
+"name": "_collect_metadata",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/fields.py",
+"qual": "FieldInfo._collect_metadata",
+"name": "FieldInfo._collect_metadata",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema._garbage_collect_definitions",
+"name": "_garbage_collect_definitions",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema._garbage_collect_definitions",
+"name": "GenerateJsonSchema._garbage_collect_definitions",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/mypy.py",
+"qual": "PydanticModelTransformer.get_strict",
+"name": "get_strict",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/mypy.py",
+"qual": "PydanticModelTransformer.get_strict",
+"name": "PydanticModelTransformer.get_strict",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.normalize_name",
+"name": "normalize_name",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.normalize_name",
+"name": "GenerateJsonSchema.normalize_name",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._generate_namedtuple_field_schema",
+"name": "_generate_namedtuple_field_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._generate_namedtuple_field_schema",
+"name": "GenerateSchema._generate_namedtuple_field_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/networks.py",
+"qual": "_BaseUrl.username",
+"name": "username",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/networks.py",
+"qual": "_BaseUrl.username",
+"name": "_BaseUrl.username",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._union_is_subclass_schema",
+"name": "_union_is_subclass_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._union_is_subclass_schema",
+"name": "GenerateSchema._union_is_subclass_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/mypy.py",
+"qual": "PydanticModelTransformer.get_has_default",
+"name": "get_has_default",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/mypy.py",
+"qual": "PydanticModelTransformer.get_has_default",
+"name": "PydanticModelTransformer.get_has_default",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic-core/python/pydantic_core/core_schema.py",
+"qual": "SerializationInfo.exclude",
+"name": "exclude",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic-core/python/pydantic_core/core_schema.py",
+"qual": "SerializationInfo.exclude",
+"name": "SerializationInfo.exclude",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._generate_dc_field_schema",
+"name": "_generate_dc_field_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._generate_dc_field_schema",
+"name": "GenerateSchema._generate_dc_field_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._typed_dict_schema",
+"name": "_typed_dict_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._typed_dict_schema",
+"name": "GenerateSchema._typed_dict_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.get_union_of_schemas",
+"name": "get_union_of_schemas",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.get_union_of_schemas",
+"name": "GenerateJsonSchema.get_union_of_schemas",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_computed_fields.py",
+"qual": "SubModel.name",
+"name": "name",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_computed_fields.py",
+"qual": "SubModel.name",
+"name": "SubModel.name",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._arguments_schema",
+"name": "_arguments_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._arguments_schema",
+"name": "GenerateSchema._arguments_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.counter_schema",
+"name": "counter_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.counter_schema",
+"name": "GenerateJsonSchema.counter_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.frozenset_schema",
+"name": "frozenset_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.frozenset_schema",
+"name": "GenerateJsonSchema.frozenset_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.datetime_tz_aware",
+"name": "datetime_tz_aware",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.datetime_tz_aware",
+"name": "_Pipeline.datetime_tz_aware",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/networks.py",
+"qual": "_BaseUrl.unicode_host",
+"name": "unicode_host",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/networks.py",
+"qual": "_BaseUrl.unicode_host",
+"name": "_BaseUrl.unicode_host",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema.clean_schema",
+"name": "clean_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema.clean_schema",
+"name": "GenerateSchema.clean_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.get_argument_name",
+"name": "get_argument_name",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.get_argument_name",
+"name": "GenerateJsonSchema.get_argument_name",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/fields.py",
+"qual": "ComputedFieldInfo._apply_alias_generator",
+"name": "_apply_alias_generator",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/fields.py",
+"qual": "ComputedFieldInfo._apply_alias_generator",
+"name": "ComputedFieldInfo._apply_alias_generator",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "_DefinitionsRemapping.remap_json_schema",
+"name": "remap_json_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "_DefinitionsRemapping.remap_json_schema",
+"name": "_DefinitionsRemapping.remap_json_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema._name_required_computed_fields",
+"name": "_name_required_computed_fields",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema._name_required_computed_fields",
+"name": "GenerateJsonSchema._name_required_computed_fields",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/class_validators.py",
+"qual": "ValidatorGroup.check_for_unused",
+"name": "check_for_unused",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/class_validators.py",
+"qual": "ValidatorGroup.check_for_unused",
+"name": "ValidatorGroup.check_for_unused",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "_DefinitionsRemapping.from_prioritized_choices",
+"name": "from_prioritized_choices",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "_DefinitionsRemapping.from_prioritized_choices",
+"name": "_DefinitionsRemapping.from_prioritized_choices",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "_Definitions.get_definition_ref_schema",
+"name": "get_definition_ref_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "_Definitions.get_definition_ref_schema",
+"name": "_Definitions.get_definition_ref_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_validate_call.py",
+"qual": "ValidateCallWrapper._create_validators",
+"name": "_create_validators",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_validate_call.py",
+"qual": "ValidateCallWrapper._create_validators",
+"name": "ValidateCallWrapper._create_validators",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._resolve_forward_ref",
+"name": "_resolve_forward_ref",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._resolve_forward_ref",
+"name": "GenerateSchema._resolve_forward_ref",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/env_settings.py",
+"qual": "EnvSettingsSource._read_env_files",
+"name": "_read_env_files",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/env_settings.py",
+"qual": "EnvSettingsSource._read_env_files",
+"name": "EnvSettingsSource._read_env_files",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.get_cache_defs_ref_schema",
+"name": "get_cache_defs_ref_schema",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.get_cache_defs_ref_schema",
+"name": "GenerateJsonSchema.get_cache_defs_ref_schema",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.tagged_union_schema",
+"name": "tagged_union_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.tagged_union_schema",
+"name": "GenerateJsonSchema.tagged_union_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._hashable_schema",
+"name": "_hashable_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._hashable_schema",
+"name": "GenerateSchema._hashable_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._apply_field_serializers",
+"name": "_apply_field_serializers",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._apply_field_serializers",
+"name": "GenerateSchema._apply_field_serializers",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.none_schema",
+"name": "none_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.none_schema",
+"name": "GenerateJsonSchema.none_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema._sort_recursive",
+"name": "_sort_recursive",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema._sort_recursive",
+"name": "GenerateJsonSchema._sort_recursive",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._apply_single_annotation",
+"name": "_apply_single_annotation",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._apply_single_annotation",
+"name": "GenerateSchema._apply_single_annotation",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/mypy.py",
+"qual": "PydanticModelTransformer.adjust_decorator_signatures",
+"name": "adjust_decorator_signatures",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/mypy.py",
+"qual": "PydanticModelTransformer.adjust_decorator_signatures",
+"name": "PydanticModelTransformer.adjust_decorator_signatures",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/mypy.py",
+"qual": "PydanticModelTransformer.adjust_validator_signatures",
+"name": "adjust_validator_signatures",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/mypy.py",
+"qual": "PydanticModelTransformer.adjust_validator_signatures",
+"name": "PydanticModelTransformer.adjust_validator_signatures",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "docs/plugins/conversion_table.py",
+"qual": "ConversionTable.col_values",
+"name": "col_values",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "docs/plugins/conversion_table.py",
+"qual": "ConversionTable.col_values",
+"name": "ConversionTable.col_values",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/fields.py",
+"qual": "ModelField.prepare_discriminated_union_sub_fields",
+"name": "prepare_discriminated_union_sub_fields",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/fields.py",
+"qual": "ModelField.prepare_discriminated_union_sub_fields",
+"name": "ModelField.prepare_discriminated_union_sub_fields",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._model_schema",
+"name": "_model_schema",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._model_schema",
+"name": "GenerateSchema._model_schema",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._get_wrapped_inner_schema",
+"name": "_get_wrapped_inner_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._get_wrapped_inner_schema",
+"name": "GenerateSchema._get_wrapped_inner_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._tuple_schema",
+"name": "_tuple_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._tuple_schema",
+"name": "GenerateSchema._tuple_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/fields.py",
+"qual": "ModelField._get_field_info",
+"name": "_get_field_info",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/fields.py",
+"qual": "ModelField._get_field_info",
+"name": "ModelField._get_field_info",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.ellipsis_schema",
+"name": "ellipsis_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.ellipsis_schema",
+"name": "GenerateJsonSchema.ellipsis_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.str_ends_with",
+"name": "str_ends_with",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.str_ends_with",
+"name": "_Pipeline.str_ends_with",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.named_tuple_schema",
+"name": "named_tuple_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.named_tuple_schema",
+"name": "GenerateJsonSchema.named_tuple_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._call_schema",
+"name": "_call_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._call_schema",
+"name": "GenerateSchema._call_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/fields.py",
+"qual": "FieldInfo.merge_field_infos",
+"name": "merge_field_infos",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/fields.py",
+"qual": "FieldInfo.merge_field_infos",
+"name": "FieldInfo.merge_field_infos",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.render_warning_message",
+"name": "render_warning_message",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.render_warning_message",
+"name": "GenerateJsonSchema.render_warning_message",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._literal_schema",
+"name": "_literal_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._literal_schema",
+"name": "GenerateSchema._literal_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "docs/plugins/conversion_table.py",
+"qual": "ConversionTable.as_markdown",
+"name": "as_markdown",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs/plugins/conversion_table.py",
+"qual": "ConversionTable.as_markdown",
+"name": "ConversionTable.as_markdown",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/aliases.py",
+"qual": "AliasGenerator.generate_aliases",
+"name": "generate_aliases",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/aliases.py",
+"qual": "AliasGenerator.generate_aliases",
+"name": "AliasGenerator.generate_aliases",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/mypy/modules/generics.py",
+"qual": "HtmlResponse.custom_method",
+"name": "custom_method",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/mypy/modules/generics.py",
+"qual": "HtmlResponse.custom_method",
+"name": "HtmlResponse.custom_method",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "_Definitions.finalize_schema",
+"name": "finalize_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "_Definitions.finalize_schema",
+"name": "_Definitions.finalize_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._frozendict_schema",
+"name": "_frozendict_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._frozendict_schema",
+"name": "GenerateSchema._frozendict_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._resolve_self_type",
+"name": "_resolve_self_type",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._resolve_self_type",
+"name": "GenerateSchema._resolve_self_type",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/fields.py",
+"qual": "ModelField._validate_mapping_like",
+"name": "_validate_mapping_like",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/fields.py",
+"qual": "ModelField._validate_mapping_like",
+"name": "ModelField._validate_mapping_like",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/test_validate_call.py",
+"qual": "DeferBuildClass.cls_meth",
+"name": "cls_meth",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_validate_call.py",
+"qual": "DeferBuildClass.cls_meth",
+"name": "DeferBuildClass.cls_meth",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_discriminated_union.py",
+"qual": "_ApplyInferredDiscriminator._infer_discriminator_values_for_dataclass_choice",
+"name": "_infer_discriminator_values_for_dataclass_choice",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_discriminated_union.py",
+"qual": "_ApplyInferredDiscriminator._infer_discriminator_values_for_dataclass_choice",
+"name": "_ApplyInferredDiscriminator._infer_discriminator_values_for_dataclass_choice",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.datetime_tz_naive",
+"name": "datetime_tz_naive",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/experimental/pipeline.py",
+"qual": "_Pipeline.datetime_tz_naive",
+"name": "_Pipeline.datetime_tz_naive",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/type_adapter.py",
+"qual": "TypeAdapter._fetch_parent_frame",
+"name": "_fetch_parent_frame",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/type_adapter.py",
+"qual": "TypeAdapter._fetch_parent_frame",
+"name": "TypeAdapter._fetch_parent_frame",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._unsubstituted_typevar_schema",
+"name": "_unsubstituted_typevar_schema",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._unsubstituted_typevar_schema",
+"name": "GenerateSchema._unsubstituted_typevar_schema",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_discriminated_union.py",
+"qual": "_ApplyInferredDiscriminator._infer_discriminator_values_for_typed_dict_choice",
+"name": "_infer_discriminator_values_for_typed_dict_choice",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_discriminated_union.py",
+"qual": "_ApplyInferredDiscriminator._infer_discriminator_values_for_typed_dict_choice",
+"name": "_ApplyInferredDiscriminator._infer_discriminator_values_for_typed_dict_choice",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._get_unsupported_field_info_attributes",
+"name": "_get_unsupported_field_info_attributes",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._get_unsupported_field_info_attributes",
+"name": "GenerateSchema._get_unsupported_field_info_attributes",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/fields.py",
+"qual": "ModelField._validate_iterable",
+"name": "_validate_iterable",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/fields.py",
+"qual": "ModelField._validate_iterable",
+"name": "ModelField._validate_iterable",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_config.py",
+"qual": "ConfigWrapper.for_model",
+"name": "for_model",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_config.py",
+"qual": "ConfigWrapper.for_model",
+"name": "ConfigWrapper.for_model",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._set_schema",
+"name": "_set_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._set_schema",
+"name": "GenerateSchema._set_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.custom_error_schema",
+"name": "custom_error_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.custom_error_schema",
+"name": "GenerateJsonSchema.custom_error_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema._generate_inner",
+"name": "_generate_inner",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema._generate_inner",
+"name": "GenerateJsonSchema._generate_inner",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/mypy.py",
+"qual": "PydanticModelTransformer.get_is_required",
+"name": "get_is_required",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/mypy.py",
+"qual": "PydanticModelTransformer.get_is_required",
+"name": "PydanticModelTransformer.get_is_required",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/mypy.py",
+"qual": "PydanticModelTransformer.is_field_frozen",
+"name": "is_field_frozen",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/mypy.py",
+"qual": "PydanticModelTransformer.is_field_frozen",
+"name": "PydanticModelTransformer.is_field_frozen",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/test_computed_fields.py",
+"qual": "Model.none",
+"name": "none",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_computed_fields.py",
+"qual": "Model.none",
+"name": "Model.none",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.complex_schema",
+"name": "complex_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.complex_schema",
+"name": "GenerateJsonSchema.complex_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._ip_schema",
+"name": "_ip_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_generate_schema.py",
+"qual": "GenerateSchema._ip_schema",
+"name": "GenerateSchema._ip_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.decimal_schema",
+"name": "decimal_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.decimal_schema",
+"name": "GenerateJsonSchema.decimal_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/mypy.py",
+"qual": "PydanticModelTransformer.collect_fields_and_class_vars",
+"name": "collect_fields_and_class_vars",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/mypy.py",
+"qual": "PydanticModelTransformer.collect_fields_and_class_vars",
+"name": "PydanticModelTransformer.collect_fields_and_class_vars",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/test_validate_call.py",
+"qual": "ClassWithSlots.some_instance_method",
+"name": "some_instance_method",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_validate_call.py",
+"qual": "ClassWithSlots.some_instance_method",
+"name": "ClassWithSlots.some_instance_method",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/fields.py",
+"qual": "FieldInfo.get_constraints",
+"name": "get_constraints",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/fields.py",
+"qual": "FieldInfo.get_constraints",
+"name": "FieldInfo.get_constraints",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_utils.py",
+"qual": "LazyClassAttribute.value",
+"name": "value",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_utils.py",
+"qual": "LazyClassAttribute.value",
+"name": "LazyClassAttribute.value",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/_internal/_model_construction.py",
+"qual": "ModelMetaclass._collect_bases_data",
+"name": "_collect_bases_data",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/_internal/_model_construction.py",
+"qual": "ModelMetaclass._collect_bases_data",
+"name": "ModelMetaclass._collect_bases_data",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.chain_schema",
+"name": "chain_schema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "pydantic/json_schema.py",
+"qual": "GenerateJsonSchema.chain_schema",
+"name": "GenerateJsonSchema.chain_schema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "pydantic/v1/mypy.py",
+"qual": "ModelConfigData.set_values_dict",
+"name": "set_values_dict",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "pydantic/v1/mypy.py",
+"qual": "ModelConfigData.set_values_dict",
+"name": "ModelConfigData.set_values_dict",
+"r15": "complete"
+}
+]

@@ -1,0 +1,15 @@
+{
+ "repo": "fastapi",
+ "files": 1191,
+ "symbols": 10922,
+ "call_edge_rows": 26463,
+ "build_s_under_tracemalloc": 1.77,
+ "built": true,
+ "nodes": 5763,
+ "certain_edges": 4840,
+ "possible_edges": 34618,
+ "nodes_plus_edges": 45221,
+ "retained_mb": 15.6,
+ "peak_mb": 40.0,
+ "bytes_per_node_edge": 345
+}

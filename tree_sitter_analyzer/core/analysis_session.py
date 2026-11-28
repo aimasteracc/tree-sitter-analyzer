@@ -235,6 +235,7 @@ class AnalysisSession:
             # this is safe even without a fully-qualified executable path.
             result = subprocess.run(  # nosec
                 ["git", "rev-parse", "HEAD"],
+                stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",

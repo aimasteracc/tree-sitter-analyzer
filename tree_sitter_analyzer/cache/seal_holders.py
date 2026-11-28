@@ -25,10 +25,14 @@ import time
 import types
 from typing import Any
 
+from .seal_diagnostics import sqlite_objects
+
 MAX_HOLDERS = 5
 MAX_CHAIN = 8
-#: 构建全部引用链的总时间上限（秒）；只在封存已失败之后花费。
-CHAIN_BUDGET_S = 3.0
+#: 构建全部引用链的总时间上限（秒）；只在封存已失败之后花费。每一步只做一次全堆
+#: 遍历（实例 ``__dict__`` 的所有者只为选中的那个引用者再找一次），一百五十万对象
+#: 的堆上约 0.03 s 一步，这个上限足够走完几条完整的链。
+CHAIN_BUDGET_S = 1.0
 CHAIN_TRUNCATED = "... (diagnostic time budget exhausted)"
 _MAX_TEXT = 160
 #: 引用链在这些对象处结束：再往上只是定义它们的模块与类型系统。
@@ -44,44 +48,47 @@ def holder_objects(
     database: str | os.PathLike[str] | None,
     *,
     exclude: object | None = None,
+    objects: list[Any] | None = None,
 ) -> list[dict[str, Any]]:
     """本进程中可能持有 ``database`` 的 SQLite 对象及其引用链（有界，绝不抛出）。
 
-    ``exclude`` 是调用方自己的连接（封存连接本身也打开着该文件）。
+    ``exclude`` 是调用方自己的连接（封存连接本身也打开着该文件）。``objects`` 是
+    调用方已取得的 ``sqlite_objects()``；它引用每个候选，不算作持有者。
     """
     try:
-        return _holder_objects(database, exclude)
+        return _holder_objects(database, exclude, objects)
     except Exception as exc:  # 诊断绝不改变封存结果
         return [{"error": f"{type(exc).__name__}: {exc}"[:_MAX_TEXT]}]
 
 
 def _holder_objects(
-    database: str | os.PathLike[str] | None, exclude: object | None
+    database: str | os.PathLike[str] | None,
+    exclude: object | None,
+    objects: list[Any] | None,
 ) -> list[dict[str, Any]]:
     target = os.path.realpath(database) if database is not None else None
     found: dict[str, list[Any]] = {kind: [] for kind in _HOLDER_KINDS}
-    for obj in gc.get_objects():
+    candidates = sqlite_objects() if objects is None else objects
+    for obj in candidates:
         if obj is exclude:
             continue
         kind = _classify(obj, target)
         if kind is not None and len(found[kind]) < MAX_HOLDERS:
             found[kind].append(obj)
+    del candidates
     ordered = [(kind, obj) for kind in _HOLDER_KINDS for obj in found[kind]]
     del found
     ordered = ordered[:MAX_HOLDERS]
     ignored = {id(ordered), *(id(pair) for pair in ordered)}
+    if objects is not None:
+        ignored.add(id(objects))
     # 每一步引用链都扫描整个堆；大进程里总耗时以此为界，超出后只报告种类。
     deadline = time.monotonic() + CHAIN_BUDGET_S
-    holders = []
-    for kind, obj in ordered:
-        holders.append(
-            {
-                "kind": kind,
-                "object": _describe(obj),
-                "held_by": _chain(obj, ignored, deadline),
-            }
-        )
-    return holders
+    chains = _chains([obj for _kind, obj in ordered], ignored, deadline)
+    return [
+        {"kind": kind, "object": _describe(obj), "held_by": chain}
+        for (kind, obj), chain in zip(ordered, chains, strict=True)
+    ]
 
 
 def _classify(obj: object, target: str | None) -> str | None:
@@ -162,25 +169,46 @@ def _short(filename: str) -> str:
     return "/".join(parts[-3:])
 
 
-def _chain(obj: object, ignored: set[int], deadline: float) -> list[str]:
-    """沿第一个外部引用者向上，直到模块、函数、正在运行的帧、长度或时间上限。"""
+def _chains(objs: list[object], ignored: set[int], deadline: float) -> list[list[str]]:
+    """每个候选沿第一个外部引用者向上，直到模块、函数、正在运行的帧、长度或时间上限。
+
+    所有候选一起走：每一步一次全堆遍历（另加至多一次找 ``__dict__`` 的所有者），
+    与候选数无关（原先每个候选每一步各遍历一次，每个 dict 引用者再各遍历一次）。
+    """
     running = _running_frames()
-    chain: list[str] = []
-    seen = set(ignored)
-    current = obj
+    chains: list[list[str]] = [[] for _ in objs]
+    seen = [set(ignored) for _ in objs]
+    current = list(objs)
+    # 本函数自己引用候选的容器不是持有者。
+    own = {id(objs), id(current)}
+    active = list(range(len(objs)))
     for _ in range(MAX_CHAIN):
+        if not active:
+            break
         if time.monotonic() > deadline:
-            chain.append(CHAIN_TRUNCATED)
+            for index in active:
+                chains[index].append(CHAIN_TRUNCATED)
             break
-        seen.add(id(current))
-        referrer = _first_referrer(current, seen, running)
-        if referrer is None:
-            break
-        chain.append(_describe(referrer))
-        if isinstance(referrer, _CHAIN_ENDS) or id(referrer) in running:
-            break
-        current = referrer
-    return chain
+        for index in active:
+            seen[index].add(id(current[index]))
+        chosen = _first_referrers(
+            tuple(current[index] for index in active),
+            [seen[index] for index in active],
+            running,
+            own,
+        )
+        still: list[int] = []
+        for index, referrer in zip(active, chosen, strict=True):
+            if referrer is None:
+                continue
+            chains[index].append(_describe(referrer))
+            if not isinstance(referrer, _CHAIN_ENDS) and id(referrer) not in running:
+                current[index] = referrer
+                still.append(index)
+        # 上一步的引用者就是下一步的目标：不能让这个列表出现在下一步的引用者中。
+        del chosen
+        active = still
+    return chains
 
 
 def _running_frames() -> set[int]:
@@ -199,37 +227,68 @@ def _own_frame(referrer: object) -> bool:
     )
 
 
-def _first_referrer(obj: object, seen: set[int], running: set[int]) -> object | None:
-    candidates: list[object] = []
+def _first_referrers(
+    targets: tuple[object, ...],
+    seen: list[set[int]],
+    running: set[int],
+    own: set[int],
+) -> list[object | None]:
+    """一次全堆遍历，为每个目标选出它的第一个外部引用者（没有则为 None）。
+
+    ``targets`` 自身与 ``own`` 中调用方的容器都引用目标，不算作引用者。
+    """
+    slots: dict[int, list[int]] = {}
+    for slot, target in enumerate(targets):
+        slots.setdefault(id(target), []).append(slot)
+    candidates: list[list[object]] = [[] for _ in targets]
     referrer: object
-    for referrer in gc.get_referrers(obj):
-        if id(referrer) in seen or _own_frame(referrer):
+    for referrer in gc.get_referrers(*targets):
+        if referrer is targets or id(referrer) in own or _own_frame(referrer):
             continue
-        if isinstance(referrer, dict):
-            owner = _dict_owner(referrer, seen)
-            if owner is not None:
-                seen.add(id(referrer))
-                referrer = owner
-        # 连接自己的语句缓存（``functools.lru_cache`` 包装连接本身）不是持有者。
-        if getattr(referrer, "__wrapped__", None) is obj:
-            continue
-        candidates.append(referrer)
+        hit: set[int] = set()
+        for child in gc.get_referents(referrer):
+            for slot in slots.get(id(child), ()):
+                if slot not in hit and id(referrer) not in seen[slot]:
+                    hit.add(slot)
+                    candidates[slot].append(referrer)
+    chosen: list[object | None] = [None] * len(targets)
     # 正在运行的帧把对象当局部变量引用时最直接；否则取第一个外部引用者。
-    for referrer in candidates:
-        if id(referrer) in running:
-            return referrer
-    return candidates[0] if candidates else None
+    for slot, found in enumerate(candidates):
+        chosen[slot] = next((r for r in found if id(r) in running), None)
+    pending = [slot for slot in range(len(targets)) if chosen[slot] is None]
+    owners = _dict_owners(
+        [r for slot in pending for r in candidates[slot] if isinstance(r, dict)]
+    )
+    for slot in pending:
+        for referrer in candidates[slot]:
+            owner = owners.get(id(referrer))
+            if owner is not None and id(owner) not in seen[slot]:
+                seen[slot].add(id(referrer))
+                referrer = owner
+            # 连接自己的语句缓存（``functools.lru_cache`` 包装连接本身）不是持有者。
+            if getattr(referrer, "__wrapped__", None) is targets[slot]:
+                continue
+            chosen[slot] = referrer
+            break
+    return chosen
 
 
-def _dict_owner(mapping: dict[Any, Any], seen: set[int]) -> object | None:
-    """实例或模块的 ``__dict__`` 换成其所有者，便于读出“哪个类型的属性”。"""
+def _dict_owners(mappings: list[dict[Any, Any]]) -> dict[int, object]:
+    """实例或模块的 ``__dict__`` 换成其所有者，便于读出“哪个类型的属性”。
+
+    一次全堆遍历找出全部所有者；按 ``id(mapping)`` 返回。
+    """
+    if not mappings:
+        return {}
+    wanted = {id(mapping) for mapping in mappings}
+    owners: dict[int, object] = {}
     referrer: object
-    for referrer in gc.get_referrers(mapping):
-        if id(referrer) in seen or _own_frame(referrer):
-            continue
+    for referrer in gc.get_referrers(*mappings):
+        # 帧、列表与调用方的容器没有 ``__dict__``，在此跳过。
         try:
-            if referrer.__dict__ is mapping:
-                return referrer
+            mapping = referrer.__dict__
         except Exception:  # noqa: BLE001 - 尽力而为（无 ``__dict__`` 或访问出错）
             continue
-    return None
+        if id(mapping) in wanted and id(mapping) not in owners:
+            owners[id(mapping)] = referrer
+    return owners

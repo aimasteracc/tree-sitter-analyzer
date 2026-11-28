@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, cast
 
 from .jsts_function_names import FUNCTION_VALUE_TYPES, function_value_name
+from .kotlin_call_scope import KOTLIN_SCOPE_KEY, kotlin_call_scope
 from .overload_stubs import OVERLOAD_KEY, is_overload_stub
 from .python_own_receiver import mark_unbound_own_receiver
 from .receiver_hints import (
@@ -935,6 +936,9 @@ def _extract_recursive(
                 # #1739：lambda / 非方法函数参数里的 `self` 不是方法接收者。
                 mark_unbound_own_receiver(node, call_info)
             recv = call_info.get("receiver")
+            if language == "kotlin" and recv in (None, "this"):
+                # #1926：裸调用 / this 调用可用的隐式接收者（lambda 接收者时不按 this 绑定）。
+                call_info[KOTLIN_SCOPE_KEY] = kotlin_call_scope(node, source)
             if local_types and recv in local_types:
                 cls, bind_line = local_types[recv]
                 # flow-sensitive (P2): only type calls at/after the binding line

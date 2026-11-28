@@ -32,6 +32,7 @@ from .cached_annotated_binding import (
     dispatch_alternatives,
     parse_binding,
 )
+from .call_graph_kotlin_bare import kotlin_site, kotlin_targets
 from .call_graph_self_dispatch import (
     OWN_INSTANCE_QUALIFIERS,
     override_candidates,
@@ -159,6 +160,24 @@ class CachedEdgeResolver:
             return self._jsts_this_targets(
                 targets, base_name, caller_class, caller_file
             )
+        site = kotlin_site(edge, qualifier, caller_file)
+        if site is not None:
+            # #1926：Kotlin 裸调用按记录的隐式接收者绑定（lambda 接收者时不猜）。
+            picked = kotlin_targets(
+                self,
+                self._functions_by_name,
+                [*targets.certain, *targets.possible],
+                site,
+                base_name,
+                qualifier,
+                caller_class,
+                caller_file,
+            )
+            if picked is not None:
+                return EdgeTargets(
+                    certain=picked[0], possible=picked[1], binding=targets.binding
+                )
+            return targets
         if not caller_class:
             return targets
         if not qualifier and edge.get("language") == "java":

@@ -31,6 +31,7 @@ def _terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
         try:
             terminated = subprocess.run(  # noqa: S603 - fixed executable/arguments
                 [taskkill, "/PID", str(process.pid), "/T", "/F"],
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 check=False,
@@ -78,6 +79,7 @@ def _check_uv() -> CheckResult:
         if os.name == "nt":
             process = subprocess.Popen(  # noqa: S603 - resolved executable
                 [path, "--version"],
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 creationflags=0x00000200,  # CREATE_NEW_PROCESS_GROUP
@@ -85,6 +87,7 @@ def _check_uv() -> CheckResult:
         else:
             process = subprocess.Popen(  # noqa: S603 - resolved executable
                 [path, "--version"],
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 start_new_session=True,

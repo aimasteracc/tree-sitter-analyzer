@@ -1,0 +1,1598 @@
+[
+{
+"mode": "bare",
+"file": "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/Annotations.kt",
+"qual": "memberForValue",
+"name": "memberForValue",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/Annotations.kt",
+"qual": "addValueToBlock",
+"name": "addValueToBlock",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/Annotations.kt",
+"qual": "isDefaultValue",
+"name": "isDefaultValue",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/OriginatingKSFiles.kt",
+"qual": "getOrCreateKSFilesTag",
+"name": "getOrCreateKSFilesTag",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/OriginatingKSFiles.kt",
+"qual": "getKSFilesTag",
+"name": "getKSFilesTag",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/ksp/test-processor/src/main/kotlin/com/squareup/kotlinpoet/ksp/test/processor/TypeAliasUnwrapping.kt",
+"qual": "unwrapTypeAliasReal",
+"name": "unwrapTypeAliasReal",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+"qual": "AbstractTypesTest.getMirror",
+"name": "getMirror",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/nonJvmMain/kotlin/com/squareup/kotlinpoet/Util.nonJvm.kt",
+"qual": "isIdentifierIgnorable",
+"name": "isIdentifierIgnorable",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/ksp/test-processor/src/test/kotlin/com/squareup/kotlinpoet/ksp/test/processor/KsTypesTest.kt",
+"qual": "starProjection",
+"name": "starProjection",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/ksp/test-processor/src/test/kotlin/com/squareup/kotlinpoet/ksp/test/processor/KsTypesTest.kt",
+"qual": "makeNullable",
+"name": "makeNullable",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/ksp/test-processor/src/test/kotlin/com/squareup/kotlinpoet/ksp/test/processor/KsTypesTest.kt",
+"qual": "isAssignableFrom",
+"name": "isAssignableFrom",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+"qual": "DeclaredTypeAsErrorType.getTypeArguments",
+"name": "getTypeArguments",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+"qual": "DeclaredTypeAsErrorType.getEnclosingType",
+"name": "getEnclosingType",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+"qual": "FakeElement.getEnclosedElements",
+"name": "getEnclosedElements",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+"qual": "FakeElement.getEnclosingElement",
+"name": "getEnclosingElement",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+"qual": "FakeElement.getSimpleName",
+"name": "getSimpleName",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+"qual": "FakeElement.getModifiers",
+"name": "getModifiers",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+"qual": "TestFiler.getResource",
+"name": "getResource",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+"qual": "TestFiler.createClassFile",
+"name": "createClassFile",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+"qual": "TestFiler.createSourceFile",
+"name": "createSourceFile",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+"qual": "Source.openOutputStream",
+"name": "openOutputStream",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypesEclipseTest.kt",
+"qual": "getSupportedAnnotationTypes",
+"name": "getSupportedAnnotationTypes",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypesEclipseTest.kt",
+"qual": "getSupportedSourceVersion",
+"name": "getSupportedSourceVersion",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ElementsClassInspector.kt",
+"qual": "ElementsClassInspector.isOverriddenIn",
+"name": "isOverriddenIn",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ElementsClassInspector.kt",
+"qual": "ElementsClassInspector.exceptionTypeNames",
+"name": "exceptionTypeNames",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ReflectiveClassInspector.kt",
+"qual": "ReflectiveClassInspector.methodJvmModifiers",
+"name": "methodJvmModifiers",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/specs/ClassInspector.kt",
+"qual": "ClassInspector.declarationContainerFor",
+"name": "declarationContainerFor",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/AnnotationSpec.kt",
+"qual": "AnnotationSpec.emit",
+"name": "emit",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ClassName.kt",
+"qual": "ClassName.topLevelClassName",
+"name": "topLevelClassName",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+"qual": "withIndent",
+"name": "withIndent",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+"qual": "buildCodeBlock",
+"name": "buildCodeBlock",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+"qual": "Builder.indent",
+"name": "indent",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+"qual": "CodeBlock.trim",
+"name": "trim",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlockHolder.kt",
+"qual": "Builder.clearBody",
+"name": "clearBody",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeWriter.kt",
+"qual": "CodeWriter.generateImportAliases",
+"name": "generateImportAliases",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FunSpec.kt",
+"qual": "Builder.clearBody",
+"name": "clearBody",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FunSpec.kt",
+"qual": "FunSpec.toBuilder",
+"name": "toBuilder",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FunSpec.kt",
+"qual": "FunSpec.emit",
+"name": "emit",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeName.kt",
+"qual": "TypeName.emitAnnotations",
+"name": "emitAnnotations",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeName.kt",
+"qual": "TypeName.emit",
+"name": "emit",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeName.kt",
+"qual": "TypeName.equalsWithGuard",
+"name": "equalsWithGuard",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+"qual": "AbstractTypesTest.getElement",
+"name": "getElement",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AnnotationSpecTest.kt",
+"qual": "AnnotationSpecTest.emptyArray",
+"name": "emptyArray",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/CodeBlockTest.kt",
+"qual": "CodeBlockTest.withIndent",
+"name": "withIndent",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/CodeBlockTest.kt",
+"qual": "CodeBlockTest.buildCodeBlock",
+"name": "buildCodeBlock",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FileSpecTest.kt",
+"qual": "FileSpecTest.importStaticTypeSpec",
+"name": "importStaticTypeSpec",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+"qual": "FunSpecTest.findFirst",
+"name": "findFirst",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+"qual": "FunSpecTest.getElement",
+"name": "getElement",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypesEclipseTest.kt",
+"qual": "CompilationRule.compile",
+"name": "compile",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/ValueTypeSpecTest.kt",
+"qual": "ValueTypeSpecTest.classBuilder",
+"name": "classBuilder",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/AnnotationSpec.kt",
+"qual": "Visitor.visitArray",
+"name": "visitArray",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FunSpec.kt",
+"qual": "Builder.addComment",
+"name": "addComment",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeWriter.kt",
+"qual": "CodeWriter.close",
+"name": "close",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FunSpec.kt",
+"qual": "Builder.nextControlFlow",
+"name": "nextControlFlow",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+"qual": "DeclaredTypeAsErrorType.getAnnotation",
+"name": "getAnnotation",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ReflectiveClassInspector.kt",
+"qual": "ReflectiveClassInspector.methodExists",
+"name": "methodExists",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/kotlin-metadata/src/test/kotlin/com/squareup/kotlinpoet/metadata/specs/KotlinPoetMetadataSpecsTest.kt",
+"qual": "openFunction",
+"name": "openFunction",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ReflectiveClassInspector.kt",
+"qual": "ReflectiveClassInspector.isInterface",
+"name": "isInterface",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+"qual": "DeclaredTypeAsErrorType.accept",
+"name": "accept",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/kotlin-metadata/src/test/kotlin/com/squareup/kotlinpoet/metadata/specs/KotlinPoetMetadataSpecsTest.kt",
+"qual": "noDefaultWithInputDefault",
+"name": "noDefaultWithInputDefault",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ClassName.kt",
+"qual": "ClassName.bestGuess",
+"name": "bestGuess",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/kotlin-metadata/src/test/kotlin/com/squareup/kotlinpoet/metadata/specs/KotlinPoetMetadataSpecsTest.kt",
+"qual": "staticFunction",
+"name": "staticFunction",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/WildcardTypeName.kt",
+"qual": "consumerOf",
+"name": "consumerOf",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeWriter.kt",
+"qual": "CodeWriter.generateImports",
+"name": "generateImports",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeWriter.kt",
+"qual": "CodeWriter.withCollectedImports",
+"name": "withCollectedImports",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+"qual": "CodeBlock.nextPotentialPlaceholderPosition",
+"name": "nextPotentialPlaceholderPosition",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+"qual": "InvalidOverrideMethods.staticMethod",
+"name": "staticMethod",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ClassInspectorUtil.kt",
+"qual": "createClassName",
+"name": "createClassName",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ClassInspectorUtil.kt",
+"qual": "substringAfterLast",
+"name": "substringAfterLast",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/JvmDescriptorUtils.kt",
+"qual": "visitUnknown",
+"name": "visitUnknown",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/JvmDescriptorUtils.kt",
+"qual": "visitPrimitive",
+"name": "visitPrimitive",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/JvmDescriptorUtils.kt",
+"qual": "visitWildcard",
+"name": "visitWildcard",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeVariableName.kt",
+"qual": "asTypeVariableName",
+"name": "asTypeVariableName",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/Util.kt",
+"qual": "escapeAsAlias",
+"name": "escapeAsAlias",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/specs/KmTypes.kt",
+"qual": "computeSignature",
+"name": "computeSignature",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jsMain/kotlin/com/squareup/kotlinpoet/CodePoint.js.kt",
+"qual": "codePointAt",
+"name": "codePointAt",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/utils.kt",
+"qual": "findRawType",
+"name": "findRawType",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/utils.kt",
+"qual": "toClassNameInternal",
+"name": "toClassNameInternal",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/jvm/JvmAnnotations.kt",
+"qual": "jvmOverloads",
+"name": "jvmOverloads",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/WildcardTypeName.kt",
+"qual": "asWildcardTypeName",
+"name": "asWildcardTypeName",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/nonJvmMain/kotlin/com/squareup/kotlinpoet/CodePoint.nonJvm.kt",
+"qual": "charCount",
+"name": "charCount",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/KotlinPoetMetadata.kt",
+"qual": "readMetadata",
+"name": "readMetadata",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jsMain/kotlin/com/squareup/kotlinpoet/CodePoint.js.kt",
+"qual": "jsFromCodePoint",
+"name": "jsFromCodePoint",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeSpec.kt",
+"qual": "constructorProperties",
+"name": "constructorProperties",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/PropertySpec.kt",
+"qual": "fromPrimaryConstructorParameter",
+"name": "fromPrimaryConstructorParameter",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FileSpec.kt",
+"qual": "oldWriteTo",
+"name": "oldWriteTo",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/Util.kt",
+"qual": "stringLiteralWithQuotes",
+"name": "stringLiteralWithQuotes",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ReflectiveClassInspector.kt",
+"qual": "ReflectiveClassInspector.lookupMethod",
+"name": "lookupMethod",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ElementsClassInspector.kt",
+"qual": "lookupMethod",
+"name": "lookupMethod",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ReflectiveClassInspector.kt",
+"qual": "ReflectiveClassInspector.indexedAnnotationSpecs",
+"name": "indexedAnnotationSpecs",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TaggableTest.kt",
+"qual": "TaggableTest.buildTaggable",
+"name": "buildTaggable",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypesEclipseTest.kt",
+"qual": "process",
+"name": "process",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FileSpec.kt",
+"qual": "getCharContent",
+"name": "getCharContent",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypeVariableNameTest.kt",
+"qual": "boundedBy",
+"name": "boundedBy",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/specs/ClassInspector.kt",
+"qual": "ClassInspector.enumEntry",
+"name": "enumEntry",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+"qual": "CodeBlock.withoutPrefix",
+"name": "withoutPrefix",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/wasmJsMain/kotlin/com/squareup/kotlinpoet/Util.wasmJs.kt",
+"qual": "RegExp.exec",
+"name": "exec",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+"qual": "Builder.unindent",
+"name": "unindent",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/LineWrapper.kt",
+"qual": "LineWrapper.newline",
+"name": "newline",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlockHolder.kt",
+"qual": "Builder.addNamedCode",
+"name": "addNamedCode",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/LineWrapper.kt",
+"qual": "LineWrapper.emitSegmentRange",
+"name": "emitSegmentRange",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlockHolder.kt",
+"qual": "Builder.endControlFlow",
+"name": "endControlFlow",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+"qual": "CodeBlock.hasStatements",
+"name": "hasStatements",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FunSpec.kt",
+"qual": "Builder.addParameters",
+"name": "addParameters",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+"qual": "Builder.endControlFlow",
+"name": "endControlFlow",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ClassName.kt",
+"qual": "ClassName.constructorReference",
+"name": "constructorReference",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ParameterizedTypeName.kt",
+"qual": "ParameterizedTypeName.nestedClass",
+"name": "nestedClass",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+"qual": "CodeBlock.replaceAll",
+"name": "replaceAll",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/CodeBlockTest.kt",
+"qual": "CodeBlockTest.addCommentWithPlaceholders",
+"name": "addCommentWithPlaceholders",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+"qual": "FunSpecTest.modifyAnnotations",
+"name": "modifyAnnotations",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/ExternalDeclarationsTest.kt",
+"qual": "ExternalDeclarationsTest.externalFunDeclarationWithDefinedExternally2",
+"name": "externalFunDeclarationWithDefinedExternally2",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypeNameKotlinTest.kt",
+"qual": "TypeNameKotlinTest.typeNameOf_generic",
+"name": "typeNameOf_generic",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+"qual": "AbstractTypesTest.getNullTypeMirror",
+"name": "getNullTypeMirror",
+"r15": null
+},
+{
+"mode": "bare",
+"file": "interop/ksp/test-processor/src/test/kotlin/com/squareup/kotlinpoet/ksp/test/processor/TestProcessorTest.kt",
+"qual": "TestProcessorTest.complexAliasing",
+"name": "complexAliasing",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/Annotations.kt",
+"qual": "memberForValue",
+"name": "memberForValue",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/Annotations.kt",
+"qual": "addValueToBlock",
+"name": "addValueToBlock",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/Annotations.kt",
+"qual": "isDefaultValue",
+"name": "isDefaultValue",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/OriginatingKSFiles.kt",
+"qual": "getOrCreateKSFilesTag",
+"name": "getOrCreateKSFilesTag",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/OriginatingKSFiles.kt",
+"qual": "getKSFilesTag",
+"name": "getKSFilesTag",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/ksp/test-processor/src/main/kotlin/com/squareup/kotlinpoet/ksp/test/processor/TypeAliasUnwrapping.kt",
+"qual": "unwrapTypeAliasReal",
+"name": "unwrapTypeAliasReal",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+"qual": "AbstractTypesTest.getMirror",
+"name": "AbstractTypesTest.getMirror",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/nonJvmMain/kotlin/com/squareup/kotlinpoet/Util.nonJvm.kt",
+"qual": "isIdentifierIgnorable",
+"name": "isIdentifierIgnorable",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/ksp/test-processor/src/test/kotlin/com/squareup/kotlinpoet/ksp/test/processor/KsTypesTest.kt",
+"qual": "starProjection",
+"name": "starProjection",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/ksp/test-processor/src/test/kotlin/com/squareup/kotlinpoet/ksp/test/processor/KsTypesTest.kt",
+"qual": "makeNullable",
+"name": "makeNullable",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/ksp/test-processor/src/test/kotlin/com/squareup/kotlinpoet/ksp/test/processor/KsTypesTest.kt",
+"qual": "isAssignableFrom",
+"name": "isAssignableFrom",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+"qual": "DeclaredTypeAsErrorType.getTypeArguments",
+"name": "DeclaredTypeAsErrorType.getTypeArguments",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+"qual": "DeclaredTypeAsErrorType.getEnclosingType",
+"name": "DeclaredTypeAsErrorType.getEnclosingType",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+"qual": "FakeElement.getEnclosedElements",
+"name": "FakeElement.getEnclosedElements",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+"qual": "FakeElement.getEnclosingElement",
+"name": "FakeElement.getEnclosingElement",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+"qual": "FakeElement.getSimpleName",
+"name": "FakeElement.getSimpleName",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+"qual": "FakeElement.getModifiers",
+"name": "FakeElement.getModifiers",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+"qual": "TestFiler.getResource",
+"name": "TestFiler.getResource",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+"qual": "TestFiler.createClassFile",
+"name": "TestFiler.createClassFile",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+"qual": "TestFiler.createSourceFile",
+"name": "TestFiler.createSourceFile",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+"qual": "Source.openOutputStream",
+"name": "Source.openOutputStream",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypesEclipseTest.kt",
+"qual": "getSupportedAnnotationTypes",
+"name": "getSupportedAnnotationTypes",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypesEclipseTest.kt",
+"qual": "getSupportedSourceVersion",
+"name": "getSupportedSourceVersion",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ElementsClassInspector.kt",
+"qual": "ElementsClassInspector.isOverriddenIn",
+"name": "ElementsClassInspector.isOverriddenIn",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ElementsClassInspector.kt",
+"qual": "ElementsClassInspector.exceptionTypeNames",
+"name": "ElementsClassInspector.exceptionTypeNames",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ReflectiveClassInspector.kt",
+"qual": "ReflectiveClassInspector.methodJvmModifiers",
+"name": "ReflectiveClassInspector.methodJvmModifiers",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/specs/ClassInspector.kt",
+"qual": "ClassInspector.declarationContainerFor",
+"name": "ClassInspector.declarationContainerFor",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/AnnotationSpec.kt",
+"qual": "AnnotationSpec.emit",
+"name": "AnnotationSpec.emit",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ClassName.kt",
+"qual": "ClassName.topLevelClassName",
+"name": "ClassName.topLevelClassName",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+"qual": "withIndent",
+"name": "withIndent",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+"qual": "buildCodeBlock",
+"name": "buildCodeBlock",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+"qual": "Builder.indent",
+"name": "Builder.indent",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+"qual": "CodeBlock.trim",
+"name": "CodeBlock.trim",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlockHolder.kt",
+"qual": "Builder.clearBody",
+"name": "Builder.clearBody",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeWriter.kt",
+"qual": "CodeWriter.generateImportAliases",
+"name": "CodeWriter.generateImportAliases",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FunSpec.kt",
+"qual": "Builder.clearBody",
+"name": "Builder.clearBody",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FunSpec.kt",
+"qual": "FunSpec.toBuilder",
+"name": "FunSpec.toBuilder",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FunSpec.kt",
+"qual": "FunSpec.emit",
+"name": "FunSpec.emit",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeName.kt",
+"qual": "TypeName.emitAnnotations",
+"name": "TypeName.emitAnnotations",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeName.kt",
+"qual": "TypeName.emit",
+"name": "TypeName.emit",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeName.kt",
+"qual": "TypeName.equalsWithGuard",
+"name": "TypeName.equalsWithGuard",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+"qual": "AbstractTypesTest.getElement",
+"name": "AbstractTypesTest.getElement",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AnnotationSpecTest.kt",
+"qual": "AnnotationSpecTest.emptyArray",
+"name": "AnnotationSpecTest.emptyArray",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/CodeBlockTest.kt",
+"qual": "CodeBlockTest.withIndent",
+"name": "CodeBlockTest.withIndent",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/CodeBlockTest.kt",
+"qual": "CodeBlockTest.buildCodeBlock",
+"name": "CodeBlockTest.buildCodeBlock",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FileSpecTest.kt",
+"qual": "FileSpecTest.importStaticTypeSpec",
+"name": "FileSpecTest.importStaticTypeSpec",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+"qual": "FunSpecTest.findFirst",
+"name": "FunSpecTest.findFirst",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+"qual": "FunSpecTest.getElement",
+"name": "FunSpecTest.getElement",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypesEclipseTest.kt",
+"qual": "CompilationRule.compile",
+"name": "CompilationRule.compile",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/ValueTypeSpecTest.kt",
+"qual": "ValueTypeSpecTest.classBuilder",
+"name": "ValueTypeSpecTest.classBuilder",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/AnnotationSpec.kt",
+"qual": "Visitor.visitArray",
+"name": "Visitor.visitArray",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FunSpec.kt",
+"qual": "Builder.addComment",
+"name": "Builder.addComment",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeWriter.kt",
+"qual": "CodeWriter.close",
+"name": "CodeWriter.close",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FunSpec.kt",
+"qual": "Builder.nextControlFlow",
+"name": "Builder.nextControlFlow",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+"qual": "DeclaredTypeAsErrorType.getAnnotation",
+"name": "DeclaredTypeAsErrorType.getAnnotation",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ReflectiveClassInspector.kt",
+"qual": "ReflectiveClassInspector.methodExists",
+"name": "ReflectiveClassInspector.methodExists",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/kotlin-metadata/src/test/kotlin/com/squareup/kotlinpoet/metadata/specs/KotlinPoetMetadataSpecsTest.kt",
+"qual": "openFunction",
+"name": "openFunction",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ReflectiveClassInspector.kt",
+"qual": "ReflectiveClassInspector.isInterface",
+"name": "ReflectiveClassInspector.isInterface",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+"qual": "DeclaredTypeAsErrorType.accept",
+"name": "DeclaredTypeAsErrorType.accept",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/kotlin-metadata/src/test/kotlin/com/squareup/kotlinpoet/metadata/specs/KotlinPoetMetadataSpecsTest.kt",
+"qual": "noDefaultWithInputDefault",
+"name": "noDefaultWithInputDefault",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ClassName.kt",
+"qual": "ClassName.bestGuess",
+"name": "ClassName.bestGuess",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/kotlin-metadata/src/test/kotlin/com/squareup/kotlinpoet/metadata/specs/KotlinPoetMetadataSpecsTest.kt",
+"qual": "staticFunction",
+"name": "staticFunction",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/WildcardTypeName.kt",
+"qual": "consumerOf",
+"name": "consumerOf",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeWriter.kt",
+"qual": "CodeWriter.generateImports",
+"name": "CodeWriter.generateImports",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeWriter.kt",
+"qual": "CodeWriter.withCollectedImports",
+"name": "CodeWriter.withCollectedImports",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+"qual": "CodeBlock.nextPotentialPlaceholderPosition",
+"name": "CodeBlock.nextPotentialPlaceholderPosition",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+"qual": "InvalidOverrideMethods.staticMethod",
+"name": "InvalidOverrideMethods.staticMethod",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ClassInspectorUtil.kt",
+"qual": "createClassName",
+"name": "createClassName",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ClassInspectorUtil.kt",
+"qual": "substringAfterLast",
+"name": "substringAfterLast",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/JvmDescriptorUtils.kt",
+"qual": "visitUnknown",
+"name": "visitUnknown",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/JvmDescriptorUtils.kt",
+"qual": "visitPrimitive",
+"name": "visitPrimitive",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/JvmDescriptorUtils.kt",
+"qual": "visitWildcard",
+"name": "visitWildcard",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeVariableName.kt",
+"qual": "asTypeVariableName",
+"name": "asTypeVariableName",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/Util.kt",
+"qual": "escapeAsAlias",
+"name": "escapeAsAlias",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/specs/KmTypes.kt",
+"qual": "computeSignature",
+"name": "computeSignature",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jsMain/kotlin/com/squareup/kotlinpoet/CodePoint.js.kt",
+"qual": "codePointAt",
+"name": "codePointAt",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/utils.kt",
+"qual": "findRawType",
+"name": "findRawType",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/utils.kt",
+"qual": "toClassNameInternal",
+"name": "toClassNameInternal",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/jvm/JvmAnnotations.kt",
+"qual": "jvmOverloads",
+"name": "jvmOverloads",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/WildcardTypeName.kt",
+"qual": "asWildcardTypeName",
+"name": "asWildcardTypeName",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/nonJvmMain/kotlin/com/squareup/kotlinpoet/CodePoint.nonJvm.kt",
+"qual": "charCount",
+"name": "charCount",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/KotlinPoetMetadata.kt",
+"qual": "readMetadata",
+"name": "readMetadata",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jsMain/kotlin/com/squareup/kotlinpoet/CodePoint.js.kt",
+"qual": "jsFromCodePoint",
+"name": "jsFromCodePoint",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeSpec.kt",
+"qual": "constructorProperties",
+"name": "constructorProperties",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/PropertySpec.kt",
+"qual": "fromPrimaryConstructorParameter",
+"name": "fromPrimaryConstructorParameter",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FileSpec.kt",
+"qual": "oldWriteTo",
+"name": "oldWriteTo",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/Util.kt",
+"qual": "stringLiteralWithQuotes",
+"name": "stringLiteralWithQuotes",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ReflectiveClassInspector.kt",
+"qual": "ReflectiveClassInspector.lookupMethod",
+"name": "ReflectiveClassInspector.lookupMethod",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ElementsClassInspector.kt",
+"qual": "lookupMethod",
+"name": "lookupMethod",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ReflectiveClassInspector.kt",
+"qual": "ReflectiveClassInspector.indexedAnnotationSpecs",
+"name": "ReflectiveClassInspector.indexedAnnotationSpecs",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TaggableTest.kt",
+"qual": "TaggableTest.buildTaggable",
+"name": "TaggableTest.buildTaggable",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypesEclipseTest.kt",
+"qual": "process",
+"name": "process",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FileSpec.kt",
+"qual": "getCharContent",
+"name": "getCharContent",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypeVariableNameTest.kt",
+"qual": "boundedBy",
+"name": "boundedBy",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/specs/ClassInspector.kt",
+"qual": "ClassInspector.enumEntry",
+"name": "ClassInspector.enumEntry",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+"qual": "CodeBlock.withoutPrefix",
+"name": "CodeBlock.withoutPrefix",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/wasmJsMain/kotlin/com/squareup/kotlinpoet/Util.wasmJs.kt",
+"qual": "RegExp.exec",
+"name": "RegExp.exec",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+"qual": "Builder.unindent",
+"name": "Builder.unindent",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/LineWrapper.kt",
+"qual": "LineWrapper.newline",
+"name": "LineWrapper.newline",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlockHolder.kt",
+"qual": "Builder.addNamedCode",
+"name": "Builder.addNamedCode",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/LineWrapper.kt",
+"qual": "LineWrapper.emitSegmentRange",
+"name": "LineWrapper.emitSegmentRange",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlockHolder.kt",
+"qual": "Builder.endControlFlow",
+"name": "Builder.endControlFlow",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+"qual": "CodeBlock.hasStatements",
+"name": "CodeBlock.hasStatements",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FunSpec.kt",
+"qual": "Builder.addParameters",
+"name": "Builder.addParameters",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+"qual": "Builder.endControlFlow",
+"name": "Builder.endControlFlow",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ClassName.kt",
+"qual": "ClassName.constructorReference",
+"name": "ClassName.constructorReference",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ParameterizedTypeName.kt",
+"qual": "ParameterizedTypeName.nestedClass",
+"name": "ParameterizedTypeName.nestedClass",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+"qual": "CodeBlock.replaceAll",
+"name": "CodeBlock.replaceAll",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/CodeBlockTest.kt",
+"qual": "CodeBlockTest.addCommentWithPlaceholders",
+"name": "CodeBlockTest.addCommentWithPlaceholders",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+"qual": "FunSpecTest.modifyAnnotations",
+"name": "FunSpecTest.modifyAnnotations",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/ExternalDeclarationsTest.kt",
+"qual": "ExternalDeclarationsTest.externalFunDeclarationWithDefinedExternally2",
+"name": "ExternalDeclarationsTest.externalFunDeclarationWithDefinedExternally2",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypeNameKotlinTest.kt",
+"qual": "TypeNameKotlinTest.typeNameOf_generic",
+"name": "TypeNameKotlinTest.typeNameOf_generic",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+"qual": "AbstractTypesTest.getNullTypeMirror",
+"name": "AbstractTypesTest.getNullTypeMirror",
+"r15": null
+},
+{
+"mode": "qualified",
+"file": "interop/ksp/test-processor/src/test/kotlin/com/squareup/kotlinpoet/ksp/test/processor/TestProcessorTest.kt",
+"qual": "TestProcessorTest.complexAliasing",
+"name": "TestProcessorTest.complexAliasing",
+"r15": null
+}
+]

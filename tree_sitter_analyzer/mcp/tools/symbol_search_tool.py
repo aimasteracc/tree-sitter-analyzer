@@ -23,29 +23,11 @@ from ...utils import setup_logger
 from ...utils.test_detection import query_wants_tests, rank_tier
 from .base_tool import BaseMCPTool
 
+# The defaults live in an import-free module so the CLI parser can read them
+# without importing this tool; re-exported here for existing importers.
+from .search_defaults import DEFAULT_SYMBOL_SEARCH_LIMIT, SYMBOL_SEARCH_KINDS
+
 logger = setup_logger(__name__)
-
-# Default result cap. 50 source-rich hits made symbol search ~8 KB/call; 15 is
-# plenty to judge relevance. Exported so the CLI (`--symbol-search-limit`) and
-# the tool schema stay in sync — MCP/CLI parity (Codex P2 on #297).
-DEFAULT_SYMBOL_SEARCH_LIMIT = 15
-
-# Authoritative ``kind`` filter values. Must mirror exactly what
-# ``_extract_symbols`` (tree_sitter_analyzer/_ast_extraction.py) writes into
-# ``ast_symbol_rows`` — function/method/class/enum/variable/import/constant — plus
-# the "any" no-filter default. Exported so the CLI (`--symbol-search-kind`
-# choices) and the ``search`` facade public schema stay in lock-step with this
-# tool's schema (#640: ``kind`` worked at runtime but was undiscoverable).
-SYMBOL_SEARCH_KINDS: tuple[str, ...] = (
-    "function",
-    "method",
-    "class",
-    "enum",
-    "variable",
-    "import",
-    "constant",
-    "any",
-)
 
 
 class _SnapshotSearchCache:

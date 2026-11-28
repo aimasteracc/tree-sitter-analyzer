@@ -7,15 +7,22 @@ import sqlite3
 from pathlib import Path
 
 from tree_sitter_analyzer.cache.generation_routing import resolve_index_path
+from tree_sitter_analyzer.resident import handle as resident_handle
 
 
 def is_index_rebuilding(project_root: str | None) -> bool:
     """尽力读取重建标记；缺失或读取失败时返回 False，不阻断导航。
 
     只读打开防止存在检查后文件消失时创建空库；保留两秒锁等待上限。
+
+    RFC-0042 P2a：标记从不缓存。``nav callers`` 请求内已核验常驻句柄时，同一查询
+    在本请求的只读连接上执行（不再逐次解析索引位置、逐次连接）。
     """
     if not project_root:
         return False
+    resident = resident_handle.rebuilding(project_root)
+    if resident is not None:
+        return resident
     db_path = str(resolve_index_path(project_root))
     if not os.path.exists(db_path):
         return False

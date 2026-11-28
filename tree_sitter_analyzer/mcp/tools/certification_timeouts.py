@@ -37,6 +37,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from ...resident import handle as resident_handle
+
 #: 记录格式版本。
 FORMAT = 1
 #: 视为“在期限内完成不了”的捕获失败原因。
@@ -164,9 +166,10 @@ def _stamp(path: str) -> str:
 def should_skip(project_root: str) -> bool:
     """当前状态下是否已知捕获在期限内完成不了（记录存在、键相符且未到重试时刻）。
 
-    没有任何记录时不计算证据（不增加正常路径的开销）。
+    没有任何记录时不计算证据（不增加正常路径的开销）。RFC-0042 P2a：进程内记下
+    “已清除”时同样不计算——空键从不等于任何证据键，计算出的结果必为 False。
     """
-    root = os.path.realpath(project_root)
+    root = _real(project_root)
     with _LOCK:
         known = _MEMO.get(root)
     if known is None:
@@ -175,14 +178,22 @@ def should_skip(project_root: str) -> bool:
             return False
         with _LOCK:
             _MEMO.setdefault(root, known)
-    if _now() - known[1] >= RETRY_SECONDS:
+    if known[0] == _CLEARED or _now() - known[1] >= RETRY_SECONDS:
         return False
     return evidence_key(project_root) == known[0]
 
 
+def _real(project_root: str) -> str:
+    """``realpath(project_root)``；常驻句柄请求内用句柄解析一次的结果（RFC-0042 P2a）。"""
+    handle = resident_handle.current_handle(project_root)
+    if handle is not None:
+        return handle.real_root
+    return os.path.realpath(project_root)
+
+
 def record(project_root: str, reason: str | None) -> None:
     """一次捕获的结果：期限类失败记下当前状态的键；其他结果清除记录。"""
-    root = os.path.realpath(project_root)
+    root = _real(project_root)
     if reason in TIMEOUT_REASONS:
         key = evidence_key(project_root)
         if key is None:

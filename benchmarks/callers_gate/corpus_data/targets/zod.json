@@ -1,0 +1,1248 @@
+[
+{
+"mode": "bare",
+"file": "packages/zod/src/v4/core/errors.ts",
+"qual": "flattenError",
+"name": "flattenError",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v4/core/errors.ts",
+"qual": "toDotPath",
+"name": "toDotPath",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v4/core/errors.ts",
+"qual": "prettifyError",
+"name": "prettifyError",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v4/core/json-schema-processors.ts",
+"qual": "stringifyKeyNames",
+"name": "stringifyKeyNames",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v4/core/errors.ts",
+"qual": "_getMessage",
+"name": "_getMessage",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v4/classic/errors.ts",
+"qual": "_lazyMethod",
+"name": "_lazyMethod",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v4/classic/from-json-schema.ts",
+"qual": "canonicalKey",
+"name": "canonicalKey",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v4/classic/from-json-schema.ts",
+"qual": "containsRef",
+"name": "containsRef",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v4/classic/from-json-schema.ts",
+"qual": "plural",
+"name": "plural",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v4/mini/schemas.ts",
+"qual": "register",
+"name": "register",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v4/mini/in-out.ts",
+"qual": "withChecks",
+"name": "withChecks",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v4/mini/schemas.ts",
+"qual": "currencyCode",
+"name": "currencyCode",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v4/locales/en.ts",
+"qual": "getTypeName",
+"name": "getTypeName",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v4/locales/hy.ts",
+"qual": "withDefiniteArticle",
+"name": "withDefiniteArticle",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodType._getType",
+"name": "ZodType._getType",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodType._getType",
+"name": "_getType",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodType.isOptional",
+"name": "ZodType.isOptional",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodType.isOptional",
+"name": "isOptional",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodType._refinement",
+"name": "ZodType._refinement",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodType._refinement",
+"name": "_refinement",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/helpers/parseUtil.ts",
+"qual": "ParseStatus.mergeObjectAsync",
+"name": "ParseStatus.mergeObjectAsync",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/helpers/parseUtil.ts",
+"qual": "ParseStatus.mergeObjectAsync",
+"name": "mergeObjectAsync",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/tests/Mocker.ts",
+"qual": "Mocker.stringOptional",
+"name": "Mocker.stringOptional",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/tests/Mocker.ts",
+"qual": "Mocker.stringOptional",
+"name": "stringOptional",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v4/core/json-schema-generator.ts",
+"qual": "JSONSchemaGenerator.metadataRegistry",
+"name": "JSONSchemaGenerator.metadataRegistry",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v4/core/json-schema-generator.ts",
+"qual": "JSONSchemaGenerator.metadataRegistry",
+"name": "metadataRegistry",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/tests/string.test.ts",
+"qual": "makeJwt",
+"name": "makeJwt",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodBigInt.maxValue",
+"name": "ZodBigInt.maxValue",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodBigInt.maxValue",
+"name": "maxValue",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodBigInt.setLimit",
+"name": "ZodBigInt.setLimit",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodBigInt.setLimit",
+"name": "setLimit",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString._regex",
+"name": "ZodString._regex",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString._regex",
+"name": "_regex",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodArray.nonempty",
+"name": "ZodArray.nonempty",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodArray.nonempty",
+"name": "nonempty",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/tests/Mocker.ts",
+"qual": "Mocker.stringNullable",
+"name": "Mocker.stringNullable",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/tests/Mocker.ts",
+"qual": "Mocker.stringNullable",
+"name": "stringNullable",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodLiteral._parse",
+"name": "ZodLiteral._parse",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodLiteral._parse",
+"name": "_parse",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodNumber.isFinite",
+"name": "ZodNumber.isFinite",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodNumber.isFinite",
+"name": "isFinite",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodObject.deepPartial",
+"name": "ZodObject.deepPartial",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodObject.deepPartial",
+"name": "deepPartial",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodCatch._parse",
+"name": "ZodCatch._parse",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodCatch._parse",
+"name": "_parse",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodDate.maxDate",
+"name": "ZodDate.maxDate",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodDate.maxDate",
+"name": "maxDate",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString.isIP",
+"name": "ZodString.isIP",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString.isIP",
+"name": "isIP",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodTuple._parse",
+"name": "ZodTuple._parse",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodTuple._parse",
+"name": "_parse",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v4/core/registries.ts",
+"qual": "$ZodRegistry.remove",
+"name": "$ZodRegistry.remove",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v4/core/registries.ts",
+"qual": "$ZodRegistry.remove",
+"name": "remove",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodDate._addCheck",
+"name": "ZodDate._addCheck",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodDate._addCheck",
+"name": "_addCheck",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/ZodError.ts",
+"qual": "ZodError.assert",
+"name": "ZodError.assert",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/ZodError.ts",
+"qual": "ZodError.assert",
+"name": "assert",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodPipeline._parse",
+"name": "ZodPipeline._parse",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodPipeline._parse",
+"name": "_parse",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/helpers/parseUtil.ts",
+"qual": "ParseStatus.mergeObjectSync",
+"name": "ParseStatus.mergeObjectSync",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/helpers/parseUtil.ts",
+"qual": "ParseStatus.mergeObjectSync",
+"name": "mergeObjectSync",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodUndefined._parse",
+"name": "ZodUndefined._parse",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodUndefined._parse",
+"name": "_parse",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString._parse",
+"name": "ZodString._parse",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString._parse",
+"name": "_parse",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodBigInt.nonnegative",
+"name": "ZodBigInt.nonnegative",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodBigInt.nonnegative",
+"name": "nonnegative",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodType.\"~validate\"",
+"name": "ZodType.\"~validate\"",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodType.\"~validate\"",
+"name": "\"~validate\"",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/ZodError.ts",
+"qual": "ZodError.flatten",
+"name": "ZodError.flatten",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/ZodError.ts",
+"qual": "ZodError.flatten",
+"name": "flatten",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString.isURL",
+"name": "ZodString.isURL",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString.isURL",
+"name": "isURL",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodType.refinement",
+"name": "ZodType.refinement",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodType.refinement",
+"name": "refinement",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodObject.setKey",
+"name": "ZodObject.setKey",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodObject.setKey",
+"name": "setKey",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v4/core/json-schema-generator.ts",
+"qual": "JSONSchemaGenerator.unrepresentable",
+"name": "JSONSchemaGenerator.unrepresentable",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v4/core/json-schema-generator.ts",
+"qual": "JSONSchemaGenerator.unrepresentable",
+"name": "unrepresentable",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString.isEmail",
+"name": "ZodString.isEmail",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString.isEmail",
+"name": "isEmail",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString.isDuration",
+"name": "ZodString.isDuration",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString.isDuration",
+"name": "isDuration",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodAny._parse",
+"name": "ZodAny._parse",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodAny._parse",
+"name": "_parse",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodNumber.safe",
+"name": "ZodNumber.safe",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodNumber.safe",
+"name": "safe",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodEffects._parse",
+"name": "ZodEffects._parse",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodEffects._parse",
+"name": "_parse",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString.isTime",
+"name": "ZodString.isTime",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString.isTime",
+"name": "isTime",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString.isDate",
+"name": "ZodString.isDate",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString.isDate",
+"name": "isDate",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodBranded._parse",
+"name": "ZodBranded._parse",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodBranded._parse",
+"name": "_parse",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodType._processInputParams",
+"name": "ZodType._processInputParams",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodType._processInputParams",
+"name": "_processInputParams",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodDefault.removeDefault",
+"name": "ZodDefault.removeDefault",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodDefault.removeDefault",
+"name": "removeDefault",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodDiscriminatedUnion.optionsMap",
+"name": "ZodDiscriminatedUnion.optionsMap",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodDiscriminatedUnion.optionsMap",
+"name": "optionsMap",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString._addCheck",
+"name": "ZodString._addCheck",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString._addCheck",
+"name": "_addCheck",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/ZodError.ts",
+"qual": "ZodError.isEmpty",
+"name": "ZodError.isEmpty",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/ZodError.ts",
+"qual": "ZodError.isEmpty",
+"name": "isEmpty",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodNull._parse",
+"name": "ZodNull._parse",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodNull._parse",
+"name": "_parse",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodDefault._parse",
+"name": "ZodDefault._parse",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodDefault._parse",
+"name": "_parse",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodMap.valueSchema",
+"name": "ZodMap.valueSchema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodMap.valueSchema",
+"name": "valueSchema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodFunction._parse",
+"name": "ZodFunction._parse",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodFunction._parse",
+"name": "_parse",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodBigInt._getInvalidInput",
+"name": "ZodBigInt._getInvalidInput",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodBigInt._getInvalidInput",
+"name": "_getInvalidInput",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodBigInt.lt",
+"name": "ZodBigInt.lt",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodBigInt.lt",
+"name": "lt",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodMap.keySchema",
+"name": "ZodMap.keySchema",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodMap.keySchema",
+"name": "keySchema",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodDate._parse",
+"name": "ZodDate._parse",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodDate._parse",
+"name": "_parse",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodObject._getCached",
+"name": "ZodObject._getCached",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodObject._getCached",
+"name": "_getCached",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/tests/Mocker.ts",
+"qual": "Mocker.numberNullable",
+"name": "Mocker.numberNullable",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/tests/Mocker.ts",
+"qual": "Mocker.numberNullable",
+"name": "numberNullable",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodEnum.Enum",
+"name": "ZodEnum.Enum",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodEnum.Enum",
+"name": "Enum",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodBigInt.minValue",
+"name": "ZodBigInt.minValue",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodBigInt.minValue",
+"name": "minValue",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodNumber.nonnegative",
+"name": "ZodNumber.nonnegative",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodNumber.nonnegative",
+"name": "nonnegative",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v4/core/json-schema-generator.ts",
+"qual": "JSONSchemaGenerator.io",
+"name": "JSONSchemaGenerator.io",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v4/core/json-schema-generator.ts",
+"qual": "JSONSchemaGenerator.io",
+"name": "io",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodNullable._parse",
+"name": "ZodNullable._parse",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodNullable._parse",
+"name": "_parse",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString.cidr",
+"name": "ZodString.cidr",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString.cidr",
+"name": "cidr",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString.isUUID",
+"name": "ZodString.isUUID",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString.isUUID",
+"name": "isUUID",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodBigInt.nonpositive",
+"name": "ZodBigInt.nonpositive",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodBigInt.nonpositive",
+"name": "nonpositive",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodRecord._parse",
+"name": "ZodRecord._parse",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodRecord._parse",
+"name": "_parse",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodReadonly._parse",
+"name": "ZodReadonly._parse",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodReadonly._parse",
+"name": "_parse",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString.isDatetime",
+"name": "ZodString.isDatetime",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString.isDatetime",
+"name": "isDatetime",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString.isEmoji",
+"name": "ZodString.isEmoji",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString.isEmoji",
+"name": "isEmoji",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodIntersection._parse",
+"name": "ZodIntersection._parse",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodIntersection._parse",
+"name": "_parse",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/helpers/parseUtil.ts",
+"qual": "ParseStatus.mergeArray",
+"name": "ParseStatus.mergeArray",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/helpers/parseUtil.ts",
+"qual": "ParseStatus.mergeArray",
+"name": "mergeArray",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodFunction.parameters",
+"name": "ZodFunction.parameters",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodFunction.parameters",
+"name": "parameters",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodNumber.positive",
+"name": "ZodNumber.positive",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodNumber.positive",
+"name": "positive",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodEffects.sourceType",
+"name": "ZodEffects.sourceType",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodEffects.sourceType",
+"name": "sourceType",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodBigInt.lte",
+"name": "ZodBigInt.lte",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodBigInt.lte",
+"name": "lte",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString.maxLength",
+"name": "ZodString.maxLength",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "packages/zod/src/v3/types.ts",
+"qual": "ZodString.maxLength",
+"name": "maxLength",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v4/core/errors.ts",
+"qual": "flattenError",
+"name": "flattenError",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v4/core/errors.ts",
+"qual": "toDotPath",
+"name": "toDotPath",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v4/core/errors.ts",
+"qual": "prettifyError",
+"name": "prettifyError",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v4/core/json-schema-processors.ts",
+"qual": "stringifyKeyNames",
+"name": "stringifyKeyNames",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v4/core/errors.ts",
+"qual": "_getMessage",
+"name": "_getMessage",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v4/classic/errors.ts",
+"qual": "_lazyMethod",
+"name": "_lazyMethod",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v4/classic/from-json-schema.ts",
+"qual": "canonicalKey",
+"name": "canonicalKey",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v4/classic/from-json-schema.ts",
+"qual": "containsRef",
+"name": "containsRef",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v4/classic/from-json-schema.ts",
+"qual": "plural",
+"name": "plural",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v4/mini/schemas.ts",
+"qual": "register",
+"name": "register",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v4/mini/in-out.ts",
+"qual": "withChecks",
+"name": "withChecks",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v4/mini/schemas.ts",
+"qual": "currencyCode",
+"name": "currencyCode",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v4/locales/en.ts",
+"qual": "getTypeName",
+"name": "getTypeName",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v4/locales/hy.ts",
+"qual": "withDefiniteArticle",
+"name": "withDefiniteArticle",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "packages/zod/src/v3/tests/string.test.ts",
+"qual": "makeJwt",
+"name": "makeJwt",
+"r15": "complete"
+}
+]

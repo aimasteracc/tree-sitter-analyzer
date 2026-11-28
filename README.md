@@ -18,6 +18,12 @@ TSA indexes your codebase with tree-sitter and serves correct call graphs, symbo
 
 ---
 
+## Demo
+
+https://github.com/user-attachments/assets/0b1c0a85-2f70-47ab-b09e-acc68d253cac
+
+Narrated English demo: TSA v3.1.2 indexes its own repository, then shows callers, blast radius, and miswire-audit. 8 MCP tools. Download: [video](docs/assets/tsa-demo-30s-en.mp4) · [Subtitles](docs/assets/tsa-demo-30s-en.srt)
+
 ## Get Started
 
 > **Requires Python 3.10+** (check: `python3 --version`). Install from [python.org](https://www.python.org/downloads/) if needed.
@@ -44,8 +50,14 @@ claude mcp add tree-sitter-analyzer --scope project \
   -- uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer-mcp
 ```
 
-Build the index once: `uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer --project-root "$PWD" --full-index`.
-Restart your agent, then say: *"Run the `index` tool with action=status."* — expect `indexed: true`
+**Guided alternative** (project-scoped, never writes to your home directory; idempotent: an existing `tree-sitter-analyzer` entry is never overwritten, malformed config files are left untouched, no network access; options: `--setup-agents claude-code,cursor,vscode`, `--setup-no-index`):
+
+```bash
+uvx --from tree-sitter-analyzer tree-sitter-analyzer setup                # dry run: lists the exact files it would change
+uvx --from tree-sitter-analyzer tree-sitter-analyzer setup --setup-yes    # apply: .mcp.json + .claude/skills, warm index, print overview
+```
+
+Build the index once: `uvx --from "tree-sitter-analyzer[mcp]" tree-sitter-analyzer --project-root "$PWD" --full-index`. Restart your agent, then say: *"Run the `index` tool with action=status."* — expect `indexed: true`
 CLI equivalent (no agent needed): `uvx --from tree-sitter-analyzer tree-sitter-analyzer --codegraph-status`
 
 > **PyPI / uvx users — install skills:** the `tsa-*` skills are bundled in the wheel. Copy them once with:
@@ -109,7 +121,6 @@ It reports possible cross-language name collisions so you can inspect resolver b
 ---
 
 ## Why Tree-sitter Analyzer
-
 * **Structured output.** MCP responses use standard JSON envelopes; payload behavior is guarded by response contract tests.
 * **Verdict envelopes.** Every response carries `verdict: SAFE | CAUTION | UNSAFE | INFO | REVIEW | WARN | ERROR | NOT_FOUND`, so orchestrators branch on outcomes without re-prompting.
 * **Project health grading (A–F).** TSA grades projects across size, complexity, coverage, duplication, dependencies, structure, and git hotspots.
@@ -120,7 +131,6 @@ It reports possible cross-language name collisions so you can inspect resolver b
 ---
 
 ## Key Features
-
 ### Pre-indexed code intelligence
 
 An agent's cost is dominated by turns, not by the size of each reply: every extra
@@ -173,7 +183,7 @@ TSA ships curated workflows under `.claude/skills/tsa-*/`:
 
 Each skill ships an `allowed-tools` subset + procedure recipe + decision-surface schema, so the agent doesn't have to triage 8 tools on every question.
 
-### 367 CLI flags
+### 375 CLI flags
 
 Highlights:
 
@@ -200,7 +210,6 @@ TSA performs indexed code search and live source verification in process. No rip
 ---
 
 ## Quantitative claim governance
-
 Public benchmark, performance, or competitive numbers are emitted only from the
 provenance-bound registry in
 [`benchmarks/codegraph_compare/claim_registry.json`](benchmarks/codegraph_compare/claim_registry.json).
@@ -218,7 +227,6 @@ capabilities, not measured superiority claims.
 ---
 
 ## How It Works
-
 ```
 Source code → tree-sitter parse → SQLite + FTS5 index (.ast-cache/index.db)
                                          ↓
@@ -239,7 +247,6 @@ AST data; automatic warming is specific to individual tools.
 ---
 
 ## Supported Agents
-
 <details>
 <summary><b>Codex CLI</b></summary>
 
@@ -349,7 +356,6 @@ MCP client config (the project root inside the container is the mount point `/wo
 ---
 
 ## Supported Languages
-
 <!-- BEGIN GENERATED LANGUAGE SUPPORT INVENTORY -->
 Generated from runtime registries; see [`docs/CODEMAPS/languages.md`](docs/CODEMAPS/languages.md) for the full capability matrix. **22 plugins**: 13 pipeline-registered, 3 index-admitted, 0 call-dispatch-only, 5 data/markup, 1 scaffold. `pipeline_registered` is registration evidence, not positive cross-file binding proof.
 `pipeline_registered`: C, C++, C#, Go, Java, JavaScript, Kotlin, PHP, Python, Ruby, Rust, Swift, TypeScript | `index_admitted`: Bash, Lua, Scala | `call_dispatch_only`:  | `data_markup`: CSS, HTML, Markdown, SQL, YAML | `scaffold`: JSON

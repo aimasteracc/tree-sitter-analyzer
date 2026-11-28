@@ -475,3 +475,93 @@ def test_full_index_rejects_legacy_modes(mode: str) -> None:
     _add_mcp_equivalent_options(parser)
     with pytest.raises(SystemExit):
         parser.parse_args(["--full-index", "--full-index-mode", mode])
+
+
+def test_callers_incremental_flags_are_forwarded_to_the_tool():
+    """§12.1/§12.2 的 CLI 半边：两个 flag 与 MCP 参数一一对应。"""
+    from tree_sitter_analyzer.cli.commands.mcp_commands import _specs_core
+    from tree_sitter_analyzer.cli_main import create_argument_parser
+
+    spec = next(s for s in _specs_core._CORE_SPECS if s.flag_name == "callers")
+    args = create_argument_parser().parse_args(
+        [
+            "--callers",
+            "target",
+            "--if-none-match",
+            "sha256:abc",
+            "--previous-entries-json",
+            '[{"name": "w", "file": "c.py", "line": 4}]',
+        ]
+    )
+
+    built = spec.build_tool_args(args, "json")
+
+    assert (
+        built["if_none_match"],
+        built["previous_entries"],
+        built["function_name"],
+    ) == ("sha256:abc", [{"name": "w", "file": "c.py", "line": 4}], "target")
+
+
+def test_callers_incremental_flags_reject_a_non_array_payload():
+    """非法 JSON / 非数组一律 fail-closed，不静默降级成完整答案。"""
+    from tree_sitter_analyzer.cli.commands.mcp_commands import _specs_core
+    from tree_sitter_analyzer.cli_main import create_argument_parser
+
+    spec = next(s for s in _specs_core._CORE_SPECS if s.flag_name == "callers")
+    invalid = create_argument_parser().parse_args(
+        ["--callers", "target", "--previous-entries-json", '{"not": "an array"}']
+    )
+
+    built = spec.build_tool_args(invalid, "json")
+    broken = create_argument_parser().parse_args(
+        ["--callers", "target", "--previous-entries-json", "oops"]
+    )
+
+    assert (
+        built["previous_entries"],
+        spec.build_tool_args(broken, "json")["previous_entries"],
+    ) == ("__INVALID_PREVIOUS_ENTRIES__", "__INVALID_PREVIOUS_ENTRIES__")
+
+
+def test_test_map_forwards_the_incremental_flags():
+    """§12.1/§12.2 的 CLI 半边同样覆盖 --test-map。"""
+    from tree_sitter_analyzer.cli.nav_special_commands import _dispatch_test_map
+
+    captured: dict = {}
+
+    class _Facade:
+        async def execute(self, args):
+            captured.update(args)
+            return {"success": True}
+
+    class _Context:
+        output_json = staticmethod(lambda payload: None)
+        output_error = staticmethod(lambda message: None)
+
+    args = create_argument_parser().parse_args(
+        [
+            "--test-map",
+            "target",
+            "--if-none-match",
+            "sha256:abc",
+            "--previous-entries-json",
+            '["tests/a.py::t"]',
+        ]
+    )
+
+    _dispatch_test_map(args, _Context(), _Facade(), "json")
+
+    assert (
+        captured["if_none_match"],
+        captured["previous_entries"],
+        captured["symbol"],
+    ) == ("sha256:abc", ["tests/a.py::t"], "target")
+
+    # --test-map-file 分支同样透传（且不传增量参数时两个键都不出现）。
+    captured.clear()
+    plain = create_argument_parser().parse_args(
+        ["--test-map", "target", "--test-map-file", "src/a.py"]
+    )
+    _dispatch_test_map(plain, _Context(), _Facade(), "json")
+    assert ("file_path" in captured, "if_none_match" in captured) == (True, False)

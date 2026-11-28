@@ -11,14 +11,16 @@ import argparse
 # Keep the CLI default in lock-step with the tool's runtime default (MCP/CLI
 # parity — Codex P2 on #297). Same for the kind enum (#640: constant/method
 # were filterable at runtime but rejected by the stale hand-copied choices).
-from ...mcp.tools.symbol_search_tool import (
+# Read them from the import-free defaults module: importing the tools here cost
+# ~1.2 s on every --help and every argparse error.
+from ...mcp.tools.search_defaults import (
     DEFAULT_SYMBOL_SEARCH_LIMIT as _DEFAULT_SYMBOL_SEARCH_LIMIT,
 )
-from ...mcp.tools.symbol_search_tool import (
-    SYMBOL_SEARCH_KINDS as _SYMBOL_SEARCH_KINDS,
-)
-from ...mcp.tools.text_search_tool import (
+from ...mcp.tools.search_defaults import (
     DEFAULT_TEXT_SEARCH_LIMIT as _DEFAULT_TEXT_SEARCH_LIMIT,
+)
+from ...mcp.tools.search_defaults import (
+    SYMBOL_SEARCH_KINDS as _SYMBOL_SEARCH_KINDS,
 )
 
 

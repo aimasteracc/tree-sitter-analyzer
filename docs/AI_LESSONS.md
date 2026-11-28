@@ -1,5 +1,241 @@
 # AI Lessons
 
+## 2026-11 — 先读机制，再谈缺失
+
+### Context
+
+第 82 轮我用 `--change-impact --change-impact-mode branch` 分析 PR #1939，量到「focused 命令 11,308 字符」，
+立刻按「功能缺失」的框架提出：把它改成结构化批次 `focused_test_commands[]`，并试着在默认载荷里加两个
+整数提示。为此被两条既有契约拒绝（默认键集固定、默认回复字节数钉死），当时我把它记成「契约挡了我」。
+
+第 83 轮复测发现：11 KB 是**内部变量** `focused_command`（`join_verification_steps` 拼接后），
+发射出的 `focused_test_command` 只有 **580 字符**（一条 `--verify-plan <token>`），批次本来就在
+`verification_steps`（列表，15 条各约 1 KB）。
+
+第 84 轮去读机制，发现更强的性质早已存在且有测试：
+`verification_plan.attach_commands` 会把任一超长命令替换成 verify-plan token；编码失败时响应转为
+`ERROR`、清空命令字段、**保留结构化步骤**——即客户端永远不会收到跑不动的命令。
+
+### Lessons learned
+
+1. **看到可疑数字，先查机制在哪，再谈缺什么。** 顺序是：实现代码 → 已有测试 → 文档；
+   跳过这一步就会把一个「已经正确且有守卫」的东西当成缺口，并为它造冗余字段。
+2. 被契约拒绝时，先假设**契约是对的**：它往往在描述一条我还没读到的设计（本例：默认载荷的字节预算）。
+   拒绝是信息，不是障碍。
+3. 「发射面」是唯一有意义的测量对象。内部中间变量、日志里的拼串、可见列表都可能不代表客户端收到的东西
+   （本文件里已出现三次同类：可见列表、缓存语义、内部变量）。
+
+### Required guardrail
+
+先读后写的具体落点：`tree_sitter_analyzer/verification_plan.py` 的 `attach_commands`
+（超长命令 → verify-plan token；失败 → `ERROR` 且保留步骤）与
+`tests/unit/test_verification_plan.py` 的三条相关用例；
+默认载荷的字节预算由 `tests/unit/mcp/test_impact_command_dedup.py`
+（`test_realistic_diff_default_reply_size_is_pinned`）钉死，改载荷前必须先读它。
+## 2026-11 — 为便利字段收费的是热路径预算
+
+### Context
+
+第 66 轮给 `callers` 加 `expires_when: {files, index_generation}`——一个纯便利字段（让 agent
+不必重问就能判断能否复用）。实现时为了填 `index_generation`，每次回答都调用
+`resolve_index_location()` 去解析索引位置。
+
+我自己写了 4 条测试，全绿。CI 上三条**已有的**契约同时红了：
+
+| 契约 | 实际 | 含义 |
+|---|---|---|
+| `test_warm_requests_probe_nothing` | `(0, 0, 8)` 而非 `(0, 0, 0)` | 热路径多 8 次文件系统探测 |
+| `test_requests_racing_a_republish_never_mix_snapshots` | 非空 | 探测在重发布进行中读了索引状态 |
+| `test_callers_after_noop_refresh_reuse_the_graph_and_answer_identically` | 两答案不同 | no-op 刷新后世代仍变，答案不再可重用 |
+
+修法：从答案里**已经存在**的 `source_evidence.source_generation` 取值，不碰文件系统；
+读不到就 `null`（诚实：agent 仍可依赖 `files`）。
+
+### Lessons learned
+
+1. **行为测试证明功能存在，不变量测试证明它没在别处收税。** 只写前者，就会像这次一样：
+   字段正确、测试全绿、热路径悄悄多付 8 次 syscall。
+2. 加一个「便利字段」前先问：它的数据从哪来？如果答案是「再查一次」，那它就不是便利，
+   而是把成本转移到了每一次调用。
+3. `null` 往往比「查一次填上」更尊重调用方——但 `null` 必须伴随**更弱的承诺**。
+   修订（PR #1939 review）：本条原文说「作用域里已经有 `files` 可依赖」，这是错的：
+   `files` 只是答案的输入，其他任何文件里新增一处调用都会让答案失效。世代为 `null`
+   时答案就**不能**免问复用（`reusable_without_reask: false`）。省掉一次探测可以，
+   但不能把省下的证据当成还在。
+
+### Required guardrail
+
+`tree_sitter_analyzer/mcp/tools/callers_agent_fields.py` 的 `expires_when()` 只读响应内已有字段（`source_evidence` 的 `source_generation`），
+由 `tests/unit/mcp/tools/test_callers_reason_evidence.py` 固定失败路径（证据里没有世代 → `null`），
+`tests/unit/mcp/tools/test_callers_agent_fields_trust.py` 固定「世代为 `null` → `reusable_without_reask: false`」，
+并由既有的 `tests/integration/test_resident_handle.py::test_warm_requests_probe_nothing`
+与 `tests/integration/test_resident_snapshot_memo.py::test_requests_racing_a_republish_never_mix_snapshots`
+守住「热路径零探测」这条预算。
+## 2026-11 — 门禁看不见自己要看的输入
+
+### Context
+
+为了防住「文档承诺了不存在的 CLI 旗标」（第 67 轮手工发现 `--since`、`--cost`），我写了
+`tests/contracts/test_documented_cli_flags_exist.py`：抽取面向 agent 文档里反引号片段中的
+`--flag`，与真实 argparse 的旗标集合比对。写完立刻通过。
+
+然后我按仓库惯例**故意注入一个幽灵旗标**（`` `tsa --definitely-not-a-flag` ``）验证它会红——
+结果**仍然是 2 passed**。原因：我用了全文 `re.findall(r"`([^`]+)`", text)` 配对反引号，
+当文件里反引号总数为奇数时，整体配对错位，**文件末尾的片段被整个漏掉**。
+
+改成逐行配对后，契约立刻爆出 5 个**真实存在**的幽灵/误标旗标：
+`--output-file`（cli.md 把 MCP 参数写成了 CLI 旗标）、`--check`（其实是 `git diff --check`）、
+`--diff-snapshot-id`（文档本身在说它**不存在**）、`--index` / `--project`
+（属于另一个脚本 `callers_scip_manifest` 的参数）。修完文档、并把检查范围限定为
+「主 CLI 的调用片段」（`tsa …` / `python -m tree_sitter_analyzer …`，且不含其他工具名）后，
+注入探针才如期变红。
+
+### Lessons learned
+
+1. **新写的门禁必须先证明它会红**：注入一个必然违规的样例，看它是否真的失败。只看到绿色
+   说明不了任何事——它可能根本没读到输入。
+2. 全文正则配对标点（反引号、括号、引号）在奇数个时整体错位；**逐行或逐块**处理更稳。
+3. 契约的**范围要和它声称的一致**：一条「文档旗标必须存在」的检查，必须排除其他工具的旗标
+   （git/pytest/ruff/uv/npx）和非主 CLI 脚本的参数，否则只能靠巨大白名单维持绿色，那就没意义。
+
+### Required guardrail
+
+`tests/contracts/test_documented_cli_flags_exist.py`：
+`_documented_flags()` 逐行配对反引号，`_is_main_cli_claim()` 只接受主 CLI 调用片段，
+`DOCUMENTED_NON_FLAGS` 仅登记「文档明确说明不存在」的反例（另有
+`test_the_non_flag_allowlist_stays_honest` 防止白名单变成藏污纳垢处）。
+验证方式固定为一条命令：注入 `` `tsa --definitely-not-a-flag` `` 该测试必须变红。
+## 2026-11 — 生成的文档不在快速门里，漂移就只能等 CI
+
+### Context
+
+给 UQL schema 加 `if_none_match` 后，`docs/api/facade-actions.md` 少了一格。
+本地 `uv run pytest -q` 报 **2280 passed**，CI 上四个测试矩阵 job 同时红在
+`test_facade_actions_doc_matches_generator`——因为 `pytest.ini` 的 quick-gate
+`testpaths` 是显式清单，**没有包含 `tests/unit/docs`**（26 个测试，1.05 秒），
+于是"生成物是否与生成器一致"这件 1 秒能查的事，要等 6 分钟后的 CI 才发现。
+
+修复：`pytest.ini` 与 `tests/contracts/test_pytest_runtime_contract.py` 同时加入
+`tests/unit/docs`；quick gate 从 2280 变 2306 passed，总时长 36.5 秒（仍远低于 5 分钟上限）。
+
+### Lessons learned
+
+1. `testpaths` 是**选择性**清单：新目录不会自动进快速门，只有被显式加入才跑。
+   判断"本地跑过就等于没事"之前，先确认那条测试真的在收集范围里。
+2. 生成物一致性测试属于最便宜的一类门禁（1 秒），必须放在最快的循环里，
+   否则它总是在最贵的地方（CI 矩阵）被发现。
+3. 手改 schema 之后要问：有没有派生产物？（表格、skill 副本、README 计数）
+
+### Follow-up (same class, found by sweeping for it)
+
+同一类"1 秒能查却只在全面套件里跑"的检查还有两处，已一并并入快速门：
+
+- `tests/benchmarks/claims`（37 个里 32 个通过、5 个 skip，1.5 秒）：**已发布数字**
+  （README 计数、性能声明）的可执行不变量——CLAUDE.md §11 要求"任何 cost 声明必须有
+  可执行不变量"，但如果它只在全面套件跑，声明烂掉时没人会在意那个时间差；
+- `tests/integration/docs`（文档链接与结构，亚秒级）：坏链接同样属于"生成/编辑后立刻能查"。
+
+快速门：2306 → **2343 passed / 33 skipped，33.6 秒**（上限 5 分钟）。
+
+### Required guardrail
+
+`pytest.ini` 的 `testpaths` 现包含 `tests/unit/docs`、`tests/benchmarks/claims`、
+`tests/integration/docs`，三者在 `DEFAULT_QUICK_TESTPATHS`
+（`tests/contracts/test_pytest_runtime_contract.py`）中同步钉死；
+生成物漂移、已发布数字漂移、坏文档链接都在本地 40 秒内被发现。
+## 2026-11 — 局部重跑会打碎带 attempt 的 artifact 交接
+
+### Context
+
+PR #1939 的 CI 里 `Native macos Python 3.10` 报
+`Unable to download artifact(s): Artifact not found for name: native-build-<run_id>-2-<sha>`，
+而同一次 run 的 artifact 列表里 `native-macos-<run_id>-2-<sha>` 明明存在且未过期，
+`Build candidate wheel once` / `Native linux` / `Native windows` 全部成功。
+
+根因：`.github/workflows/native-install-qualification.yml` 的 artifact 名带
+`${{ github.run_attempt }}`。我先用 `gh run rerun --failed` 只重跑了失败 job，于是
+**上游 build 仍是 attempt 1 的产物，下游消费者却按 attempt 2 去取**——名字必然对不上。
+之后改成全量 `gh run rerun`（所有 job 在同一 attempt 内重启），同一 commit 立刻
+`conclusion: success`，只剩一个按设计 skip 的 job。
+
+### Lessons learned
+
+1. artifact 名里带 `run_attempt` 时，**只重跑失败 job 是不安全操作**：上游不重跑就没有新
+   attempt 的产物。要么全量重跑，要么把 attempt 从名字里去掉。
+2. 看到 `Artifact not found` 先对照同 run 的 artifact 列表：名字差一个数字（attempt）和
+   真的没有产物是两种完全不同的故障。
+3. 修 CI 之前先确认「我的操作是否制造了这个状态」——这次红灯一半是我 rerun 造成的。
+
+### Required guardrail
+
+`.github/workflows/native-install-qualification.yml` 与
+`.github/workflows/reusable-native-qualification-attestation.yml` 目前都用
+`native-build-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}` 命名；
+改法是把 `run_attempt` 从名字里去掉并在 upload 时 `overwrite: true`，或让消费者解析最新 attempt。
+在改之前，操作规范是**全量重跑**：`gh run rerun <run-id>`（不带 `--failed`）。
+## 2026-11 — 可见列表不是选择结果
+
+### Context
+
+dogfood 记录过一条 P1-4：「change-impact 的测试选择漏掉 4 个直接引用改动模块的测试文件」。
+依据是 `--change-impact` 响应里的 `tests_to_run` 列表与 `grep` 结果比对。后续三轮都在这个前提下
+做补救（文本引用通道、证据分级、20 个样本的精度抽样）。
+
+第 49 轮把 diff 与 scope 两种模式都加上 `--change-impact-include-details` 再对比，发现两者
+选择完全一致：43 个选中、30 个可见、**13 个被显示上限截断**，而那 3 个「漏掉」的文件就在
+选中集合里；响应早已用 `tests_to_run_omitted_count: 13` 标注了截断。原始测量把「可见列表」
+当成了「选择结果」，于是把显示截断误判成召回缺陷。
+
+### Lessons learned
+
+1. 断言「X 漏了 Y」之前，先确认自己读到的是完整集合还是展示投影；响应里带 `*_omitted_count`
+   时，它就是「还有更多」的强提示。
+   同类第二例（2026-11-10，第 82→83 轮）：我把 `change-impact` 的 focused 命令量成 11,308 字符并据此
+   提案「改成结构化批次」；复测发现**发射出的** `focused_test_command` 只有 580 字符（一条
+   `--verify-plan <token>`），11 KB 存在于 `verification_steps` 这个**列表**里（15 条、各约 1 KB）。
+   我量的是内部拼接变量 `focused_command`，不是客户端收到的字段。同一类错误、不同的面：
+   **测量必须对准发射面。**
+2. 一个前提如果连续几轮都在「补救」而不是「验证」，说明它本身该被重新测量，而不是继续加码。
+3. 撤回一个错误结论要写在它最初被发布的地方（这里是 dogfood 报告的测试选择小节），
+   否则后来者只会看到补救代码、看不到被推翻的前提。
+
+### Required guardrail
+
+选择性对比必须用 `--change-impact-include-details`：`tests/unit/mcp` 下的 change-impact 测试在
+默认响应上断言行为，`tests_to_run_omitted_count` 随响应返回，`docs/CODEMAPS/cli.md` 的任务表
+说明 `--change-impact-include-details` 才恢复完整列表。
+## 2026-11 — 自愈契约不能被「输入没变」的捷径绕过
+
+### Context
+
+dogfood 2026-11-09 想把 no-op 索引从 7.3 s 降到 2.6 s：当 `changed == 0` 且
+`ast_resolve_state` 指纹等于当前索引状态时跳过回填。实测确实降到了 2.6–3.2 s，
+但两个既有契约测试立刻变红：`test_fully_cached_missing_marker_reruns_every_backfill`
+和 `test_fully_cached_failed_retry_keeps_marker_clear`（PR #1253）。根因是本仓库
+`call_graph_built()` 恒为 `False`（缺 optional grammar），「缓存命中仍重跑回填」正是
+恢复 marker 的自愈路径。同一轮里我还把一个新读加进了答案路径并用 `except Exception`
+吞掉 `ReadInterrupted`，于是「被中断的读」也能给出 `complete`——被 #1873 的集成测试
+抓出。
+
+### Lessons learned
+
+1. 性能捷径要先问「它绕过的规则是谁的防线」；被两个契约测试否决时，先读它们的注释，
+   不要修改测试来迁就优化。
+2. 在答案路径上新增读时，必须让 `ReadInterrupted` 传播（或走已构建的图），否则
+   「没读到」会被当成「没有行」，重新引入 #1873 的假 `complete`。
+3. 跨 OS 的 staleness 判定不能依赖 mtime 相等：Windows 的粒度会让「仅 mtime 不同」
+   走到摘要比对，夹具里的假 `content_hash` 就会把答案误判成相反档位。
+4. 定量声明（CLI flag 数）有扫描器看守；加 flag 必须同提交内改 codemap、四份 README、
+   claim scanner 与 claim 测试，否则 CI 在四个平台一起红。
+
+### Required guardrail
+
+`tests/integration/test_callers_read_interrupt_1873.py` 覆盖「任一语句被中断都不得
+`complete`」；`tests/unit/test_call_graph_built_signal.py` 用真实 `file_content_hash`
+固定跨平台 staleness；`tests/unit/test_claim_registry.py` 与
+`benchmarks/codegraph_compare/readme_claim_scanner.py` 把 CLI 计数钉在运行时真值上；
+`scripts/check_patch_coverage.py` 强制新增行有覆盖。
+
 ## 2026-09 — A green suite can still retain request-owned resources
 
 ### Context

@@ -37,6 +37,7 @@ def _git(repo_root: Path, *args: str) -> str | None:
     try:
         completed = subprocess.run(  # nosec B603 B607
             ["git", *args],
+            stdin=subprocess.DEVNULL,
             cwd=str(repo_root),
             capture_output=True,
             text=True,

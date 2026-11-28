@@ -209,6 +209,7 @@ def _run_oracle_process_unisolated_for_tests(
         if _IS_WINDOWS:
             proc = subprocess.Popen(  # nosec B603
                 command,
+                stdin=subprocess.DEVNULL,
                 cwd=str(cwd_path),
                 stdout=subprocess.PIPE,
                 # One pipe preserves stdout/stderr write order, so a
@@ -224,6 +225,7 @@ def _run_oracle_process_unisolated_for_tests(
         else:
             proc = subprocess.Popen(  # nosec B603
                 command,
+                stdin=subprocess.DEVNULL,
                 cwd=str(cwd_path),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,

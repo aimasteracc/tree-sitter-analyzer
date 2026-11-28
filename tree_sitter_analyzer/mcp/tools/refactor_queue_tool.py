@@ -121,9 +121,15 @@ def _symbol_counts(root: Path) -> dict[str, int]:
     return {_normalize(root, str(r[0])): int(r[1] or 0) for r in rows if r[0]}
 
 
-def _dead_by_file(root: Path) -> dict[str, int]:
-    """Dead-function count per file (transitive flood-fill), ``{}`` on failure."""
+async def _dead_by_file(root: Path, files: set[str]) -> dict[str, int]:
+    """Certified dead-function count per file of ``files``, ``{}`` on failure.
+
+    #1941: a transitive candidate counts only when ``nav action=callers``
+    certifies it (:mod:`.dead_code_certify`); the ``delete dead`` action must
+    not rest on functions that are called through an unresolved receiver.
+    """
     from ...dead_code_analyzer import analyze_dead_code
+    from .dead_code_certify import certify_transitive
 
     try:
         result = analyze_dead_code(
@@ -132,12 +138,15 @@ def _dead_by_file(root: Path) -> dict[str, int]:
             include_unused_imports=False,
             include_variables=False,
         )
+        everything = [dead.function for dead in result.dead_functions]
+        scoped = [f for f in everything if _normalize(root, f.file_path) in files]
+        certified, _cert = await certify_transitive(str(root), scoped, everything)
     except Exception as exc:  # noqa: BLE001 — a signal read must never raise
         logger.debug("dead code analysis failed: %s", exc)
         return {}
     counts: dict[str, int] = {}
-    for dead in result.dead_functions:
-        key = _normalize(root, dead.function.file_path)
+    for func in certified:
+        key = _normalize(root, func.file_path)
         counts[key] = counts.get(key, 0) + 1
     return counts
 
@@ -217,11 +226,11 @@ class RefactorQueueTool(BaseMCPTool):
         if not any(value > 0 for value in churn.values()):
             return self._unavailable(output_format)
 
-        rows, total_churny = self._collect_rows(root, churn)
+        rows, total_churny = await self._collect_rows(root, churn)
         queue = rank_refactor_queue(rows, top_n=top_n)
         return self._respond(queue, len(rows), total_churny, top_n, output_format)
 
-    def _collect_rows(
+    async def _collect_rows(
         self, root: Path, churn: dict[str, int]
     ) -> tuple[list[RefactorQueueRow], int]:
         """Join health + churn + dead-density, churn-first.
@@ -256,7 +265,7 @@ class RefactorQueueTool(BaseMCPTool):
             # prefix to keep when only one of the three factors is known yet.
             candidates = candidates[:_MAX_CANDIDATES]
 
-        dead = _dead_by_file(root)
+        dead = await _dead_by_file(root, {key for _churn, key in candidates})
         totals = _symbol_counts(root)
         scorer = HealthScorer()
 

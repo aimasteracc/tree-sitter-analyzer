@@ -54,13 +54,13 @@ def _rfc_scoped_hooks() -> set[str]:
 def test_the_inventory_is_not_vacuous() -> None:
     """Exact rather than a lower bound: RFC-0028 §3.2 requires set equality.
 
-    Measured 2026-09-12: seven local hooks. Bumping this constant is expected
+    Measured 2026-11-10: eight local hooks (`tsa-skill-copies-staged` joined). Bumping this constant is expected
     when the hook set legitimately changes — that is the point. The previous
     `>= 6` let the count drift while the guard still passed.
     """
     hooks = _local_hooks()
-    assert len(hooks) == 7, (
-        f"expected 7 local hooks in {CONFIG_PATH.name}, found {len(hooks)}; "
+    assert len(hooks) == 8, (
+        f"expected 8 local hooks in {CONFIG_PATH.name}, found {len(hooks)}; "
         "update this constant deliberately if the hook set changed, otherwise "
         "the parse broke and the assertions below mean nothing"
     )

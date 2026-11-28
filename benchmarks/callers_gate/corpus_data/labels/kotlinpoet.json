@@ -1,0 +1,1313 @@
+{
+ "_note": "AI-DRAFTED, PENDING HUMAN REVIEW (#1933): drafted by Claude from every `git grep -n -w -C1` hit at the kotlinpoet pin, not yet reviewed by a person. calls = call sites that may reach THIS definition (including dynamic dispatch, super calls, bare calls on an implicit receiver and calls inside receiver lambdas); refs = non-call references (`::name`); other = calls of a different same-named definition; external = code outside the project calls it (an override of a JDK / library supertype, a @Test method, a JVM-name bridge), so no project caller list makes it complete. Lines not listed are non-calls (declarations, imports, comments, strings, raw-string code samples, .api dumps, docs). Kotlin property syntax (`e.simpleName` calls getSimpleName()) and operator conventions are invisible to grep; targets that depend on them are marked external. Review sheet: the hard cases (receiver lambdas, bare calls in class bodies, external overrides).",
+ "addCommentWithPlaceholders": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/CodeBlockTest.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "JUnit @Test method"
+  ],
+  "external": "JUnit @Test method: invoked by the test runner (reflection), never by project code"
+ },
+ "addParameters": {
+  "file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FunSpec.kt",
+  "calls": [
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/specs/KotlinPoetMetadataSpecs.kt",
+    499
+   ],
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/specs/KotlinPoetMetadataSpecs.kt",
+    566
+   ],
+   [
+    "interop/ksp/test-processor/src/main/kotlin/com/squareup/kotlinpoet/ksp/test/processor/TestProcessor.kt",
+    186
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FunSpec.kt",
+    656
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/KotlinPoetTest.kt",
+    1296
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "bare calls inside FunSpec builder apply { } lambdas",
+   "chained builder calls"
+  ]
+ },
+ "addValueToBlock": {
+  "file": "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/Annotations.kt",
+  "calls": [
+   [
+    "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/Annotations.kt",
+    60
+   ],
+   [
+    "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/Annotations.kt",
+    105
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "same-file call",
+   "recursive call"
+  ]
+ },
+ "asWildcardTypeName": {
+  "file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/WildcardTypeName.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "two overloads in one file, both declarations; no project call"
+  ]
+ },
+ "boundedBy": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypeVariableNameTest.kt",
+  "calls": [
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypeVariableNameTest.kt",
+    348
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypeVariableNameTest.kt",
+    349
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypeVariableNameTest.kt",
+    350
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypeVariableNameTest.kt",
+    351
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "local function called in its enclosing test"
+  ]
+ },
+ "buildCodeBlock": {
+  "file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+  "calls": [
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/specs/kmAnnotations.kt",
+    73
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeSpec.kt",
+    427
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/CodeBlockTest.kt",
+    582
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+    516
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+    551
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+    585
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+    624
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+    664
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+    704
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/MemberNameTest.kt",
+    647
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "top-level DSL builder called from members and extensions",
+   "inside a test method also named buildCodeBlock: the member takes no lambda"
+  ]
+ },
+ "clearBody": {
+  "file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FunSpec.kt",
+  "calls": [
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/specs/KotlinPoetMetadataSpecs.kt",
+    446
+   ],
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/specs/KotlinPoetMetadataSpecs.kt",
+    449
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "bare call inside toBuilder().apply { } (receiver FunSpec.Builder)",
+   "the interface declaration (CodeBlockHolder.kt) and FileSpec.Builder's override are declarations; the string at FileSpec.kt:518 is not a call"
+  ]
+ },
+ "complexAliasing": {
+  "file": "interop/ksp/test-processor/src/test/kotlin/com/squareup/kotlinpoet/ksp/test/processor/TestProcessorTest.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "JUnit @Test method"
+  ],
+  "external": "JUnit @Test method: invoked by the test runner (reflection), never by project code"
+ },
+ "computeSignature": {
+  "file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/specs/KmTypes.kt",
+  "calls": [
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/specs/KmTypes.kt",
+    285
+   ],
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/specs/KmTypes.kt",
+    286
+   ]
+  ],
+  "refs": [],
+  "other": [
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/specs/KmTypes.kt",
+    270
+   ],
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/specs/KmTypes.kt",
+    271
+   ]
+  ],
+  "patterns": [
+   "overloaded private extensions: KmConstructor receivers call this one, KmFunction receivers the other"
+  ]
+ },
+ "createClassFile": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "override of a JDK interface (#1930)"
+  ],
+  "external": "override of javax.annotation.processing.Filer (JDK) in TestFiler: annotation-processing code calls it through Filer"
+ },
+ "createSourceFile": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "override of a JDK interface (#1930)"
+  ],
+  "external": "override of javax.annotation.processing.Filer (JDK) in TestFiler: annotation-processing code calls it through Filer"
+ },
+ "declarationContainerFor": {
+  "file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/specs/ClassInspector.kt",
+  "calls": [
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/specs/ClassInspector.kt",
+    96
+   ],
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/specs/ClassInspector.kt",
+    108
+   ],
+   [
+    "interop/kotlin-metadata/src/test/kotlin/com/squareup/kotlinpoet/metadata/specs/ReflectiveClassInspectorTest.kt",
+    45
+   ],
+   [
+    "interop/kotlin-metadata/src/test/kotlin/com/squareup/kotlinpoet/metadata/specs/ReflectiveClassInspectorTest.kt",
+    80
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "interface method called through the interface type",
+   "bare call inside an extension on the interface (implicit receiver)",
+   "overrides in both inspectors are declarations"
+  ]
+ },
+ "emitAnnotations": {
+  "file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeName.kt",
+  "calls": [
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeWriter.kt",
+    305
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ParameterizedTypeName.kt",
+    78
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ParameterizedTypeName.kt",
+    82
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ParameterizedTypeName.kt",
+    89
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeName.kt",
+    76
+   ]
+  ],
+  "refs": [],
+  "other": [
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FileSpec.kt",
+    163
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FunSpec.kt",
+    99
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ParameterSpec.kt",
+    68
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/PropertySpec.kt",
+    85
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeAliasSpec.kt",
+    38
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeSpec.kt",
+    137
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeSpec.kt",
+    182
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeSpec.kt",
+    201
+   ]
+  ],
+  "patterns": [
+   "bare call inside buildCodeString { } receiver lambda: CodeWriter.emitAnnotations takes 2 arguments, so the outer TypeName this is used",
+   "CodeWriter.emitAnnotations(annotations, inline) is a different function"
+  ]
+ },
+ "emitSegmentRange": {
+  "file": "kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/LineWrapper.kt",
+  "calls": [
+   [
+    "kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/LineWrapper.kt",
+    117
+   ],
+   [
+    "kotlinpoet/src/commonMain/kotlin/com/squareup/kotlinpoet/LineWrapper.kt",
+    127
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "private member called bare in its own class"
+  ]
+ },
+ "emptyArray": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AnnotationSpecTest.kt",
+  "calls": [],
+  "refs": [],
+  "other": [
+   [
+    "interop/ksp/test-processor/src/main/kotlin/com/squareup/kotlinpoet/ksp/test/processor/TestProcessor.kt",
+    193
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FunSpec.kt",
+    472
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FunSpec.kt",
+    488
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/LambdaTypeName.kt",
+    156
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/LambdaTypeName.kt",
+    172
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/ClassNameTest.kt",
+    227
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypeVariableNameTest.kt",
+    254
+   ]
+  ],
+  "patterns": [
+   "test method named like the stdlib emptyArray(): every call is the stdlib function"
+  ],
+  "external": "JUnit @Test method: invoked by the test runner (reflection), never by project code"
+ },
+ "equalsWithGuard": {
+  "file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeName.kt",
+  "calls": [
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeName.kt",
+    253
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ClassName.kt",
+    193
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/LambdaTypeName.kt",
+    106
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ParameterizedTypeName.kt",
+    106
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeVariableName.kt",
+    79
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/WildcardTypeName.kt",
+    57
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "super.m() from every override",
+   "bare call inside an extension on the nullable base type (dispatches to overrides)"
+  ]
+ },
+ "exceptionTypeNames": {
+  "file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ElementsClassInspector.kt",
+  "calls": [
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ElementsClassInspector.kt",
+    531
+   ],
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ElementsClassInspector.kt",
+    604
+   ]
+  ],
+  "refs": [],
+  "other": [
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ReflectiveClassInspector.kt",
+    516
+   ],
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ReflectiveClassInspector.kt",
+    574
+   ]
+  ],
+  "patterns": [
+   "member extension called on an explicit and on the implicit receiver",
+   "same-named member extensions in another inspector"
+  ]
+ },
+ "externalFunDeclarationWithDefinedExternally2": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/ExternalDeclarationsTest.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "JUnit @Test method"
+  ],
+  "external": "JUnit @Test method: invoked by the test runner (reflection), never by project code"
+ },
+ "findFirst": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+  "calls": [
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+    144
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+    156
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+    174
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+    178
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+    182
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "private test helper; calls inside assertFailure { } lambdas"
+  ]
+ },
+ "findRawType": {
+  "file": "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/utils.kt",
+  "calls": [
+   [
+    "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/utils.kt",
+    32
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "extension on the implicit receiver"
+  ]
+ },
+ "fromPrimaryConstructorParameter": {
+  "file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/PropertySpec.kt",
+  "calls": [
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/TypeSpec.kt",
+    405
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "internal member called on an explicit receiver"
+  ]
+ },
+ "generateImportAliases": {
+  "file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeWriter.kt",
+  "calls": [
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeWriter.kt",
+    802
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "private companion function called inside a lambda in a sibling companion function"
+  ]
+ },
+ "generateImports": {
+  "file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeWriter.kt",
+  "calls": [
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeWriter.kt",
+    745
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeWriter.kt",
+    754
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "private companion extension called on a chained receiver"
+  ]
+ },
+ "getCharContent": {
+  "file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FileSpec.kt",
+  "calls": [
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FileSpec.kt",
+    240
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FileReadingTest.kt",
+    54
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FileReadingTest.kt",
+    55
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "override in an object expression (#1930)",
+   "bare call from a sibling override in the same object expression",
+   "calls through the returned JavaFileObject"
+  ],
+  "external": "override of javax.tools.SimpleJavaFileObject.getCharContent in an object expression (toJavaFileObject): javac calls it through JavaFileObject"
+ },
+ "getElement": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+  "calls": [
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+    48
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+    60
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+    66
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+    81
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+    107
+   ]
+  ],
+  "refs": [],
+  "other": [
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+    94
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+    110
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+    141
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+    171
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+    1363
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypeSpecTest.kt",
+    74
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypeSpecTest.kt",
+    3183
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypeSpecTest.kt",
+    3189
+   ]
+  ],
+  "patterns": [
+   "private member called bare in its own abstract class",
+   "same-named private helpers in unrelated test classes"
+  ]
+ },
+ "getEnclosedElements": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "override of a JDK interface (#1930)",
+   "Kotlin property syntax calls Java getters invisibly to grep"
+  ],
+  "external": "override of javax.lang.model.element.Element (JDK) in FakeElement: JDK code and Kotlin property syntax (`e.simpleName`) call it without naming it"
+ },
+ "getEnclosingElement": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "override of a JDK interface (#1930)",
+   "Kotlin property syntax calls Java getters invisibly to grep"
+  ],
+  "external": "override of javax.lang.model.element.Element (JDK) in FakeElement: JDK code and Kotlin property syntax (`e.simpleName`) call it without naming it"
+ },
+ "getEnclosingType": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "override of a JDK interface (#1930)",
+   "Kotlin property syntax calls Java getters invisibly to grep"
+  ],
+  "external": "override of javax.lang.model.type.DeclaredType / ErrorType (JDK): JDK code and Kotlin property syntax (`x.typeArguments`) call it without naming it"
+ },
+ "getKSFilesTag": {
+  "file": "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/OriginatingKSFiles.kt",
+  "calls": [
+   [
+    "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/OriginatingKSFiles.kt",
+    42
+   ],
+   [
+    "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/OriginatingKSFiles.kt",
+    45
+   ],
+   [
+    "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/OriginatingKSFiles.kt",
+    48
+   ],
+   [
+    "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/OriginatingKSFiles.kt",
+    51
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "extension called on the implicit extension receiver"
+  ]
+ },
+ "getMirror": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+  "calls": [
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+    51
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+    53
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+    55
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+    60
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+    130
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "bare call of a private member in its own class"
+  ]
+ },
+ "getModifiers": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "override of a JDK interface (#1930)",
+   "Kotlin property syntax calls Java getters invisibly to grep"
+  ],
+  "external": "override of javax.lang.model.element.Element (JDK) in FakeElement: JDK code and Kotlin property syntax (`e.simpleName`) call it without naming it"
+ },
+ "getNullTypeMirror": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "JUnit @Test method"
+  ],
+  "external": "JUnit @Test method: invoked by the test runner (reflection), never by project code"
+ },
+ "getOrCreateKSFilesTag": {
+  "file": "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/OriginatingKSFiles.kt",
+  "calls": [
+   [
+    "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/OriginatingKSFiles.kt",
+    75
+   ],
+   [
+    "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/OriginatingKSFiles.kt",
+    80
+   ],
+   [
+    "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/OriginatingKSFiles.kt",
+    85
+   ],
+   [
+    "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/OriginatingKSFiles.kt",
+    90
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "extension called inside apply { } receiver lambdas (implicit receiver is the Builder)"
+  ]
+ },
+ "getResource": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "override of a JDK interface (#1930)"
+  ],
+  "external": "override of javax.annotation.processing.Filer (JDK) in TestFiler: annotation-processing code calls it through Filer"
+ },
+ "getSimpleName": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "override of a JDK interface (#1930)",
+   "Kotlin property syntax calls Java getters invisibly to grep"
+  ],
+  "external": "override of javax.lang.model.element.Element (JDK) in FakeElement: JDK code and Kotlin property syntax (`e.simpleName`) call it without naming it"
+ },
+ "getSupportedAnnotationTypes": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypesEclipseTest.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "override of a JDK class in an object expression (#1930)"
+  ],
+  "external": "override of javax.annotation.processing.AbstractProcessor in an object expression: javac's processing environment calls it"
+ },
+ "getSupportedSourceVersion": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypesEclipseTest.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "override of a JDK class in an object expression (#1930)"
+  ],
+  "external": "override of javax.annotation.processing.AbstractProcessor in an object expression: javac's processing environment calls it"
+ },
+ "getTypeArguments": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/AbstractTypesTest.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "override of a JDK interface (#1930)",
+   "Kotlin property syntax calls Java getters invisibly to grep"
+  ],
+  "external": "override of javax.lang.model.type.DeclaredType / ErrorType (JDK): JDK code and Kotlin property syntax (`x.typeArguments`) call it without naming it"
+ },
+ "hasStatements": {
+  "file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+  "calls": [
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ParameterSpec.kt",
+    78
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/PropertySpec.kt",
+    111
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "internal member called on an explicit receiver"
+  ]
+ },
+ "importStaticTypeSpec": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FileSpecTest.kt",
+  "calls": [
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FileSpecTest.kt",
+    206
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FileSpecTest.kt",
+    231
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FileSpecTest.kt",
+    259
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FileSpecTest.kt",
+    288
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "private test helper; one call inside assertFailure { }"
+  ]
+ },
+ "isAssignableFrom": {
+  "file": "interop/ksp/test-processor/src/test/kotlin/com/squareup/kotlinpoet/ksp/test/processor/KsTypesTest.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "override of an external interface in an object expression (#1930)"
+  ],
+  "external": "override of com.google.devtools.ksp.symbol.KSType (KSP library interface) in an object expression: KSP and library code call it through KSType"
+ },
+ "isDefaultValue": {
+  "file": "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/Annotations.kt",
+  "calls": [
+   [
+    "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/Annotations.kt",
+    54
+   ],
+   [
+    "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/Annotations.kt",
+    70
+   ],
+   [
+    "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/Annotations.kt",
+    78
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "recursive call inside all { } lambdas (no receiver)"
+  ]
+ },
+ "isIdentifierIgnorable": {
+  "file": "kotlinpoet/src/nonJvmMain/kotlin/com/squareup/kotlinpoet/Util.nonJvm.kt",
+  "calls": [
+   [
+    "kotlinpoet/src/nonJvmMain/kotlin/com/squareup/kotlinpoet/Util.nonJvm.kt",
+    47
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "extension on the implicit receiver",
+   "the name in a comment (line 38) is not a call"
+  ]
+ },
+ "isOverriddenIn": {
+  "file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ElementsClassInspector.kt",
+  "calls": [
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ElementsClassInspector.kt",
+    603
+   ]
+  ],
+  "refs": [],
+  "other": [
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ReflectiveClassInspector.kt",
+    573
+   ]
+  ],
+  "patterns": [
+   "member extension called bare inside another member extension of the same receiver type",
+   "same-named member extension in another inspector"
+  ]
+ },
+ "makeNullable": {
+  "file": "interop/ksp/test-processor/src/test/kotlin/com/squareup/kotlinpoet/ksp/test/processor/KsTypesTest.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "override of an external interface in an object expression (#1930)"
+  ],
+  "external": "override of com.google.devtools.ksp.symbol.KSType (KSP library interface) in an object expression: KSP and library code call it through KSType"
+ },
+ "memberForValue": {
+  "file": "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/Annotations.kt",
+  "calls": [
+   [
+    "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/Annotations.kt",
+    135
+   ]
+  ],
+  "refs": [],
+  "other": [
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/AnnotationSpec.kt",
+    162
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/AnnotationSpec.kt",
+    209
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/AnnotationSpec.kt",
+    220
+   ]
+  ],
+  "patterns": [
+   "same-file call in a when branch",
+   "same-named function Builder.memberForValue in AnnotationSpec.kt (another module)"
+  ]
+ },
+ "methodExists": {
+  "file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ReflectiveClassInspector.kt",
+  "calls": [
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/specs/KotlinPoetMetadataSpecs.kt",
+    429
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "call through the ClassInspector interface may dispatch to this override",
+   "the other override and the interface method are declarations"
+  ]
+ },
+ "methodJvmModifiers": {
+  "file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ReflectiveClassInspector.kt",
+  "calls": [
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ReflectiveClassInspector.kt",
+    198
+   ],
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ReflectiveClassInspector.kt",
+    202
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "private member called bare inside member extensions (dispatch receiver is the class)"
+  ]
+ },
+ "nextPotentialPlaceholderPosition": {
+  "file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+  "calls": [
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+    332
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+    399
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "String extension in a companion object, called on a String receiver"
+  ]
+ },
+ "noDefaultWithInputDefault": {
+  "file": "interop/kotlin-metadata/src/test/kotlin/com/squareup/kotlinpoet/metadata/specs/KotlinPoetMetadataSpecsTest.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "override in a test-local class; lines 692 and 737 are inside raw strings"
+  ]
+ },
+ "oldWriteTo": {
+  "file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FileSpec.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "JVM-name bridge with no Kotlin caller"
+  ],
+  "external": "@JvmName(\"writeTo\") binary-compatibility bridge: code compiled against older kotlinpoet calls it by its JVM name"
+ },
+ "openFunction": {
+  "file": "interop/kotlin-metadata/src/test/kotlin/com/squareup/kotlinpoet/metadata/specs/KotlinPoetMetadataSpecsTest.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "override of a project abstract class in a test-local class; no call (line 446 is inside a raw string)"
+  ]
+ },
+ "openOutputStream": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TestFiler.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "override of a JDK class (#1930)"
+  ],
+  "external": "override of javax.tools.SimpleJavaFileObject.openOutputStream (JDK): javac / Filer users call it through JavaFileObject"
+ },
+ "readMetadata": {
+  "file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/KotlinPoetMetadata.kt",
+  "calls": [
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/KotlinPoetMetadata.kt",
+    39
+   ],
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/KotlinPoetMetadata.kt",
+    47
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "private inline function taking a function reference"
+  ]
+ },
+ "replaceAll": {
+  "file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+  "calls": [
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/AnnotationSpec.kt",
+    80
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/CodeBlockTest.kt",
+    514
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/CodeBlockTest.kt",
+    519
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/CodeBlockTest.kt",
+    524
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "internal member called on `it` in a map { } lambda",
+   "the KDoc mention of String.replaceAll is a comment"
+  ]
+ },
+ "starProjection": {
+  "file": "interop/ksp/test-processor/src/test/kotlin/com/squareup/kotlinpoet/ksp/test/processor/KsTypesTest.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "override of an external interface in an object expression (#1930)"
+  ],
+  "external": "override of com.google.devtools.ksp.symbol.KSType (KSP library interface) in an object expression: KSP and library code call it through KSType"
+ },
+ "staticFunction": {
+  "file": "interop/kotlin-metadata/src/test/kotlin/com/squareup/kotlinpoet/metadata/specs/KotlinPoetMetadataSpecsTest.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "@JvmStatic companion member in a test-local class; other hits are inside raw strings"
+  ]
+ },
+ "staticMethod": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "@JvmStatic companion member only looked up by name (strings at FunSpecTest.kt:182, 1598) and printed in a raw string (1605): no call"
+  ]
+ },
+ "substringAfterLast": {
+  "file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ClassInspectorUtil.kt",
+  "calls": [
+   [
+    "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/ClassInspectorUtil.kt",
+    183
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "private vararg extension shadows the stdlib substringAfterLast(Char) for a two-delimiter call"
+  ]
+ },
+ "toClassNameInternal": {
+  "file": "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/utils.kt",
+  "calls": [
+   [
+    "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/KsClassDeclarations.kt",
+    24
+   ],
+   [
+    "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/KsClassDeclarations.kt",
+    29
+   ],
+   [
+    "interop/ksp/src/main/kotlin/com/squareup/kotlinpoet/ksp/utils.kt",
+    69
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "extension on implicit and explicit receivers",
+   "recursive call on the parent declaration"
+  ]
+ },
+ "topLevelClassName": {
+  "file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ClassName.kt",
+  "calls": [
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/ClassName.kt",
+    138
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeWriter.kt",
+    454
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeWriter.kt",
+    472
+   ],
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeWriter.kt",
+    530
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "bare call inside buildString { } (receiver StringBuilder has no such member; resolves to the outer this)",
+   "a local val of the same name (CodeWriter.kt:530-538) is not a call"
+  ]
+ },
+ "typeNameOf_generic": {
+  "file": "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/TypeNameKotlinTest.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "JUnit @Test method"
+  ],
+  "external": "JUnit @Test method: invoked by the test runner (reflection), never by project code"
+ },
+ "unwrapTypeAliasReal": {
+  "file": "interop/ksp/test-processor/src/main/kotlin/com/squareup/kotlinpoet/ksp/test/processor/TypeAliasUnwrapping.kt",
+  "calls": [
+   [
+    "interop/ksp/test-processor/src/main/kotlin/com/squareup/kotlinpoet/ksp/test/processor/TypeAliasUnwrapping.kt",
+    60
+   ],
+   [
+    "interop/ksp/test-processor/src/main/kotlin/com/squareup/kotlinpoet/ksp/test/processor/TypeAliasUnwrapping.kt",
+    61
+   ],
+   [
+    "interop/ksp/test-processor/src/main/kotlin/com/squareup/kotlinpoet/ksp/test/processor/TypeAliasUnwrapping.kt",
+    63
+   ],
+   [
+    "interop/ksp/test-processor/src/main/kotlin/com/squareup/kotlinpoet/ksp/test/processor/TypeAliasUnwrapping.kt",
+    64
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "extension called on a smart-cast implicit receiver in when"
+  ]
+ },
+ "visitArray": {
+  "file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/AnnotationSpec.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "visitor override called back by the JDK (#1930)",
+   "same-named visitArray declarations in other visitors are not calls"
+  ],
+  "external": "override of javax.lang.model.util.SimpleAnnotationValueVisitor8 in AnnotationSpec.Visitor: AnnotationValue.accept(visitor) in the JDK dispatches to it"
+ },
+ "visitPrimitive": {
+  "file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/JvmDescriptorUtils.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "visitor override called back by the JDK (#1930)"
+  ],
+  "external": "override of javax.lang.model.util.AbstractTypeVisitor8 in object JvmDescriptorTypeVisitor: TypeMirror.accept(visitor) in the JDK dispatches to it"
+ },
+ "visitWildcard": {
+  "file": "interop/kotlin-metadata/src/main/kotlin/com/squareup/kotlinpoet/metadata/classinspectors/JvmDescriptorUtils.kt",
+  "calls": [],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "visitor override called back by the JDK (#1930)"
+  ],
+  "external": "override of javax.lang.model.util.AbstractTypeVisitor8 in object JvmDescriptorTypeVisitor: TypeMirror.accept(visitor) in the JDK dispatches to it"
+ },
+ "withCollectedImports": {
+  "file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeWriter.kt",
+  "calls": [
+   [
+    "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/FileSpec.kt",
+    87
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "companion function called through the class name"
+  ]
+ },
+ "withIndent": {
+  "file": "kotlinpoet/src/jvmMain/kotlin/com/squareup/kotlinpoet/CodeBlock.kt",
+  "calls": [
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/CodeBlockTest.kt",
+    693
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/CodeBlockTest.kt",
+    696
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+    518
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+    587
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+    589
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+    625
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+    665
+   ],
+   [
+    "kotlinpoet/src/jvmTest/kotlin/com/squareup/kotlinpoet/FunSpecTest.kt",
+    667
+   ]
+  ],
+  "refs": [],
+  "other": [],
+  "patterns": [
+   "extension called inside buildCodeBlock { } DSL lambdas (implicit Builder receiver)",
+   "inside a test method also named withIndent: the member takes no lambda, so the extension is chosen"
+  ]
+ }
+}

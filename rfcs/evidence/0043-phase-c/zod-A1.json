@@ -1,0 +1,75 @@
+{
+ "repo": "zod",
+ "rows": 178,
+ "rss_start_mb": 52.7,
+ "first_query_s": 13.75,
+ "rss_after_first_mb": 155.5,
+ "rounds": [
+  {
+   "round": 1,
+   "all": {
+    "n": 178,
+    "median_ms": 479.9,
+    "p90_ms": 854.9,
+    "max_ms": 4460.6,
+    "mean_ms": 607.0
+   },
+   "by_kind": {
+    "edge_only": {
+     "n": 17,
+     "median_ms": 338.6,
+     "p90_ms": 541.6,
+     "max_ms": 2283.9,
+     "mean_ms": 489.6
+    },
+    "review": {
+     "n": 161,
+     "median_ms": 483.2,
+     "p90_ms": 854.9,
+     "max_ms": 4460.6,
+     "mean_ms": 619.4
+    }
+   },
+   "stages_ms_per_query": {
+    "G.review._reference_scan": 99.47,
+    "F.check.unattributed_sites": 72.41,
+    "G.review.assess_completeness": 62.44,
+    "E.edges.sql_native_callers": 38.24,
+    "F.check.relation_source_evidence(freshness)": 31.12,
+    "F.check.declaring_file_excluded": 29.12,
+    "F.check.declaring_file_unresolved": 28.94,
+    "G.review._is_accessor": 26.73,
+    "J.infra.try_get_cache": 25.54,
+    "G.review._reference_lines": 21.83,
+    "J.infra.cert_timeouts": 19.15,
+    "F.check.read_unresolved_inbound": 12.19,
+    "F.check.narrow_to_target": 5.9,
+    "B.graph_object": 5.83,
+    "J.infra.is_index_rebuilding": 4.42,
+    "D.guard.call_graph_built": 2.95,
+    "F.check.relation_files": 2.65,
+    "F.check.rank_sites": 2.41,
+    "F.check.drop_external_producers": 1.77,
+    "F.check.call_edge_lines": 1.47,
+    "E.edges.name_bound_targets": 1.08,
+    "G.review.prove": 0.13,
+    "C.resolve.single_method_name": 0.07,
+    "G.review._decorators": 0.07,
+    "E.edges.label_graph_relations": 0.05,
+    "I.serialize.query_cost": 0.05,
+    "B.graph_build_or_adopt": 0.05
+   },
+   "unwrapped_ms_per_query": 110.66
+  }
+ ],
+ "rss_end_mb": 264.5,
+ "n_diff_rows": 0,
+ "diffs": [],
+ "stored": {
+  "tree": "ccb67d8955954fdbe640d346a876831e20c4a62c",
+  "index_key": "cc2ff98b0aed5698502aade4",
+  "repo": "zod",
+  "repo_sha": "afdac65e0f80c0ccf9e8909da97c411567908b57",
+  "query_key": "c326c7c55d94d67df326e63c"
+ }
+}

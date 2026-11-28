@@ -20,6 +20,18 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from .call_path_hops import (  # noqa: F401 -- re-exported
+    _backward_hop,
+    _bwd_hop,
+    _bwd_state,
+    _fwd_hop,
+    _fwd_state,
+    _graph_bwd_hop,
+    _graph_bwd_state,
+    _graph_fwd_hop,
+    _graph_fwd_state,
+    _resolution,
+)
 from .utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -46,113 +58,12 @@ _FORWARD_EDGE_SELECT = (
 _BACKWARD_EDGE_SELECT = (
     "SELECT caller_name, file_path AS caller_file, "
     "json_extract(metadata, '$.caller_line') AS caller_line, "
+    "line AS call_site_line, "
     "callee_name, "
     "json_extract(metadata, '$.callee_resolved_file') AS callee_resolved_file, "
     "file_path "
     "FROM edges "
 )
-
-# ---------------------------------------------------------------------------
-# Direction helpers — forward (callee) direction
-# ---------------------------------------------------------------------------
-
-
-def _fwd_state(row: dict[str, Any]) -> tuple[str, str | None]:
-    """Extract the next (name, file) state from a forward-edge row."""
-    # #735: callee_resolved_file is the definition file; file_path is the
-    # CALLER's file (call-site).  When resolution is unknown, use None so
-    # _query_forward_edges falls back to a name-only query (PR #912) rather
-    # than searching for outgoing edges under the wrong (caller) file.
-    callee_file = row.get("callee_resolved_file") or None
-    return (row["callee_name"], callee_file)
-
-
-def _fwd_hop(
-    current_name: str, current_file: str | None, row: dict[str, Any]
-) -> dict[str, Any]:
-    """Build a hop dict for a forward (callee direction) step."""
-    # #735: callee_file must be the DEFINITION file, not the call-site file.
-    # file_path in the row is the caller's file; callee_resolved_file is what
-    # we want.  Fall back to empty string (unknown) rather than the caller's
-    # file, which would be misleading.
-    callee_file = row.get("callee_resolved_file") or ""
-    return {
-        "caller": current_name,
-        "caller_file": current_file or "",
-        "callee": row["callee_name"],
-        "callee_file": callee_file,
-        "line": row.get("callee_line", 0),
-    }
-
-
-# ---------------------------------------------------------------------------
-# Direction helpers — backward (caller) direction
-# ---------------------------------------------------------------------------
-
-
-def _bwd_state(row: dict[str, Any]) -> tuple[str, str | None]:
-    """Extract the next (name, file) state from a backward-edge row."""
-    return (row["caller_name"], row.get("caller_file") or None)
-
-
-def _bwd_hop(
-    current_name: str, current_file: str | None, row: dict[str, Any]
-) -> dict[str, Any]:
-    """Build a hop dict for a backward (caller direction) step."""
-    # #735: callee_resolved_file in a backward edge row IS the definition file
-    # of current_name (the callee we're looking up callers for). Use it when
-    # target_file was not provided (current_file is None/empty).
-    callee_def_file = row.get("callee_resolved_file") or current_file or ""
-    return {
-        "caller": row["caller_name"],
-        "caller_file": row.get("caller_file", ""),
-        "callee": current_name,
-        "callee_file": callee_def_file,
-        "line": row.get("caller_line", 0),
-    }
-
-
-# ---------------------------------------------------------------------------
-# Direction helpers — forward graph direction
-# ---------------------------------------------------------------------------
-
-
-def _graph_fwd_state(callee: dict[str, Any]) -> tuple[str, str | None]:
-    return (callee.get("name", ""), callee.get("file", "") or None)
-
-
-def _graph_fwd_hop(
-    current_name: str, current_file: str | None, callee: dict[str, Any]
-) -> dict[str, Any]:
-    return {
-        "caller": current_name,
-        "caller_file": current_file or "",
-        "callee": callee.get("name", ""),
-        "callee_file": callee.get("file", ""),
-        "line": callee.get("line", 0),
-    }
-
-
-# ---------------------------------------------------------------------------
-# Direction helpers — backward graph direction
-# ---------------------------------------------------------------------------
-
-
-def _graph_bwd_state(caller: dict[str, Any]) -> tuple[str, str | None]:
-    return (caller.get("name", ""), caller.get("file", "") or None)
-
-
-def _graph_bwd_hop(
-    current_name: str, current_file: str | None, caller: dict[str, Any]
-) -> dict[str, Any]:
-    return {
-        "caller": caller.get("name", ""),
-        "caller_file": caller.get("file", ""),
-        "callee": current_name,
-        "callee_file": current_file or "",
-        "line": caller.get("line", 0),
-    }
-
 
 # ---------------------------------------------------------------------------
 # Shared target-matching predicate
@@ -571,6 +482,8 @@ class CallPathFinder:
                         "callee": callee_name,
                         "callee_file": callee_file,
                         "line": row.get("callee_line", 0),
+                        "call_site_line": row.get("callee_line", 0),
+                        "callee_resolution": _resolution(row),
                     }
                     parent_path = forward_visited.get((current_name, current_file), [])
                     forward_visited[state] = parent_path + [hop]
@@ -607,13 +520,7 @@ class CallPathFinder:
                     callee_def_file = (
                         row.get("callee_resolved_file") or current_file or ""
                     )
-                    hop = {
-                        "caller": caller_name,
-                        "caller_file": caller_file,
-                        "callee": current_name,
-                        "callee_file": callee_def_file,
-                        "line": row.get("caller_line", 0),
-                    }
+                    hop = _backward_hop(row, current_name, callee_def_file)
                     parent_path = backward_visited.get((current_name, current_file), [])
                     backward_visited[state] = [hop] + list(parent_path)
                     found, fwd_path = _lookup_in_visited(state, forward_visited)

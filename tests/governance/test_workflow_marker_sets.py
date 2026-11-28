@@ -138,12 +138,12 @@ def marker_sets() -> list[tuple[str, str, str]]:
 def test_the_survey_found_the_gates(marker_sets) -> None:
     """Exact rather than a lower bound: RFC-0028 §3.2 requires set equality.
 
-    Measured 2026-09-12: ten marker-driven workflows. The previous `>= 3` let the
+    Measured 2026-11-02: twelve marker-driven workflows (ten, plus the two non-gating perf steps from #1852). The previous `>= 3` let the
     survey shrink to a third of that while the guard still passed, and every
     assertion below would have kept passing over a much smaller surface.
     """
-    assert len(marker_sets) == 10, (
-        f"expected 10 marker-driven workflows, found {len(marker_sets)}; update "
+    assert len(marker_sets) == 12, (
+        f"expected 12 marker-driven workflows, found {len(marker_sets)}; update "
         "this constant deliberately if the workflow set changed, otherwise the "
         "parser broke and this gate no longer looks at anything"
     )

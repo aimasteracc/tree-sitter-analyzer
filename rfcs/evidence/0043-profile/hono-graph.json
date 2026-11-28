@@ -1,0 +1,15 @@
+{
+ "repo": "hono",
+ "files": 453,
+ "symbols": 4175,
+ "call_edge_rows": 40116,
+ "build_s_under_tracemalloc": 2.53,
+ "built": true,
+ "nodes": 1549,
+ "certain_edges": 9968,
+ "possible_edges": 40425,
+ "nodes_plus_edges": 51942,
+ "retained_mb": 24.6,
+ "peak_mb": 57.0,
+ "bytes_per_node_edge": 474
+}

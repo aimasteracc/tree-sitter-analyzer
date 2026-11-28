@@ -1,0 +1,15 @@
+{
+ "repo": "axios",
+ "files": 275,
+ "symbols": 2849,
+ "call_edge_rows": 19160,
+ "build_s_under_tracemalloc": 1.01,
+ "built": true,
+ "nodes": 1106,
+ "certain_edges": 2647,
+ "possible_edges": 26307,
+ "nodes_plus_edges": 30060,
+ "retained_mb": 11.4,
+ "peak_mb": 27.9,
+ "bytes_per_node_edge": 378
+}

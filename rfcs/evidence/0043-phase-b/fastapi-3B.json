@@ -1,0 +1,119 @@
+{
+ "repo": "fastapi",
+ "rows": 558,
+ "rss_start_mb": 52.3,
+ "first_query_s": 2.451,
+ "rss_after_first_mb": 136.2,
+ "rounds": [
+  {
+   "round": 1,
+   "all": {
+    "n": 558,
+    "median_ms": 154.2,
+    "p90_ms": 281.3,
+    "max_ms": 2644.8,
+    "mean_ms": 180.3
+   },
+   "by_kind": {
+    "edge_only": {
+     "n": 75,
+     "median_ms": 18.5,
+     "p90_ms": 45.3,
+     "max_ms": 1913.5,
+     "mean_ms": 51.1
+    },
+    "review": {
+     "n": 483,
+     "median_ms": 164.4,
+     "p90_ms": 299.0,
+     "max_ms": 2644.8,
+     "mean_ms": 200.3
+    }
+   },
+   "stages_ms_per_query": {
+    "G.review._reference_scan": 67.3,
+    "G.review.assess_completeness": 61.92,
+    "F.check.relation_source_evidence(freshness)": 23.69,
+    "A.certified_index_read.enter": 6.94,
+    "G.review._reference_lines": 5.44,
+    "F.check.drop_external_producers": 4.65,
+    "J.infra.is_index_rebuilding": 2.34,
+    "E.edges.sql_native_callers": 1.02,
+    "F.check.declaring_file_unresolved": 0.86,
+    "G.review._is_accessor": 0.8,
+    "B.graph_build_or_adopt": 0.7,
+    "B.graph_object": 0.63,
+    "F.check.declaring_file_excluded": 0.59,
+    "F.check.narrow_to_target": 0.52,
+    "F.check.read_unresolved_inbound": 0.18,
+    "A.certified_index_read.exit": 0.09,
+    "F.check.unattributed_sites": 0.09,
+    "D.guard.call_graph_built": 0.08,
+    "F.check.rank_sites": 0.08,
+    "G.review.prove": 0.08,
+    "E.edges.name_bound_targets": 0.07
+   },
+   "unwrapped_ms_per_query": 1.93
+  },
+  {
+   "round": 2,
+   "all": {
+    "n": 558,
+    "median_ms": 126.0,
+    "p90_ms": 208.4,
+    "max_ms": 2168.7,
+    "mean_ms": 140.1
+   },
+   "by_kind": {
+    "edge_only": {
+     "n": 75,
+     "median_ms": 13.1,
+     "p90_ms": 40.0,
+     "max_ms": 1385.0,
+     "mean_ms": 39.4
+    },
+    "review": {
+     "n": 483,
+     "median_ms": 132.6,
+     "p90_ms": 219.2,
+     "max_ms": 2168.7,
+     "mean_ms": 155.7
+    }
+   },
+   "stages_ms_per_query": {
+    "G.review._reference_scan": 54.44,
+    "G.review.assess_completeness": 44.8,
+    "F.check.relation_source_evidence(freshness)": 18.66,
+    "A.certified_index_read.enter": 5.17,
+    "G.review._reference_lines": 4.59,
+    "F.check.drop_external_producers": 4.3,
+    "J.infra.is_index_rebuilding": 1.95,
+    "F.check.declaring_file_unresolved": 0.67,
+    "G.review._is_accessor": 0.66,
+    "B.graph_build_or_adopt": 0.53,
+    "E.edges.sql_native_callers": 0.52,
+    "B.graph_object": 0.49,
+    "F.check.narrow_to_target": 0.48,
+    "F.check.declaring_file_excluded": 0.43,
+    "F.check.read_unresolved_inbound": 0.15,
+    "F.check.unattributed_sites": 0.09,
+    "A.certified_index_read.exit": 0.08,
+    "D.guard.call_graph_built": 0.08,
+    "G.review.prove": 0.07,
+    "F.check.rank_sites": 0.06,
+    "E.edges.name_bound_targets": 0.05
+   },
+   "unwrapped_ms_per_query": 1.6
+  }
+ ],
+ "rss_end_mb": 189.3,
+ "n_diff_rows": 0,
+ "diffs": [],
+ "stored": {
+  "tree": "ccb67d8955954fdbe640d346a876831e20c4a62c",
+  "index_key": "7d4d66d47d4c641aa843509b",
+  "repo": "fastapi",
+  "repo_sha": "b2ce629ace6bdd152d577e5f5e256a079ac1e4fd",
+  "query_key": "9a8687ef095a1caaebdc5f11"
+ }
+}

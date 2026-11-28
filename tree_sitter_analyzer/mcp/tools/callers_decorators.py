@@ -95,18 +95,65 @@ def registering_decorator(
     """声明上第一个可能登记目标的装饰器文本；没有则为 None。
 
     读取或解析失败的声明返回 :data:`UNREADABLE`——无法读取不等于没有装饰器。
+    没有索引可用，因此 Java 注解一律不豁免（见 :func:`decorator_finding`）。
     """
+    finding = decorator_finding(project_root, declarations)
+    return None if finding is None else finding.text
+
+
+@dataclass(frozen=True)
+class DecoratorFinding:
+    """登记门的发现：装饰器文本、问题码，以及 hint 用的说明（覆写门）。"""
+
+    text: str
+    reason: str = DECORATED_REASON
+    detail: str = ""
+
+
+def decorator_finding(
+    project_root: str,
+    declarations: list[tuple[str, int, str]],
+    *,
+    cache: Any = None,
+    bare: str | None = None,
+) -> DecoratorFinding | None:
+    """登记门：首个可能登记目标的装饰器；没有时取首个无法证明封闭的 ``@Override``。
+
+    PR-2：Java 声明经 ``callers_java_annotations`` 豁免不登记任何东西的
+    ``java.lang`` 注解；``cache`` 为 None 时一律不豁免。读取或解析失败返回
+    :data:`UNREADABLE`。
+    """
+    override: DecoratorFinding | None = None
     for rel_path, line, language in declarations:
         text = FILE_CACHE.read_text(os.path.join(project_root, rel_path))
         if text is None:
-            return UNREADABLE
+            return DecoratorFinding(UNREADABLE)
         decorators = declaration_decorators(text, line, language)
         if decorators is None:
-            return UNREADABLE
+            return DecoratorFinding(UNREADABLE)
+        if language == "java":
+            from .callers_java_annotations import OVERRIDE_REASON, java_findings
+
+            for found in java_findings(
+                cache,
+                project_root,
+                rel_path,
+                text,
+                line,
+                bare,
+                [decorator.text for decorator in decorators],
+            ):
+                if not found.override:
+                    return DecoratorFinding(found.text)
+                if override is None:
+                    override = DecoratorFinding(
+                        found.text, OVERRIDE_REASON, found.detail
+                    )
+            continue
         for decorator in decorators:
             if decorator.qualified not in KNOWN_WRAPPERS:
-                return decorator.text
-    return None
+                return DecoratorFinding(decorator.text)
+    return override
 
 
 def registered_hint(func_name: str, decorator: str) -> str:
@@ -164,23 +211,88 @@ def _parsed_python(text: str) -> tuple[ast.Module, dict[str, set[str]]] | None:
 
 
 def _python_decorators(text: str, line: int) -> list[Decorator] | None:
+    table = python_definition_table(text)
+    if table is None:
+        return None
+    return [
+        decorator
+        for _name, first, header, decorators in table
+        if first <= line <= header
+        for decorator in decorators
+    ]
+
+
+#: RFC-0043：一个 Python 定义（``ast.walk`` 顺序）：(名字, 起始行, 定义行, 装饰器)。
+PyDefinition = tuple[str, int, int, tuple[Decorator, ...]]
+
+
+def python_definition_table(text: str) -> tuple[PyDefinition, ...] | None:
+    """文本中每个函数 / 类定义及其装饰器；无法解析为 None。
+
+    RFC-0043：只取决于 ``text``，按内容摘要复用（:mod:`...resident.parse_facts`）；
+    文本由调用方每次实时读取，不保留语法树。
+    """
+    from ...resident import parse_facts
+
+    return parse_facts.facts(
+        "py.definitions", "python", text, lambda: _build_python_definitions(text)
+    )
+
+
+def _build_python_definitions(text: str) -> tuple[PyDefinition, ...] | None:
     parsed = _parsed_python(text)
     if parsed is None:
         return None
     tree, bindings = parsed
-    found: list[Decorator] = []
+    table: list[PyDefinition] = []
+    segments = SourceSegments(text)
     for first, header, node in _python_definitions(text, tree):
-        if not first <= line <= header:
-            continue
+        decorators = []
         for item in node.decorator_list:
-            segment = ast.get_source_segment(text, item) or ast.unparse(item)
-            found.append(
+            segment = segments.get(item) or ast.unparse(item)
+            decorators.append(
                 Decorator(
                     "@" + _WHITESPACE.sub(" ", segment).strip(),
                     _qualify(item, bindings),
                 )
             )
-    return found
+        table.append((str(node.name), int(first), int(header), tuple(decorators)))
+    return tuple(table)
+
+
+#: ``ast._splitlines_no_ff``: lines end at ``\r\n``, ``\r`` or ``\n`` only (endings kept).
+_SOURCE_LINE = re.compile(r"[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+\Z")
+
+
+@dataclass(frozen=True)
+class _Span:
+    lineno: int
+    end_lineno: int
+    col_offset: int
+    end_col_offset: int | None
+
+
+class SourceSegments:
+    """``ast.get_source_segment`` for many nodes of one text.
+
+    RFC-0043 Phase C: the standard function splits the whole text into lines
+    on every call, which made building the definition table of a large file
+    quadratic in its decorators (pydantic: about half of the build). The lines
+    are split once, the same way, and each call hands the standard function
+    only the node's own lines, with the node's line numbers shifted to match.
+    """
+
+    def __init__(self, text: str) -> None:
+        self._lines: list[str] = _SOURCE_LINE.findall(text)
+
+    def get(self, node: Any) -> str | None:
+        end = getattr(node, "end_lineno", None)
+        if end is None:
+            return None
+        lineno = int(node.lineno)
+        chunk = "".join(self._lines[lineno - 1 : end])
+        span = _Span(1, end - lineno + 1, node.col_offset, node.end_col_offset)
+        return ast.get_source_segment(chunk, span)  # type: ignore[arg-type]
 
 
 #: 一个定义：(装饰器起始行与定义行中的最小者, 定义行, 定义节点)。
@@ -262,29 +374,70 @@ def _tree_sitter_decorators(
     text: str, line: int, language: str
 ) -> list[Decorator] | None:
     """非 Python：tree-sitter 中挂在该声明上的装饰器 / 注解，一律不豁免。"""
+    table = _ts_decorator_table(text, language)
+    if table is None:
+        return None
+    return [Decorator(raw, None) for raw, start, end in table if start <= line <= end]
+
+
+#: 一个挂在声明上的装饰器：(折叠空白后的文本, 头部起始行, 头部结束行)，均为 1 起。
+_TsDecorator = tuple[str, int, int]
+
+#: RFC-0043 开关（默认开启；``0`` / ``off`` 关闭），见 :mod:`...resident.parse_facts`。
+PARSE_MEMO_ENV = "TSA_RESIDENT_PARSE_MEMO"
+
+
+def _ts_decorator_table(text: str, language: str) -> tuple[_TsDecorator, ...] | None:
+    """文本中每个挂在声明上的装饰器（源码顺序）；无法解析为 None。
+
+    RFC-0043：结果只取决于 ``text`` 与 ``language``，按文本摘要复用；文本仍由
+    调用方每次按 stat 证据实时读取，文件一变摘要即变，因此不改变新鲜度。
+    """
+    from ...resident import parse_facts
+
+    return parse_facts.facts(
+        "ts.decorators",
+        language,
+        text,
+        lambda: _build_ts_decorator_table(text, language),
+    )
+
+
+def _parse_tree_sitter(text: str, language: str) -> tuple[bytes, Any] | None:
+    """``(源码字节, 根节点)``；没有 grammar 时为 None。"""
     from ...language_loader import create_parser_safely
 
+    parser = create_parser_safely(language)
+    if parser is None:
+        return None
+    source = text.encode("utf-8")
+    return source, parser.parse(source).root_node
+
+
+def _build_ts_decorator_table(
+    text: str, language: str
+) -> tuple[_TsDecorator, ...] | None:
     try:
-        parser = create_parser_safely(language)
-        if parser is None:
-            return None
-        source = text.encode("utf-8")
-        root = parser.parse(source).root_node
+        parsed = _parse_tree_sitter(text, language)
     except Exception:  # noqa: BLE001 — grammar 故障即“无法解析”，保守处理
         return None
-    found: list[Decorator] = []
+    if parsed is None:
+        return None
+    source, root = parsed
+    found: list[_TsDecorator] = []
     stack: list[Any] = [root]
     while stack:
         node = stack.pop()
         if node.type in _TS_DECORATOR_TYPES:
             owner = _ts_owner(node)
-            if owner is not None and _ts_header_holds(node, owner, line):
+            if owner is not None:
                 raw = source[node.start_byte : node.end_byte].decode("utf-8", "replace")
-                found.append(Decorator(_WHITESPACE.sub(" ", raw).strip(), None))
+                start, end = _ts_header_span(node, owner)
+                found.append((_WHITESPACE.sub(" ", raw).strip(), start, end))
             continue
         # 逆序压栈，使装饰器按源码顺序出现。
         stack.extend(reversed(node.children))
-    return found
+    return tuple(found)
 
 
 def _ts_owner(node: Any) -> Any | None:
@@ -316,9 +469,9 @@ def _ts_is_declaration(node: Any) -> bool:
     return str(node.type).endswith(_TS_DECLARATION_SUFFIXES)
 
 
-def _ts_header_holds(decorator: Any, owner: Any, line: int) -> bool:
-    """``line`` 是否落在装饰器起始行到声明名字所在行之间（均为 1 起）。"""
+def _ts_header_span(decorator: Any, owner: Any) -> tuple[int, int]:
+    """装饰器起始行到声明名字所在行（均为 1 起）；声明行落在其间才算挂在该声明上。"""
     name = owner.child_by_field_name("name")
     end = int((name or owner).start_point[0]) + 1
     start = int(min(decorator.start_point[0], owner.start_point[0])) + 1
-    return start <= line <= end
+    return start, end

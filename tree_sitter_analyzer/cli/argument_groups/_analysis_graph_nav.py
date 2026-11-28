@@ -74,6 +74,21 @@ def _add_mcp_graph_nav_options(parser: argparse.ArgumentParser) -> None:
         "Shorthand for --call-graph callers --call-graph-function",
     )
     parser.add_argument(
+        "--if-none-match",
+        dest="if_none_match",
+        metavar="ETAG",
+        help="With --callers: return {unchanged: true} when the answer etag still "
+        "matches (agent cross-turn dedupe).",
+    )
+    parser.add_argument(
+        "--previous-entries-json",
+        dest="previous_entries_json",
+        metavar="JSON",
+        help="With --callers: the previous answer's callers[] as a JSON array; "
+        "responds with a delta (added/removed/unchanged_count) instead of the "
+        "full list.",
+    )
+    parser.add_argument(
         "--codegraph-navigate",
         metavar="SYMBOL",
         help=(

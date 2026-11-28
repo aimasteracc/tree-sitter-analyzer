@@ -198,3 +198,95 @@ def test_xdist_hang_fails_the_session_even_after_a_rerun(tmp_path):
     assert (
         "test_hangs" in output.split("hang watchdog: test exceeded hard deadline")[-1]
     )
+
+
+def _watchdog_with_dumps(tmp_path, files):
+    wd = watchdog.HangWatchdog(SimpleNamespace(), 10.0)
+    wd._dump_dir = tmp_path
+    for name, content in files.items():
+        (tmp_path / name).write_bytes(content)
+    return wd
+
+
+def _blocking_read(monkeypatch, bad_name, calls=None):
+    real = Path.read_bytes
+
+    def fake(self):
+        if self.name == bad_name:
+            if calls is not None:
+                calls.append(1)
+            raise OSError(22, "Invalid argument")
+        return real(self)
+
+    monkeypatch.setattr(Path, "read_bytes", fake)
+    monkeypatch.setattr(watchdog.time, "sleep", lambda _s: None)
+
+
+def test_unreadable_dump_does_not_crash_session_finish(tmp_path, monkeypatch):
+    wd = _watchdog_with_dumps(tmp_path, {"gw0-1.txt": b"locked"})
+    calls: list[int] = []
+    _blocking_read(monkeypatch, "gw0-1.txt", calls)
+    session = SimpleNamespace(exitstatus=pytest.ExitCode.OK)
+
+    wd.pytest_sessionfinish(session)  # must not raise
+
+    assert wd.dumps == []
+    assert session.exitstatus == pytest.ExitCode.OK
+    assert len(wd.unreadable) == 1 and "gw0-1.txt" in wd.unreadable[0]
+    assert "22" in wd.unreadable[0]
+    assert len(calls) == watchdog._READ_ATTEMPTS
+
+
+def test_readable_dump_still_reported_next_to_unreadable_one(tmp_path, monkeypatch):
+    dump = b"hang watchdog: t exceeded 5s\nTimeout (0:00:05)!\n"
+    wd = _watchdog_with_dumps(tmp_path, {"gw0-1.txt": b"x", "gw1-2.txt": dump})
+    _blocking_read(monkeypatch, "gw0-1.txt")
+    session = SimpleNamespace(exitstatus=pytest.ExitCode.OK)
+
+    wd.pytest_sessionfinish(session)
+
+    assert wd.dumps == [dump.decode()]
+    assert session.exitstatus == pytest.ExitCode.TESTS_FAILED
+    assert len(wd.unreadable) == 1
+
+
+def test_transient_read_error_is_retried(tmp_path, monkeypatch):
+    dump = b"Timeout (0:00:05)!\n"
+    wd = _watchdog_with_dumps(tmp_path, {"gw0-1.txt": dump})
+    real = Path.read_bytes
+    state = {"n": 0}
+
+    def flaky(self):
+        state["n"] += 1
+        if state["n"] < 3:
+            raise OSError(22, "Invalid argument")
+        return real(self)
+
+    monkeypatch.setattr(Path, "read_bytes", flaky)
+    monkeypatch.setattr(watchdog.time, "sleep", lambda _s: None)
+
+    assert wd._collect_dumps() == [dump.decode()]
+    assert wd.unreadable == []
+
+
+def test_unlistable_dump_dir_is_reported(tmp_path, monkeypatch):
+    wd = _watchdog_with_dumps(tmp_path, {})
+
+    def boom(self):
+        raise OSError(5, "denied")
+
+    monkeypatch.setattr(Path, "iterdir", boom)
+    assert wd._collect_dumps() == []
+    assert len(wd.unreadable) == 1
+
+
+def test_terminal_summary_reports_unreadable_dumps():
+    wd = watchdog.HangWatchdog(SimpleNamespace(), 10.0)
+    wd.unreadable = ["gw0-1.txt: OSError(22, 'Invalid argument')"]
+    lines: list[str] = []
+    reporter = SimpleNamespace(
+        write_sep=lambda *a, **k: None,
+        write_line=lambda text, **k: lines.append(text),
+    )
+    wd.pytest_terminal_summary(reporter)
+    assert any("gw0-1.txt" in line for line in lines)

@@ -11,6 +11,20 @@ from ._analysis_graph_nav import _add_mcp_graph_nav_options
 
 
 def _add_analysis_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--capabilities",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="ACTION",
+        help=(
+            "Machine-readable planning manifest: every facade action with its "
+            "tier (instant/indexed), preconditions, cost class and a minimal "
+            "example (JSON; see tree_sitter_analyzer/capabilities.py). Pass "
+            "FACADE.ACTION (e.g. nav.callers) to preflight one action: same "
+            "entry plus whether its precondition is currently met."
+        ),
+    )
     """Add source-analysis options."""
     parser.add_argument(
         "--advanced", action="store_true", help="Use advanced analysis features"
@@ -238,9 +252,9 @@ def _add_mcp_change_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         default=True,
         help=(
-            "For --change-impact, output only the compact agent decision "
-            "surface (now the DEFAULT — pass --change-impact-full to opt "
-            "out of trimming)."
+            "For --change-impact only (requires --change-impact): output only "
+            "the compact agent decision surface (now the DEFAULT — pass "
+            "--change-impact-full to opt out of trimming)."
         ),
     )
     parser.add_argument(

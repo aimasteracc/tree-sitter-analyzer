@@ -90,6 +90,20 @@ def _run(coro: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _certify_every_candidate(monkeypatch):
+    """#1941: these synthetic candidates have no source; certify them all so the
+    tests keep checking the counts, not the callers evidence."""
+    from tree_sitter_analyzer.mcp.tools import dead_code_certify
+
+    async def certify_all(_root, funcs, **_kwargs):
+        return dead_code_certify.Certification(
+            verdicts={func: dead_code_certify.Verdict(True) for func in funcs}
+        )
+
+    monkeypatch.setattr(dead_code_certify, "certify", certify_all)
+
+
 @pytest.fixture()
 def fake_root(tmp_path):
     (tmp_path / "placeholder.py").write_text("x = 1\n")

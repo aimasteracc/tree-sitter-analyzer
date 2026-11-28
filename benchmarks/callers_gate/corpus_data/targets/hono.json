@@ -1,0 +1,1066 @@
+[
+{
+"mode": "qualified",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "EventProcessor.getHeaderValue",
+"name": "EventProcessor.getHeaderValue",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "EventProcessor.getHeaderValue",
+"name": "getHeaderValue",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "EventProcessor.setCookies",
+"name": "EventProcessor.setCookies",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "EventProcessor.setCookies",
+"name": "setCookies",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "readWebStream",
+"name": "readWebStream",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "sanitizeHeaderValue",
+"name": "sanitizeHeaderValue",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "src/request.ts",
+"qual": "HonoRequest.addValidatedData",
+"name": "HonoRequest.addValidatedData",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/request.ts",
+"qual": "HonoRequest.addValidatedData",
+"name": "addValidatedData",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/request.ts",
+"qual": "HonoRequest.#getParamValue",
+"name": "HonoRequest.#getParamValue",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "src/request.ts",
+"qual": "HonoRequest.#getParamValue",
+"name": "#getParamValue",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "src/utils/stream.ts",
+"qual": "StreamingApi.writeln",
+"name": "StreamingApi.writeln",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/utils/stream.ts",
+"qual": "StreamingApi.writeln",
+"name": "writeln",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/utils/stream.ts",
+"qual": "pull",
+"name": "pull",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/context.ts",
+"qual": "Context.#newResponse",
+"name": "Context.#newResponse",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "src/context.ts",
+"qual": "Context.#newResponse",
+"name": "#newResponse",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "src/hono-base.ts",
+"qual": "Hono.#addRoute",
+"name": "Hono.#addRoute",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "src/hono-base.ts",
+"qual": "Hono.#addRoute",
+"name": "#addRoute",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "src/hono-base.ts",
+"qual": "Hono.#dispatch",
+"name": "Hono.#dispatch",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "src/hono-base.ts",
+"qual": "Hono.#dispatch",
+"name": "#dispatch",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "src/hono-base.ts",
+"qual": "Hono.#handleError",
+"name": "Hono.#handleError",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "src/hono-base.ts",
+"qual": "Hono.#handleError",
+"name": "#handleError",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "src/utils/jwt/jws.ts",
+"qual": "verifying",
+"name": "verifying",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "src/utils/jwt/jws.ts",
+"qual": "pemToBinary",
+"name": "pemToBinary",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "src/utils/jwt/jws.ts",
+"qual": "getKeyAlgorithm",
+"name": "getKeyAlgorithm",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "src/middleware/secure-headers/secure-headers.ts",
+"qual": "getCSPDirectives",
+"name": "getCSPDirectives",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "src/middleware/secure-headers/secure-headers.ts",
+"qual": "camelToKebab",
+"name": "camelToKebab",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "src/jsx/base.ts",
+"qual": "JSXNode.toStringToBuffer",
+"name": "JSXNode.toStringToBuffer",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "src/jsx/base.ts",
+"qual": "JSXNode.toStringToBuffer",
+"name": "toStringToBuffer",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "src/router/reg-exp-router/router.ts",
+"qual": "RegExpRouter.buildAllMatchers",
+"name": "RegExpRouter.buildAllMatchers",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "src/router/reg-exp-router/router.ts",
+"qual": "RegExpRouter.buildAllMatchers",
+"name": "buildAllMatchers",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "src/router/reg-exp-router/router.ts",
+"qual": "findMiddleware",
+"name": "findMiddleware",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "src/middleware/cors/index.ts",
+"qual": "cors",
+"name": "cors",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "src/utils/stream.ts",
+"qual": "StreamingApi.sleep",
+"name": "StreamingApi.sleep",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/utils/stream.ts",
+"qual": "StreamingApi.sleep",
+"name": "sleep",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventV1Processor.getHeaders",
+"name": "EventV1Processor.getHeaders",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventV1Processor.getHeaders",
+"name": "getHeaders",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventV1Processor.setCookiesToResult",
+"name": "EventV1Processor.setCookiesToResult",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventV1Processor.setCookiesToResult",
+"name": "setCookiesToResult",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/client/client.test.ts",
+"qual": "SafeBigInt.toJSON",
+"name": "SafeBigInt.toJSON",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/client/client.test.ts",
+"qual": "SafeBigInt.toJSON",
+"name": "toJSON",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventProcessor.getDomainName",
+"name": "EventProcessor.getDomainName",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventProcessor.getDomainName",
+"name": "getDomainName",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "src/router/reg-exp-router/trie.ts",
+"qual": "Trie.buildRegExp",
+"name": "Trie.buildRegExp",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/router/reg-exp-router/trie.ts",
+"qual": "Trie.buildRegExp",
+"name": "buildRegExp",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventProcessor.createRequest",
+"name": "EventProcessor.createRequest",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventProcessor.createRequest",
+"name": "createRequest",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventProcessor.createResult",
+"name": "EventProcessor.createResult",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventProcessor.createResult",
+"name": "createResult",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/router/reg-exp-router/prepared-router.ts",
+"qual": "PreparedRegExpRouter.#addWildcard",
+"name": "PreparedRegExpRouter.#addWildcard",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "src/router/reg-exp-router/prepared-router.ts",
+"qual": "PreparedRegExpRouter.#addWildcard",
+"name": "#addWildcard",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "ALBProcessor.getQueryString",
+"name": "ALBProcessor.getQueryString",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "ALBProcessor.getQueryString",
+"name": "getQueryString",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "EventV1Processor.getCookies",
+"name": "EventV1Processor.getCookies",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "EventV1Processor.getCookies",
+"name": "getCookies",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "EventV2Processor.getMethod",
+"name": "EventV2Processor.getMethod",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "EventV2Processor.getMethod",
+"name": "getMethod",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventV2Processor.getHeaders",
+"name": "EventV2Processor.getHeaders",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventV2Processor.getHeaders",
+"name": "getHeaders",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventV2Processor.getQueryString",
+"name": "EventV2Processor.getQueryString",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventV2Processor.getQueryString",
+"name": "getQueryString",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/hono-base.ts",
+"qual": "Hono.#clone",
+"name": "Hono.#clone",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "src/hono-base.ts",
+"qual": "Hono.#clone",
+"name": "#clone",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "src/http-exception.ts",
+"qual": "HTTPException.getResponse",
+"name": "HTTPException.getResponse",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/http-exception.ts",
+"qual": "HTTPException.getResponse",
+"name": "getResponse",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventV2Processor.getMethod",
+"name": "EventV2Processor.getMethod",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventV2Processor.getMethod",
+"name": "getMethod",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "ALBProcessor.getCookies",
+"name": "ALBProcessor.getCookies",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "ALBProcessor.getCookies",
+"name": "getCookies",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "LatticeV2Processor.getCookies",
+"name": "LatticeV2Processor.getCookies",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "LatticeV2Processor.getCookies",
+"name": "getCookies",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "ALBProcessor.getQueryString",
+"name": "ALBProcessor.getQueryString",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "ALBProcessor.getQueryString",
+"name": "getQueryString",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/router/reg-exp-router/node.ts",
+"qual": "Node.buildRegExpStr",
+"name": "Node.buildRegExpStr",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/router/reg-exp-router/node.ts",
+"qual": "Node.buildRegExpStr",
+"name": "buildRegExpStr",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "LatticeV2Processor.setCookiesToResult",
+"name": "LatticeV2Processor.setCookiesToResult",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "LatticeV2Processor.setCookiesToResult",
+"name": "setCookiesToResult",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventV1Processor.getQueryString",
+"name": "EventV1Processor.getQueryString",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventV1Processor.getQueryString",
+"name": "getQueryString",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/jsx/base.ts",
+"qual": "JSXFragmentNode.toStringToBuffer",
+"name": "JSXFragmentNode.toStringToBuffer",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "src/jsx/base.ts",
+"qual": "JSXFragmentNode.toStringToBuffer",
+"name": "toStringToBuffer",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "src/request.ts",
+"qual": "HonoRequest.parseBody",
+"name": "HonoRequest.parseBody",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "src/request.ts",
+"qual": "HonoRequest.parseBody",
+"name": "parseBody",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "LatticeV2Processor.getQueryString",
+"name": "LatticeV2Processor.getQueryString",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "LatticeV2Processor.getQueryString",
+"name": "getQueryString",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/router/reg-exp-router/router.ts",
+"qual": "RegExpRouter.#insertPath",
+"name": "RegExpRouter.#insertPath",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "src/router/reg-exp-router/router.ts",
+"qual": "RegExpRouter.#insertPath",
+"name": "#insertPath",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "EventProcessor.createResult",
+"name": "EventProcessor.createResult",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "EventProcessor.createResult",
+"name": "createResult",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/request.ts",
+"qual": "HonoRequest.#getDecodedParam",
+"name": "HonoRequest.#getDecodedParam",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "src/request.ts",
+"qual": "HonoRequest.#getDecodedParam",
+"name": "#getDecodedParam",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "EventV1Processor.setCookiesToResult",
+"name": "EventV1Processor.setCookiesToResult",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "EventV1Processor.setCookiesToResult",
+"name": "setCookiesToResult",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "EventV2Processor.getHeaders",
+"name": "EventV2Processor.getHeaders",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "EventV2Processor.getHeaders",
+"name": "getHeaders",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/request.ts",
+"qual": "HonoRequest.bytes",
+"name": "HonoRequest.bytes",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/request.ts",
+"qual": "HonoRequest.bytes",
+"name": "bytes",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventV1Processor.getCookies",
+"name": "EventV1Processor.getCookies",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventV1Processor.getCookies",
+"name": "getCookies",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "LatticeV2Processor.getQueryString",
+"name": "LatticeV2Processor.getQueryString",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "LatticeV2Processor.getQueryString",
+"name": "getQueryString",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventV2Processor.getCookies",
+"name": "EventV2Processor.getCookies",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventV2Processor.getCookies",
+"name": "getCookies",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "ALBProcessor.getHeaders",
+"name": "ALBProcessor.getHeaders",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "ALBProcessor.getHeaders",
+"name": "getHeaders",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventV2Processor.setCookiesToResult",
+"name": "EventV2Processor.setCookiesToResult",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventV2Processor.setCookiesToResult",
+"name": "setCookiesToResult",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "ALBProcessor.setCookiesToResult",
+"name": "ALBProcessor.setCookiesToResult",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "ALBProcessor.setCookiesToResult",
+"name": "setCookiesToResult",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "LatticeV2Processor.setCookiesToResult",
+"name": "LatticeV2Processor.setCookiesToResult",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "LatticeV2Processor.setCookiesToResult",
+"name": "setCookiesToResult",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "LatticeV2Processor.getHeaders",
+"name": "LatticeV2Processor.getHeaders",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "LatticeV2Processor.getHeaders",
+"name": "getHeaders",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventProcessor.getHeaderValue",
+"name": "EventProcessor.getHeaderValue",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventProcessor.getHeaderValue",
+"name": "getHeaderValue",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "ALBProcessor.setCookiesToResult",
+"name": "ALBProcessor.setCookiesToResult",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "ALBProcessor.setCookiesToResult",
+"name": "setCookiesToResult",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "LatticeV2Processor.getMethod",
+"name": "LatticeV2Processor.getMethod",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "LatticeV2Processor.getMethod",
+"name": "getMethod",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/request.ts",
+"qual": "HonoRequest.queries",
+"name": "HonoRequest.queries",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/request.ts",
+"qual": "HonoRequest.queries",
+"name": "queries",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventV1Processor.getMethod",
+"name": "EventV1Processor.getMethod",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "EventV1Processor.getMethod",
+"name": "getMethod",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "EventV1Processor.getQueryString",
+"name": "EventV1Processor.getQueryString",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "EventV1Processor.getQueryString",
+"name": "getQueryString",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/utils/stream.ts",
+"qual": "StreamingApi.onAbort",
+"name": "StreamingApi.onAbort",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/utils/stream.ts",
+"qual": "StreamingApi.onAbort",
+"name": "onAbort",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/middleware/cache/index.test.ts",
+"qual": "MockCache.put",
+"name": "MockCache.put",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/middleware/cache/index.test.ts",
+"qual": "MockCache.put",
+"name": "put",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/request.ts",
+"qual": "HonoRequest.matchedRoutes",
+"name": "HonoRequest.matchedRoutes",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/request.ts",
+"qual": "HonoRequest.matchedRoutes",
+"name": "matchedRoutes",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "EventProcessor.getDomainName",
+"name": "EventProcessor.getDomainName",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "EventProcessor.getDomainName",
+"name": "getDomainName",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "LatticeV2Processor.getHeaders",
+"name": "LatticeV2Processor.getHeaders",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "LatticeV2Processor.getHeaders",
+"name": "getHeaders",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/helper/websocket/index.ts",
+"qual": "WSContext.readyState",
+"name": "WSContext.readyState",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/helper/websocket/index.ts",
+"qual": "WSContext.readyState",
+"name": "readyState",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "ALBProcessor.getMethod",
+"name": "ALBProcessor.getMethod",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "adapters/aws-lambda/src/handler.ts",
+"qual": "ALBProcessor.getMethod",
+"name": "getMethod",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "ALBProcessor.getCookies",
+"name": "ALBProcessor.getCookies",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "ALBProcessor.getCookies",
+"name": "getCookies",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "src/request.ts",
+"qual": "HonoRequest.blob",
+"name": "HonoRequest.blob",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "src/request.ts",
+"qual": "HonoRequest.blob",
+"name": "blob",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "readWebStream",
+"name": "readWebStream",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "src/adapter/aws-lambda/handler.ts",
+"qual": "sanitizeHeaderValue",
+"name": "sanitizeHeaderValue",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "src/utils/stream.ts",
+"qual": "pull",
+"name": "pull",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "src/utils/jwt/jws.ts",
+"qual": "verifying",
+"name": "verifying",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "src/utils/jwt/jws.ts",
+"qual": "pemToBinary",
+"name": "pemToBinary",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "src/utils/jwt/jws.ts",
+"qual": "getKeyAlgorithm",
+"name": "getKeyAlgorithm",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "src/middleware/secure-headers/secure-headers.ts",
+"qual": "getCSPDirectives",
+"name": "getCSPDirectives",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "src/middleware/secure-headers/secure-headers.ts",
+"qual": "camelToKebab",
+"name": "camelToKebab",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "src/router/reg-exp-router/router.ts",
+"qual": "findMiddleware",
+"name": "findMiddleware",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "src/middleware/cors/index.ts",
+"qual": "cors",
+"name": "cors",
+"r15": "incomplete"
+}
+]

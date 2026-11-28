@@ -1,0 +1,16 @@
+{
+ "gt2/fastapi.json": "a52d5627b6da7a4a408f8b82d3a459ebe6e81e34702178c05e3374476a18fbbd",
+ "gt2/pydantic.json": "e1fb16ddd789e8d73eecb8cc1e8c25aeaaf18528bb01e191a8bacd8bd42fe181",
+ "gt2/rich.json": "593ef90147dd5723a458ea7d92cc831974d4b742b5ad81434d419988a2a76a15",
+ "labels/hono.json": "b6946b25170f607a5b06aefec43107a71d19a4b06e7540e5f2a7bb2046920092",
+ "labels/kotlinpoet.json": "74eddd467c29358ad0c29360a8072ae7357f25f4b2c4fc262dea3b5e3698de0e",
+ "labels/zod.json": "c9f738fb73bf9018e8f2841445fd6f811cc901914b3da629ecc9623b32af6db0",
+ "targets/axios.json": "daa904440a29567d3480e32ba9e330c02ddba821df5d340c5612e96561ef0cd9",
+ "targets/fastapi.json": "6784545f43cccac5338871418e6bf5f4991518628e6b94636bf43af894ceeed6",
+ "targets/gson.json": "0f6252ea86305a19716a51a48e28390cdbb90ca31cdc7b32203c9f244168b0bb",
+ "targets/hono.json": "8d9fba56e21f630cb8866245b4a6ff01c27043c773f3db58caf90985b642d140",
+ "targets/kotlinpoet.json": "305de9b430f814935986e570e9bf26671603308ccddb3d7cadb1640579e94ee9",
+ "targets/pydantic.json": "09fee583c1378e1fac2b32585acc01546c38e470473fe66f6db858a48b20e005",
+ "targets/rich.json": "d5fa9882ebd19f6c00ce1f37e7809b41854bea5120193fe767c7dc62df56d90b",
+ "targets/zod.json": "d023de4c14be56da6eaaced9dbb8f88d84a7dcd5772055c3b3532092aed101e0"
+}

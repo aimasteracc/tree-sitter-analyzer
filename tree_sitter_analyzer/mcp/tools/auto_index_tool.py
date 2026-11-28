@@ -32,6 +32,38 @@ from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
 
+# Both surfaces read this envelope, so the next step names both spellings.
+_WARM_COMMAND = (
+    "tree-sitter-analyzer --autoindex --autoindex-mode warm "
+    "(MCP: index action=auto mode=warm)"
+)
+
+
+def _status_agent_summary(
+    indexed: bool, cache_stats: dict[str, Any] | None
+) -> dict[str, str]:
+    """Tell an agent what to do with the status it just read."""
+    if not indexed:
+        return {
+            "summary_line": "autoindex: no index for this project yet",
+            "next_step": (
+                f"Build it once: {_WARM_COMMAND}. Until then graph answers "
+                "(callers, impact, test map, call path) parse on every call "
+                "and cannot certify completeness."
+            ),
+        }
+    stats = cache_stats or {}
+    return {
+        "summary_line": (
+            f"autoindex: indexed {stats.get('total_files', 0)} file(s), "
+            f"{stats.get('total_symbols', 0)} symbol(s)"
+        ),
+        "next_step": (
+            "Index is present; ask the graph question directly "
+            "(e.g. tree-sitter-analyzer --callers NAME)."
+        ),
+    }
+
 
 class CodeGraphAutoIndexTool(BaseMCPTool):
     """MCP Tool for transparent AST cache warming (CodeGraph parity)."""
@@ -146,6 +178,7 @@ class CodeGraphAutoIndexTool(BaseMCPTool):
             indexed=indexed,
             built_marker=built_marker,
             cache_stats=cache_stats,
+            agent_summary=_status_agent_summary(indexed, cache_stats),
         )
         return apply_output_format_to_response(result, output_format)
 

@@ -277,8 +277,13 @@ async def test_registering_decorator_keeps_incomplete(tmp_path) -> None:
 
     result = await _callers(root, "lonely")
 
-    assert (result["caller_count"], result["completeness"]) == (1, "incomplete")
+    # PR-4: the call edge plus the `@register` registration entry.
+    assert (result["caller_count"], result["completeness"]) == (2, "incomplete")
     assert result["completeness_reasons"] == ["DECORATOR_MAY_REGISTER"]
+    assert sorted(c.get("resolution_kind") or "call" for c in result["callers"]) == [
+        "call",
+        "registration",
+    ]
 
 
 @pytest.mark.asyncio

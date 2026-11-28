@@ -4,6 +4,7 @@
 import contextlib
 import logging
 import sys
+import tempfile
 from io import StringIO
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -298,7 +299,7 @@ class TestCLIAdditionalCoverage:
                 "--query-key",
                 "class",
                 "--project-root",
-                "/tmp",
+                tempfile.gettempdir(),
             ],
         )
         mock_stderr = StringIO()

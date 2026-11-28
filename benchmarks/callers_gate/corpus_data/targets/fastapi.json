@@ -1,0 +1,3908 @@
+[
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "APIRouter.app",
+"name": "app",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/exceptions.py",
+"qual": "ValidationException.errors",
+"name": "errors",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/applications.py",
+"qual": "FastAPI.exception_handler",
+"name": "exception_handler",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/datastructures.py",
+"qual": "UploadFile.read",
+"name": "read",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/telemetry/_asgi.py",
+"qual": "_HeadersGetter.keys",
+"name": "keys",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/applications.py",
+"qual": "FastAPI.openapi",
+"name": "openapi",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "APIRouter._mark_routes_changed",
+"name": "_mark_routes_changed",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/background.py",
+"qual": "BackgroundTasks.add_task",
+"name": "add_task",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/security/http.py",
+"qual": "HTTPBase.make_not_authenticated_error",
+"name": "make_not_authenticated_error",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/security/oauth2.py",
+"qual": "OAuth2.make_not_authenticated_error",
+"name": "make_not_authenticated_error",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/security/api_key.py",
+"qual": "APIKeyBase.check_api_key",
+"name": "check_api_key",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "docs_src/stream_data/tutorial001_py310.py",
+"qual": "stream_story_bytes",
+"name": "stream_story_bytes",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/body_nested_models/tutorial007_py310.py",
+"qual": "create_offer",
+"name": "create_offer",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/custom_response/tutorial006_py310.py",
+"qual": "redirect_typer",
+"name": "redirect_typer",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/custom_response/tutorial006b_py310.py",
+"qual": "redirect_fastapi",
+"name": "redirect_fastapi",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/handling_errors/tutorial003_py310.py",
+"qual": "read_unicorn",
+"name": "read_unicorn",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "scripts/prepare_release.py",
+"qual": "release_notes",
+"name": "release_notes",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "scripts/docs.py",
+"qual": "ensure_non_translated",
+"name": "ensure_non_translated",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/custom_request_and_route/tutorial003_py310.py",
+"qual": "not_timed",
+"name": "not_timed",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "scripts/translate.py",
+"qual": "update_and_add",
+"name": "update_and_add",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/path_operation_configuration/tutorial006_py310.py",
+"qual": "read_elements",
+"name": "read_elements",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "scripts/docs.py",
+"qual": "add_permalinks_pages",
+"name": "add_permalinks_pages",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "scripts/docs.py",
+"qual": "generate_readme",
+"name": "generate_readme",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/wsgi/tutorial001_py310.py",
+"qual": "flask_main",
+"name": "flask_main",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/handling_errors/tutorial006_py310.py",
+"qual": "custom_http_exception_handler",
+"name": "custom_http_exception_handler",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "scripts/docs.py",
+"qual": "copy_py39_to_py310",
+"name": "copy_py39_to_py310",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/openapi/utils.py",
+"qual": "get_fields_from_routes",
+"name": "get_fields_from_routes",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "docs_src/stream_json_lines/tutorial001_py310.py",
+"qual": "stream_items_no_async_no_annotation",
+"name": "stream_items_no_async_no_annotation",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/_compat/v2.py",
+"qual": "asdict",
+"name": "asdict",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "docs_src/security/tutorial005_an_py310.py",
+"qual": "read_own_items",
+"name": "read_own_items",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/first_steps/tutorial003_py310.py",
+"qual": "root",
+"name": "root",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/security/tutorial004_py310.py",
+"qual": "authenticate_user",
+"name": "authenticate_user",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "docs_src/events/tutorial001_py310.py",
+"qual": "startup_event",
+"name": "startup_event",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/benchmarks/test_general_performance.py",
+"qual": "async_model_with_response_model",
+"name": "async_model_with_response_model",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/dependencies/utils.py",
+"qual": "add_non_field_param_to_dependency",
+"name": "add_non_field_param_to_dependency",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_repeated_cookie_headers.py",
+"qual": "set_indirect_cookie",
+"name": "set_indirect_cookie",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/body_fields/tutorial001_py310.py",
+"qual": "update_item",
+"name": "update_item",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_request_params/test_body/test_optional_list.py",
+"qual": "read_model_optional_list_str",
+"name": "read_model_optional_list_str",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_default_response_class_router.py",
+"qual": "get_b_a_c_path_override",
+"name": "get_b_a_c_path_override",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_union_forms.py",
+"qual": "post_union_form",
+"name": "post_union_form",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/schema_extra_example/tutorial004_py310.py",
+"qual": "update_item",
+"name": "update_item",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/response_model/tutorial005_py310.py",
+"qual": "read_item_public_data",
+"name": "read_item_public_data",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_dependency_partial.py",
+"qual": "MethodsDependency.asynchronous_gen",
+"name": "asynchronous_gen",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_sse.py",
+"qual": "stream_events_typed",
+"name": "stream_events_typed",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/query_params_str_validations/tutorial006c_an_py310.py",
+"qual": "read_items",
+"name": "read_items",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/response_model/tutorial001_py310.py",
+"qual": "create_item",
+"name": "create_item",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/telemetry/_asgi.py",
+"qual": "_exception",
+"name": "_exception",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_request_params/test_header/test_list.py",
+"qual": "read_required_list_validation_alias",
+"name": "read_required_list_validation_alias",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/request_files/tutorial003_an_py310.py",
+"qual": "create_files",
+"name": "create_files",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_request_params/test_file/test_optional_list.py",
+"qual": "read_optional_list_bytes_alias_and_validation_alias",
+"name": "read_optional_list_bytes_alias_and_validation_alias",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_response_model_as_return_annotation.py",
+"qual": "response_model_none_annotation_return_submodel_with_extra_data",
+"name": "response_model_none_annotation_return_submodel_with_extra_data",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_get_fastapi_scope",
+"name": "_get_fastapi_scope",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "docs_src/body_multiple_params/tutorial005_py310.py",
+"qual": "update_item",
+"name": "update_item",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/applications.py",
+"qual": "FastAPI.add_api_websocket_route",
+"name": "add_api_websocket_route",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_exception_handlers.py",
+"qual": "with_yield",
+"name": "with_yield",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/memory_benchmarks/test_dependency_graph.py",
+"qual": "_create_app",
+"name": "_create_app",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/dataclasses_/tutorial003_py310.py",
+"qual": "create_author_items",
+"name": "create_author_items",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/path_params/tutorial004_py310.py",
+"qual": "read_file",
+"name": "read_file",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/main.py",
+"qual": "get_query_list",
+"name": "get_query_list",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_tutorial/test_websockets/test_tutorial003.py",
+"qual": "get_mod",
+"name": "get_mod",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "scripts/sponsors.py",
+"qual": "update_content",
+"name": "update_content",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/test_dump_json_fast_path.py",
+"qual": "get_explicit",
+"name": "get_explicit",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/benchmarks/test_general_performance.py",
+"qual": "sync_large_dict_with_response_model",
+"name": "sync_large_dict_with_response_model",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_dependency_wrapped.py",
+"qual": "get_wrapped_class_instance_async_dependency_async_wrapper",
+"name": "get_wrapped_class_instance_async_dependency_async_wrapper",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/openapi/models.py",
+"qual": "EmailStr.validate",
+"name": "validate",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/dependencies/tutorial013_an_py310.py",
+"qual": "get_user",
+"name": "get_user",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_tutorial/test_websockets/test_tutorial003.py",
+"qual": "get_html",
+"name": "get_html",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_body_alias_choices.py",
+"qual": "read_multiple",
+"name": "read_multiple",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/benchmarks/test_general_performance.py",
+"qual": "async_large_dict_no_response_model",
+"name": "async_large_dict_no_response_model",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/query_params_str_validations/tutorial005_py310.py",
+"qual": "read_items",
+"name": "read_items",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_tutorial/test_security/test_tutorial001.py",
+"qual": "get_client",
+"name": "get_client",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_request_params/test_cookie/test_optional_str.py",
+"qual": "read_model_optional_str",
+"name": "read_model_optional_str",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/opentelemetry/tutorial001_py310.py",
+"qual": "read_item",
+"name": "read_item",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_restore_fastapi_scope_key",
+"name": "_restore_fastapi_scope_key",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/test_dependency_after_yield_raise.py",
+"qual": "catching",
+"name": "catching",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "scripts/docs.py",
+"qual": "get_lang_paths",
+"name": "get_lang_paths",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/telemetry/_runtime.py",
+"qual": "_registration_provider",
+"name": "_registration_provider",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "docs_src/generate_clients/tutorial002_py310.py",
+"qual": "create_user",
+"name": "create_user",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/authentication_error_status_code/tutorial001_an_py310.py",
+"qual": "HTTPBearer403.make_not_authenticated_error",
+"name": "make_not_authenticated_error",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_stream_status_code.py",
+"qual": "raw_dependency_override",
+"name": "raw_dependency_override",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/utils.py",
+"qual": "deep_dict_update",
+"name": "deep_dict_update",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/param_functions.py",
+"qual": "Header",
+"name": "Header",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/_compat/v2.py",
+"qual": "ModelField.serialization_alias",
+"name": "serialization_alias",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/sql_databases/tutorial001_py310.py",
+"qual": "read_heroes",
+"name": "read_heroes",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_tutorial/test_response_model/test_tutorial005.py",
+"qual": "get_client",
+"name": "get_client",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_strict_content_type_router_level.py",
+"qual": "router_default_post",
+"name": "router_default_post",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "scripts/docs.py",
+"qual": "remove_unused_docs_src",
+"name": "remove_unused_docs_src",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "scripts/translate.py",
+"qual": "llm_translatable_json",
+"name": "llm_translatable_json",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/dataclasses_/tutorial003_py310.py",
+"qual": "get_authors",
+"name": "get_authors",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/json_base64_bytes/tutorial001_py310.py",
+"qual": "post_data",
+"name": "post_data",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/authentication_error_status_code/tutorial001_an_py310.py",
+"qual": "read_me",
+"name": "read_me",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/sse.py",
+"qual": "ServerSentEvent._check_data_exclusive",
+"name": "_check_data_exclusive",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/body_nested_models/tutorial008_py310.py",
+"qual": "create_multiple_images",
+"name": "create_multiple_images",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/stream_data/tutorial001_py310.py",
+"qual": "stream_story_no_async",
+"name": "stream_story_no_async",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/server_sent_events/tutorial001_py310.py",
+"qual": "sse_items_no_async_no_annotation",
+"name": "sse_items_no_async_no_annotation",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "scripts/translation_fixer.py",
+"qual": "fix_all",
+"name": "fix_all",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "scripts/translate.py",
+"qual": "remove_removable",
+"name": "remove_removable",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "scripts/docs.py",
+"qual": "build_lang",
+"name": "build_lang",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/security/tutorial003_an_py310.py",
+"qual": "fake_decode_token",
+"name": "fake_decode_token",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/test_extra_routes.py",
+"qual": "head_item",
+"name": "head_item",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "scripts/translate.py",
+"qual": "list_removable",
+"name": "list_removable",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/responses.py",
+"qual": "_OrjsonModule.dumps",
+"name": "dumps",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_dependency_partial.py",
+"qual": "get_partial_synchronous_method_dependency",
+"name": "get_partial_synchronous_method_dependency",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_dump_json_fast_path.py",
+"qual": "get_default",
+"name": "get_default",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/custom_response/tutorial009c_py310.py",
+"qual": "CustomORJSONResponse.render",
+"name": "render",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/_compat/v2.py",
+"qual": "normalize_name",
+"name": "normalize_name",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "scripts/playwright/sql_databases/image02.py",
+"qual": "run",
+"name": "run",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_required_noneable.py",
+"qual": "send_body_embed",
+"name": "send_body_embed",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_dependency_duplicates.py",
+"qual": "duplicate_dependency",
+"name": "duplicate_dependency",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_include_router_defaults_overrides.py",
+"qual": "dep1",
+"name": "dep1",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "scripts/translation_fixer.py",
+"qual": "callback",
+"name": "callback",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_sse.py",
+"qual": "sse_items_no_annotation",
+"name": "sse_items_no_annotation",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_request_params/test_query/test_optional_str.py",
+"qual": "read_model_optional_alias_and_validation_alias",
+"name": "read_model_optional_alias_and_validation_alias",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_tutorial/test_response_status_code/test_tutorial001_tutorial002.py",
+"qual": "get_client",
+"name": "get_client",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/dependency_testing/tutorial001_an_py310.py",
+"qual": "override_dependency",
+"name": "override_dependency",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/header_param_models/tutorial002_py310.py",
+"qual": "read_items",
+"name": "read_items",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_security_openid_connect.py",
+"qual": "read_current_user",
+"name": "read_current_user",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_security_oauth2_authorization_code_bearer_scopes_openapi.py",
+"qual": "root",
+"name": "root",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/applications.py",
+"qual": "FastAPI.patch",
+"name": "patch",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_forms_single_model.py",
+"qual": "post_form",
+"name": "post_form",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_tutorial/test_body_nested_models/test_tutorial001_tutorial002_tutorial003.py",
+"qual": "get_mod_name",
+"name": "get_mod_name",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "APIRouter._frontend_match_is_more_specific",
+"name": "_frontend_match_is_more_specific",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/test_tutorial/test_extra_data_types/test_tutorial001.py",
+"qual": "get_client",
+"name": "get_client",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_sse.py",
+"qual": "default_app_stream",
+"name": "default_app_stream",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/security/tutorial002_an_py310.py",
+"qual": "get_current_user",
+"name": "get_current_user",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_request_params/test_field_metadata.py",
+"qual": "read_query",
+"name": "read_query",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/websockets_/tutorial001_py310.py",
+"qual": "get",
+"name": "get",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_tutorial/test_body_nested_models/test_tutorial004.py",
+"qual": "get_client",
+"name": "get_client",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_tutorial/test_custom_response/test_tutorial010.py",
+"qual": "get_client",
+"name": "get_client",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/app_testing/tutorial002_py310.py",
+"qual": "websocket",
+"name": "websocket",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "docs_src/security/tutorial004_an_py310.py",
+"qual": "read_users_me",
+"name": "read_users_me",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/_compat/shared.py",
+"qual": "lenient_issubclass",
+"name": "lenient_issubclass",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_ws_router.py",
+"qual": "router_ws_decorator_depends",
+"name": "router_ws_decorator_depends",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/_compat/shared.py",
+"qual": "is_uploadfile_or_nonable_uploadfile_annotation",
+"name": "is_uploadfile_or_nonable_uploadfile_annotation",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_stringified_annotation_dependency.py",
+"qual": "client_fixture",
+"name": "client_fixture",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/security/http.py",
+"qual": "HTTPBase.make_authenticate_headers",
+"name": "make_authenticate_headers",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/test_tutorial/test_behind_a_proxy/test_tutorial002.py",
+"qual": "get_client",
+"name": "get_client",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_stream_json_validation_error.py",
+"qual": "stream_items_invalid",
+"name": "stream_items_invalid",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/openapi/utils.py",
+"qual": "_get_openapi_operation_parameters",
+"name": "_get_openapi_operation_parameters",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/telemetry/_asgi.py",
+"qual": "NativeTelemetry.enabled",
+"name": "enabled",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_tutorial/test_websockets/test_tutorial003.py",
+"qual": "get_client",
+"name": "get_client",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/dependencies/tutorial006_py310.py",
+"qual": "read_items",
+"name": "read_items",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/dependencies/utils.py",
+"qual": "_add_form_union_validators",
+"name": "_add_form_union_validators",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_dependency_class.py",
+"qual": "get_asynchronous_method_gen_dependency",
+"name": "get_asynchronous_method_gen_dependency",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_request_params/test_form/test_required_str.py",
+"qual": "read_required_alias_and_validation_alias",
+"name": "read_required_alias_and_validation_alias",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_tutorial/test_stream_data/test_tutorial002.py",
+"qual": "get_client",
+"name": "get_client",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_response_model_as_return_annotation.py",
+"qual": "no_response_model_annotation_return_same_model",
+"name": "no_response_model_annotation_return_same_model",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_include_router_defaults_overrides.py",
+"qual": "callback3",
+"name": "callback3",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/handling_errors/tutorial004_py310.py",
+"qual": "http_exception_handler",
+"name": "http_exception_handler",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/security/tutorial005_py310.py",
+"qual": "verify_password",
+"name": "verify_password",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/benchmarks/test_general_performance.py",
+"qual": "async_large_model_no_response_model",
+"name": "async_large_model_no_response_model",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_dependency_partial.py",
+"qual": "MethodsDependency.synchronous",
+"name": "synchronous",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_dependency_yield_scope_websockets.py",
+"qual": "get_named_session",
+"name": "get_named_session",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/body_multiple_params/tutorial005_an_py310.py",
+"qual": "update_item",
+"name": "update_item",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_dependency_models.py",
+"qual": "sync_dependency",
+"name": "sync_dependency",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_include_router_defaults_overrides.py",
+"qual": "path5_override_router4_override",
+"name": "path5_override_router4_override",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_inherited_custom_class.py",
+"qual": "SomeCustomClass.serialize_a_uuid",
+"name": "serialize_a_uuid",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_stringified_annotation_dependency.py",
+"qual": "DummyClient.get_people",
+"name": "get_people",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/applications.py",
+"qual": "FastAPI.openapi",
+"name": "FastAPI.openapi",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/applications.py",
+"qual": "FastAPI.exception_handler",
+"name": "FastAPI.exception_handler",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/datastructures.py",
+"qual": "UploadFile.read",
+"name": "UploadFile.read",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "APIRouter.app",
+"name": "APIRouter.app",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/exceptions.py",
+"qual": "ValidationException.errors",
+"name": "ValidationException.errors",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "APIRouter._mark_routes_changed",
+"name": "APIRouter._mark_routes_changed",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/background.py",
+"qual": "BackgroundTasks.add_task",
+"name": "BackgroundTasks.add_task",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/telemetry/_asgi.py",
+"qual": "_HeadersGetter.keys",
+"name": "_HeadersGetter.keys",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/security/http.py",
+"qual": "HTTPBase.make_not_authenticated_error",
+"name": "HTTPBase.make_not_authenticated_error",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/security/api_key.py",
+"qual": "APIKeyBase.check_api_key",
+"name": "APIKeyBase.check_api_key",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/security/oauth2.py",
+"qual": "OAuth2.make_not_authenticated_error",
+"name": "OAuth2.make_not_authenticated_error",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "scripts/docs.py",
+"qual": "remove_unused_docs_src",
+"name": "remove_unused_docs_src",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "scripts/translate.py",
+"qual": "llm_translatable_json",
+"name": "llm_translatable_json",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/dataclasses_/tutorial003_py310.py",
+"qual": "get_authors",
+"name": "get_authors",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/json_base64_bytes/tutorial001_py310.py",
+"qual": "post_data",
+"name": "post_data",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/authentication_error_status_code/tutorial001_an_py310.py",
+"qual": "read_me",
+"name": "read_me",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/sse.py",
+"qual": "ServerSentEvent._check_data_exclusive",
+"name": "ServerSentEvent._check_data_exclusive",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/body_nested_models/tutorial008_py310.py",
+"qual": "create_multiple_images",
+"name": "create_multiple_images",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/stream_data/tutorial001_py310.py",
+"qual": "stream_story_no_async",
+"name": "stream_story_no_async",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/server_sent_events/tutorial001_py310.py",
+"qual": "sse_items_no_async_no_annotation",
+"name": "sse_items_no_async_no_annotation",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/custom_response/tutorial006_py310.py",
+"qual": "redirect_typer",
+"name": "redirect_typer",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "scripts/translation_fixer.py",
+"qual": "fix_all",
+"name": "fix_all",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "scripts/translate.py",
+"qual": "remove_removable",
+"name": "remove_removable",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "scripts/translate.py",
+"qual": "update_and_add",
+"name": "update_and_add",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/wsgi/tutorial001_py310.py",
+"qual": "flask_main",
+"name": "flask_main",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "scripts/docs.py",
+"qual": "build_lang",
+"name": "build_lang",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/security/tutorial003_an_py310.py",
+"qual": "fake_decode_token",
+"name": "fake_decode_token",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_extra_routes.py",
+"qual": "head_item",
+"name": "head_item",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "scripts/translate.py",
+"qual": "list_removable",
+"name": "list_removable",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/responses.py",
+"qual": "_OrjsonModule.dumps",
+"name": "_OrjsonModule.dumps",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_dependency_partial.py",
+"qual": "get_partial_synchronous_method_dependency",
+"name": "get_partial_synchronous_method_dependency",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_dump_json_fast_path.py",
+"qual": "get_default",
+"name": "get_default",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/custom_response/tutorial009c_py310.py",
+"qual": "CustomORJSONResponse.render",
+"name": "CustomORJSONResponse.render",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/_compat/v2.py",
+"qual": "normalize_name",
+"name": "normalize_name",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "scripts/playwright/sql_databases/image02.py",
+"qual": "run",
+"name": "run",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_required_noneable.py",
+"qual": "send_body_embed",
+"name": "send_body_embed",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_dependency_duplicates.py",
+"qual": "duplicate_dependency",
+"name": "duplicate_dependency",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_include_router_defaults_overrides.py",
+"qual": "dep1",
+"name": "dep1",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "scripts/translation_fixer.py",
+"qual": "callback",
+"name": "callback",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_sse.py",
+"qual": "sse_items_no_annotation",
+"name": "sse_items_no_annotation",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_request_params/test_query/test_optional_str.py",
+"qual": "read_model_optional_alias_and_validation_alias",
+"name": "read_model_optional_alias_and_validation_alias",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_tutorial/test_response_status_code/test_tutorial001_tutorial002.py",
+"qual": "get_client",
+"name": "get_client",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/dependency_testing/tutorial001_an_py310.py",
+"qual": "override_dependency",
+"name": "override_dependency",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/header_param_models/tutorial002_py310.py",
+"qual": "read_items",
+"name": "read_items",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_security_openid_connect.py",
+"qual": "read_current_user",
+"name": "read_current_user",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_security_oauth2_authorization_code_bearer_scopes_openapi.py",
+"qual": "root",
+"name": "root",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/applications.py",
+"qual": "FastAPI.patch",
+"name": "FastAPI.patch",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_forms_single_model.py",
+"qual": "post_form",
+"name": "post_form",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_tutorial/test_body_nested_models/test_tutorial001_tutorial002_tutorial003.py",
+"qual": "get_mod_name",
+"name": "get_mod_name",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "APIRouter._frontend_match_is_more_specific",
+"name": "APIRouter._frontend_match_is_more_specific",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_tutorial/test_extra_data_types/test_tutorial001.py",
+"qual": "get_client",
+"name": "get_client",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_sse.py",
+"qual": "default_app_stream",
+"name": "default_app_stream",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/security/tutorial002_an_py310.py",
+"qual": "get_current_user",
+"name": "get_current_user",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_request_params/test_field_metadata.py",
+"qual": "read_query",
+"name": "read_query",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/websockets_/tutorial001_py310.py",
+"qual": "get",
+"name": "get",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_tutorial/test_body_nested_models/test_tutorial004.py",
+"qual": "get_client",
+"name": "get_client",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_tutorial/test_custom_response/test_tutorial010.py",
+"qual": "get_client",
+"name": "get_client",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/app_testing/tutorial002_py310.py",
+"qual": "websocket",
+"name": "websocket",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "docs_src/security/tutorial004_an_py310.py",
+"qual": "read_users_me",
+"name": "read_users_me",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/_compat/shared.py",
+"qual": "lenient_issubclass",
+"name": "lenient_issubclass",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_ws_router.py",
+"qual": "router_ws_decorator_depends",
+"name": "router_ws_decorator_depends",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/_compat/shared.py",
+"qual": "is_uploadfile_or_nonable_uploadfile_annotation",
+"name": "is_uploadfile_or_nonable_uploadfile_annotation",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_stringified_annotation_dependency.py",
+"qual": "client_fixture",
+"name": "client_fixture",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/security/http.py",
+"qual": "HTTPBase.make_authenticate_headers",
+"name": "HTTPBase.make_authenticate_headers",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_tutorial/test_behind_a_proxy/test_tutorial002.py",
+"qual": "get_client",
+"name": "get_client",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_stream_json_validation_error.py",
+"qual": "stream_items_invalid",
+"name": "stream_items_invalid",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/openapi/utils.py",
+"qual": "_get_openapi_operation_parameters",
+"name": "_get_openapi_operation_parameters",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/telemetry/_asgi.py",
+"qual": "NativeTelemetry.enabled",
+"name": "NativeTelemetry.enabled",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_tutorial/test_websockets/test_tutorial003.py",
+"qual": "get_client",
+"name": "get_client",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/dependencies/tutorial006_py310.py",
+"qual": "read_items",
+"name": "read_items",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/dependencies/utils.py",
+"qual": "_add_form_union_validators",
+"name": "_add_form_union_validators",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_dependency_class.py",
+"qual": "get_asynchronous_method_gen_dependency",
+"name": "get_asynchronous_method_gen_dependency",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_request_params/test_form/test_required_str.py",
+"qual": "read_required_alias_and_validation_alias",
+"name": "read_required_alias_and_validation_alias",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_tutorial/test_stream_data/test_tutorial002.py",
+"qual": "get_client",
+"name": "get_client",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_response_model_as_return_annotation.py",
+"qual": "no_response_model_annotation_return_same_model",
+"name": "no_response_model_annotation_return_same_model",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_include_router_defaults_overrides.py",
+"qual": "callback3",
+"name": "callback3",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/handling_errors/tutorial004_py310.py",
+"qual": "http_exception_handler",
+"name": "http_exception_handler",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/security/tutorial005_py310.py",
+"qual": "verify_password",
+"name": "verify_password",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/benchmarks/test_general_performance.py",
+"qual": "async_large_model_no_response_model",
+"name": "async_large_model_no_response_model",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_dependency_partial.py",
+"qual": "MethodsDependency.synchronous",
+"name": "MethodsDependency.synchronous",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_dependency_yield_scope_websockets.py",
+"qual": "get_named_session",
+"name": "get_named_session",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/body_multiple_params/tutorial005_an_py310.py",
+"qual": "update_item",
+"name": "update_item",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_dependency_models.py",
+"qual": "sync_dependency",
+"name": "sync_dependency",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_include_router_defaults_overrides.py",
+"qual": "path5_override_router4_override",
+"name": "path5_override_router4_override",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_inherited_custom_class.py",
+"qual": "SomeCustomClass.serialize_a_uuid",
+"name": "SomeCustomClass.serialize_a_uuid",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_stringified_annotation_dependency.py",
+"qual": "DummyClient.get_people",
+"name": "DummyClient.get_people",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/body_nested_models/tutorial009_py310.py",
+"qual": "create_index_weights",
+"name": "create_index_weights",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "scripts/docs.py",
+"qual": "update_docs_includes_py39_to_py310",
+"name": "update_docs_includes_py39_to_py310",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/response_model/tutorial003_03_py310.py",
+"qual": "get_teleport",
+"name": "get_teleport",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/events/tutorial002_py310.py",
+"qual": "shutdown_event",
+"name": "shutdown_event",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/stream_data/tutorial002_py310.py",
+"qual": "stream_image_no_async_yield_from",
+"name": "stream_image_no_async_yield_from",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/response_directly/tutorial002_py310.py",
+"qual": "get_legacy_data",
+"name": "get_legacy_data",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/sub_applications/tutorial001_py310.py",
+"qual": "read_sub",
+"name": "read_sub",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/stream_data/tutorial002_py310.py",
+"qual": "stream_image",
+"name": "stream_image",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "scripts/docs.py",
+"qual": "generate_docs_src_versions",
+"name": "generate_docs_src_versions",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "scripts/translate.py",
+"qual": "commands_json",
+"name": "commands_json",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "scripts/docs.py",
+"qual": "VisibleTextExtractor.handle_data",
+"name": "handle_data",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "docs_src/server_sent_events/tutorial003_py310.py",
+"qual": "stream_logs",
+"name": "stream_logs",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/stream_data/tutorial001_py310.py",
+"qual": "stream_story_no_annotation",
+"name": "stream_story_no_annotation",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/schema_extra_example/tutorial003_py310.py",
+"qual": "update_item",
+"name": "update_item",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_tutorial/test_request_files/test_tutorial002.py",
+"qual": "get_app",
+"name": "get_app",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_request_params/test_body/test_nullable_and_defaults.py",
+"qual": "read_none_default",
+"name": "read_none_default",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_security_http_basic_realm_description.py",
+"qual": "read_current_user",
+"name": "read_current_user",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/custom_response/tutorial005_py310.py",
+"qual": "main",
+"name": "main",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/main.py",
+"qual": "get_query_type_optional",
+"name": "get_query_type_optional",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_dependency_wrapped.py",
+"qual": "get_class_instance_async_wrapped_async_dependency",
+"name": "get_class_instance_async_wrapped_async_dependency",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/param_functions.py",
+"qual": "Security",
+"name": "Security",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_response_model_as_return_annotation.py",
+"qual": "response_model_union_no_annotation_return_model1",
+"name": "response_model_union_no_annotation_return_model1",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/dependencies/tutorial003_py310.py",
+"qual": "read_items",
+"name": "read_items",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_request_params/test_header/test_optional_str.py",
+"qual": "read_model_optional_validation_alias",
+"name": "read_model_optional_validation_alias",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_include_router_defaults_overrides.py",
+"qual": "dep0",
+"name": "dep0",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/openapi/utils.py",
+"qual": "_get_openapi_security_definitions",
+"name": "_get_openapi_security_definitions",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/test_dependency_partial.py",
+"qual": "get_partial_callable_dependency",
+"name": "get_partial_callable_dependency",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_tutorial/test_body_updates/test_tutorial002.py",
+"qual": "get_client",
+"name": "get_client",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/security/tutorial005_py310.py",
+"qual": "create_access_token",
+"name": "create_access_token",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_tutorial/test_python_types/test_tutorial009_tutorial009b.py",
+"qual": "get_module",
+"name": "get_module",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_request_params/test_default_validation.py",
+"qual": "double",
+"name": "double",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_dependency_yield_scope_websockets.py",
+"qual": "get_named_function_scope",
+"name": "get_named_function_scope",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_request_params/test_header/test_optional_list.py",
+"qual": "read_model_optional_list_alias",
+"name": "read_model_optional_list_alias",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/param_functions.py",
+"qual": "File",
+"name": "File",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/security/utils.py",
+"qual": "get_authorization_scheme_param",
+"name": "get_authorization_scheme_param",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/test_tutorial/test_request_files/test_tutorial001_03.py",
+"qual": "get_client",
+"name": "get_client",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/dependencies/utils.py",
+"qual": "get_typed_return_annotation",
+"name": "get_typed_return_annotation",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_annotated.py",
+"qual": "required",
+"name": "required",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_request_params/test_header/test_required_str.py",
+"qual": "read_required_str",
+"name": "read_required_str",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_required_noneable.py",
+"qual": "read_query",
+"name": "read_query",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "scripts/docs.py",
+"qual": "split_markdown_header",
+"name": "split_markdown_header",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "docs_src/settings/app02_an_py310/test_main.py",
+"qual": "get_settings_override",
+"name": "get_settings_override",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_ws_router.py",
+"qual": "routerprefixindex",
+"name": "routerprefixindex",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_dependency_after_yield_websockets.py",
+"qual": "websocket_endpoint_broken",
+"name": "websocket_endpoint_broken",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_stream_cancellation.py",
+"qual": "stream_raw",
+"name": "stream_raw",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/dependencies/tutorial012_py310.py",
+"qual": "read_items",
+"name": "read_items",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/security/tutorial004_py310.py",
+"qual": "get_user",
+"name": "get_user",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "docs_src/pydantic_v1_in_v2/tutorial004_an_py310.py",
+"qual": "create_item",
+"name": "create_item",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_union_form_normalization.py",
+"qual": "read_json",
+"name": "read_json",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_validate_response_dataclass.py",
+"qual": "get_invalid",
+"name": "get_invalid",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_FrontendRouteGroup._match",
+"name": "_match",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_file_and_form_order_issue_9116.py",
+"qual": "tmp_file_2",
+"name": "tmp_file_2",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/response_model/tutorial003_05_py310.py",
+"qual": "get_portal",
+"name": "get_portal",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_exception_handlers.py",
+"qual": "route_with_http_exception",
+"name": "route_with_http_exception",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_stringified_annotation_dependency.py",
+"qual": "DummyClient.close",
+"name": "close",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "docs_src/security/tutorial004_py310.py",
+"qual": "create_access_token",
+"name": "create_access_token",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_security_oauth2_authorization_code_bearer_scopes_openapi.py",
+"qual": "get_token",
+"name": "get_token",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "scripts/translate.py",
+"qual": "get_prompt",
+"name": "get_prompt",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/test_tutorial/test_sql_databases/test_tutorial002.py",
+"qual": "clear_sqlmodel",
+"name": "clear_sqlmodel",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/test_serialize_response_dataclass.py",
+"qual": "get_valid",
+"name": "get_valid",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/sse.py",
+"qual": "_split_sse_lines",
+"name": "_split_sse_lines",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/test_serialize_response.py",
+"qual": "get_coerce",
+"name": "get_coerce",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "scripts/playwright/sql_databases/image01.py",
+"qual": "run",
+"name": "run",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "docs_src/response_model/tutorial003_py310.py",
+"qual": "create_user",
+"name": "create_user",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/openapi/utils.py",
+"qual": "_get_api_route_for_openapi",
+"name": "_get_api_route_for_openapi",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_get_resolved_absolute_path",
+"name": "_get_resolved_absolute_path",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "docs_src/security/tutorial005_an_py310.py",
+"qual": "verify_password",
+"name": "verify_password",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "docs_src/body_nested_models/tutorial009_py310.py",
+"qual": "create_index_weights",
+"name": "create_index_weights",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "scripts/docs.py",
+"qual": "update_docs_includes_py39_to_py310",
+"name": "update_docs_includes_py39_to_py310",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/response_model/tutorial003_03_py310.py",
+"qual": "get_teleport",
+"name": "get_teleport",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/events/tutorial002_py310.py",
+"qual": "shutdown_event",
+"name": "shutdown_event",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/stream_data/tutorial002_py310.py",
+"qual": "stream_image_no_async_yield_from",
+"name": "stream_image_no_async_yield_from",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/response_directly/tutorial002_py310.py",
+"qual": "get_legacy_data",
+"name": "get_legacy_data",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/sub_applications/tutorial001_py310.py",
+"qual": "read_sub",
+"name": "read_sub",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/stream_data/tutorial002_py310.py",
+"qual": "stream_image",
+"name": "stream_image",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "scripts/docs.py",
+"qual": "generate_docs_src_versions",
+"name": "generate_docs_src_versions",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "scripts/translate.py",
+"qual": "commands_json",
+"name": "commands_json",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "scripts/docs.py",
+"qual": "VisibleTextExtractor.handle_data",
+"name": "VisibleTextExtractor.handle_data",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "docs_src/handling_errors/tutorial006_py310.py",
+"qual": "custom_http_exception_handler",
+"name": "custom_http_exception_handler",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/server_sent_events/tutorial003_py310.py",
+"qual": "stream_logs",
+"name": "stream_logs",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/stream_data/tutorial001_py310.py",
+"qual": "stream_story_no_annotation",
+"name": "stream_story_no_annotation",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/schema_extra_example/tutorial003_py310.py",
+"qual": "update_item",
+"name": "update_item",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_tutorial/test_request_files/test_tutorial002.py",
+"qual": "get_app",
+"name": "get_app",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_request_params/test_body/test_nullable_and_defaults.py",
+"qual": "read_none_default",
+"name": "read_none_default",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_security_http_basic_realm_description.py",
+"qual": "read_current_user",
+"name": "read_current_user",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/custom_response/tutorial005_py310.py",
+"qual": "main",
+"name": "main",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/main.py",
+"qual": "get_query_type_optional",
+"name": "get_query_type_optional",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_dependency_wrapped.py",
+"qual": "get_class_instance_async_wrapped_async_dependency",
+"name": "get_class_instance_async_wrapped_async_dependency",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/param_functions.py",
+"qual": "Security",
+"name": "Security",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_response_model_as_return_annotation.py",
+"qual": "response_model_union_no_annotation_return_model1",
+"name": "response_model_union_no_annotation_return_model1",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/dependencies/tutorial003_py310.py",
+"qual": "read_items",
+"name": "read_items",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_request_params/test_header/test_optional_str.py",
+"qual": "read_model_optional_validation_alias",
+"name": "read_model_optional_validation_alias",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_include_router_defaults_overrides.py",
+"qual": "dep0",
+"name": "dep0",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/openapi/utils.py",
+"qual": "_get_openapi_security_definitions",
+"name": "_get_openapi_security_definitions",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_dependency_partial.py",
+"qual": "get_partial_callable_dependency",
+"name": "get_partial_callable_dependency",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_tutorial/test_body_updates/test_tutorial002.py",
+"qual": "get_client",
+"name": "get_client",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/security/tutorial005_py310.py",
+"qual": "create_access_token",
+"name": "create_access_token",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_tutorial/test_python_types/test_tutorial009_tutorial009b.py",
+"qual": "get_module",
+"name": "get_module",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_request_params/test_default_validation.py",
+"qual": "double",
+"name": "double",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_dependency_yield_scope_websockets.py",
+"qual": "get_named_function_scope",
+"name": "get_named_function_scope",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_request_params/test_header/test_optional_list.py",
+"qual": "read_model_optional_list_alias",
+"name": "read_model_optional_list_alias",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/param_functions.py",
+"qual": "File",
+"name": "File",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/security/utils.py",
+"qual": "get_authorization_scheme_param",
+"name": "get_authorization_scheme_param",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_tutorial/test_request_files/test_tutorial001_03.py",
+"qual": "get_client",
+"name": "get_client",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/dependencies/utils.py",
+"qual": "get_typed_return_annotation",
+"name": "get_typed_return_annotation",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_annotated.py",
+"qual": "required",
+"name": "required",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_request_params/test_header/test_required_str.py",
+"qual": "read_required_str",
+"name": "read_required_str",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_required_noneable.py",
+"qual": "read_query",
+"name": "read_query",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "scripts/docs.py",
+"qual": "split_markdown_header",
+"name": "split_markdown_header",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "docs_src/settings/app02_an_py310/test_main.py",
+"qual": "get_settings_override",
+"name": "get_settings_override",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_ws_router.py",
+"qual": "routerprefixindex",
+"name": "routerprefixindex",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_dependency_after_yield_websockets.py",
+"qual": "websocket_endpoint_broken",
+"name": "websocket_endpoint_broken",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_stream_cancellation.py",
+"qual": "stream_raw",
+"name": "stream_raw",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/dependencies/tutorial012_py310.py",
+"qual": "read_items",
+"name": "read_items",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_dependency_wrapped.py",
+"qual": "get_wrapped_class_instance_async_dependency_async_wrapper",
+"name": "get_wrapped_class_instance_async_dependency_async_wrapper",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/security/tutorial004_py310.py",
+"qual": "get_user",
+"name": "get_user",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "docs_src/pydantic_v1_in_v2/tutorial004_an_py310.py",
+"qual": "create_item",
+"name": "create_item",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_union_form_normalization.py",
+"qual": "read_json",
+"name": "read_json",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_validate_response_dataclass.py",
+"qual": "get_invalid",
+"name": "get_invalid",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_FrontendRouteGroup._match",
+"name": "_FrontendRouteGroup._match",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_file_and_form_order_issue_9116.py",
+"qual": "tmp_file_2",
+"name": "tmp_file_2",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/response_model/tutorial003_05_py310.py",
+"qual": "get_portal",
+"name": "get_portal",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_exception_handlers.py",
+"qual": "route_with_http_exception",
+"name": "route_with_http_exception",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_stringified_annotation_dependency.py",
+"qual": "DummyClient.close",
+"name": "DummyClient.close",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "docs_src/security/tutorial004_py310.py",
+"qual": "create_access_token",
+"name": "create_access_token",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_security_oauth2_authorization_code_bearer_scopes_openapi.py",
+"qual": "get_token",
+"name": "get_token",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "scripts/translate.py",
+"qual": "get_prompt",
+"name": "get_prompt",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/benchmarks/test_general_performance.py",
+"qual": "sync_large_dict_with_response_model",
+"name": "sync_large_dict_with_response_model",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_tutorial/test_sql_databases/test_tutorial002.py",
+"qual": "clear_sqlmodel",
+"name": "clear_sqlmodel",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_serialize_response_dataclass.py",
+"qual": "get_valid",
+"name": "get_valid",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/sse.py",
+"qual": "_split_sse_lines",
+"name": "_split_sse_lines",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_serialize_response.py",
+"qual": "get_coerce",
+"name": "get_coerce",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "scripts/playwright/sql_databases/image01.py",
+"qual": "run",
+"name": "run",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/benchmarks/test_general_performance.py",
+"qual": "async_model_with_response_model",
+"name": "async_model_with_response_model",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/response_model/tutorial003_py310.py",
+"qual": "create_user",
+"name": "create_user",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/openapi/utils.py",
+"qual": "_get_api_route_for_openapi",
+"name": "_get_api_route_for_openapi",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_get_resolved_absolute_path",
+"name": "_get_resolved_absolute_path",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "docs_src/security/tutorial005_an_py310.py",
+"qual": "verify_password",
+"name": "verify_password",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "docs_src/stream_data/tutorial001_py310.py",
+"qual": "stream_story_bytes",
+"name": "stream_story_bytes",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/body_nested_models/tutorial007_py310.py",
+"qual": "create_offer",
+"name": "create_offer",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/custom_response/tutorial006b_py310.py",
+"qual": "redirect_fastapi",
+"name": "redirect_fastapi",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/handling_errors/tutorial003_py310.py",
+"qual": "read_unicorn",
+"name": "read_unicorn",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "scripts/prepare_release.py",
+"qual": "release_notes",
+"name": "release_notes",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "scripts/docs.py",
+"qual": "ensure_non_translated",
+"name": "ensure_non_translated",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/custom_request_and_route/tutorial003_py310.py",
+"qual": "not_timed",
+"name": "not_timed",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/path_operation_configuration/tutorial006_py310.py",
+"qual": "read_elements",
+"name": "read_elements",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "scripts/docs.py",
+"qual": "add_permalinks_pages",
+"name": "add_permalinks_pages",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "scripts/docs.py",
+"qual": "generate_readme",
+"name": "generate_readme",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "scripts/docs.py",
+"qual": "copy_py39_to_py310",
+"name": "copy_py39_to_py310",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/openapi/utils.py",
+"qual": "get_fields_from_routes",
+"name": "get_fields_from_routes",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "docs_src/stream_json_lines/tutorial001_py310.py",
+"qual": "stream_items_no_async_no_annotation",
+"name": "stream_items_no_async_no_annotation",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/_compat/v2.py",
+"qual": "asdict",
+"name": "asdict",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "docs_src/security/tutorial005_an_py310.py",
+"qual": "read_own_items",
+"name": "read_own_items",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/first_steps/tutorial003_py310.py",
+"qual": "root",
+"name": "root",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/security/tutorial004_py310.py",
+"qual": "authenticate_user",
+"name": "authenticate_user",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "docs_src/events/tutorial001_py310.py",
+"qual": "startup_event",
+"name": "startup_event",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/dependencies/utils.py",
+"qual": "add_non_field_param_to_dependency",
+"name": "add_non_field_param_to_dependency",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_repeated_cookie_headers.py",
+"qual": "set_indirect_cookie",
+"name": "set_indirect_cookie",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/body_fields/tutorial001_py310.py",
+"qual": "update_item",
+"name": "update_item",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_request_params/test_body/test_optional_list.py",
+"qual": "read_model_optional_list_str",
+"name": "read_model_optional_list_str",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_default_response_class_router.py",
+"qual": "get_b_a_c_path_override",
+"name": "get_b_a_c_path_override",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_union_forms.py",
+"qual": "post_union_form",
+"name": "post_union_form",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/schema_extra_example/tutorial004_py310.py",
+"qual": "update_item",
+"name": "update_item",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/response_model/tutorial005_py310.py",
+"qual": "read_item_public_data",
+"name": "read_item_public_data",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_dependency_partial.py",
+"qual": "MethodsDependency.asynchronous_gen",
+"name": "MethodsDependency.asynchronous_gen",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_sse.py",
+"qual": "stream_events_typed",
+"name": "stream_events_typed",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/query_params_str_validations/tutorial006c_an_py310.py",
+"qual": "read_items",
+"name": "read_items",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/response_model/tutorial001_py310.py",
+"qual": "create_item",
+"name": "create_item",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/telemetry/_asgi.py",
+"qual": "_exception",
+"name": "_exception",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_request_params/test_header/test_list.py",
+"qual": "read_required_list_validation_alias",
+"name": "read_required_list_validation_alias",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/request_files/tutorial003_an_py310.py",
+"qual": "create_files",
+"name": "create_files",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_request_params/test_file/test_optional_list.py",
+"qual": "read_optional_list_bytes_alias_and_validation_alias",
+"name": "read_optional_list_bytes_alias_and_validation_alias",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_response_model_as_return_annotation.py",
+"qual": "response_model_none_annotation_return_submodel_with_extra_data",
+"name": "response_model_none_annotation_return_submodel_with_extra_data",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_get_fastapi_scope",
+"name": "_get_fastapi_scope",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "docs_src/body_multiple_params/tutorial005_py310.py",
+"qual": "update_item",
+"name": "update_item",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/applications.py",
+"qual": "FastAPI.add_api_websocket_route",
+"name": "FastAPI.add_api_websocket_route",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_exception_handlers.py",
+"qual": "with_yield",
+"name": "with_yield",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/memory_benchmarks/test_dependency_graph.py",
+"qual": "_create_app",
+"name": "_create_app",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/dataclasses_/tutorial003_py310.py",
+"qual": "create_author_items",
+"name": "create_author_items",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/path_params/tutorial004_py310.py",
+"qual": "read_file",
+"name": "read_file",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/main.py",
+"qual": "get_query_list",
+"name": "get_query_list",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_tutorial/test_websockets/test_tutorial003.py",
+"qual": "get_mod",
+"name": "get_mod",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "scripts/sponsors.py",
+"qual": "update_content",
+"name": "update_content",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_dump_json_fast_path.py",
+"qual": "get_explicit",
+"name": "get_explicit",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/openapi/models.py",
+"qual": "EmailStr.validate",
+"name": "EmailStr.validate",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/dependencies/tutorial013_an_py310.py",
+"qual": "get_user",
+"name": "get_user",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_tutorial/test_websockets/test_tutorial003.py",
+"qual": "get_html",
+"name": "get_html",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_body_alias_choices.py",
+"qual": "read_multiple",
+"name": "read_multiple",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/benchmarks/test_general_performance.py",
+"qual": "async_large_dict_no_response_model",
+"name": "async_large_dict_no_response_model",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/query_params_str_validations/tutorial005_py310.py",
+"qual": "read_items",
+"name": "read_items",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_tutorial/test_security/test_tutorial001.py",
+"qual": "get_client",
+"name": "get_client",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_request_params/test_cookie/test_optional_str.py",
+"qual": "read_model_optional_str",
+"name": "read_model_optional_str",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/opentelemetry/tutorial001_py310.py",
+"qual": "read_item",
+"name": "read_item",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_restore_fastapi_scope_key",
+"name": "_restore_fastapi_scope_key",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_dependency_after_yield_raise.py",
+"qual": "catching",
+"name": "catching",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "scripts/docs.py",
+"qual": "get_lang_paths",
+"name": "get_lang_paths",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/telemetry/_runtime.py",
+"qual": "_registration_provider",
+"name": "_registration_provider",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "docs_src/generate_clients/tutorial002_py310.py",
+"qual": "create_user",
+"name": "create_user",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/authentication_error_status_code/tutorial001_an_py310.py",
+"qual": "HTTPBearer403.make_not_authenticated_error",
+"name": "HTTPBearer403.make_not_authenticated_error",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_stream_status_code.py",
+"qual": "raw_dependency_override",
+"name": "raw_dependency_override",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/utils.py",
+"qual": "deep_dict_update",
+"name": "deep_dict_update",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/param_functions.py",
+"qual": "Header",
+"name": "Header",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/_compat/v2.py",
+"qual": "ModelField.serialization_alias",
+"name": "ModelField.serialization_alias",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "docs_src/sql_databases/tutorial001_py310.py",
+"qual": "read_heroes",
+"name": "read_heroes",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_tutorial/test_response_model/test_tutorial005.py",
+"qual": "get_client",
+"name": "get_client",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_strict_content_type_router_level.py",
+"qual": "router_default_post",
+"name": "router_default_post",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_IncludedRouter._build_effective_context",
+"name": "_build_effective_context",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_IncludedRouter._build_effective_context",
+"name": "_IncludedRouter._build_effective_context",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_EffectiveRouteContext.from_api_route",
+"name": "from_api_route",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_EffectiveRouteContext.from_api_route",
+"name": "_EffectiveRouteContext.from_api_route",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "APIRouter._get_routes_version",
+"name": "_get_routes_version",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "APIRouter._get_routes_version",
+"name": "APIRouter._get_routes_version",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_FrontendRouteGroup.add_frontend_route",
+"name": "add_frontend_route",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_FrontendRouteGroup.add_frontend_route",
+"name": "_FrontendRouteGroup.add_frontend_route",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "APIRouter._contains_router",
+"name": "_contains_router",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "APIRouter._contains_router",
+"name": "APIRouter._contains_router",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_FrontendRoute.matches_with_path",
+"name": "matches_with_path",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_FrontendRoute.matches_with_path",
+"name": "_FrontendRoute.matches_with_path",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_IncludedRouter.effective_candidates",
+"name": "effective_candidates",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_IncludedRouter.effective_candidates",
+"name": "_IncludedRouter.effective_candidates",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_FrontendStaticFiles._fallback_response",
+"name": "_fallback_response",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_FrontendStaticFiles._fallback_response",
+"name": "_FrontendStaticFiles._fallback_response",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "APIRouter.add_event_handler",
+"name": "add_event_handler",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "APIRouter.add_event_handler",
+"name": "APIRouter.add_event_handler",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "APIRouter._match_low_priority",
+"name": "_match_low_priority",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "APIRouter._match_low_priority",
+"name": "APIRouter._match_low_priority",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/applications.py",
+"qual": "FastAPI.build_middleware_stack",
+"name": "build_middleware_stack",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/applications.py",
+"qual": "FastAPI.build_middleware_stack",
+"name": "FastAPI.build_middleware_stack",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_IncludedRouter.effective_route_contexts",
+"name": "effective_route_contexts",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_IncludedRouter.effective_route_contexts",
+"name": "_IncludedRouter.effective_route_contexts",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/applications.py",
+"qual": "FastAPI.middleware",
+"name": "middleware",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/applications.py",
+"qual": "FastAPI.middleware",
+"name": "FastAPI.middleware",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_FrontendStaticFiles._check_fallback_file",
+"name": "_check_fallback_file",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_FrontendStaticFiles._check_fallback_file",
+"name": "_FrontendStaticFiles._check_fallback_file",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_FrontendStaticFiles.get_response",
+"name": "get_response",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_FrontendStaticFiles.get_response",
+"name": "_FrontendStaticFiles.get_response",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/datastructures.py",
+"qual": "UploadFile.seek",
+"name": "seek",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/datastructures.py",
+"qual": "UploadFile.seek",
+"name": "UploadFile.seek",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "docs_src/websockets_/tutorial003_py310.py",
+"qual": "ConnectionManager.connect",
+"name": "connect",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "docs_src/websockets_/tutorial003_py310.py",
+"qual": "ConnectionManager.connect",
+"name": "ConnectionManager.connect",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_EffectiveRouteContext.from_frontend_route_group",
+"name": "from_frontend_route_group",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_EffectiveRouteContext.from_frontend_route_group",
+"name": "_EffectiveRouteContext.from_frontend_route_group",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "scripts/docs.py",
+"qual": "VisibleTextExtractor.extract_visible_text",
+"name": "extract_visible_text",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "scripts/docs.py",
+"qual": "VisibleTextExtractor.extract_visible_text",
+"name": "VisibleTextExtractor.extract_visible_text",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_FrontendStaticFiles._fallback_file_exists",
+"name": "_fallback_file_exists",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_FrontendStaticFiles._fallback_file_exists",
+"name": "_FrontendStaticFiles._fallback_file_exists",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/test_telemetry/_otlp.py",
+"qual": "_CollectorServer.server_bind",
+"name": "server_bind",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_telemetry/_otlp.py",
+"qual": "_CollectorServer.server_bind",
+"name": "_CollectorServer.server_bind",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/telemetry/_asgi.py",
+"qual": "NativeTelemetry._get_tracer",
+"name": "_get_tracer",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/telemetry/_asgi.py",
+"qual": "NativeTelemetry._get_tracer",
+"name": "NativeTelemetry._get_tracer",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/_compat/v2.py",
+"qual": "ModelField.serialize_json",
+"name": "serialize_json",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/_compat/v2.py",
+"qual": "ModelField.serialize_json",
+"name": "ModelField.serialize_json",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_RouterIncludeContext.combine",
+"name": "combine",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_RouterIncludeContext.combine",
+"name": "_RouterIncludeContext.combine",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "APIRouter.route",
+"name": "route",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "APIRouter.route",
+"name": "APIRouter.route",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "APIRouter.add_route",
+"name": "add_route",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "APIRouter.add_route",
+"name": "APIRouter.add_route",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "RouteContext.endpoint",
+"name": "endpoint",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "RouteContext.endpoint",
+"name": "RouteContext.endpoint",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "APIRouter.add_websocket_route",
+"name": "add_websocket_route",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "APIRouter.add_websocket_route",
+"name": "APIRouter.add_websocket_route",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_IncludedRouter.effective_low_priority_routes",
+"name": "effective_low_priority_routes",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_IncludedRouter.effective_low_priority_routes",
+"name": "_IncludedRouter.effective_low_priority_routes",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/applications.py",
+"qual": "FastAPI.setup",
+"name": "setup",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/applications.py",
+"qual": "FastAPI.setup",
+"name": "FastAPI.setup",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/exceptions.py",
+"qual": "ValidationException._format_endpoint_context",
+"name": "_format_endpoint_context",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/exceptions.py",
+"qual": "ValidationException._format_endpoint_context",
+"name": "ValidationException._format_endpoint_context",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/_compat/v2.py",
+"qual": "ModelField.get_default",
+"name": "get_default",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/_compat/v2.py",
+"qual": "ModelField.get_default",
+"name": "ModelField.get_default",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_custom_middleware_exception.py",
+"qual": "ContentSizeLimitMiddleware.receive_wrapper",
+"name": "receive_wrapper",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_custom_middleware_exception.py",
+"qual": "ContentSizeLimitMiddleware.receive_wrapper",
+"name": "ContentSizeLimitMiddleware.receive_wrapper",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_FrontendStaticFiles._lookup_path",
+"name": "_lookup_path",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_FrontendStaticFiles._lookup_path",
+"name": "_FrontendStaticFiles._lookup_path",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/datastructures.py",
+"qual": "UploadFile.write",
+"name": "write",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/datastructures.py",
+"qual": "UploadFile.write",
+"name": "UploadFile.write",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_telemetry/test_http.py",
+"qual": "HeaderPropagator.extract",
+"name": "extract",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "tests/test_telemetry/test_http.py",
+"qual": "HeaderPropagator.extract",
+"name": "HeaderPropagator.extract",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "docs_src/websockets_/tutorial003_py310.py",
+"qual": "ConnectionManager.send_personal_message",
+"name": "send_personal_message",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "docs_src/websockets_/tutorial003_py310.py",
+"qual": "ConnectionManager.send_personal_message",
+"name": "ConnectionManager.send_personal_message",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_FrontendRouteGroup._solve_dependencies",
+"name": "_solve_dependencies",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_FrontendRouteGroup._solve_dependencies",
+"name": "_FrontendRouteGroup._solve_dependencies",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_RouterIncludeContext.path_for",
+"name": "path_for",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_RouterIncludeContext.path_for",
+"name": "_RouterIncludeContext.path_for",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/_compat/v2.py",
+"qual": "ModelField.default",
+"name": "default",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/_compat/v2.py",
+"qual": "ModelField.default",
+"name": "ModelField.default",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_FrontendRouteGroup.matches_with_prefix",
+"name": "matches_with_prefix",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_FrontendRouteGroup.matches_with_prefix",
+"name": "_FrontendRouteGroup.matches_with_prefix",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_FrontendStaticFiles.get_path",
+"name": "get_path",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_FrontendStaticFiles.get_path",
+"name": "_FrontendStaticFiles.get_path",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "docs_src/websockets_/tutorial003_py310.py",
+"qual": "ConnectionManager.disconnect",
+"name": "disconnect",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "docs_src/websockets_/tutorial003_py310.py",
+"qual": "ConnectionManager.disconnect",
+"name": "ConnectionManager.disconnect",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_FrontendRoute._get_frontend_path",
+"name": "_get_frontend_path",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_FrontendRoute._get_frontend_path",
+"name": "_FrontendRoute._get_frontend_path",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "APIRouter._startup",
+"name": "_startup",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "APIRouter._startup",
+"name": "APIRouter._startup",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_FrontendStaticFiles.get_response_for_scope",
+"name": "get_response_for_scope",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_FrontendStaticFiles.get_response_for_scope",
+"name": "_FrontendStaticFiles.get_response_for_scope",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "APIRouter._shutdown",
+"name": "_shutdown",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "APIRouter._shutdown",
+"name": "APIRouter._shutdown",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_RouterIncludeContext.for_include",
+"name": "for_include",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_RouterIncludeContext.for_include",
+"name": "_RouterIncludeContext.for_include",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "docs_src/websockets_/tutorial003_py310.py",
+"qual": "ConnectionManager.broadcast",
+"name": "broadcast",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "docs_src/websockets_/tutorial003_py310.py",
+"qual": "ConnectionManager.broadcast",
+"name": "ConnectionManager.broadcast",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_FrontendStaticFiles._lookup_static_resource",
+"name": "_lookup_static_resource",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_FrontendStaticFiles._lookup_static_resource",
+"name": "_FrontendStaticFiles._lookup_static_resource",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "_IncludedRouter._handle_selected",
+"name": "_handle_selected",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "_IncludedRouter._handle_selected",
+"name": "_IncludedRouter._handle_selected",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "fastapi/routing.py",
+"qual": "APIRouter._iter_low_priority_routes",
+"name": "_iter_low_priority_routes",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/routing.py",
+"qual": "APIRouter._iter_low_priority_routes",
+"name": "APIRouter._iter_low_priority_routes",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/test_validation_error_context.py",
+"qual": "ExceptionCapture.capture",
+"name": "capture",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_validation_error_context.py",
+"qual": "ExceptionCapture.capture",
+"name": "ExceptionCapture.capture",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "fastapi/telemetry/_asgi.py",
+"qual": "NativeTelemetry._instruments",
+"name": "_instruments",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "fastapi/telemetry/_asgi.py",
+"qual": "NativeTelemetry._instruments",
+"name": "NativeTelemetry._instruments",
+"r15": "incomplete"
+}
+]

@@ -160,6 +160,7 @@ def run_oracle_baseline(
     try:
         completed = subprocess.run(  # nosec B603
             [python_executable or sys.executable, "-u", str(oracle_path)],
+            stdin=subprocess.DEVNULL,
             cwd=str(fixture_root),
             capture_output=True,
             text=True,

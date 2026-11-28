@@ -1,0 +1,118 @@
+{
+ "repo": "axios",
+ "rows": 214,
+ "rss_start_mb": 51.0,
+ "first_query_s": 7.263,
+ "rss_after_first_mb": 101.1,
+ "rounds": [
+  {
+   "round": 1,
+   "all": {
+    "n": 214,
+    "median_ms": 71.9,
+    "p90_ms": 165.2,
+    "max_ms": 1063.8,
+    "mean_ms": 88.7
+   },
+   "by_kind": {
+    "edge_only": {
+     "n": 74,
+     "median_ms": 19.2,
+     "p90_ms": 60.1,
+     "max_ms": 274.8,
+     "mean_ms": 33.8
+    },
+    "review": {
+     "n": 140,
+     "median_ms": 86.0,
+     "p90_ms": 179.6,
+     "max_ms": 1063.8,
+     "mean_ms": 117.7
+    }
+   },
+   "stages_ms_per_query": {
+    "G.review._reference_scan": 28.57,
+    "G.review.assess_completeness": 22.94,
+    "F.check.relation_source_evidence(freshness)": 5.67,
+    "J.infra.is_index_rebuilding": 4.01,
+    "F.check.declaring_file_unresolved": 3.46,
+    "F.check.narrow_to_target": 3.28,
+    "G.review._reference_lines": 2.98,
+    "A.certified_index_read.enter": 2.46,
+    "F.check.declaring_file_excluded": 1.45,
+    "E.edges.sql_native_callers": 1.41,
+    "F.check.read_unresolved_inbound": 1.38,
+    "B.graph_object": 1.27,
+    "G.review._is_accessor": 1.17,
+    "F.check.drop_external_producers": 0.75,
+    "B.graph_build_or_adopt": 0.12,
+    "G.review.prove": 0.12,
+    "F.check.rank_sites": 0.11,
+    "E.edges.name_bound_targets": 0.1,
+    "F.check.unattributed_sites": 0.1,
+    "F.check.relation_files": 0.07,
+    "A.certified_index_read.exit": 0.06
+   },
+   "unwrapped_ms_per_query": 6.9
+  },
+  {
+   "round": 2,
+   "all": {
+    "n": 214,
+    "median_ms": 76.0,
+    "p90_ms": 155.5,
+    "max_ms": 1792.1,
+    "mean_ms": 83.7
+   },
+   "by_kind": {
+    "edge_only": {
+     "n": 74,
+     "median_ms": 17.1,
+     "p90_ms": 51.0,
+     "max_ms": 166.1,
+     "mean_ms": 25.9
+    },
+    "review": {
+     "n": 140,
+     "median_ms": 86.1,
+     "p90_ms": 161.6,
+     "max_ms": 1792.1,
+     "mean_ms": 114.2
+    }
+   },
+   "stages_ms_per_query": {
+    "G.review._reference_scan": 27.67,
+    "G.review.assess_completeness": 14.87,
+    "A.certified_index_read.enter": 9.19,
+    "F.check.relation_source_evidence(freshness)": 6.92,
+    "J.infra.is_index_rebuilding": 4.42,
+    "F.check.narrow_to_target": 3.27,
+    "G.review._reference_lines": 2.91,
+    "F.check.declaring_file_unresolved": 1.86,
+    "B.graph_object": 1.44,
+    "E.edges.sql_native_callers": 1.4,
+    "B.graph_build_or_adopt": 1.08,
+    "G.review._is_accessor": 1.07,
+    "F.check.declaring_file_excluded": 0.75,
+    "F.check.drop_external_producers": 0.74,
+    "F.check.read_unresolved_inbound": 0.22,
+    "D.guard.call_graph_built": 0.15,
+    "G.review.prove": 0.12,
+    "F.check.rank_sites": 0.12,
+    "A.certified_index_read.exit": 0.11,
+    "E.edges.name_bound_targets": 0.05
+   },
+   "unwrapped_ms_per_query": 4.92
+  }
+ ],
+ "rss_end_mb": 153.3,
+ "n_diff_rows": 0,
+ "diffs": [],
+ "stored": {
+  "tree": "ccb67d8955954fdbe640d346a876831e20c4a62c",
+  "index_key": "72354b7a1d1c6142a8b356ef",
+  "repo": "axios",
+  "repo_sha": "fceeb10997ea71778ad8bc9671ad53e9195a707c",
+  "query_key": "aa75bf307c000ab0181c792e"
+ }
+}

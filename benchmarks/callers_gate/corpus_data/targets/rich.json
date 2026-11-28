@@ -1,0 +1,3446 @@
+[
+{
+"mode": "bare",
+"file": "rich/text.py",
+"qual": "Text.join",
+"name": "join",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/prompt.py",
+"qual": "PromptBase.ask",
+"name": "ask",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/_win32_console.py",
+"qual": "LegacyWindowsTerm.move_cursor_backward",
+"name": "move_cursor_backward",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/text.py",
+"qual": "Text.wrap",
+"name": "wrap",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/style.py",
+"qual": "Style.null",
+"name": "null",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/palette.py",
+"qual": "Palette.match",
+"name": "match",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.print_exception",
+"name": "print_exception",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/text.py",
+"qual": "Text.expand_tabs",
+"name": "expand_tabs",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.get_style",
+"name": "get_style",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/text.py",
+"qual": "Text.from_markup",
+"name": "from_markup",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/text.py",
+"qual": "Text.stylize",
+"name": "stylize",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/color.py",
+"qual": "Color.get_truecolor",
+"name": "get_truecolor",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/table.py",
+"qual": "Table.grid",
+"name": "grid",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/_win32_console.py",
+"qual": "LegacyWindowsTerm.write_styled",
+"name": "write_styled",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/progress.py",
+"qual": "Progress.add_task",
+"name": "add_task",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/padding.py",
+"qual": "Padding.unpack",
+"name": "unpack",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/emoji.py",
+"qual": "Emoji.replace",
+"name": "replace",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/text.py",
+"qual": "Text.highlight_regex",
+"name": "highlight_regex",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/tree.py",
+"qual": "Tree.add",
+"name": "add",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/align.py",
+"qual": "Align.center",
+"name": "center",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/logging.py",
+"qual": "RichHandler.emit",
+"name": "emit",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/progress.py",
+"qual": "ProgressColumn.get_table_column",
+"name": "get_table_column",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/_null_file.py",
+"qual": "NullFile.readlines",
+"name": "readlines",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/_win32_console.py",
+"qual": "GetConsoleCursorInfo",
+"name": "GetConsoleCursorInfo",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/live.py",
+"qual": "_RefreshThread.stop",
+"name": "stop",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/file_proxy.py",
+"qual": "FileProxy.fileno",
+"name": "fileno",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console._theme_stack",
+"name": "_theme_stack",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/box.py",
+"qual": "Box.get_plain_headed_box",
+"name": "get_plain_headed_box",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/cells.py",
+"qual": "split_text",
+"name": "split_text",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/_win32_console.py",
+"qual": "LegacyWindowsTerm.move_cursor_down",
+"name": "move_cursor_down",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "examples/recursive_error.py",
+"qual": "bar",
+"name": "bar",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/_win32_console.py",
+"qual": "LegacyWindowsTerm.erase_end_of_line",
+"name": "erase_end_of_line",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "examples/fullscreen.py",
+"qual": "make_sponsor_message",
+"name": "make_sponsor_message",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/control.py",
+"qual": "Control.move_to_column",
+"name": "move_to_column",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console._buffer",
+"name": "_buffer",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/padding.py",
+"qual": "Padding.indent",
+"name": "indent",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "benchmarks/benchmarks.py",
+"qual": "StyleSuite.setup",
+"name": "setup",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/text.py",
+"qual": "Text.rstrip",
+"name": "rstrip",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/table.py",
+"qual": "Table.row_count",
+"name": "row_count",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/pretty.py",
+"qual": "Node.iter_tokens",
+"name": "iter_tokens",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/layout.py",
+"qual": "Layout._make_region_map",
+"name": "_make_region_map",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/syntax.py",
+"qual": "Syntax._get_syntax",
+"name": "_get_syntax",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/_unicode_data/__init__.py",
+"qual": "load",
+"name": "load",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/_stack.py",
+"qual": "Stack.top",
+"name": "top",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/live.py",
+"qual": "Live.renderable",
+"name": "renderable",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/prompt.py",
+"qual": "PromptBase.render_default",
+"name": "render_default",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/_null_file.py",
+"qual": "NullFile.flush",
+"name": "flush",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/_ratio.py",
+"qual": "ratio_resolve",
+"name": "ratio_resolve",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/text.py",
+"qual": "Text.align",
+"name": "align",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.save_html",
+"name": "save_html",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/text.py",
+"qual": "Text.apply_meta",
+"name": "apply_meta",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/progress.py",
+"qual": "Progress.open",
+"name": "open",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/_null_file.py",
+"qual": "NullFile.writable",
+"name": "writable",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/pretty.py",
+"qual": "pretty_repr",
+"name": "pretty_repr",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/progress.py",
+"qual": "TextColumn.render",
+"name": "render",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.out",
+"name": "out",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "benchmarks/benchmarks.py",
+"qual": "StyleSuite.time_parse_hex",
+"name": "time_parse_hex",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/color.py",
+"qual": "Color.from_rgb",
+"name": "from_rgb",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/markdown.py",
+"qual": "MarkdownContext.current_style",
+"name": "current_style",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/table.py",
+"qual": "Table.padding",
+"name": "padding",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/highlighter.py",
+"qual": "Highlighter.highlight",
+"name": "highlight",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_columns.py",
+"qual": "render",
+"name": "render",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/theme.py",
+"qual": "Theme.from_file",
+"name": "from_file",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "benchmarks/benchmarks.py",
+"qual": "TextSuite.time_align_center_unicode_heavy",
+"name": "time_align_center_unicode_heavy",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/_inspect.py",
+"qual": "Inspect._get_signature",
+"name": "_get_signature",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/file_proxy.py",
+"qual": "FileProxy.write",
+"name": "write",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/syntax.py",
+"qual": "Syntax._get_line_numbers_color",
+"name": "_get_line_numbers_color",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "group",
+"name": "group",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_inspect.py",
+"qual": "Foo.broken",
+"name": "broken",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/markdown.py",
+"qual": "ListItem.render_bullet",
+"name": "render_bullet",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/control.py",
+"qual": "Control.title",
+"name": "title",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/logging.py",
+"qual": "RichHandler.render",
+"name": "render",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console._exit_buffer",
+"name": "_exit_buffer",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "examples/exception.py",
+"qual": "divide_all",
+"name": "divide_all",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/highlighter.py",
+"qual": "_combine_regex",
+"name": "_combine_regex",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/control.py",
+"qual": "Control.move",
+"name": "move",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/style.py",
+"qual": "Style.without_color",
+"name": "without_color",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/pretty.py",
+"qual": "_get_braces_for_defaultdict",
+"name": "_get_braces_for_defaultdict",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/__init__.py",
+"qual": "print_json",
+"name": "print_json",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/traceback.py",
+"qual": "_iter_syntax_lines",
+"name": "_iter_syntax_lines",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.pop_theme",
+"name": "pop_theme",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/color.py",
+"qual": "Color.downgrade",
+"name": "downgrade",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/_win32_console.py",
+"qual": "LegacyWindowsTerm.write_text",
+"name": "write_text",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "ConsoleOptions.update_width",
+"name": "update_width",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.end_capture",
+"name": "end_capture",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/box.py",
+"qual": "Box.substitute",
+"name": "substitute",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/text.py",
+"qual": "Text.assemble",
+"name": "assemble",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/text.py",
+"qual": "Text.get_style_at_offset",
+"name": "get_style_at_offset",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.render_lines",
+"name": "render_lines",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.export_text",
+"name": "export_text",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/progress.py",
+"qual": "Progress.finished",
+"name": "finished",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/style.py",
+"qual": "Style._make_ansi_codes",
+"name": "_make_ansi_codes",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "benchmarks/benchmarks.py",
+"qual": "ColorSuiteCached.time_downgrade_to_standard",
+"name": "time_downgrade_to_standard",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.encoding",
+"name": "encoding",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "tests/test_markdown_no_hyperlinks.py",
+"qual": "replace_link_ids",
+"name": "replace_link_ids",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/markdown.py",
+"qual": "MarkdownElement.on_child_close",
+"name": "on_child_close",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/control.py",
+"qual": "Control.move_to",
+"name": "move_to",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.clear_live",
+"name": "clear_live",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/live_render.py",
+"qual": "LiveRender.restore_cursor",
+"name": "restore_cursor",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/markdown.py",
+"qual": "MarkdownContext.enter_style",
+"name": "enter_style",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "benchmarks/benchmarks.py",
+"qual": "TextSuite.time_align_center",
+"name": "time_align_center",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/color.py",
+"qual": "Color.get_ansi_codes",
+"name": "get_ansi_codes",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/containers.py",
+"qual": "Lines.extend",
+"name": "extend",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/progress.py",
+"qual": "Task.finished",
+"name": "finished",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/live.py",
+"qual": "Live.process_renderables",
+"name": "process_renderables",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/markdown.py",
+"qual": "TextElement.on_leave",
+"name": "on_leave",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/progress.py",
+"qual": "SpinnerColumn.render",
+"name": "render",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/style.py",
+"qual": "StyleStack.current",
+"name": "current",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "examples/export.py",
+"qual": "print_table",
+"name": "print_table",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/traceback.py",
+"qual": "Traceback._guess_lexer",
+"name": "_guess_lexer",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "examples/top_lite_simulator.py",
+"qual": "create_process_table",
+"name": "create_process_table",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/progress_bar.py",
+"qual": "ProgressBar._get_pulse_segments",
+"name": "_get_pulse_segments",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/progress.py",
+"qual": "open",
+"name": "open",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/color.py",
+"qual": "Color.parse",
+"name": "parse",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/markdown.py",
+"qual": "TableBodyElement.on_child_close",
+"name": "on_child_close",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/segment.py",
+"qual": "Segment.strip_styles",
+"name": "strip_styles",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.color_system",
+"name": "color_system",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/style.py",
+"qual": "Style.background_style",
+"name": "background_style",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/prompt.py",
+"qual": "PromptBase.pre_prompt",
+"name": "pre_prompt",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/_win32_console.py",
+"qual": "FillConsoleOutputCharacter",
+"name": "FillConsoleOutputCharacter",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/pretty.py",
+"qual": "_safe_isinstance",
+"name": "_safe_isinstance",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/box.py",
+"qual": "Box.get_top",
+"name": "get_top",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/table.py",
+"qual": "Table.expand",
+"name": "expand",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/status.py",
+"qual": "Status.start",
+"name": "start",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/text.py",
+"qual": "Text.right_crop",
+"name": "right_crop",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_traceback.py",
+"qual": "get_exception",
+"name": "get_exception",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "benchmarks/benchmarks.py",
+"qual": "ColorSuiteCached.setup",
+"name": "setup",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/cells.py",
+"qual": "set_cell_size",
+"name": "set_cell_size",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/syntax.py",
+"qual": "Syntax.stylize_range",
+"name": "stylize_range",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/cells.py",
+"qual": "get_character_cell_size",
+"name": "get_character_cell_size",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/segment.py",
+"qual": "Segment.align_top",
+"name": "align_top",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.render_str",
+"name": "render_str",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/segment.py",
+"qual": "Segment.split_lines",
+"name": "split_lines",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/rule.py",
+"qual": "Rule._rule_line",
+"name": "_rule_line",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console._write_buffer",
+"name": "_write_buffer",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.set_alt_screen",
+"name": "set_alt_screen",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "benchmarks/benchmarks.py",
+"qual": "TextSuite.time_render_unicode_heavy",
+"name": "time_render_unicode_heavy",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/columns.py",
+"qual": "Columns.add_renderable",
+"name": "add_renderable",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/layout.py",
+"qual": "Layout.update",
+"name": "update",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/progress.py",
+"qual": "Progress.refresh",
+"name": "refresh",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/progress.py",
+"qual": "Task.started",
+"name": "started",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/markdown.py",
+"qual": "TextElement.on_enter",
+"name": "on_enter",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/color.py",
+"qual": "Color.downgrade",
+"name": "Color.downgrade",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/color.py",
+"qual": "Color.get_truecolor",
+"name": "Color.get_truecolor",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/style.py",
+"qual": "Style.null",
+"name": "Style.null",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/align.py",
+"qual": "Align.center",
+"name": "Align.center",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/_win32_console.py",
+"qual": "LegacyWindowsTerm.write_text",
+"name": "LegacyWindowsTerm.write_text",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/text.py",
+"qual": "Text.rstrip",
+"name": "Text.rstrip",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.print_exception",
+"name": "Console.print_exception",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "ConsoleOptions.update_width",
+"name": "ConsoleOptions.update_width",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.end_capture",
+"name": "Console.end_capture",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/box.py",
+"qual": "Box.substitute",
+"name": "Box.substitute",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/text.py",
+"qual": "Text.assemble",
+"name": "Text.assemble",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/text.py",
+"qual": "Text.get_style_at_offset",
+"name": "Text.get_style_at_offset",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/text.py",
+"qual": "Text.from_markup",
+"name": "Text.from_markup",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.render_lines",
+"name": "Console.render_lines",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/text.py",
+"qual": "Text.join",
+"name": "Text.join",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/table.py",
+"qual": "Table.grid",
+"name": "Table.grid",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/padding.py",
+"qual": "Padding.unpack",
+"name": "Padding.unpack",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/_win32_console.py",
+"qual": "LegacyWindowsTerm.move_cursor_backward",
+"name": "LegacyWindowsTerm.move_cursor_backward",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.export_text",
+"name": "Console.export_text",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/progress.py",
+"qual": "Progress.add_task",
+"name": "Progress.add_task",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/logging.py",
+"qual": "RichHandler.emit",
+"name": "RichHandler.emit",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/progress.py",
+"qual": "Progress.finished",
+"name": "Progress.finished",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/_stack.py",
+"qual": "Stack.top",
+"name": "Stack.top",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/style.py",
+"qual": "Style._make_ansi_codes",
+"name": "Style._make_ansi_codes",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "benchmarks/benchmarks.py",
+"qual": "ColorSuiteCached.time_downgrade_to_standard",
+"name": "ColorSuiteCached.time_downgrade_to_standard",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.encoding",
+"name": "Console.encoding",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/_win32_console.py",
+"qual": "GetConsoleCursorInfo",
+"name": "GetConsoleCursorInfo",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_markdown_no_hyperlinks.py",
+"qual": "replace_link_ids",
+"name": "replace_link_ids",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/markdown.py",
+"qual": "MarkdownElement.on_child_close",
+"name": "MarkdownElement.on_child_close",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/control.py",
+"qual": "Control.move_to",
+"name": "Control.move_to",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.clear_live",
+"name": "Console.clear_live",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/live_render.py",
+"qual": "LiveRender.restore_cursor",
+"name": "LiveRender.restore_cursor",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/markdown.py",
+"qual": "MarkdownContext.enter_style",
+"name": "MarkdownContext.enter_style",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "benchmarks/benchmarks.py",
+"qual": "TextSuite.time_align_center",
+"name": "TextSuite.time_align_center",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/color.py",
+"qual": "Color.get_ansi_codes",
+"name": "Color.get_ansi_codes",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/containers.py",
+"qual": "Lines.extend",
+"name": "Lines.extend",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/progress.py",
+"qual": "Task.finished",
+"name": "Task.finished",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/live.py",
+"qual": "Live.process_renderables",
+"name": "Live.process_renderables",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/markdown.py",
+"qual": "TextElement.on_leave",
+"name": "TextElement.on_leave",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/control.py",
+"qual": "Control.move_to_column",
+"name": "Control.move_to_column",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/prompt.py",
+"qual": "PromptBase.render_default",
+"name": "PromptBase.render_default",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/progress.py",
+"qual": "SpinnerColumn.render",
+"name": "SpinnerColumn.render",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/style.py",
+"qual": "StyleStack.current",
+"name": "StyleStack.current",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "examples/export.py",
+"qual": "print_table",
+"name": "print_table",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/traceback.py",
+"qual": "Traceback._guess_lexer",
+"name": "Traceback._guess_lexer",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "examples/top_lite_simulator.py",
+"qual": "create_process_table",
+"name": "create_process_table",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/progress_bar.py",
+"qual": "ProgressBar._get_pulse_segments",
+"name": "ProgressBar._get_pulse_segments",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/progress.py",
+"qual": "open",
+"name": "open",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/color.py",
+"qual": "Color.parse",
+"name": "Color.parse",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/markdown.py",
+"qual": "TableBodyElement.on_child_close",
+"name": "TableBodyElement.on_child_close",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/segment.py",
+"qual": "Segment.strip_styles",
+"name": "Segment.strip_styles",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.color_system",
+"name": "Console.color_system",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/style.py",
+"qual": "Style.background_style",
+"name": "Style.background_style",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/prompt.py",
+"qual": "PromptBase.pre_prompt",
+"name": "PromptBase.pre_prompt",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/_win32_console.py",
+"qual": "FillConsoleOutputCharacter",
+"name": "FillConsoleOutputCharacter",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/pretty.py",
+"qual": "_safe_isinstance",
+"name": "_safe_isinstance",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/box.py",
+"qual": "Box.get_top",
+"name": "Box.get_top",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/table.py",
+"qual": "Table.expand",
+"name": "Table.expand",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/status.py",
+"qual": "Status.start",
+"name": "Status.start",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/text.py",
+"qual": "Text.right_crop",
+"name": "Text.right_crop",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_traceback.py",
+"qual": "get_exception",
+"name": "get_exception",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "benchmarks/benchmarks.py",
+"qual": "ColorSuiteCached.setup",
+"name": "ColorSuiteCached.setup",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/_win32_console.py",
+"qual": "LegacyWindowsTerm.erase_end_of_line",
+"name": "LegacyWindowsTerm.erase_end_of_line",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/cells.py",
+"qual": "set_cell_size",
+"name": "set_cell_size",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/syntax.py",
+"qual": "Syntax.stylize_range",
+"name": "Syntax.stylize_range",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/cells.py",
+"qual": "get_character_cell_size",
+"name": "get_character_cell_size",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/text.py",
+"qual": "Text.stylize",
+"name": "Text.stylize",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/segment.py",
+"qual": "Segment.align_top",
+"name": "Segment.align_top",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.render_str",
+"name": "Console.render_str",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/segment.py",
+"qual": "Segment.split_lines",
+"name": "Segment.split_lines",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/rule.py",
+"qual": "Rule._rule_line",
+"name": "Rule._rule_line",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console._write_buffer",
+"name": "Console._write_buffer",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.set_alt_screen",
+"name": "Console.set_alt_screen",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/syntax.py",
+"qual": "Syntax._get_syntax",
+"name": "Syntax._get_syntax",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "benchmarks/benchmarks.py",
+"qual": "TextSuite.time_render_unicode_heavy",
+"name": "TextSuite.time_render_unicode_heavy",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/columns.py",
+"qual": "Columns.add_renderable",
+"name": "Columns.add_renderable",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/layout.py",
+"qual": "Layout.update",
+"name": "Layout.update",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/progress.py",
+"qual": "Progress.refresh",
+"name": "Progress.refresh",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/syntax.py",
+"qual": "Syntax._get_line_numbers_color",
+"name": "Syntax._get_line_numbers_color",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/progress.py",
+"qual": "Task.started",
+"name": "Task.started",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/markdown.py",
+"qual": "TextElement.on_enter",
+"name": "TextElement.on_enter",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.capture",
+"name": "capture",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/table.py",
+"qual": "Table.add_column",
+"name": "add_column",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/control.py",
+"qual": "escape_control_codes",
+"name": "escape_control_codes",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/segment.py",
+"qual": "Segment.adjust_line_length",
+"name": "adjust_line_length",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_card.py",
+"qual": "replace_link_ids",
+"name": "replace_link_ids",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/text.py",
+"qual": "Text.render",
+"name": "render",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/style.py",
+"qual": "Style.parse",
+"name": "parse",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/pretty.py",
+"qual": "Node.render",
+"name": "render",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/table.py",
+"qual": "Table._render",
+"name": "_render",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/progress.py",
+"qual": "_Reader.tell",
+"name": "tell",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "benchmarks/benchmarks.py",
+"qual": "TextSuite.setup",
+"name": "setup",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/highlighter.py",
+"qual": "NullHighlighter.highlight",
+"name": "highlight",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/logging.py",
+"qual": "RichHandler.render_message",
+"name": "render_message",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.clear",
+"name": "clear",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/progress.py",
+"qual": "TimeRemainingColumn.render",
+"name": "render",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "benchmarks/benchmarks.py",
+"qual": "TextSuite.time_indent_guides",
+"name": "time_indent_guides",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/progress.py",
+"qual": "Progress.stop",
+"name": "stop",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_inspect.py",
+"qual": "render",
+"name": "render",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/markdown.py",
+"qual": "TableRowElement.on_child_close",
+"name": "on_child_close",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/live_render.py",
+"qual": "LiveRender.last_render_height",
+"name": "last_render_height",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/spinner.py",
+"qual": "Spinner.update",
+"name": "update",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/_win32_console.py",
+"qual": "LegacyWindowsTerm.move_cursor_forward",
+"name": "move_cursor_forward",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/style.py",
+"qual": "Style.from_meta",
+"name": "from_meta",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/pretty.py",
+"qual": "_is_dataclass_repr",
+"name": "_is_dataclass_repr",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "tests/test_progress.py",
+"qual": "MockClock.tick",
+"name": "tick",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/progress.py",
+"qual": "Progress.reset",
+"name": "reset",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.begin_capture",
+"name": "begin_capture",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.rule",
+"name": "rule",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console._check_buffer",
+"name": "_check_buffer",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/jupyter.py",
+"qual": "JupyterMixin._repr_mimebundle_",
+"name": "_repr_mimebundle_",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/progress.py",
+"qual": "Progress.tasks",
+"name": "tasks",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/progress.py",
+"qual": "Task.elapsed",
+"name": "elapsed",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "RenderHook.process_renderables",
+"name": "process_renderables",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/table.py",
+"qual": "Column.flexible",
+"name": "flexible",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/text.py",
+"qual": "Text.pad",
+"name": "pad",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/layout.py",
+"qual": "Layout.split",
+"name": "split",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "examples/dynamic_progress.py",
+"qual": "run_steps",
+"name": "run_steps",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "ConsoleOptions.copy",
+"name": "copy",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/markdown.py",
+"qual": "CodeBlock.create",
+"name": "create",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/_win32_console.py",
+"qual": "LegacyWindowsTerm.erase_line",
+"name": "erase_line",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "tests/test_inspect.py",
+"qual": "Foo.method",
+"name": "method",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/_inspect.py",
+"qual": "get_object_types_mro_as_strings",
+"name": "get_object_types_mro_as_strings",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/markdown.py",
+"qual": "ListItem.render_number",
+"name": "render_number",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/syntax.py",
+"qual": "Syntax._process_code",
+"name": "_process_code",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.is_terminal",
+"name": "is_terminal",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/markdown.py",
+"qual": "MarkdownElement.on_leave",
+"name": "on_leave",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/markdown.py",
+"qual": "MarkdownContext.leave_style",
+"name": "leave_style",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.capture",
+"name": "Console.capture",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/tree.py",
+"qual": "Tree.add",
+"name": "Tree.add",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.get_style",
+"name": "Console.get_style",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/text.py",
+"qual": "Text.highlight_regex",
+"name": "Text.highlight_regex",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/_win32_console.py",
+"qual": "LegacyWindowsTerm.write_styled",
+"name": "LegacyWindowsTerm.write_styled",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/table.py",
+"qual": "Table.add_column",
+"name": "Table.add_column",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/prompt.py",
+"qual": "PromptBase.ask",
+"name": "PromptBase.ask",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/theme.py",
+"qual": "Theme.from_file",
+"name": "Theme.from_file",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/control.py",
+"qual": "escape_control_codes",
+"name": "escape_control_codes",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/segment.py",
+"qual": "Segment.adjust_line_length",
+"name": "Segment.adjust_line_length",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_card.py",
+"qual": "replace_link_ids",
+"name": "replace_link_ids",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/text.py",
+"qual": "Text.render",
+"name": "Text.render",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/_unicode_data/__init__.py",
+"qual": "load",
+"name": "load",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/style.py",
+"qual": "Style.parse",
+"name": "Style.parse",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/pretty.py",
+"qual": "Node.render",
+"name": "Node.render",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/table.py",
+"qual": "Table._render",
+"name": "Table._render",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/progress.py",
+"qual": "_Reader.tell",
+"name": "_Reader.tell",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "benchmarks/benchmarks.py",
+"qual": "TextSuite.setup",
+"name": "TextSuite.setup",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/highlighter.py",
+"qual": "NullHighlighter.highlight",
+"name": "NullHighlighter.highlight",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/logging.py",
+"qual": "RichHandler.render_message",
+"name": "RichHandler.render_message",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.clear",
+"name": "Console.clear",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/progress.py",
+"qual": "TimeRemainingColumn.render",
+"name": "TimeRemainingColumn.render",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "benchmarks/benchmarks.py",
+"qual": "TextSuite.time_indent_guides",
+"name": "TextSuite.time_indent_guides",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/progress.py",
+"qual": "Progress.stop",
+"name": "Progress.stop",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_inspect.py",
+"qual": "render",
+"name": "render",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/markdown.py",
+"qual": "TableRowElement.on_child_close",
+"name": "TableRowElement.on_child_close",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console._theme_stack",
+"name": "Console._theme_stack",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/live_render.py",
+"qual": "LiveRender.last_render_height",
+"name": "LiveRender.last_render_height",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/spinner.py",
+"qual": "Spinner.update",
+"name": "Spinner.update",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/_win32_console.py",
+"qual": "LegacyWindowsTerm.move_cursor_forward",
+"name": "LegacyWindowsTerm.move_cursor_forward",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/color.py",
+"qual": "Color.from_rgb",
+"name": "Color.from_rgb",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/style.py",
+"qual": "Style.from_meta",
+"name": "Style.from_meta",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/pretty.py",
+"qual": "_is_dataclass_repr",
+"name": "_is_dataclass_repr",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_progress.py",
+"qual": "MockClock.tick",
+"name": "MockClock.tick",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/markdown.py",
+"qual": "ListItem.render_bullet",
+"name": "ListItem.render_bullet",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/progress.py",
+"qual": "Progress.reset",
+"name": "Progress.reset",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.begin_capture",
+"name": "Console.begin_capture",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.rule",
+"name": "Console.rule",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console._check_buffer",
+"name": "Console._check_buffer",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/jupyter.py",
+"qual": "JupyterMixin._repr_mimebundle_",
+"name": "JupyterMixin._repr_mimebundle_",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/progress.py",
+"qual": "Progress.tasks",
+"name": "Progress.tasks",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/progress.py",
+"qual": "Task.elapsed",
+"name": "Task.elapsed",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "RenderHook.process_renderables",
+"name": "RenderHook.process_renderables",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/table.py",
+"qual": "Column.flexible",
+"name": "Column.flexible",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/text.py",
+"qual": "Text.pad",
+"name": "Text.pad",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/layout.py",
+"qual": "Layout.split",
+"name": "Layout.split",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "examples/dynamic_progress.py",
+"qual": "run_steps",
+"name": "run_steps",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "ConsoleOptions.copy",
+"name": "ConsoleOptions.copy",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/markdown.py",
+"qual": "CodeBlock.create",
+"name": "CodeBlock.create",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/_win32_console.py",
+"qual": "LegacyWindowsTerm.erase_line",
+"name": "LegacyWindowsTerm.erase_line",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_inspect.py",
+"qual": "Foo.method",
+"name": "Foo.method",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/_inspect.py",
+"qual": "get_object_types_mro_as_strings",
+"name": "get_object_types_mro_as_strings",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/text.py",
+"qual": "Text.align",
+"name": "Text.align",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/markdown.py",
+"qual": "ListItem.render_number",
+"name": "ListItem.render_number",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/syntax.py",
+"qual": "Syntax._process_code",
+"name": "Syntax._process_code",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.is_terminal",
+"name": "Console.is_terminal",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/markdown.py",
+"qual": "MarkdownElement.on_leave",
+"name": "MarkdownElement.on_leave",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/markdown.py",
+"qual": "MarkdownContext.leave_style",
+"name": "MarkdownContext.leave_style",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/text.py",
+"qual": "Text.wrap",
+"name": "Text.wrap",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/palette.py",
+"qual": "Palette.match",
+"name": "Palette.match",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/text.py",
+"qual": "Text.expand_tabs",
+"name": "Text.expand_tabs",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/emoji.py",
+"qual": "Emoji.replace",
+"name": "Emoji.replace",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/progress.py",
+"qual": "ProgressColumn.get_table_column",
+"name": "ProgressColumn.get_table_column",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/_null_file.py",
+"qual": "NullFile.readlines",
+"name": "NullFile.readlines",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/live.py",
+"qual": "_RefreshThread.stop",
+"name": "_RefreshThread.stop",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/file_proxy.py",
+"qual": "FileProxy.fileno",
+"name": "FileProxy.fileno",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/box.py",
+"qual": "Box.get_plain_headed_box",
+"name": "Box.get_plain_headed_box",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/cells.py",
+"qual": "split_text",
+"name": "split_text",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/_win32_console.py",
+"qual": "LegacyWindowsTerm.move_cursor_down",
+"name": "LegacyWindowsTerm.move_cursor_down",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "examples/recursive_error.py",
+"qual": "bar",
+"name": "bar",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "examples/fullscreen.py",
+"qual": "make_sponsor_message",
+"name": "make_sponsor_message",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console._buffer",
+"name": "Console._buffer",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/padding.py",
+"qual": "Padding.indent",
+"name": "Padding.indent",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "benchmarks/benchmarks.py",
+"qual": "StyleSuite.setup",
+"name": "StyleSuite.setup",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/table.py",
+"qual": "Table.row_count",
+"name": "Table.row_count",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/pretty.py",
+"qual": "Node.iter_tokens",
+"name": "Node.iter_tokens",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/layout.py",
+"qual": "Layout._make_region_map",
+"name": "Layout._make_region_map",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/live.py",
+"qual": "Live.renderable",
+"name": "Live.renderable",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/_null_file.py",
+"qual": "NullFile.flush",
+"name": "NullFile.flush",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/_ratio.py",
+"qual": "ratio_resolve",
+"name": "ratio_resolve",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.save_html",
+"name": "Console.save_html",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/text.py",
+"qual": "Text.apply_meta",
+"name": "Text.apply_meta",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/progress.py",
+"qual": "Progress.open",
+"name": "Progress.open",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/_null_file.py",
+"qual": "NullFile.writable",
+"name": "NullFile.writable",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/pretty.py",
+"qual": "pretty_repr",
+"name": "pretty_repr",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/progress.py",
+"qual": "TextColumn.render",
+"name": "TextColumn.render",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.out",
+"name": "Console.out",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "benchmarks/benchmarks.py",
+"qual": "StyleSuite.time_parse_hex",
+"name": "StyleSuite.time_parse_hex",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/markdown.py",
+"qual": "MarkdownContext.current_style",
+"name": "MarkdownContext.current_style",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/table.py",
+"qual": "Table.padding",
+"name": "Table.padding",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/highlighter.py",
+"qual": "Highlighter.highlight",
+"name": "Highlighter.highlight",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_columns.py",
+"qual": "render",
+"name": "render",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "benchmarks/benchmarks.py",
+"qual": "TextSuite.time_align_center_unicode_heavy",
+"name": "TextSuite.time_align_center_unicode_heavy",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/_inspect.py",
+"qual": "Inspect._get_signature",
+"name": "Inspect._get_signature",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/file_proxy.py",
+"qual": "FileProxy.write",
+"name": "FileProxy.write",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "group",
+"name": "group",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "tests/test_inspect.py",
+"qual": "Foo.broken",
+"name": "Foo.broken",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/control.py",
+"qual": "Control.title",
+"name": "Control.title",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/logging.py",
+"qual": "RichHandler.render",
+"name": "RichHandler.render",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console._exit_buffer",
+"name": "Console._exit_buffer",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "examples/exception.py",
+"qual": "divide_all",
+"name": "divide_all",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/highlighter.py",
+"qual": "_combine_regex",
+"name": "_combine_regex",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/control.py",
+"qual": "Control.move",
+"name": "Control.move",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/style.py",
+"qual": "Style.without_color",
+"name": "Style.without_color",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/pretty.py",
+"qual": "_get_braces_for_defaultdict",
+"name": "_get_braces_for_defaultdict",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/__init__.py",
+"qual": "print_json",
+"name": "print_json",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/traceback.py",
+"qual": "_iter_syntax_lines",
+"name": "_iter_syntax_lines",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.pop_theme",
+"name": "Console.pop_theme",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.measure",
+"name": "measure",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.measure",
+"name": "Console.measure",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/markdown.py",
+"qual": "Markdown._flatten_tokens",
+"name": "_flatten_tokens",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/markdown.py",
+"qual": "Markdown._flatten_tokens",
+"name": "Markdown._flatten_tokens",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/prompt.py",
+"qual": "PromptBase.check_choice",
+"name": "check_choice",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/prompt.py",
+"qual": "PromptBase.check_choice",
+"name": "PromptBase.check_choice",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/align.py",
+"qual": "Align.left",
+"name": "left",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/align.py",
+"qual": "Align.left",
+"name": "Align.left",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/json.py",
+"qual": "JSON.from_data",
+"name": "from_data",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/json.py",
+"qual": "JSON.from_data",
+"name": "JSON.from_data",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.save_svg",
+"name": "save_svg",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.save_svg",
+"name": "Console.save_svg",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/progress.py",
+"qual": "Progress.stop_task",
+"name": "stop_task",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/progress.py",
+"qual": "Progress.stop_task",
+"name": "Progress.stop_task",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.pager",
+"name": "pager",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.pager",
+"name": "Console.pager",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/logging.py",
+"qual": "RichHandler.get_level_text",
+"name": "get_level_text",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/logging.py",
+"qual": "RichHandler.get_level_text",
+"name": "RichHandler.get_level_text",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/text.py",
+"qual": "Text.append_text",
+"name": "append_text",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/text.py",
+"qual": "Text.append_text",
+"name": "Text.append_text",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/text.py",
+"qual": "Text.blank_copy",
+"name": "blank_copy",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/text.py",
+"qual": "Text.blank_copy",
+"name": "Text.blank_copy",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/_win32_console.py",
+"qual": "LegacyWindowsTerm.move_cursor_up",
+"name": "move_cursor_up",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/_win32_console.py",
+"qual": "LegacyWindowsTerm.move_cursor_up",
+"name": "LegacyWindowsTerm.move_cursor_up",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/segment.py",
+"qual": "Segment.filter_control",
+"name": "filter_control",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/segment.py",
+"qual": "Segment.filter_control",
+"name": "Segment.filter_control",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/syntax.py",
+"qual": "Syntax._apply_stylized_ranges",
+"name": "_apply_stylized_ranges",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/syntax.py",
+"qual": "Syntax._apply_stylized_ranges",
+"name": "Syntax._apply_stylized_ranges",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "ConsoleOptions.reset_height",
+"name": "reset_height",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "ConsoleOptions.reset_height",
+"name": "ConsoleOptions.reset_height",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/control.py",
+"qual": "Control.alt_screen",
+"name": "alt_screen",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/control.py",
+"qual": "Control.alt_screen",
+"name": "Control.alt_screen",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/progress.py",
+"qual": "Task._reset",
+"name": "_reset",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/progress.py",
+"qual": "Task._reset",
+"name": "Task._reset",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/traceback.py",
+"qual": "Traceback.extract",
+"name": "extract",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/traceback.py",
+"qual": "Traceback.extract",
+"name": "Traceback.extract",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/live_render.py",
+"qual": "LiveRender.set_renderable",
+"name": "set_renderable",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/live_render.py",
+"qual": "LiveRender.set_renderable",
+"name": "LiveRender.set_renderable",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/segment.py",
+"qual": "Segment.apply_style",
+"name": "apply_style",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/segment.py",
+"qual": "Segment.apply_style",
+"name": "Segment.apply_style",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/text.py",
+"qual": "Text.cell_len",
+"name": "cell_len",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/text.py",
+"qual": "Text.cell_len",
+"name": "Text.cell_len",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/text.py",
+"qual": "Text.pad_left",
+"name": "pad_left",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/text.py",
+"qual": "Text.pad_left",
+"name": "Text.pad_left",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/ansi.py",
+"qual": "AnsiDecoder.decode",
+"name": "decode",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/ansi.py",
+"qual": "AnsiDecoder.decode",
+"name": "AnsiDecoder.decode",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/progress.py",
+"qual": "Progress.track",
+"name": "track",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/progress.py",
+"qual": "Progress.track",
+"name": "Progress.track",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/style.py",
+"qual": "Style.from_color",
+"name": "from_color",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/style.py",
+"qual": "Style.from_color",
+"name": "Style.from_color",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/ansi.py",
+"qual": "AnsiDecoder.decode_line",
+"name": "decode_line",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/ansi.py",
+"qual": "AnsiDecoder.decode_line",
+"name": "AnsiDecoder.decode_line",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/progress.py",
+"qual": "Progress.start_task",
+"name": "start_task",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/progress.py",
+"qual": "Progress.start_task",
+"name": "Progress.start_task",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/measure.py",
+"qual": "Measurement.clamp",
+"name": "clamp",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/measure.py",
+"qual": "Measurement.clamp",
+"name": "Measurement.clamp",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.update_screen",
+"name": "update_screen",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.update_screen",
+"name": "Console.update_screen",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console._render_buffer",
+"name": "_render_buffer",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console._render_buffer",
+"name": "Console._render_buffer",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/syntax.py",
+"qual": "Syntax.get_theme",
+"name": "get_theme",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/syntax.py",
+"qual": "Syntax.get_theme",
+"name": "Syntax.get_theme",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/live_render.py",
+"qual": "LiveRender.position_cursor",
+"name": "position_cursor",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/live_render.py",
+"qual": "LiveRender.position_cursor",
+"name": "LiveRender.position_cursor",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/_win32_console.py",
+"qual": "LegacyWindowsTerm.erase_start_of_line",
+"name": "erase_start_of_line",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/_win32_console.py",
+"qual": "LegacyWindowsTerm.erase_start_of_line",
+"name": "LegacyWindowsTerm.erase_start_of_line",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/traceback.py",
+"qual": "Traceback._render_syntax_error",
+"name": "_render_syntax_error",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/traceback.py",
+"qual": "Traceback._render_syntax_error",
+"name": "Traceback._render_syntax_error",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/table.py",
+"qual": "Table._get_cells",
+"name": "_get_cells",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/table.py",
+"qual": "Table._get_cells",
+"name": "Table._get_cells",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/syntax.py",
+"qual": "Syntax.guess_lexer",
+"name": "guess_lexer",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/syntax.py",
+"qual": "Syntax.guess_lexer",
+"name": "Syntax.guess_lexer",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/_win32_console.py",
+"qual": "LegacyWindowsTerm.set_title",
+"name": "set_title",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/_win32_console.py",
+"qual": "LegacyWindowsTerm.set_title",
+"name": "LegacyWindowsTerm.set_title",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/table.py",
+"qual": "Table._measure_column",
+"name": "_measure_column",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/table.py",
+"qual": "Table._measure_column",
+"name": "Table._measure_column",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/segment.py",
+"qual": "Segment.set_shape",
+"name": "set_shape",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/segment.py",
+"qual": "Segment.set_shape",
+"name": "Segment.set_shape",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/text.py",
+"qual": "Text.extend_style",
+"name": "extend_style",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/text.py",
+"qual": "Text.extend_style",
+"name": "Text.extend_style",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.screen",
+"name": "screen",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.screen",
+"name": "Console.screen",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/_win32_console.py",
+"qual": "WindowsCoordinates.from_param",
+"name": "from_param",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/_win32_console.py",
+"qual": "WindowsCoordinates.from_param",
+"name": "WindowsCoordinates.from_param",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console._detect_color_system",
+"name": "_detect_color_system",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console._detect_color_system",
+"name": "Console._detect_color_system",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "ConsoleOptions.update_dimensions",
+"name": "update_dimensions",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "ConsoleOptions.update_dimensions",
+"name": "ConsoleOptions.update_dimensions",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/text.py",
+"qual": "Text.pad_right",
+"name": "pad_right",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/text.py",
+"qual": "Text.pad_right",
+"name": "Text.pad_right",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/style.py",
+"qual": "Style.clear_meta_and_links",
+"name": "clear_meta_and_links",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/style.py",
+"qual": "Style.clear_meta_and_links",
+"name": "Style.clear_meta_and_links",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/text.py",
+"qual": "Text.highlight_words",
+"name": "highlight_words",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/text.py",
+"qual": "Text.highlight_words",
+"name": "Text.highlight_words",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/progress.py",
+"qual": "Progress.make_tasks_table",
+"name": "make_tasks_table",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/progress.py",
+"qual": "Progress.make_tasks_table",
+"name": "Progress.make_tasks_table",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/style.py",
+"qual": "Style.update_link",
+"name": "update_link",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/style.py",
+"qual": "Style.update_link",
+"name": "Style.update_link",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/segment.py",
+"qual": "Segment.get_line_length",
+"name": "get_line_length",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/segment.py",
+"qual": "Segment.get_line_length",
+"name": "Segment.get_line_length",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/measure.py",
+"qual": "Measurement.span",
+"name": "span",
+"r15": "unknown"
+},
+{
+"mode": "qualified",
+"file": "rich/measure.py",
+"qual": "Measurement.span",
+"name": "Measurement.span",
+"r15": "unknown"
+},
+{
+"mode": "bare",
+"file": "rich/console.py",
+"qual": "Console.print_json",
+"name": "print_json",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/console.py",
+"qual": "Console.print_json",
+"name": "Console.print_json",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/layout.py",
+"qual": "Layout.split_column",
+"name": "split_column",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/layout.py",
+"qual": "Layout.split_column",
+"name": "Layout.split_column",
+"r15": "incomplete"
+},
+{
+"mode": "bare",
+"file": "rich/live.py",
+"qual": "Live._enable_redirect_io",
+"name": "_enable_redirect_io",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/live.py",
+"qual": "Live._enable_redirect_io",
+"name": "Live._enable_redirect_io",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/segment.py",
+"qual": "Segment._split_cells",
+"name": "_split_cells",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/segment.py",
+"qual": "Segment._split_cells",
+"name": "Segment._split_cells",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/segment.py",
+"qual": "Segment.simplify",
+"name": "simplify",
+"r15": "complete"
+},
+{
+"mode": "qualified",
+"file": "rich/segment.py",
+"qual": "Segment.simplify",
+"name": "Segment.simplify",
+"r15": "complete"
+},
+{
+"mode": "bare",
+"file": "rich/_win32_console.py",
+"qual": "LegacyWindowsTerm.move_cursor_to",
+"name": "move_cursor_to",
+"r15": "incomplete"
+},
+{
+"mode": "qualified",
+"file": "rich/_win32_console.py",
+"qual": "LegacyWindowsTerm.move_cursor_to",
+"name": "LegacyWindowsTerm.move_cursor_to",
+"r15": "incomplete"
+}
+]

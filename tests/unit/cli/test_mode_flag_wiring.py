@@ -156,3 +156,41 @@ def test_class_hierarchy_with_mode_does_not_false_error(capsys) -> None:
     # parser.error (the wiring guard) exits 2; anything else means it did not
     # fire. We assert it did NOT produce the wiring error specifically.
     assert exc_info.value.code != 2 or "requires" not in err
+
+
+def test_agent_summary_only_requires_its_trigger(monkeypatch) -> None:
+    """dogfood 2026-11-09 P2-5：显式传入但没有 --change-impact → parser.error。"""
+    from argparse import Namespace
+
+    from tree_sitter_analyzer.cli_main import (
+        _reject_misplaced_agent_summary_only,
+        create_argument_parser,
+    )
+
+    parser = create_argument_parser()
+    monkeypatch.setattr("sys.argv", ["cli", "--agent-summary-only"])
+    with pytest.raises(SystemExit) as excinfo:
+        _reject_misplaced_agent_summary_only(Namespace(change_impact=False), parser)
+    assert excinfo.value.code == 2
+
+
+def test_agent_summary_only_is_accepted_with_its_trigger(monkeypatch) -> None:
+    """带 --change-impact 时合法；未显式传入时也不应触发��何动作。"""
+    from argparse import Namespace
+
+    from tree_sitter_analyzer.cli_main import (
+        _reject_misplaced_agent_summary_only,
+        create_argument_parser,
+    )
+
+    parser = create_argument_parser()
+    monkeypatch.setattr("sys.argv", ["cli", "--change-impact", "--agent-summary-only"])
+    assert (
+        _reject_misplaced_agent_summary_only(Namespace(change_impact=True), parser)
+        is None
+    )
+    monkeypatch.setattr("sys.argv", ["cli", "--callers", "main"])
+    assert (
+        _reject_misplaced_agent_summary_only(Namespace(change_impact=False), parser)
+        is None
+    )

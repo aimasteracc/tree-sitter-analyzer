@@ -22,6 +22,7 @@ from .coverage import (
     CURSOR_GENERATION_UNVERIFIED,
     INCOMPLETE,
     QUERY_NOT_EXECUTED,
+    SYMBOL_NOT_DEFINED,
     UPSTREAM_INCOMPLETE,
     UPSTREAM_UNKNOWN,
     Coverage,
@@ -150,6 +151,40 @@ def _reasons(execution: Execution) -> list[str]:
     return reasons
 
 
+def answer_etag(result: dict[str, Any], generation: str | None) -> str:
+    """UQL 答案的内容指纹（RFC-0041 × §12.1 的重问原语）。
+
+    指纹覆盖「同一查询 + 同一索引世代」下的答案内容：分组行、每阶段的计数与完整性、
+    gaps 和分页总量。``generation`` 参与计算，因此索引重建后指纹必然改变——不会出现
+    跨世代误判「没变」。
+    """
+    import hashlib
+    import json
+
+    payload = {
+        "query": result.get("query"),
+        "detail": result.get("detail"),
+        "generation": generation,
+        "page_total": (result.get("page") or {}).get("total"),
+        "groups": [
+            {
+                "stage": group.get("stage"),
+                "rows": group.get("rows"),
+                "count": (
+                    group.get("count")
+                    if isinstance(group.get("count"), int)
+                    else len(group.get("rows") or [])
+                ),
+            }
+            for group in (result.get("groups") or [])
+            if isinstance(group, dict)
+        ],
+        "gaps": result.get("gaps") or [],
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return "sha256:" + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
 def project(
     execution: Execution,
     *,
@@ -193,6 +228,9 @@ def project(
             "next_cursor": next_cursor,
         },
     }
+    hint = _absence_hint(execution, total)
+    if hint is not None:
+        payload["absence_hint"] = hint
     files = [g for g in execution.groups if g.files is not None]
     if files:
         payload["files"] = files[-1].files
@@ -205,6 +243,37 @@ def project(
         execution, coverage, total, next_cursor, handles
     )
     return payload
+
+
+#: 会「查不到就是没有」的 stage：空结果 + 证明完整时值得提示。
+_ABSENCE_STAGES = frozenset({"callers", "tests", "test_map"})
+
+
+def _absence_hint(execution: Any, total: int) -> dict[str, Any] | None:
+    """空结果的**提示**，不是证书（RFC-0044 的证书只由 nav 工具签发）。
+
+    UQL 的完整性是「各 stage 的覆盖证明」，它没有 nav ``callers`` 的 13 道检查，
+    所以这里只说「图里没有 + 覆盖完整」，并指向能签发证书的那条命令。宁可比
+    nav 保守，也不让 agent 把一个 stage 级结论当成工具级证书。
+    """
+    stages = [report for report in execution.stages if report.op in _ABSENCE_STAGES]
+    if not stages:
+        return None
+    # 缺席问的是「最后一个关系 stage」：symbol() 的 1 行不算答案内容。
+    if execution.stages and execution.stages[-1].op not in _ABSENCE_STAGES:
+        return None
+    if stages[-1].count or any(not report.effective.complete for report in stages):
+        return None
+    ops = ", ".join(f"{report.op}={report.count}" for report in stages)
+    return {
+        "kind": "possibly_unreferenced",
+        "confidence": "possible",
+        "detail": f"empty result with complete stage coverage ({ops})",
+        "next_step": (
+            "Run `nav action=callers` (or --callers) for the proof-carrying "
+            "absence certificate: it runs the full RFC-0040 check set."
+        ),
+    }
 
 
 def _stage(report: Any, detail: str) -> dict[str, Any]:
@@ -261,12 +330,24 @@ def _summary(
         first = (
             gap_stage.own.reasons[0] if gap_stage.own.reasons else coverage.reasons[0]
         )
-        step = (
-            f"Not a census: stage {gap_stage.op} reports {first}. Treat counts as "
-            "lower bounds (incomplete) or unproven (unknown)."
-        )
-        if handles:
-            step += " Drill in with the nav request under evidence[], or detail='full'."
+        if first == SYMBOL_NOT_DEFINED:
+            # dogfood 2026-11-09（P1-2）：索引里 0 个定义时给出可执行的修复动作，
+            # 而不是「这不是普查」这种让 agent 无从下手的句子。
+            names = (gap_stage.note or "").removeprefix("no indexed definition for: ")
+            step = (
+                f"No indexed definition for {names}: check spelling or qualify as "
+                "Class.method; refresh the index (index action=cache mode=index) if "
+                "the source changed, then retry."
+            )
+        else:
+            step = (
+                f"Not a census: stage {gap_stage.op} reports {first}. Treat counts as "
+                "lower bounds (incomplete) or unproven (unknown)."
+            )
+            if handles:
+                step += (
+                    " Drill in with the nav request under evidence[], or detail='full'."
+                )
     if next_cursor:
         step += " More rows: resend the same query with cursor=page.next_cursor."
     verdict = "INFO" if total else "NOT_FOUND"

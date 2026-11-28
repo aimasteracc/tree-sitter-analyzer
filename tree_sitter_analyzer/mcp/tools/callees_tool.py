@@ -36,6 +36,45 @@ from .relation_freshness import (
 logger = setup_logger(__name__)
 
 
+def answer_etag(result: dict[str, Any]) -> str:
+    """callees 答案的内容指纹（agent 的 If-None-Match 原语）。
+
+    与 ``callers`` 同一套规则：覆盖问题、答案条目与证据状态，忽略耗时、
+    绝对路径等易变字段；``stale``/``freshness`` 变化会改变它。
+    """
+    import hashlib
+    import json
+
+    def _body_sha(entry: dict[str, Any]) -> str | None:
+        body = entry.get("body")
+        if not isinstance(body, str):
+            return None
+        return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+    payload = {
+        "function": result.get("function"),
+        "file_path": result.get("file_path"),
+        "callees": [
+            {
+                **{
+                    key: entry.get(key)
+                    for key in ("name", "file", "line", "call_site_line")
+                },
+                "body_sha": _body_sha(entry),
+            }
+            for entry in (result.get("callees") or [])
+            if isinstance(entry, dict)
+        ],
+        "callee_count": result.get("callee_count"),
+        "completeness": result.get("completeness"),
+        "completeness_reasons": result.get("completeness_reasons") or [],
+        "freshness": (result.get("source_evidence") or {}).get("freshness"),
+        "stale": bool(result.get("stale", False)),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
 class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
     """MCP Tool for finding callees of a function (CodeGraph parity)."""
 
@@ -68,6 +107,13 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
         return {
             "type": "object",
             "properties": {
+                "if_none_match": {
+                    "type": "string",
+                    "description": (
+                        "Prior answer_etag. When it still matches and the source is "
+                        "not stale, respond with a minimal {unchanged: true} payload."
+                    ),
+                },
                 "function_name": {
                     "type": "string",
                     "description": "Source function name to find callees for",
@@ -297,6 +343,34 @@ class CodeGraphCalleesTool(CodeGraphRelationToolMixin, BaseMCPTool):
             "next_step": as_next_step,
         }
         apply_source_evidence(result, evidence, stale_files)
+        result["answer_etag"] = answer_etag(result)
+        requested_etag = str(arguments.get("if_none_match") or "").strip()
+        if (
+            requested_etag
+            and requested_etag == result["answer_etag"]
+            and not result.get("stale")
+        ):
+            from ..utils.format_helper import apply_output_format_to_response
+
+            return apply_output_format_to_response(
+                {
+                    "success": True,
+                    "verdict": "INFO",
+                    "unchanged": True,
+                    "answer_etag": requested_etag,
+                    "function": func_name,
+                    "callee_count": result.get("callee_count"),
+                    "agent_summary": {
+                        "summary_line": f"callees: {func_name!r} unchanged (etag match)",
+                        "verdict": "INFO",
+                        "next_step": (
+                            "Reuse the previous answer: no callee, completeness or "
+                            "source-freshness change since that etag."
+                        ),
+                    },
+                },
+                output_format,
+            )
 
         from ..utils.format_helper import apply_output_format_to_response
 
