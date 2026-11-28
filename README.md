@@ -20,7 +20,7 @@ TSA indexes your codebase with tree-sitter and serves correct call graphs, symbo
 
 ## Demo
 
-[30-second English demo](docs/assets/tsa-demo-30s-en.mp4) ([subtitles](docs/assets/tsa-demo-30s-en.srt)): TSA v3.1.2 indexes its own repository (2,758 files, 77,854 symbols), then shows callers, blast radius, and miswire-audit (2,879 vs 3 mis-links, 960× cleaner). 8 MCP tools.
+[Narrated English demo](docs/assets/tsa-demo-30s-en.mp4) ([subtitles](docs/assets/tsa-demo-30s-en.srt)): TSA v3.1.2 indexes its own repository, then shows callers, blast radius, and miswire-audit. 8 MCP tools.
 
 ## Get Started
 
