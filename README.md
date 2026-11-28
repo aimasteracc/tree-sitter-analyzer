@@ -20,7 +20,9 @@ TSA indexes your codebase with tree-sitter and serves correct call graphs, symbo
 
 ## Demo
 
-[Narrated English demo](docs/assets/tsa-demo-30s-en.mp4) ([subtitles](docs/assets/tsa-demo-30s-en.srt)): TSA v3.1.2 indexes its own repository, then shows callers, blast radius, and miswire-audit. 8 MCP tools.
+https://github.com/user-attachments/assets/0b1c0a85-2f70-47ab-b09e-acc68d253cac
+
+Narrated English demo: TSA v3.1.2 indexes its own repository, then shows callers, blast radius, and miswire-audit. 8 MCP tools. Download: [video](docs/assets/tsa-demo-30s-en.mp4) · [Subtitles](docs/assets/tsa-demo-30s-en.srt)
 
 ## Get Started
 
