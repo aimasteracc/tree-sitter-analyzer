@@ -115,7 +115,6 @@ It reports possible cross-language name collisions so you can inspect resolver b
 ---
 
 ## Why Tree-sitter Analyzer
-
 * **Structured output.** MCP responses use standard JSON envelopes; payload behavior is guarded by response contract tests.
 * **Verdict envelopes.** Every response carries `verdict: SAFE | CAUTION | UNSAFE | INFO | REVIEW | WARN | ERROR | NOT_FOUND`, so orchestrators branch on outcomes without re-prompting.
 * **Project health grading (A–F).** TSA grades projects across size, complexity, coverage, duplication, dependencies, structure, and git hotspots.
@@ -126,7 +125,6 @@ It reports possible cross-language name collisions so you can inspect resolver b
 ---
 
 ## Key Features
-
 ### Pre-indexed code intelligence
 
 An agent's cost is dominated by turns, not by the size of each reply: every extra
@@ -206,7 +204,6 @@ TSA performs indexed code search and live source verification in process. No rip
 ---
 
 ## Quantitative claim governance
-
 Public benchmark, performance, or competitive numbers are emitted only from the
 provenance-bound registry in
 [`benchmarks/codegraph_compare/claim_registry.json`](benchmarks/codegraph_compare/claim_registry.json).
@@ -224,7 +221,6 @@ capabilities, not measured superiority claims.
 ---
 
 ## How It Works
-
 ```
 Source code → tree-sitter parse → SQLite + FTS5 index (.ast-cache/index.db)
                                          ↓
@@ -245,7 +241,6 @@ AST data; automatic warming is specific to individual tools.
 ---
 
 ## Supported Agents
-
 <details>
 <summary><b>Codex CLI</b></summary>
 
@@ -355,7 +350,6 @@ MCP client config (the project root inside the container is the mount point `/wo
 ---
 
 ## Supported Languages
-
 <!-- BEGIN GENERATED LANGUAGE SUPPORT INVENTORY -->
 Generated from runtime registries; see [`docs/CODEMAPS/languages.md`](docs/CODEMAPS/languages.md) for the full capability matrix. **22 plugins**: 13 pipeline-registered, 3 index-admitted, 0 call-dispatch-only, 5 data/markup, 1 scaffold. `pipeline_registered` is registration evidence, not positive cross-file binding proof.
 `pipeline_registered`: C, C++, C#, Go, Java, JavaScript, Kotlin, PHP, Python, Ruby, Rust, Swift, TypeScript | `index_admitted`: Bash, Lua, Scala | `call_dispatch_only`:  | `data_markup`: CSS, HTML, Markdown, SQL, YAML | `scaffold`: JSON
