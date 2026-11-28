@@ -2,7 +2,11 @@
 
 ## [Unreleased]
 
+## [3.1.3] - Unreleased (release date set at tag time)
+
 ### Added
+
+- **English demo video.** The README embeds the narrated demo. The video and subtitles are `docs/assets/tsa-demo-30s-en.mp4` and `docs/assets/tsa-demo-30s-en.srt`.
 
 - **Agent-first CLI front door: short `--help`, `--help-all`, actionable parser errors.**
   A zero-knowledge agent's first call was `--help`: 1,377 lines / 82.8k chars
